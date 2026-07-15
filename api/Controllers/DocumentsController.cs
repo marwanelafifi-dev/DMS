@@ -12,10 +12,7 @@ public class DocumentsController(DmsContext context) : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetDocuments([FromQuery] Guid? folderId)
     {
-        var query = context.Documents
-            .Include(d => d.Owner)
-            .Include(d => d.CurrentVersion)
-            .AsQueryable();
+        var query = context.Documents.AsQueryable();
 
         if (folderId.HasValue)
             query = query.Where(d => d.FolderId == folderId);
@@ -27,8 +24,8 @@ public class DocumentsController(DmsContext context) : ControllerBase
                 d.Title,
                 d.Status,
                 d.TrackingCode,
-                Owner = d.Owner!.FullName,
-                CurrentVersion = d.CurrentVersion!.VersionNumber,
+                d.OwnerId,
+                d.CurrentVersionId,
                 d.FolderId,
                 d.CreatedAt
             })
@@ -41,13 +38,15 @@ public class DocumentsController(DmsContext context) : ControllerBase
     public async Task<ActionResult<object>> GetDocument(Guid id)
     {
         var document = await context.Documents
-            .Include(d => d.Owner)
-            .Include(d => d.CurrentVersion)
-            .Include(d => d.Versions)
             .FirstOrDefaultAsync(d => d.DocumentId == id);
 
         if (document == null)
             return NotFound();
+
+        var versions = await context.DocumentVersions
+            .Where(v => v.DocumentId == id)
+            .Select(v => new { v.VersionId, v.VersionNumber, v.Status, v.CreatedAt })
+            .ToListAsync();
 
         return Ok(new
         {
@@ -55,18 +54,11 @@ public class DocumentsController(DmsContext context) : ControllerBase
             document.Title,
             document.Status,
             document.TrackingCode,
-            Owner = document.Owner!.FullName,
+            document.OwnerId,
             document.FolderId,
-            CurrentVersion = new
-            {
-                document.CurrentVersion!.VersionId,
-                document.CurrentVersion.VersionNumber,
-                document.CurrentVersion.Status,
-                document.CurrentVersion.IsCheckedOut,
-                document.CurrentVersion.CheckedOutBy,
-                CreatedAt = document.CurrentVersion.CreatedAt
-            },
-            VersionCount = document.Versions.Count,
+            document.CurrentVersionId,
+            Versions = versions,
+            VersionCount = versions.Count,
             document.CreatedAt
         });
     }
