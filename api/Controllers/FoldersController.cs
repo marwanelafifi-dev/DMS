@@ -13,7 +13,6 @@ public class FoldersController(DmsContext context) : ControllerBase
     public async Task<ActionResult<IEnumerable<object>>> GetFolders()
     {
         var folders = await context.Folders
-            .Include(f => f.Owner)
             .Select(f => new
             {
                 f.FolderId,
@@ -21,7 +20,7 @@ public class FoldersController(DmsContext context) : ControllerBase
                 f.Description,
                 f.Classification,
                 f.ParentFolderId,
-                Owner = f.Owner!.FullName,
+                f.OwnerId,
                 f.CreatedAt
             })
             .ToListAsync();
@@ -32,12 +31,15 @@ public class FoldersController(DmsContext context) : ControllerBase
     public async Task<ActionResult<object>> GetFolder(Guid id)
     {
         var folder = await context.Folders
-            .Include(f => f.Owner)
-            .Include(f => f.Permissions)
             .FirstOrDefaultAsync(f => f.FolderId == id);
 
         if (folder == null)
             return NotFound();
+
+        var permissions = await context.FolderPermissions
+            .Where(p => p.FolderId == id)
+            .Select(p => new { p.UserId, p.Role })
+            .ToListAsync();
 
         return Ok(new
         {
@@ -46,8 +48,8 @@ public class FoldersController(DmsContext context) : ControllerBase
             folder.Description,
             folder.Classification,
             folder.ParentFolderId,
-            Owner = folder.Owner!.FullName,
-            Permissions = folder.Permissions.Select(p => new { p.UserId, p.Role }),
+            folder.OwnerId,
+            Permissions = permissions,
             folder.CreatedAt
         });
     }
