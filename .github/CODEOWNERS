@@ -1,0 +1,35 @@
+# Enterprise DMS v7.4 — Code Ownership & Review Policy
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @marwanelafifi-dev
+
+# .NET API — Core vault, RBAC, workflows
+/api/ @marwanelafifi-dev
+/api/Controllers/ @marwanelafifi-dev
+/api/Models/ @marwanelafifi-dev
+/api/Data/ @marwanelafifi-dev
+
+# React/TypeScript Frontend — UI, vault canvas, dashboards
+/web/ @marwanelafifi-dev
+/web/src/ @marwanelafifi-dev
+
+# Python OCR/RAG Sidecar — Text extraction, local LLM
+/ocr-rag/ @marwanelafifi-dev
+/ocr-rag/app/ @marwanelafifi-dev
+
+# Infrastructure — Docker, database, deployment
+/infra/ @marwanelafifi-dev
+/infra/db/ @marwanelafifi-dev
+docker-compose.yml @marwanelafifi-dev
+Dockerfile @marwanelafifi-dev
+
+# Documentation — Requirements, architecture, roadmap
+/docs/ @marwanelafifi-dev
+CLAUDE.md @marwanelafifi-dev
+README.md @marwanelafifi-dev
+
+# Configuration — Environment, Git, Build
+.env.example @marwanelafifi-dev
+.gitignore @marwanelafifi-dev
+.github/ @marwanelafifi-dev
