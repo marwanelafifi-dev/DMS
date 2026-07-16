@@ -197,8 +197,8 @@ export function Documents() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100">Documents</h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1 font-serif">
+          <h1 className="text-4xl font-bold text-white dark:text-white">Documents</h1>
+          <p className="text-navy-200 dark:text-navy-200 mt-1 font-serif">
             Manage and organize your documents
           </p>
         </div>
@@ -240,7 +240,7 @@ export function Documents() {
 
           {/* View Mode Toggle */}
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+            <p className="text-sm font-semibold text-navy-300 dark:text-navy-300">
               {filteredDocuments.length} document{filteredDocuments.length !== 1 ? 's' : ''}
             </p>
             <div className="flex gap-2">
@@ -248,8 +248,8 @@ export function Documents() {
                 onClick={() => setViewMode('table')}
                 className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
                   viewMode === 'table'
-                    ? 'bg-primary-600 text-white shadow-md'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:shadow-sm'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'bg-navy-600 dark:bg-navy-600 text-white dark:text-white hover:shadow-sm'
                 }`}
                 title="Table view"
               >
@@ -259,8 +259,8 @@ export function Documents() {
                 onClick={() => setViewMode('grid')}
                 className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
                   viewMode === 'grid'
-                    ? 'bg-primary-600 text-white shadow-md'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:shadow-sm'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'bg-navy-600 dark:bg-navy-600 text-white dark:text-white hover:shadow-sm'
                 }`}
                 title="Grid view"
               >

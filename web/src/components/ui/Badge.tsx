@@ -12,24 +12,24 @@ interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 const statusClasses: Record<BadgeStatus, { solid: string; outline: string }> = {
   success: {
-    solid: 'bg-success text-white shadow-md',
-    outline: 'border-2 border-success text-success dark:text-success',
+    solid: 'bg-cyan-600 text-white shadow-md',
+    outline: 'border-2 border-cyan-600 text-cyan-600 dark:text-cyan-400 dark:border-cyan-400',
   },
   warning: {
-    solid: 'bg-warning text-slate-900 shadow-md',
-    outline: 'border-2 border-warning text-warning dark:text-warning',
+    solid: 'bg-navy-600 text-white shadow-md',
+    outline: 'border-2 border-navy-600 text-navy-600 dark:text-navy-300 dark:border-navy-400',
   },
   error: {
-    solid: 'bg-error text-white shadow-md',
-    outline: 'border-2 border-error text-error dark:text-error',
+    solid: 'bg-navy-700 text-white shadow-md',
+    outline: 'border-2 border-navy-700 text-navy-700 dark:text-navy-300 dark:border-navy-500',
   },
   info: {
-    solid: 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md',
-    outline: 'border-2 border-primary-500 text-primary-600 dark:text-primary-400 dark:border-primary-400',
+    solid: 'bg-cyan-600 text-white shadow-md',
+    outline: 'border-2 border-cyan-600 text-cyan-600 dark:text-cyan-400 dark:border-cyan-400',
   },
   default: {
-    solid: 'bg-slate-200 dark:bg-navy-700 text-navy-900 dark:text-primary-200 shadow-md',
-    outline: 'border-2 border-slate-300 dark:border-navy-600 text-navy-900 dark:text-primary-300',
+    solid: 'bg-navy-600 dark:bg-navy-600 text-white shadow-md',
+    outline: 'border-2 border-navy-600 dark:border-navy-600 text-navy-700 dark:text-navy-300',
   },
 };
 

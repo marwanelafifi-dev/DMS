@@ -27,7 +27,7 @@ export function PDFToolbar({
   const [showSearch, setShowSearch] = useState(false);
 
   return (
-    <div className="bg-gray-100 dark:bg-gray-700 border-b border-gray-300 dark:border-gray-600 px-4 py-3 space-y-2">
+    <div className="bg-navy-800 dark:bg-navy-800 border-b border-navy-700 dark:border-navy-700 px-4 py-3 space-y-2">
       {/* Top Row: Page Navigation & Zoom */}
       <div className="flex items-center justify-between gap-4">
         {/* Page Navigation */}
@@ -35,7 +35,7 @@ export function PDFToolbar({
           <button
             onClick={() => onPageChange(Math.max(1, currentPage - 1))}
             disabled={currentPage <= 1}
-            className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded disabled:opacity-50"
+            className="px-2 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded disabled:opacity-50 hover:bg-navy-600"
             title="Previous page"
           >
             ◀
@@ -48,15 +48,15 @@ export function PDFToolbar({
               max={totalPages}
               value={currentPage}
               onChange={(e) => onPageChange(Math.min(totalPages, Math.max(1, parseInt(e.target.value))))}
-              className="w-12 px-2 py-1 text-sm border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-600 rounded text-center"
+              className="w-12 px-2 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded text-center"
             />
-            <span className="text-sm text-gray-600 dark:text-gray-400">/ {totalPages}</span>
+            <span className="text-sm text-navy-300 dark:text-navy-300">/ {totalPages}</span>
           </div>
 
           <button
             onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage >= totalPages}
-            className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded disabled:opacity-50"
+            className="px-2 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded disabled:opacity-50 hover:bg-navy-600"
             title="Next page"
           >
             ▶
@@ -67,7 +67,7 @@ export function PDFToolbar({
         <div className="flex items-center gap-2">
           <button
             onClick={() => onZoomChange(Math.max(50, zoom - 10))}
-            className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="px-2 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded hover:bg-navy-600"
             title="Zoom out"
           >
             🔍−
@@ -76,7 +76,7 @@ export function PDFToolbar({
           <select
             value={zoom}
             onChange={(e) => onZoomChange(parseInt(e.target.value))}
-            className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-600 rounded"
+            className="px-2 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded"
           >
             <option value={50}>50%</option>
             <option value={75}>75%</option>
@@ -88,7 +88,7 @@ export function PDFToolbar({
 
           <button
             onClick={() => onZoomChange(Math.min(200, zoom + 10))}
-            className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="px-2 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded hover:bg-navy-600"
             title="Zoom in"
           >
             🔍+
@@ -99,7 +99,7 @@ export function PDFToolbar({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="px-3 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded hover:bg-navy-600"
             title="Search in document"
           >
             🔍
@@ -107,7 +107,7 @@ export function PDFToolbar({
 
           <button
             onClick={onRotate}
-            className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="px-3 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded hover:bg-navy-600"
             title="Rotate page"
           >
             ↻
@@ -115,7 +115,7 @@ export function PDFToolbar({
 
           <button
             onClick={onPrint}
-            className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="px-3 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded hover:bg-navy-600"
             title="Print document"
           >
             🖨️
@@ -123,7 +123,7 @@ export function PDFToolbar({
 
           <button
             onClick={onDownload}
-            className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="px-3 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded hover:bg-navy-600"
             title="Download document"
           >
             ⬇️
@@ -143,7 +143,7 @@ export function PDFToolbar({
               onSearch(e.target.value);
             }}
             autoFocus
-            className="flex-1 px-3 py-1 text-sm border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-600 rounded"
+            className="flex-1 px-3 py-1 text-sm border border-navy-600 dark:border-navy-600 bg-navy-700 text-white rounded"
           />
           <button
             onClick={() => {
@@ -151,7 +151,7 @@ export function PDFToolbar({
               setSearchQuery('');
               onSearch('');
             }}
-            className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+            className="px-2 py-1 text-sm text-cyan-400 dark:text-cyan-400 hover:text-cyan-300"
           >
             ✕
           </button>

@@ -35,7 +35,7 @@ export function DocumentList({
   const getLockStatusIcon = (doc: Document) => {
     if (doc.checkoutStatus === 'checked_out') {
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-warning">
+        <span className="inline-flex items-center gap-1 text-xs text-navy-500">
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
             <path d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" />
           </svg>
@@ -62,7 +62,7 @@ export function DocumentList({
     return (
       <div className="space-y-2">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-12 bg-slate-200 dark:bg-slate-700 rounded-lg animate-skeleton" />
+          <div key={i} className="h-12 bg-navy-600 dark:bg-navy-600 rounded-lg animate-skeleton" />
         ))}
       </div>
     );
@@ -72,10 +72,10 @@ export function DocumentList({
     return (
       <Card>
         <CardBody className="text-center py-12">
-          <svg className="w-12 h-12 mx-auto text-slate-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-12 h-12 mx-auto text-navy-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p className="text-slate-600 dark:text-slate-400">No documents found</p>
+          <p className="text-navy-400 dark:text-navy-400">No documents found</p>
         </CardBody>
       </Card>
     );
@@ -88,7 +88,7 @@ export function DocumentList({
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="px-3 py-2 text-sm border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 rounded-lg font-semibold hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
+          className="px-3 py-2 text-sm border-2 border-navy-600 dark:border-navy-600 bg-navy-700 dark:bg-navy-700 text-white rounded-lg font-semibold hover:border-cyan-500 dark:hover:border-cyan-500 transition-colors"
         >
           <option value="name">Sort by Name</option>
           <option value="date">Sort by Date</option>
@@ -96,17 +96,17 @@ export function DocumentList({
         </select>
         <button
           onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-          className="px-4 py-2 text-sm border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 rounded-lg font-semibold hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
+          className="px-4 py-2 text-sm border-2 border-navy-600 dark:border-navy-600 bg-navy-700 dark:bg-navy-700 text-white rounded-lg font-semibold hover:border-cyan-500 dark:hover:border-cyan-500 transition-colors"
         >
           {sortOrder === 'asc' ? '↑' : '↓'}
         </button>
       </div>
 
       {/* Document Table */}
-      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 shadow-md">
+      <div className="overflow-x-auto rounded-lg border border-navy-600 dark:border-navy-600 shadow-md">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700/50">
-            <tr className="text-left text-slate-700 dark:text-slate-300 font-bold">
+          <thead className="border-b border-navy-600 dark:border-navy-600 bg-navy-800 dark:bg-navy-800">
+            <tr className="text-left text-cyan-300 dark:text-cyan-300 font-bold">
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Owner</th>
@@ -116,31 +116,31 @@ export function DocumentList({
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+          <tbody className="divide-y divide-navy-600 dark:divide-navy-600">
             {sortedDocs.map((doc) => (
               <tr
                 key={doc.documentId}
-                className="hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
+                className="hover:bg-navy-700 dark:hover:bg-navy-700 cursor-pointer transition-colors"
               >
                 <td
-                  className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100"
+                  className="px-4 py-3 font-semibold text-white dark:text-white"
                   onClick={() => onDocumentClick(doc.documentId)}
                 >
                   <div className="truncate">{doc.name}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">{doc.fileName}</div>
+                  <div className="text-xs text-navy-400 dark:text-navy-400">{doc.fileName}</div>
                 </td>
                 <td className="px-4 py-3">
                   <Badge status={getStatusColor(doc.status)} size="sm">
                     {doc.status.replace('_', ' ')}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                <td className="px-4 py-3 text-navy-200 dark:text-navy-200">
                   {doc.uploadedByUser?.fullName || 'Unknown'}
                 </td>
-                <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                <td className="px-4 py-3 text-navy-200 dark:text-navy-200">
                   {formatFileSize(doc.fileSize)}
                 </td>
-                <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                <td className="px-4 py-3 text-navy-200 dark:text-navy-200">
                   {formatDate(doc.uploadedAt)}
                 </td>
                 <td className="px-4 py-3">
@@ -153,7 +153,7 @@ export function DocumentList({
                         e.stopPropagation();
                         onDownload?.(doc.documentId);
                       }}
-                      className="text-primary-600 hover:text-primary-700 dark:text-primary-400 font-semibold hover:scale-110 transition-transform"
+                      className="text-cyan-400 hover:text-cyan-300 dark:text-cyan-400 font-semibold hover:scale-110 transition-transform"
                       title="Download"
                     >
                       ⬇️
@@ -163,7 +163,7 @@ export function DocumentList({
                         e.stopPropagation();
                         onDelete?.(doc.documentId);
                       }}
-                      className="text-error hover:text-red-700 dark:text-red-400 font-semibold hover:scale-110 transition-transform"
+                      className="text-navy-500 hover:text-navy-400 dark:text-navy-400 font-semibold hover:scale-110 transition-transform"
                       title="Delete"
                     >
                       🗑️

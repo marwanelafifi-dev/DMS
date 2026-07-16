@@ -157,7 +157,7 @@ export function DocumentViewer() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100">Document Viewer</h1>
+        <h1 className="text-4xl font-bold text-white dark:text-white">Document Viewer</h1>
         <SkeletonCard />
       </div>
     );
@@ -166,10 +166,10 @@ export function DocumentViewer() {
   if (!document) {
     return (
       <div className="text-center py-12">
-        <p className="text-slate-600 dark:text-slate-400">Document not found</p>
+        <p className="text-navy-300 dark:text-navy-300">Document not found</p>
         <button
           onClick={() => navigate('/documents')}
-          className="mt-4 px-6 py-2 bg-primary-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all"
+          className="mt-4 px-6 py-2 bg-cyan-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all"
         >
           Back to Documents
         </button>
@@ -184,11 +184,11 @@ export function DocumentViewer() {
         <div>
           <button
             onClick={() => navigate('/documents')}
-            className="text-primary-600 hover:text-primary-700 dark:text-primary-400 text-sm mb-2 font-semibold"
+            className="text-cyan-400 hover:text-cyan-300 dark:text-cyan-400 text-sm mb-2 font-semibold"
           >
             ← Back to Documents
           </button>
-          <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100">Document Viewer</h1>
+          <h1 className="text-4xl font-bold text-white dark:text-white">Document Viewer</h1>
         </div>
       </div>
 

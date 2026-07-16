@@ -83,7 +83,7 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
   };
 
   return (
-    <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden flex flex-col h-full">
+    <div className="bg-navy-900 rounded-lg border border-navy-800 overflow-hidden flex flex-col h-full">
       {/* Toolbar */}
       <PDFToolbar
         currentPage={currentPage}
@@ -98,7 +98,7 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
       />
 
       {/* PDF Canvas */}
-      <div className="flex-1 overflow-auto bg-gray-900 flex items-center justify-center p-4">
+      <div className="flex-1 overflow-auto bg-navy-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-lg overflow-hidden" style={{ transform: `rotate(${rotation}deg)` }}>
           <canvas
             ref={canvasRef}
@@ -109,7 +109,7 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
       </div>
 
       {/* Page Info */}
-      <div className="bg-gray-100 dark:bg-gray-700 border-t border-gray-300 dark:border-gray-600 px-4 py-2 text-center text-sm text-gray-600 dark:text-gray-400">
+      <div className="bg-navy-800 dark:bg-navy-800 border-t border-navy-700 dark:border-navy-700 px-4 py-2 text-center text-sm text-navy-300 dark:text-navy-300">
         Page {currentPage} of {totalPages} • Zoom {zoom}%
       </div>
     </div>

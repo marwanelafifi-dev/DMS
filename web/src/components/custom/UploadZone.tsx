@@ -65,8 +65,8 @@ export function UploadZone({
     <Card
       className={`border-2 border-dashed transition-all cursor-pointer ${
         isDragging
-          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-          : 'border-gray-300 dark:border-gray-600'
+          ? 'border-cyan-600 bg-navy-600 dark:bg-navy-600'
+          : 'border-navy-600 dark:border-navy-600'
       }`}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
@@ -80,8 +80,8 @@ export function UploadZone({
           <svg
             className={`w-12 h-12 mx-auto transition-colors ${
               isDragging
-                ? 'text-primary-500'
-                : 'text-gray-400 dark:text-gray-500'
+                ? 'text-cyan-500'
+                : 'text-cyan-400'
             }`}
             fill="none"
             stroke="currentColor"
@@ -97,16 +97,16 @@ export function UploadZone({
 
           {/* Text */}
           <div>
-            <p className="font-semibold text-gray-900 dark:text-gray-100">
+            <p className="font-semibold text-white dark:text-white">
               {isLoading ? 'Uploading...' : 'Drag and drop files here'}
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-navy-300 dark:text-navy-300 mt-1">
               or click to browse files
             </p>
           </div>
 
           {/* File Info */}
-          <p className="text-xs text-gray-500 dark:text-gray-500">
+          <p className="text-xs text-navy-400 dark:text-navy-400">
             Max file size: {(maxSize / (1024 * 1024)).toFixed(0)}MB
           </p>
 
@@ -114,7 +114,7 @@ export function UploadZone({
           {!isLoading && (
             <button
               type="button"
-              className="inline-block mt-4 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
+              className="inline-block mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
               disabled={isLoading}
             >
               Select Files
@@ -124,8 +124,8 @@ export function UploadZone({
           {/* Loading State */}
           {isLoading && (
             <div className="flex items-center justify-center gap-2">
-              <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-primary-600">Uploading...</span>
+              <div className="w-4 h-4 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-cyan-400">Uploading...</span>
             </div>
           )}
         </div>

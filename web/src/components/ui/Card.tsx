@@ -9,7 +9,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={`
-        bg-white dark:bg-navy-800 border border-slate-200 dark:border-primary-900/30
+        bg-navy-700 dark:bg-navy-700 border border-navy-600 dark:border-navy-600
         rounded-xl shadow-lg hover:shadow-2xl dark:shadow-2xl transition-all duration-normal
         ${className}
       `}
@@ -28,7 +28,7 @@ export const CardHeader = forwardRef<HTMLDivElement, CardHeaderProps>(
   ({ className = '', ...props }, ref) => (
     <div
       ref={ref}
-      className={`px-6 py-4 border-b border-primary-200 dark:border-primary-900/50 bg-gradient-to-r from-primary-50 to-primary-100 dark:from-navy-900/50 dark:to-primary-900/30 rounded-t-xl ${className}`}
+      className={`px-6 py-4 border-b border-navy-600 dark:border-navy-600 bg-navy-800 dark:bg-navy-800 rounded-t-xl ${className}`}
       {...props}
     />
   )
@@ -56,7 +56,7 @@ export const CardFooter = forwardRef<HTMLDivElement, CardFooterProps>(
   ({ className = '', ...props }, ref) => (
     <div
       ref={ref}
-      className={`px-6 py-4 border-t border-primary-200 dark:border-primary-900/50 bg-gradient-to-r from-primary-50 to-primary-100 dark:from-navy-900/50 dark:to-primary-900/30 flex gap-3 justify-end rounded-b-xl ${className}`}
+      className={`px-6 py-4 border-t border-navy-600 dark:border-navy-600 bg-navy-800 dark:bg-navy-800 flex gap-3 justify-end rounded-b-xl ${className}`}
       {...props}
     />
   )

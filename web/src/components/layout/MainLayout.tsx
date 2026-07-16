@@ -10,7 +10,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="h-screen bg-white dark:bg-gray-900 flex flex-col">
+    <div className="h-screen bg-navy-900 dark:bg-navy-900 flex flex-col">
       {/* Top Navbar */}
       <Navbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
 
@@ -20,7 +20,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
+        <main className="flex-1 overflow-y-auto bg-navy-900 dark:bg-navy-900">
           <div className="max-w-[1920px] mx-auto p-4 md:p-6 lg:p-8">
             {children}
           </div>
