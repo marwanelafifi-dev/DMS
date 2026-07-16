@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './components/pages/Dashboard';
 import { Documents } from './components/pages/Documents';
+import { DocumentViewer } from './components/pages/DocumentViewer';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -47,12 +48,7 @@ function App() {
           path="/documents/:id"
           element={
             <MainLayout>
-              <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4">Document Viewer</h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Document viewer coming soon...
-                </p>
-              </div>
+              <DocumentViewer />
             </MainLayout>
           }
         />
