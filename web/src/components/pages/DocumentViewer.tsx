@@ -13,7 +13,7 @@ export function DocumentViewer() {
 
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+  const [isLockingLoading, setIsLockingLoading] = useState(false);
 
   // Load Document
   useEffect(() => {
@@ -56,13 +56,13 @@ export function DocumentViewer() {
     loadDocument();
   }, [id, navigate, showError]);
 
-  const handleCheckout = async () => {
+  const handleLockForEditing = async () => {
     if (!document) return;
 
     try {
-      setIsCheckoutLoading(true);
+      setIsLockingLoading(true);
       // In real implementation, would call apiClient.checkoutDocument()
-      showInfo('Checking out document...');
+      showInfo('Locking file for editing...');
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Update local state
@@ -73,11 +73,11 @@ export function DocumentViewer() {
         checkedOutAt: new Date().toISOString(),
       });
 
-      showSuccess('Document checked out (60-min timeout)');
+      showSuccess('File locked for editing (60-min timeout)');
     } catch (error) {
-      showError('Checkout failed');
+      showError('Lock failed');
     } finally {
-      setIsCheckoutLoading(false);
+      setIsLockingLoading(false);
     }
   };
 
@@ -203,12 +203,12 @@ export function DocumentViewer() {
         <div className="lg:col-span-1">
           <DocumentDetailsPanel
             document={document}
-            onCheckout={handleCheckout}
+            onLockForEditing={handleLockForEditing}
             onSubmitApproval={handleSubmitApproval}
             onApprove={handleApprove}
             onReject={handleReject}
             onDownload={handleDownload}
-            isCheckoutLoading={isCheckoutLoading}
+            isLockingLoading={isLockingLoading}
           />
         </div>
       </div>
