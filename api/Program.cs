@@ -1,4 +1,6 @@
 using DMS.Api.Data;
+using DMS.Api.Services;
+using Minio;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,6 +10,26 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("Connection string 'Default' not found.");
 builder.Services.AddDbContext<DmsContext>(options =>
     options.UseNpgsql(connectionString));
+
+// MinIO — Object Storage
+var minioEndpoint = builder.Configuration["Minio:Endpoint"] ?? "minio:9000";
+var minioAccessKey = builder.Configuration["Minio:AccessKey"] ?? "dms_minio";
+var minioSecretKey = builder.Configuration["Minio:SecretKey"] ?? "change_me_dev_only";
+var minioUseSSL = builder.Configuration.GetValue<bool>("Minio:UseSSL");
+
+builder.Services.AddSingleton<IMinioClient>(sp =>
+{
+    var minioClient = new MinioClient()
+        .WithEndpoint(minioEndpoint)
+        .WithCredentials(minioAccessKey, minioSecretKey);
+
+    if (minioUseSSL)
+        minioClient = minioClient.WithSSL();
+
+    return minioClient.Build();
+});
+
+builder.Services.AddScoped<MinioService>();
 
 // CORS — allow web frontend
 builder.Services.AddCors(options =>
@@ -24,6 +46,13 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
+// Initialize MinIO bucket on startup
+using (var scope = app.Services.CreateScope())
+{
+    var minioService = scope.ServiceProvider.GetRequiredService<MinioService>();
+    await minioService.EnsureBucketExistsAsync();
+}
+
 app.UseCors();
 app.MapControllers();
 
@@ -32,9 +61,10 @@ app.MapHealthChecks("/health");
 
 app.MapGet("/", () => Results.Ok(new
 {
-    message = "Enterprise DMS v7.4 — API (Phase 1: Core Vault + RBAC)",
+    message = "Enterprise DMS v7.4 — API (Phase 1: Core Vault + RBAC + MinIO)",
     version = "1.0.0-phase1",
-    docs = "/swagger or /health"
+    docs = "/swagger or /health",
+    minioStatus = "Ready"
 }));
 
 app.Run();
