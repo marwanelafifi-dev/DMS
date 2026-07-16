@@ -1,4 +1,5 @@
 using DMS.Api.Data;
+using DMS.Api.Middleware;
 using DMS.Api.Services;
 using Minio;
 using Microsoft.EntityFrameworkCore;
@@ -30,6 +31,7 @@ builder.Services.AddSingleton<IMinioClient>(sp =>
 });
 
 builder.Services.AddScoped<MinioService>();
+builder.Services.AddScoped<AuditService>();
 
 // CORS — allow web frontend
 builder.Services.AddCors(options =>
@@ -54,6 +56,10 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseCors();
+
+// RBAC Middleware — التحقق من الصلاحيات
+app.UseMiddleware<RBACMiddleware>();
+
 app.MapControllers();
 
 // Health endpoints
