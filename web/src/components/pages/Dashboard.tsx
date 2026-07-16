@@ -1,0 +1,361 @@
+import { useEffect, useState } from 'react';
+import { Card, CardBody } from '../ui/Card';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { SkeletonCard } from '../ui/Skeleton';
+import { useAuth } from '../../hooks/useAuth';
+import type { Task, Document, Approval } from '../../types';
+import { useNavigate } from 'react-router-dom';
+
+// Icon components (svg)
+const ClipboardListIcon = ({ className }: { className?: string }) => <svg className={className || "w-12 h-12"} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>;
+const DocumentIcon = ({ className }: { className?: string }) => <svg className={className || "w-12 h-12"} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
+const CheckCircleIcon = ({ className }: { className?: string }) => <svg className={className || "w-12 h-12"} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+
+export function Dashboard() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [recentDocs, setRecentDocs] = useState<Document[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<Approval[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setIsLoading(true);
+
+        // Mock data for now
+        const mockTasks: Task[] = [
+          {
+            taskId: '1',
+            title: 'Review Marketing Plan',
+            description: 'Review Q4 marketing plan document',
+            taskType: 'correction',
+            assignedTo: 'user-1',
+            assignedBy: 'user-2',
+            status: 'in_progress',
+            priority: 'high',
+            dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+          {
+            taskId: '2',
+            title: 'Verify Product Specs',
+            description: 'Verify technical specifications',
+            taskType: 'correction',
+            assignedTo: 'user-1',
+            assignedBy: 'user-3',
+            status: 'open',
+            priority: 'medium',
+            dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+          {
+            taskId: '3',
+            title: 'Complete RCA',
+            description: 'Root cause analysis for recent issue',
+            taskType: 'rca',
+            assignedTo: 'user-1',
+            assignedBy: 'user-2',
+            status: 'open',
+            priority: 'critical',
+            dueDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+        ];
+
+        const mockDocs: Document[] = [
+          {
+            documentId: '1',
+            folderId: 'folder-1',
+            name: 'Q4 Marketing Plan',
+            fileName: 'q4-plan.pdf',
+            fileSize: 2048576,
+            contentType: 'application/pdf',
+            status: 'released',
+            uploadedBy: 'user-2',
+            uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            documentId: '2',
+            folderId: 'folder-1',
+            name: 'Product Specifications',
+            fileName: 'specs.docx',
+            fileSize: 512000,
+            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            status: 'pending_approval',
+            uploadedBy: 'user-3',
+            uploadedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+          },
+        ];
+
+        setTasks(mockTasks);
+        setRecentDocs(mockDocs);
+        setPendingApprovals([
+          {
+            approvalId: '1',
+            documentId: '2',
+            document: mockDocs[1],
+            submittedBy: 'user-3',
+            submittedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+            approvalStatus: 'pending',
+          },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, []);
+
+  const taskStats = {
+    open: tasks.filter((t) => t.status === 'open').length,
+    inProgress: tasks.filter((t) => t.status === 'in_progress').length,
+    done: tasks.filter((t) => t.status === 'done').length,
+  };
+
+  const getStatusColor = (
+    status: 'open' | 'in_progress' | 'done'
+  ): 'warning' | 'info' | 'success' => {
+    return {
+      open: 'warning',
+      in_progress: 'info',
+      done: 'success',
+    }[status] as 'warning' | 'info' | 'success';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Welcome */}
+      <div>
+        <h1 className="text-4xl font-bold mb-2">Welcome back, {user?.fullName}! 👋</h1>
+        <p className="text-gray-600 dark:text-gray-400">
+          Here's an overview of your recent activity and pending tasks.
+        </p>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardBody className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">
+                Open Tasks
+              </p>
+              <p className="text-3xl font-bold">{taskStats.open}</p>
+            </div>
+            <ClipboardListIcon className="w-12 h-12 text-warning opacity-20" />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardBody className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">
+                In Progress
+              </p>
+              <p className="text-3xl font-bold">{taskStats.inProgress}</p>
+            </div>
+            <DocumentIcon className="w-12 h-12 text-info opacity-20" />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardBody className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">
+                Pending Approvals
+              </p>
+              <p className="text-3xl font-bold">{pendingApprovals.length}</p>
+            </div>
+            <CheckCircleIcon className="w-12 h-12 text-success opacity-20" />
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* My Tasks (Left - Takes 2 columns) */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">My Tasks</h2>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate('/tasks')}
+            >
+              View All
+            </Button>
+          </div>
+
+          {/* Task Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <Card>
+              <CardBody className="text-center">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Open</p>
+                <p className="text-2xl font-bold text-warning">{taskStats.open}</p>
+              </CardBody>
+            </Card>
+            <Card>
+              <CardBody className="text-center">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  In Progress
+                </p>
+                <p className="text-2xl font-bold text-info">{taskStats.inProgress}</p>
+              </CardBody>
+            </Card>
+            <Card>
+              <CardBody className="text-center">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Done</p>
+                <p className="text-2xl font-bold text-success">{taskStats.done}</p>
+              </CardBody>
+            </Card>
+          </div>
+
+          {/* Task List */}
+          <div className="space-y-2">
+            {tasks.slice(0, 3).map((task) => (
+              <Card
+                key={task.taskId}
+                onClick={() => navigate(`/tasks/${task.taskId}`)}
+                className="cursor-pointer hover:shadow-lg transition-all"
+              >
+                <CardBody className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-base">{task.title}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        {task.description}
+                      </p>
+                    </div>
+                    <Badge
+                      status={
+                        task.priority === 'critical'
+                          ? 'error'
+                          : task.priority === 'high'
+                            ? 'warning'
+                            : 'info'
+                      }
+                      size="sm"
+                    >
+                      {task.priority}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Badge
+                      status={getStatusColor(task.status)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {task.status.replace('_', ' ')}
+                    </Badge>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Due:{' '}
+                      {new Date(task.dueDate).toLocaleDateString()}
+                    </span>
+                  </div>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* Recent Documents & Approvals (Right) */}
+        <div className="space-y-6">
+          {/* Recent Documents */}
+          <div>
+            <h3 className="text-xl font-semibold mb-3">Recent Documents</h3>
+            <div className="space-y-2">
+              {recentDocs.slice(0, 3).map((doc) => (
+                <Card
+                  key={doc.documentId}
+                  onClick={() => navigate(`/documents/${doc.documentId}`)}
+                  className="cursor-pointer"
+                >
+                  <CardBody className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-sm">{doc.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {(doc.fileSize / 1024).toFixed(0)} KB
+                        </p>
+                      </div>
+                      <Badge
+                        status={
+                          doc.status === 'released'
+                            ? 'success'
+                            : 'warning'
+                        }
+                        size="sm"
+                      >
+                        {doc.status.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                  </CardBody>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          {/* Pending Approvals */}
+          <div>
+            <h3 className="text-xl font-semibold mb-3">Pending Approvals</h3>
+            {pendingApprovals.length > 0 ? (
+              <div className="space-y-2">
+                {pendingApprovals.map((approval) => (
+                  <Card
+                    key={approval.approvalId}
+                    onClick={() => navigate(`/approvals/${approval.approvalId}`)}
+                    className="cursor-pointer border-l-4 border-l-warning"
+                  >
+                    <CardBody className="space-y-2">
+                      <p className="font-medium text-sm">
+                        {approval.document?.name}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Submitted{' '}
+                        {new Date(approval.submittedAt).toLocaleDateString()}
+                      </p>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="w-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/approvals/${approval.approvalId}`);
+                        }}
+                      >
+                        Review
+                      </Button>
+                    </CardBody>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardBody className="text-center py-8">
+                  <p className="text-gray-500 dark:text-gray-400">
+                    No pending approvals
+                  </p>
+                </CardBody>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
