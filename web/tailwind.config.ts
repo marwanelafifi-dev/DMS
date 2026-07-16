@@ -11,26 +11,35 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Roboto"', '"Helvetica Neue"', 'Arial', 'sans-serif', ...defaultTheme.fontFamily.sans],
-        mono: ['"SF Mono"', 'Monaco', '"Cascadia Code"', '"Roboto Mono"', 'Consolas', '"Courier New"', 'monospace'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Helvetica Neue"', 'Arial', 'sans-serif', ...defaultTheme.fontFamily.sans],
+        serif: ['"Merriweather"', 'Georgia', 'serif'],
+        mono: ['"Fira Code"', '"SF Mono"', 'Monaco', '"Cascadia Code"', 'Consolas', '"Courier New"', 'monospace'],
       },
       colors: {
-        primary: {
-          50: '#f0f5ff',
-          100: '#e0ebff',
-          200: '#c2d7ff',
-          300: '#a3c3ff',
-          400: '#84afff',
-          500: '#5b9bff',
-          600: '#4682e6',
-          700: '#3a6dd9',
-          800: '#2e58cc',
-          900: '#1f3a8a',
+        navy: {
+          50: '#f0f4f9',
+          100: '#e0e9f3',
+          200: '#c1d2e7',
+          300: '#a2bbdb',
+          400: '#6d92bf',
+          500: '#38699f',
+          600: '#1a4d80',
+          700: '#0d3a63',
+          800: '#063349',
+          900: '#002E5C',
         },
-        success: '#10b981',
-        warning: '#f59e0b',
-        error: '#ef4444',
-        info: '#3b82f6',
+        cyan: {
+          50: '#f0fafb',
+          100: '#e0f5f8',
+          200: '#c1ebf1',
+          300: '#a2e1ea',
+          400: '#64c3eb',
+          500: '#2d9dcf',
+          600: '#0082a8',
+          700: '#006d91',
+          800: '#005878',
+          900: '#00A8D8',
+        },
       },
       spacing: {
         'sidebar-width': '280px',
@@ -43,9 +52,18 @@ const config: Config = {
         slow: '500ms',
       },
       borderRadius: {
+        xs: '2px',
         sm: '4px',
         md: '6px',
         lg: '8px',
+        xl: '12px',
+      },
+      boxShadow: {
+        xs: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        sm: '0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.04)',
+        md: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        lg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+        xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
       },
       keyframes: {
         'accordion-down': {
@@ -65,6 +83,9 @@ const config: Config = {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'skeleton': 'skeleton 2s infinite',
+      },
+      backgroundImage: {
+        'gradient-primary': 'linear-gradient(135deg, #002E5C 0%, #063349 100%)',
       },
     },
   },

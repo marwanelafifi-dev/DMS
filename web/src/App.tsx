@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './components/pages/Dashboard';
 import { Documents } from './components/pages/Documents';
+import { DocumentViewer } from './components/pages/DocumentViewer';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -23,8 +24,8 @@ function App() {
           element={
             <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4">Tasks</h1>
-                <p className="text-gray-600 dark:text-gray-400">
+                <h1 className="text-3xl font-bold mb-4 text-white">Tasks</h1>
+                <p className="text-navy-300 dark:text-navy-300">
                   Task management coming soon...
                 </p>
               </div>
@@ -47,12 +48,7 @@ function App() {
           path="/documents/:id"
           element={
             <MainLayout>
-              <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4">Document Viewer</h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Document viewer coming soon...
-                </p>
-              </div>
+              <DocumentViewer />
             </MainLayout>
           }
         />
@@ -63,8 +59,8 @@ function App() {
           element={
             <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4">Approvals</h1>
-                <p className="text-gray-600 dark:text-gray-400">
+                <h1 className="text-3xl font-bold mb-4 text-white">Approvals</h1>
+                <p className="text-navy-300 dark:text-navy-300">
                   Approval workflows coming soon...
                 </p>
               </div>
@@ -78,8 +74,8 @@ function App() {
           element={
             <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4">Settings</h1>
-                <p className="text-gray-600 dark:text-gray-400">
+                <h1 className="text-3xl font-bold mb-4 text-white">Settings</h1>
+                <p className="text-navy-300 dark:text-navy-300">
                   Settings panel coming soon...
                 </p>
               </div>

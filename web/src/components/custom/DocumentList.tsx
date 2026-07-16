@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Download, Trash2, Lock, ChevronUp, ChevronDown, FileText } from 'lucide-react';
 import { Card, CardBody, Badge } from '../ui';
 import type { Document } from '../../types';
 import { formatFileSize, formatDate } from '../../utils/formatters';
@@ -32,20 +33,6 @@ export function DocumentList({
     return map[status];
   };
 
-  const getCheckoutStatusIcon = (doc: Document) => {
-    if (doc.checkoutStatus === 'checked_out') {
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-warning">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" />
-          </svg>
-          Locked
-        </span>
-      );
-    }
-    return null;
-  };
-
   const sortedDocs = [...documents].sort((a, b) => {
     let aVal: any = a[sortBy === 'name' ? 'name' : sortBy === 'date' ? 'uploadedAt' : 'fileSize'];
     let bVal: any = b[sortBy === 'name' ? 'name' : sortBy === 'date' ? 'uploadedAt' : 'fileSize'];
@@ -60,9 +47,9 @@ export function DocumentList({
 
   if (isLoading) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-12 bg-gray-200 dark:bg-gray-700 rounded animate-skeleton" />
+          <div key={i} className="h-16 bg-gradient-to-r from-gray-100 to-gray-50 dark:from-navy-700 dark:to-navy-800 rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -70,12 +57,11 @@ export function DocumentList({
 
   if (documents.length === 0) {
     return (
-      <Card>
-        <CardBody className="text-center py-12">
-          <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-gray-600 dark:text-gray-400">No documents found</p>
+      <Card className="shadow-sm border border-gray-200 dark:border-navy-700">
+        <CardBody className="text-center py-16">
+          <FileText className="w-12 h-12 mx-auto text-gray-400 dark:text-gray-600 mb-4" />
+          <p className="text-gray-500 dark:text-gray-400 font-medium">No documents found</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Upload a document to get started</p>
         </CardBody>
       </Card>
     );
@@ -84,89 +70,123 @@ export function DocumentList({
   return (
     <div className="space-y-4">
       {/* Sort Controls */}
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md"
+          className="px-4 py-2 text-sm font-medium bg-white dark:bg-navy-800 border border-gray-300 dark:border-navy-600 text-navy-900 dark:text-white rounded-lg hover:border-gray-400 dark:hover:border-navy-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 dark:focus:ring-offset-navy-900 transition-colors"
         >
-          <option value="name">Sort by Name</option>
-          <option value="date">Sort by Date</option>
-          <option value="size">Sort by Size</option>
+          <option value="name">Name</option>
+          <option value="date">Date</option>
+          <option value="size">Size</option>
         </select>
         <button
           onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md"
+          className="px-4 py-2 text-sm font-medium bg-white dark:bg-navy-800 border border-gray-300 dark:border-navy-600 text-navy-900 dark:text-white rounded-lg hover:bg-gray-50 dark:hover:bg-navy-700 hover:border-gray-400 dark:hover:border-navy-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 dark:focus:ring-offset-navy-900 transition-colors flex items-center gap-2"
         >
-          {sortOrder === 'asc' ? '↑' : '↓'}
+          {sortOrder === 'asc' ? (
+            <ChevronUp className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
+          )}
         </button>
       </div>
 
       {/* Document Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="border-b border-gray-200 dark:border-gray-700">
-            <tr className="text-left text-gray-600 dark:text-gray-400 font-semibold">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Owner</th>
-              <th className="px-4 py-3">Size</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Checkout</th>
-              <th className="px-4 py-3">Actions</th>
+      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700 shadow-sm hover:shadow-md transition-shadow">
+        <table className="w-full text-sm bg-white dark:bg-navy-800">
+          {/* Table Header */}
+          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900">
+            <tr className="text-left text-white">
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Name</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Status</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Owner</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Size</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Uploaded</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide text-center">Lock</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {sortedDocs.map((doc) => (
+
+          {/* Table Body */}
+          <tbody className="divide-y divide-gray-200 dark:divide-navy-700">
+            {sortedDocs.map((doc, idx) => (
               <tr
                 key={doc.documentId}
-                className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                className={`${
+                  idx % 2 === 0
+                    ? 'bg-white dark:bg-navy-800'
+                    : 'bg-gray-50 dark:bg-navy-850'
+                } hover:bg-gray-100 dark:hover:bg-navy-700/50 cursor-pointer transition-colors`}
               >
+                {/* Name Column */}
                 <td
-                  className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100"
+                  className="px-6 py-4 font-semibold text-navy-900 dark:text-white"
                   onClick={() => onDocumentClick(doc.documentId)}
                 >
-                  <div className="truncate">{doc.name}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">{doc.fileName}</div>
+                  <div className="truncate max-w-xs">{doc.name}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{doc.fileName}</div>
                 </td>
-                <td className="px-4 py-3">
+
+                {/* Status Column */}
+                <td className="px-6 py-4">
                   <Badge status={getStatusColor(doc.status)} size="sm">
-                    {doc.status.replace('_', ' ')}
+                    {doc.status.replace('_', ' ').toUpperCase()}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                  {doc.uploadedByUser?.fullName || 'Unknown'}
+
+                {/* Owner Column */}
+                <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
+                  <span className="font-medium">{doc.uploadedByUser?.fullName || 'Unknown'}</span>
                 </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+
+                {/* Size Column */}
+                <td className="px-6 py-4 text-gray-700 dark:text-gray-300 text-right font-medium">
                   {formatFileSize(doc.fileSize)}
                 </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+
+                {/* Date Column */}
+                <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
                   {formatDate(doc.uploadedAt)}
                 </td>
-                <td className="px-4 py-3">
-                  {getCheckoutStatusIcon(doc)}
+
+                {/* Lock Status Column */}
+                <td className="px-6 py-4 text-center">
+                  {doc.checkoutStatus === 'checked_out' && (
+                    <div className="flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400">
+                      <Lock className="w-4 h-4" />
+                      <span className="text-xs font-medium">Locked</span>
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
+
+                {/* Actions Column */}
+                <td className="px-6 py-4 text-center">
+                  <div className="flex justify-center gap-3">
+                    {/* Download Button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onDownload?.(doc.documentId);
                       }}
-                      className="text-primary-600 hover:text-primary-700 dark:text-primary-400"
-                      title="Download"
+                      className="inline-flex items-center justify-center p-2 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-navy-700 rounded-lg transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
+                      title="Download document"
+                      aria-label="Download"
                     >
-                      ⬇️
+                      <Download className="w-5 h-5" />
                     </button>
+
+                    {/* Delete Button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onDelete?.(doc.documentId);
                       }}
-                      className="text-error hover:text-red-700 dark:text-red-400"
-                      title="Delete"
+                      className="inline-flex items-center justify-center p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-navy-700 rounded-lg transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
+                      title="Delete document"
+                      aria-label="Delete"
                     >
-                      🗑️
+                      <Trash2 className="w-5 h-5" />
                     </button>
                   </div>
                 </td>
