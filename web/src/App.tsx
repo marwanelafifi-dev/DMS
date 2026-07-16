@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './components/pages/Dashboard';
+import { Documents } from './components/pages/Documents';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -36,10 +37,20 @@ function App() {
           path="/documents"
           element={
             <MainLayout>
+              <Documents />
+            </MainLayout>
+          }
+        />
+
+        {/* Document Viewer */}
+        <Route
+          path="/documents/:id"
+          element={
+            <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4">Documents</h1>
+                <h1 className="text-3xl font-bold mb-4">Document Viewer</h1>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Document vault coming soon...
+                  Document viewer coming soon...
                 </p>
               </div>
             </MainLayout>
