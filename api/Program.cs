@@ -36,6 +36,8 @@ builder.Services.AddScoped<MinioService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<ApprovalService>();
+builder.Services.AddScoped<TaskService>();
+builder.Services.AddScoped<ReminderService>();
 builder.Services.AddBackgroundJobs();
 
 // Hangfire — Background job processing
