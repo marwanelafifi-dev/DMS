@@ -32,7 +32,7 @@ export function DocumentList({
     return map[status];
   };
 
-  const getCheckoutStatusIcon = (doc: Document) => {
+  const getLockStatusIcon = (doc: Document) => {
     if (doc.checkoutStatus === 'checked_out') {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-warning">
@@ -112,7 +112,7 @@ export function DocumentList({
               <th className="px-4 py-3">Owner</th>
               <th className="px-4 py-3">Size</th>
               <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Checkout</th>
+              <th className="px-4 py-3">Lock Status</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
@@ -144,7 +144,7 @@ export function DocumentList({
                   {formatDate(doc.uploadedAt)}
                 </td>
                 <td className="px-4 py-3">
-                  {getCheckoutStatusIcon(doc)}
+                  {getLockStatusIcon(doc)}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
