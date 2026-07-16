@@ -37,8 +37,8 @@ export function FolderTree({
         <div
           className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer rounded-lg transition-all ${
             isSelected
-              ? 'bg-cyan-600 dark:bg-cyan-600 text-white dark:text-white border-l-4 border-cyan-600 shadow-md'
-              : 'hover:bg-navy-700 dark:hover:bg-navy-700 text-navy-200 dark:text-navy-200 border-l-4 border-transparent'
+              ? 'bg-white dark:bg-white text-navy-900 dark:text-navy-900 border-l-4 border-blue-600 shadow-md'
+              : 'hover:bg-gray-100 dark:hover:bg-navy-700 text-gray-700 dark:text-gray-300 border-l-4 border-transparent'
           }`}
           style={{ paddingLeft: `${12 + level * 16}px` }}
         >
@@ -51,13 +51,13 @@ export function FolderTree({
               className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
             >
               <ChevronRight
-                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''} text-cyan-400 dark:text-cyan-400`}
+                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''} text-gray-700 dark:text-gray-400`}
               />
             </button>
           )}
           {!hasChildren && <div className="w-4" />}
 
-          <Folder className="w-5 h-5 flex-shrink-0 text-cyan-400" />
+          <Folder className="w-5 h-5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
 
           <span
             onClick={() => onSelectFolder(folder.folderId)}
@@ -79,15 +79,15 @@ export function FolderTree({
   };
 
   return (
-    <div className="w-full bg-navy-700 dark:bg-navy-700 rounded-xl border border-navy-600 dark:border-navy-600 p-4 shadow-xl dark:shadow-2xl">
-      <h3 className="text-sm font-extrabold mb-4 text-cyan-400 dark:text-cyan-400 uppercase tracking-widest flex items-center gap-2">
+    <div className="w-full bg-white dark:bg-navy-700 rounded-xl border border-gray-300 dark:border-navy-600 p-4 shadow-sm dark:shadow-lg">
+      <h3 className="text-sm font-extrabold mb-4 text-navy-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
         Folders
       </h3>
       <div className="space-y-1">
         {folders.length > 0 ? (
           folders.map((folder) => <FolderItem key={folder.folderId} folder={folder} />)
         ) : (
-          <p className="text-sm text-navy-400 dark:text-navy-400 px-3 py-2">
+          <p className="text-sm text-gray-600 dark:text-gray-400 px-3 py-2">
             No folders yet
           </p>
         )}

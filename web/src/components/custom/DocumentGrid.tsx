@@ -1,3 +1,4 @@
+import { ArrowDownFromLine, Trash2, Lock, FileText } from 'lucide-react';
 import { Card, CardBody, Badge } from '../ui';
 import type { Document } from '../../types';
 import { formatFileSize, formatDate } from '../../utils/formatters';
@@ -30,9 +31,12 @@ export function DocumentGrid({
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-40 bg-navy-600 dark:bg-navy-600 rounded-lg animate-skeleton" />
+          <div
+            key={i}
+            className="h-48 bg-gradient-to-br from-gray-100 to-gray-50 dark:from-navy-700 dark:to-navy-800 rounded-xl animate-pulse"
+          />
         ))}
       </div>
     );
@@ -40,93 +44,101 @@ export function DocumentGrid({
 
   if (documents.length === 0) {
     return (
-      <Card>
-        <CardBody className="text-center py-12">
-          <svg className="w-12 h-12 mx-auto text-navy-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-navy-400 dark:text-navy-400">No documents found</p>
+      <Card className="shadow-sm border border-gray-200 dark:border-navy-700">
+        <CardBody className="text-center py-16">
+          <FileText className="w-12 h-12 mx-auto text-gray-400 dark:text-gray-600 mb-4" />
+          <p className="text-gray-500 dark:text-gray-400 font-medium">No documents found</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Upload a document to get started</p>
         </CardBody>
       </Card>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {documents.map((doc) => (
         <Card
           key={doc.documentId}
-          className="cursor-pointer hover:shadow-lg transition-all"
+          className="cursor-pointer hover:shadow-lg transition-all border border-gray-200 dark:border-navy-700 overflow-hidden group"
           onClick={() => onDocumentClick(doc.documentId)}
         >
-          <CardBody className="space-y-3">
-            {/* Document Icon & Name */}
-            <div className="flex items-start gap-3">
-              <svg className="w-10 h-10 flex-shrink-0 text-navy-500" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M4 4a2 2 0 012-2h6a1 1 0 01.707.293l4 4a1 1 0 01.293.707v9a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
-              </svg>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-white dark:text-white truncate">
-                  {doc.name}
-                </h3>
-                <p className="text-xs text-navy-400 dark:text-navy-400 truncate">
-                  {doc.fileName}
-                </p>
+          {/* Card Header */}
+          <div className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900 px-6 py-4 flex items-start justify-between">
+            <FileText className="w-6 h-6 text-white flex-shrink-0" />
+            {doc.checkoutStatus === 'checked_out' && (
+              <div className="flex items-center gap-1 text-amber-300 bg-amber-950/50 px-2 py-1 rounded-lg">
+                <Lock className="w-4 h-4" />
               </div>
+            )}
+          </div>
+
+          <CardBody className="space-y-4">
+            {/* Document Name */}
+            <div className="space-y-1">
+              <h3 className="font-semibold text-navy-900 dark:text-white line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                {doc.name}
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
+                {doc.fileName}
+              </p>
             </div>
 
             {/* Status Badge */}
-            <div>
+            <div className="flex items-center gap-2">
               <Badge status={getStatusColor(doc.status)} size="sm">
-                {doc.status.replace('_', ' ')}
+                {doc.status.replace('_', ' ').toUpperCase()}
               </Badge>
             </div>
 
             {/* Metadata */}
-            <div className="space-y-1 text-xs text-navy-300 dark:text-navy-300">
-              <div className="flex justify-between">
-                <span>Owner:</span>
+            <div className="space-y-2 text-xs border-t border-gray-200 dark:border-navy-700 pt-4">
+              <div className="flex justify-between items-center text-gray-700 dark:text-gray-300">
+                <span className="text-gray-600 dark:text-gray-400">Owner:</span>
                 <span className="font-medium">{doc.uploadedByUser?.fullName || 'Unknown'}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Size:</span>
+              <div className="flex justify-between items-center text-gray-700 dark:text-gray-300">
+                <span className="text-gray-600 dark:text-gray-400">Size:</span>
                 <span className="font-medium">{formatFileSize(doc.fileSize)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Uploaded:</span>
+              <div className="flex justify-between items-center text-gray-700 dark:text-gray-300">
+                <span className="text-gray-600 dark:text-gray-400">Uploaded:</span>
                 <span className="font-medium">{formatDate(doc.uploadedAt)}</span>
               </div>
             </div>
 
-            {/* Checkout Status */}
+            {/* Lock Status Detail */}
             {doc.checkoutStatus === 'checked_out' && (
-              <div className="flex items-center gap-1 text-xs text-navy-500 bg-navy-600/50 px-2 py-1 rounded">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" />
-                </svg>
-                Locked by {doc.checkedOutBy}
+              <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                <Lock className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0" />
+                <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                  Locked by {doc.checkedOutBy}
+                </span>
               </div>
             )}
 
             {/* Actions */}
-            <div className="flex gap-2 pt-2 border-t border-navy-600 dark:border-navy-600">
+            <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-navy-700">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onDownload?.(doc.documentId);
                 }}
-                className="flex-1 px-2 py-1.5 text-xs font-medium text-cyan-400 dark:text-cyan-400 hover:bg-navy-600 dark:hover:bg-navy-600 rounded transition-colors"
+                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100 dark:hover:bg-cyan-950/50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
+                title="Download document"
               >
-                Download
+                <ArrowDownFromLine className="w-4 h-4" />
+                <span className="hidden sm:inline">Download</span>
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete?.(doc.documentId);
                 }}
-                className="flex-1 px-2 py-1.5 text-xs font-medium text-navy-500 hover:bg-navy-600 dark:hover:bg-navy-600 rounded transition-colors"
+                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
+                title="Delete document"
               >
-                Delete
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Delete</span>
               </button>
             </div>
           </CardBody>

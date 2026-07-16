@@ -84,6 +84,9 @@ const config: Config = {
         'accordion-up': 'accordion-up 0.2s ease-out',
         'skeleton': 'skeleton 2s infinite',
       },
+      backgroundImage: {
+        'gradient-primary': 'linear-gradient(135deg, #002E5C 0%, #063349 100%)',
+      },
     },
   },
   plugins: [animate],

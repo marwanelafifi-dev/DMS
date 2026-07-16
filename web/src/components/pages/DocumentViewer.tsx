@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { ChevronRight } from 'lucide-react';
 import { PDFViewer } from '../custom/PDFViewer';
 import { DocumentDetailsPanel } from '../custom/DocumentDetailsPanel';
 import { useToast } from '../../hooks/useToast';
@@ -157,7 +158,17 @@ export function DocumentViewer() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-4xl font-bold text-white dark:text-white">Document Viewer</h1>
+        <div className="flex items-center gap-2 text-sm text-navy-300">
+          <button
+            onClick={() => navigate('/documents')}
+            className="text-cyan-400 hover:text-cyan-300 transition-colors font-medium"
+          >
+            Documents
+          </button>
+          <ChevronRight className="w-4 h-4 text-navy-500" />
+          <span className="text-navy-400">Loading...</span>
+        </div>
+        <h1 className="text-3xl font-bold text-white">Document Viewer</h1>
         <SkeletonCard />
       </div>
     );
@@ -165,11 +176,14 @@ export function DocumentViewer() {
 
   if (!document) {
     return (
-      <div className="text-center py-12">
-        <p className="text-navy-300 dark:text-navy-300">Document not found</p>
+      <div className="space-y-8 text-center py-12">
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-2">Document Not Found</h2>
+          <p className="text-navy-300">The document you're looking for doesn't exist or has been deleted.</p>
+        </div>
         <button
           onClick={() => navigate('/documents')}
-          className="mt-4 px-6 py-2 bg-cyan-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all"
         >
           Back to Documents
         </button>
@@ -179,21 +193,25 @@ export function DocumentViewer() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center gap-2 text-sm">
+        <button
+          onClick={() => navigate('/documents')}
+          className="text-blue-600 hover:text-blue-700 transition-colors font-medium hover:underline"
+        >
+          Documents
+        </button>
+        <ChevronRight className="w-4 h-4 text-navy-400" />
+        <span className="text-blue-600 font-medium truncate">{document.name}</span>
+      </div>
+
+      {/* Page Title */}
       <div className="flex items-center justify-between">
-        <div>
-          <button
-            onClick={() => navigate('/documents')}
-            className="text-cyan-400 hover:text-cyan-300 dark:text-cyan-400 text-sm mb-2 font-semibold"
-          >
-            ← Back to Documents
-          </button>
-          <h1 className="text-4xl font-bold text-white dark:text-white">Document Viewer</h1>
-        </div>
+        <h1 className="text-3xl font-bold text-navy-900">{document.name}</h1>
       </div>
 
       {/* Main Content: Split Screen (60% PDF, 40% Details) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-280px)]">
         {/* Left: PDF Viewer (60%) */}
         <div className="lg:col-span-2">
           <PDFViewer fileUrl="" fileName={document.fileName} />

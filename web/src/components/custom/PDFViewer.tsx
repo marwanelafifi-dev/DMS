@@ -34,7 +34,7 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
     canvas.width = width;
     canvas.height = height;
 
-    // Clear canvas
+    // Clear canvas with white background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
@@ -44,9 +44,9 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
     ctx.textAlign = 'center';
     ctx.fillText(`Page ${currentPage}`, width / 2, height / 2);
 
-    // Draw border
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 2;
+    // Draw subtle border
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, width, height);
 
     // Apply rotation
@@ -83,7 +83,7 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
   };
 
   return (
-    <div className="bg-navy-900 rounded-lg border border-navy-800 overflow-hidden flex flex-col h-full">
+    <div className="bg-white dark:bg-navy-900 rounded-lg border border-gray-200 dark:border-navy-800 overflow-hidden flex flex-col h-full shadow-sm">
       {/* Toolbar */}
       <PDFToolbar
         currentPage={currentPage}
@@ -97,9 +97,12 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
         onRotate={handleRotate}
       />
 
-      {/* PDF Canvas */}
-      <div className="flex-1 overflow-auto bg-navy-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden" style={{ transform: `rotate(${rotation}deg)` }}>
+      {/* PDF Canvas Area */}
+      <div className="flex-1 overflow-auto bg-gray-50 dark:bg-navy-950 flex items-center justify-center p-6">
+        <div
+          className="bg-white rounded-lg shadow-md overflow-hidden transition-transform"
+          style={{ transform: `rotate(${rotation}deg)` }}
+        >
           <canvas
             ref={canvasRef}
             className="max-w-full"
@@ -108,9 +111,11 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
         </div>
       </div>
 
-      {/* Page Info */}
-      <div className="bg-navy-800 dark:bg-navy-800 border-t border-navy-700 dark:border-navy-700 px-4 py-2 text-center text-sm text-navy-300 dark:text-navy-300">
-        Page {currentPage} of {totalPages} • Zoom {zoom}%
+      {/* Page Info Footer */}
+      <div className="bg-navy-900 border-t border-navy-800 px-4 py-3 text-center text-sm text-white font-medium">
+        Page <span className="text-white">{currentPage}</span> of{' '}
+        <span className="text-white">{totalPages}</span> • Zoom{' '}
+        <span className="text-white">{zoom}%</span>
       </div>
     </div>
   );

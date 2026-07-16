@@ -137,8 +137,8 @@ export function Dashboard() {
     <div className="space-y-8">
       {/* Welcome */}
       <div>
-        <h1 className="text-4xl font-bold mb-2 text-white dark:text-white">Welcome back, {user?.fullName}!</h1>
-        <p className="text-navy-200 dark:text-navy-200 font-serif text-lg">
+        <h1 className="text-4xl font-bold mb-2 text-navy-900 dark:text-white">Welcome back, {user?.fullName}!</h1>
+        <p className="text-gray-600 dark:text-gray-300 font-serif text-lg">
           Here's an overview of your recent activity and pending tasks.
         </p>
       </div>
@@ -148,36 +148,36 @@ export function Dashboard() {
         <Card>
           <CardBody className="flex items-center justify-between">
             <div>
-              <p className="text-navy-300 dark:text-navy-300 text-sm mb-1 font-semibold">
+              <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 Open Tasks
               </p>
-              <p className="text-4xl font-bold text-cyan-400 dark:text-cyan-400">{taskStats.open}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-cyan-400">{taskStats.open}</p>
             </div>
-            <ListChecks className="w-12 h-12 bg-cyan-600 text-white rounded-lg p-2" />
+            <ListChecks className="w-12 h-12 bg-gradient-primary text-white rounded-lg p-2" />
           </CardBody>
         </Card>
 
         <Card>
           <CardBody className="flex items-center justify-between">
             <div>
-              <p className="text-navy-300 dark:text-navy-300 text-sm mb-1 font-semibold">
+              <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 In Progress
               </p>
-              <p className="text-4xl font-bold text-cyan-400 dark:text-cyan-400">{taskStats.inProgress}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-cyan-400">{taskStats.inProgress}</p>
             </div>
-            <FileText className="w-12 h-12 bg-cyan-600 text-white rounded-lg p-2" />
+            <FileText className="w-12 h-12 bg-gradient-primary text-white rounded-lg p-2" />
           </CardBody>
         </Card>
 
         <Card>
           <CardBody className="flex items-center justify-between">
             <div>
-              <p className="text-navy-300 dark:text-navy-300 text-sm mb-1 font-semibold">
+              <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 Pending Approvals
               </p>
-              <p className="text-4xl font-bold text-cyan-400 dark:text-cyan-400">{pendingApprovals.length}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-cyan-400">{pendingApprovals.length}</p>
             </div>
-            <CheckCircle2 className="w-12 h-12 bg-cyan-600 text-white rounded-lg p-2" />
+            <CheckCircle2 className="w-12 h-12 bg-gradient-primary text-white rounded-lg p-2" />
           </CardBody>
         </Card>
       </div>
@@ -187,7 +187,7 @@ export function Dashboard() {
         {/* My Tasks (Left - Takes 2 columns) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-white dark:text-white">My Tasks</h2>
+            <h2 className="text-3xl font-bold text-navy-900 dark:text-white">My Tasks</h2>
             <Button
               variant="primary"
               size="sm"
@@ -201,22 +201,22 @@ export function Dashboard() {
           <div className="grid grid-cols-3 gap-3">
             <Card>
               <CardBody className="text-center">
-                <p className="text-sm font-semibold text-navy-300 dark:text-navy-300">Open</p>
-                <p className="text-3xl font-bold text-cyan-400 mt-1">{taskStats.open}</p>
+                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Open</p>
+                <p className="text-3xl font-bold text-navy-900 dark:text-cyan-400 mt-1">{taskStats.open}</p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="text-center">
-                <p className="text-sm font-semibold text-navy-300 dark:text-navy-300">
+                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                   In Progress
                 </p>
-                <p className="text-3xl font-bold text-cyan-400 mt-1">{taskStats.inProgress}</p>
+                <p className="text-3xl font-bold text-navy-900 dark:text-cyan-400 mt-1">{taskStats.inProgress}</p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="text-center">
-                <p className="text-sm font-semibold text-navy-300 dark:text-navy-300">Done</p>
-                <p className="text-3xl font-bold text-cyan-400 mt-1">{taskStats.done}</p>
+                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Done</p>
+                <p className="text-3xl font-bold text-navy-900 dark:text-cyan-400 mt-1">{taskStats.done}</p>
               </CardBody>
             </Card>
           </div>
@@ -232,8 +232,8 @@ export function Dashboard() {
                 <CardBody className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <h3 className="font-bold text-base text-white dark:text-white">{task.title}</h3>
-                      <p className="text-sm text-navy-300 dark:text-navy-300 mt-1 font-serif">
+                      <h3 className="font-bold text-base text-navy-900 dark:text-white">{task.title}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 font-serif">
                         {task.description}
                       </p>
                     </div>
@@ -258,7 +258,7 @@ export function Dashboard() {
                     >
                       {task.status.replace('_', ' ')}
                     </Badge>
-                    <span className="text-xs font-semibold text-navy-400 dark:text-navy-400">
+                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
                       Due:{' '}
                       {new Date(task.dueDate).toLocaleDateString()}
                     </span>
@@ -273,7 +273,7 @@ export function Dashboard() {
         <div className="space-y-6">
           {/* Recent Documents */}
           <div>
-            <h3 className="text-2xl font-bold mb-3 text-white dark:text-white">Recent Documents</h3>
+            <h3 className="text-2xl font-bold mb-3 text-navy-900 dark:text-white">Recent Documents</h3>
             <div className="space-y-2">
               {recentDocs.slice(0, 3).map((doc) => (
                 <Card
@@ -284,8 +284,8 @@ export function Dashboard() {
                   <CardBody className="space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-semibold text-sm text-white dark:text-white">{doc.name}</p>
-                        <p className="text-xs text-navy-400 dark:text-navy-400">
+                        <p className="font-semibold text-sm text-navy-900 dark:text-white">{doc.name}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
                           {(doc.fileSize / 1024).toFixed(0)} KB
                         </p>
                       </div>
@@ -308,20 +308,20 @@ export function Dashboard() {
 
           {/* Pending Approvals */}
           <div>
-            <h3 className="text-2xl font-bold mb-3 text-white dark:text-white">Pending Approvals</h3>
+            <h3 className="text-2xl font-bold mb-3 text-navy-900 dark:text-white">Pending Approvals</h3>
             {pendingApprovals.length > 0 ? (
               <div className="space-y-2">
                 {pendingApprovals.map((approval) => (
                   <Card
                     key={approval.approvalId}
                     onClick={() => navigate(`/approvals/${approval.approvalId}`)}
-                    className="cursor-pointer border-l-4 border-l-cyan-600 hover:shadow-lg transition-all"
+                    className="cursor-pointer border-l-4 border-l-blue-600 hover:shadow-lg transition-all"
                   >
                     <CardBody className="space-y-2">
-                      <p className="font-semibold text-sm text-white dark:text-white">
+                      <p className="font-semibold text-sm text-navy-900 dark:text-white">
                         {approval.document?.name}
                       </p>
-                      <p className="text-xs text-navy-400 dark:text-navy-400">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
                         Submitted{' '}
                         {new Date(approval.submittedAt).toLocaleDateString()}
                       </p>
@@ -343,7 +343,7 @@ export function Dashboard() {
             ) : (
               <Card>
                 <CardBody className="text-center py-8">
-                  <p className="text-navy-400 dark:text-navy-400">
+                  <p className="text-gray-600 dark:text-gray-400">
                     No pending approvals
                   </p>
                 </CardBody>
