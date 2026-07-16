@@ -14,6 +14,8 @@ public class DocumentsController(
     DmsContext context,
     MinioService minioService,
     AuditService auditService,
+    CheckoutService checkoutService,
+    ApprovalService approvalService,
     ILogger<DocumentsController> logger) : BaseController
 {
     // GET /api/documents — قائمة المستندات
@@ -432,7 +434,228 @@ public class DocumentsController(
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
+
+    // POST /api/documents/{id}/versions/{versionId}/checkout — تأمين النسخة للتعديل
+    [HttpPost("{id}/versions/{versionId}/checkout")]
+    public async Task<ActionResult<object>> CheckoutVersion(Guid id, Guid versionId, [FromBody] CheckoutRequest req)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var result = await checkoutService.CheckoutAsync(versionId, userId, req.Reason);
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "AlreadyCheckedOut" => BadRequest(new { success = false, error = result.Message }),
+                    "Invalid" => BadRequest(new { success = false, error = result.Message }),
+                    "Forbidden" => StatusCode(403, new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error checking out version {VersionId}", versionId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // DELETE /api/documents/{id}/versions/{versionId}/checkout — إطلاق النسخة
+    [HttpDelete("{id}/versions/{versionId}/checkout")]
+    public async Task<ActionResult<object>> CheckinVersion(Guid id, Guid versionId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var result = await checkoutService.CheckinAsync(versionId, userId);
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "Invalid" => BadRequest(new { success = false, error = result.Message }),
+                    "Forbidden" => StatusCode(403, new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error checking in version {VersionId}", versionId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/documents/{id}/versions/{versionId}/checkout — حالة التأمين
+    [HttpGet("{id}/versions/{versionId}/checkout")]
+    public async Task<ActionResult<object>> GetCheckoutStatus(Guid id, Guid versionId)
+    {
+        try
+        {
+            var status = await checkoutService.GetCheckoutStatusAsync(versionId);
+
+            if (status == null)
+                return NotFound(new { success = false, error = "النسخة غير موجودة" });
+
+            logger.LogInformation("Retrieved checkout status for version {VersionId}", versionId);
+
+            return Ok(new { success = true, data = status });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting checkout status for version {VersionId}", versionId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/documents/{id}/submit — إرسال المستند لـ الموافقة
+    [HttpPost("{id}/submit")]
+    public async Task<ActionResult<object>> SubmitForApproval(Guid id, [FromBody] SubmitRequest req)
+    {
+        try
+        {
+            if (req.VersionId == Guid.Empty)
+                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+
+            var userId = GetCurrentUserId();
+            var result = await approvalService.SubmitForApprovalAsync(id, req.VersionId, userId, req.Comment);
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "Invalid" => BadRequest(new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error submitting document {DocumentId} for approval", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/documents/{id}/approve — موافقة المدير
+    [HttpPost("{id}/approve")]
+    public async Task<ActionResult<object>> ApproveDocument(Guid id, [FromBody] ApproveRequest req)
+    {
+        try
+        {
+            if (req.VersionId == Guid.Empty)
+                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+
+            var userId = GetCurrentUserId();
+            var result = await approvalService.ApproveAsync(id, req.VersionId, userId, req.Comment);
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "Invalid" => BadRequest(new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error approving document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/documents/{id}/reject — رفض المدير
+    [HttpPost("{id}/reject")]
+    public async Task<ActionResult<object>> RejectDocument(Guid id, [FromBody] RejectRequest req)
+    {
+        try
+        {
+            if (req.VersionId == Guid.Empty)
+                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+
+            if (string.IsNullOrWhiteSpace(req.Reason))
+                return BadRequest(new { success = false, error = "سبب الرفض مطلوب" });
+
+            var userId = GetCurrentUserId();
+            var result = await approvalService.RejectAsync(id, req.VersionId, userId, req.Reason);
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "Invalid" => BadRequest(new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error rejecting document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/documents/{id}/approval-status — حالة الموافقة
+    [HttpGet("{id}/approval-status")]
+    public async Task<ActionResult<object>> GetApprovalStatus(Guid id, [FromQuery] Guid? versionId)
+    {
+        try
+        {
+            if (!versionId.HasValue || versionId == Guid.Empty)
+                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+
+            var status = await approvalService.GetApprovalStatusAsync(id, versionId.Value);
+
+            if (status == null)
+                return NotFound(new { success = false, error = "النسخة غير موجودة" });
+
+            return Ok(new { success = true, data = status });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting approval status for document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/documents/pending-approvals — قائمة الانتظار
+    [HttpGet("pending-approvals/list")]
+    public async Task<ActionResult<object>> GetPendingApprovals([FromQuery] Guid? folderId, [FromQuery] int limit = 100)
+    {
+        try
+        {
+            var pending = await approvalService.GetPendingApprovalsAsync(folderId, limit);
+
+            return Ok(new { success = true, data = pending, count = pending.Count });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting pending approvals");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
 }
 
 public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId);
 public record UpdateDocumentRequest(string? Title = null, string? Status = null);
+public record CheckoutRequest(string? Reason = null);
+public record SubmitRequest(Guid VersionId, string? Comment = null);
+public record ApproveRequest(Guid VersionId, string? Comment = null);
+public record RejectRequest(Guid VersionId, string Reason);

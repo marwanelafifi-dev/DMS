@@ -32,6 +32,8 @@ builder.Services.AddSingleton<IMinioClient>(sp =>
 
 builder.Services.AddScoped<MinioService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<CheckoutService>();
+builder.Services.AddScoped<ApprovalService>();
 
 // CORS — allow web frontend
 builder.Services.AddCors(options =>

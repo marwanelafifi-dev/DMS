@@ -79,6 +79,12 @@ public static class AuditActions
     public const string DOCUMENT_DELETED = "DOCUMENT_DELETED";
     public const string DOCUMENT_UPLOADED = "DOCUMENT_UPLOADED";
     public const string DOCUMENT_DOWNLOADED = "DOCUMENT_DOWNLOADED";
+    public const string DOCUMENT_CHECKOUT = "DOCUMENT_CHECKOUT";
+    public const string DOCUMENT_CHECKIN = "DOCUMENT_CHECKIN";
+    public const string DOCUMENT_CHECKOUT_EXPIRED = "DOCUMENT_CHECKOUT_EXPIRED";
+    public const string DOCUMENT_SUBMITTED = "DOCUMENT_SUBMITTED";
+    public const string DOCUMENT_APPROVED = "DOCUMENT_APPROVED";
+    public const string DOCUMENT_REJECTED = "DOCUMENT_REJECTED";
 
     public const string USER_CREATED = "USER_CREATED";
     public const string USER_UPDATED = "USER_UPDATED";
