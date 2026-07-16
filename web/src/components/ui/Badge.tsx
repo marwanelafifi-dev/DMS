@@ -12,24 +12,24 @@ interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 const statusClasses: Record<BadgeStatus, { solid: string; outline: string }> = {
   success: {
-    solid: 'bg-success text-white',
-    outline: 'border border-success text-success',
+    solid: 'bg-success text-white shadow-md',
+    outline: 'border-2 border-success text-success dark:text-success',
   },
   warning: {
-    solid: 'bg-warning text-gray-900',
-    outline: 'border border-warning text-warning',
+    solid: 'bg-warning text-slate-900 shadow-md',
+    outline: 'border-2 border-warning text-warning dark:text-warning',
   },
   error: {
-    solid: 'bg-error text-white',
-    outline: 'border border-error text-error',
+    solid: 'bg-error text-white shadow-md',
+    outline: 'border-2 border-error text-error dark:text-error',
   },
   info: {
-    solid: 'bg-info text-white',
-    outline: 'border border-info text-info',
+    solid: 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md',
+    outline: 'border-2 border-primary-500 text-primary-600 dark:text-primary-400 dark:border-primary-400',
   },
   default: {
-    solid: 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100',
-    outline: 'border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100',
+    solid: 'bg-slate-200 dark:bg-navy-700 text-navy-900 dark:text-primary-200 shadow-md',
+    outline: 'border-2 border-slate-300 dark:border-navy-600 text-navy-900 dark:text-primary-300',
   },
 };
 
@@ -50,7 +50,7 @@ export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
     <span
       ref={ref}
       className={`
-        inline-flex items-center font-medium rounded-full
+        inline-flex items-center font-semibold rounded-lg
         ${statusClasses[status][variant]}
         ${sizeClasses[size]}
         ${className}

@@ -57,10 +57,10 @@ export function DocumentDetailsPanel({
   ];
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col h-full overflow-hidden">
+    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col h-full overflow-hidden shadow-lg dark:shadow-xl">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
+      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
           {document.name}
         </h2>
         <div className="flex items-center gap-2 mt-2">
@@ -76,15 +76,15 @@ export function DocumentDetailsPanel({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700">
+      <div className="flex border-b border-slate-200 dark:border-slate-700">
         {['info', 'timeline', 'metadata'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as any)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
               activeTab === tab
                 ? 'border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             {tab === 'info' && 'Basic Info'}
@@ -101,41 +101,41 @@ export function DocumentDetailsPanel({
           <div className="space-y-4">
             {/* Document Info */}
             <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100">Document Information</h3>
+              <h3 className="font-bold text-slate-900 dark:text-slate-100">Document Information</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Owner:</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{document.uploadedByUser?.fullName}</span>
+                  <span className="text-slate-600 dark:text-slate-400">Owner:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{document.uploadedByUser?.fullName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Uploaded:</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{formatDate(document.uploadedAt)}</span>
+                  <span className="text-slate-600 dark:text-slate-400">Uploaded:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{formatDate(document.uploadedAt)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Size:</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{formatFileSize(document.fileSize)}</span>
+                  <span className="text-slate-600 dark:text-slate-400">Size:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{formatFileSize(document.fileSize)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Type:</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{document.contentType}</span>
+                  <span className="text-slate-600 dark:text-slate-400">Type:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{document.contentType}</span>
                 </div>
               </div>
             </div>
 
             {/* Version History */}
-            <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100">Version History</h3>
+            <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-slate-100">Version History</h3>
               <div className="space-y-2">
                 {versions.map((v) => (
-                  <div key={v.versionId} className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded text-sm">
+                  <div key={v.versionId} className="p-2 bg-slate-100 dark:bg-slate-700/50 rounded-lg text-sm shadow-xs">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">v{v.version}</p>
-                        <p className="text-gray-600 dark:text-gray-400 text-xs">{v.changeNotes || 'No notes'}</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">v{v.version}</p>
+                        <p className="text-slate-600 dark:text-slate-400 text-xs">{v.changeNotes || 'No notes'}</p>
                       </div>
-                      <span className="text-gray-500 dark:text-gray-400 text-xs">{formatFileSize(v.fileSize)}</span>
+                      <span className="text-slate-500 dark:text-slate-400 text-xs">{formatFileSize(v.fileSize)}</span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{formatDate(v.uploadedAt)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{formatDate(v.uploadedAt)}</p>
                   </div>
                 ))}
               </div>
@@ -146,28 +146,28 @@ export function DocumentDetailsPanel({
         {/* Timeline Tab */}
         {activeTab === 'timeline' && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Approval Workflow</h3>
+            <h3 className="font-bold text-slate-900 dark:text-slate-100">Approval Workflow</h3>
             <div className="space-y-3">
               {timeline.map((item, idx) => (
                 <div key={idx} className="flex gap-3">
                   <div className="flex flex-col items-center">
                     <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md ${
                         item.status === 'completed'
                           ? 'bg-success text-white'
-                          : 'bg-gray-300 dark:bg-gray-600 text-gray-600 dark:text-gray-400'
+                          : 'bg-slate-300 dark:bg-slate-600 text-slate-600 dark:text-slate-400'
                       }`}
                     >
                       {item.status === 'completed' ? '✓' : item.step}
                     </div>
                     {idx < timeline.length - 1 && (
-                      <div className={`w-0.5 h-8 ${item.status === 'completed' ? 'bg-success' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                      <div className={`w-1 h-8 rounded-full ${item.status === 'completed' ? 'bg-success' : 'bg-slate-300 dark:bg-slate-600'}`} />
                     )}
                   </div>
                   <div className="flex-1 pt-1">
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{item.action}</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{item.actor}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500">{item.timestamp}</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">{item.action}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">{item.actor}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-500">{item.timestamp}</p>
                   </div>
                 </div>
               ))}
@@ -178,18 +178,18 @@ export function DocumentDetailsPanel({
         {/* Metadata Tab */}
         {activeTab === 'metadata' && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Metadata</h3>
+            <h3 className="font-bold text-slate-900 dark:text-slate-100">Metadata</h3>
             <div className="space-y-2 text-sm">
-              <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                <p className="text-gray-600 dark:text-gray-400">Classification:</p>
-                <p className="font-medium text-gray-900 dark:text-gray-100">Confidential</p>
+              <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg shadow-xs">
+                <p className="text-slate-600 dark:text-slate-400">Classification:</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">Confidential</p>
               </div>
-              <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                <p className="text-gray-600 dark:text-gray-400">Department:</p>
-                <p className="font-medium text-gray-900 dark:text-gray-100">Quality Management</p>
+              <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg shadow-xs">
+                <p className="text-slate-600 dark:text-slate-400">Department:</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">Quality Management</p>
               </div>
-              <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                <p className="text-gray-600 dark:text-gray-400">Tags:</p>
+              <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg shadow-xs">
+                <p className="text-slate-600 dark:text-slate-400">Tags:</p>
                 <div className="flex flex-wrap gap-2 mt-1">
                   <Badge status="info" size="sm">Procedure</Badge>
                   <Badge status="info" size="sm">ISO 9001</Badge>
@@ -201,13 +201,13 @@ export function DocumentDetailsPanel({
       </div>
 
       {/* Action Buttons */}
-      <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 space-y-3">
+      <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 space-y-3">
         {/* Lock File for Editing */}
         <div className="flex gap-2">
           <button
             onClick={onLockForEditing}
             disabled={isLockingLoading || document.checkoutStatus === 'checked_out'}
-            className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-md font-medium text-sm disabled:opacity-50 transition-colors"
+            className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
           >
             {isLockingLoading ? 'Locking...' : document.checkoutStatus === 'checked_out' ? 'Locked' : 'Lock File for Editing'}
           </button>
@@ -218,7 +218,7 @@ export function DocumentDetailsPanel({
           {document.status === 'draft' ? (
             <button
               onClick={onSubmitApproval}
-              className="flex-1 px-3 py-2 bg-warning hover:bg-amber-500 text-white rounded-md font-medium text-sm transition-colors"
+              className="flex-1 px-3 py-2 bg-warning hover:bg-amber-600 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all"
             >
               Submit for Approval
             </button>
@@ -226,13 +226,13 @@ export function DocumentDetailsPanel({
             <>
               <button
                 onClick={onApprove}
-                className="flex-1 px-3 py-2 bg-success hover:bg-green-600 text-white rounded-md font-medium text-sm transition-colors"
+                className="flex-1 px-3 py-2 bg-success hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all"
               >
                 Approve
               </button>
               <button
                 onClick={() => setShowRejectForm(!showRejectForm)}
-                className="flex-1 px-3 py-2 bg-error hover:bg-red-600 text-white rounded-md font-medium text-sm transition-colors"
+                className="flex-1 px-3 py-2 bg-error hover:bg-red-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all"
               >
                 Reject
               </button>
@@ -242,12 +242,12 @@ export function DocumentDetailsPanel({
 
         {/* Reject Form */}
         {showRejectForm && (
-          <div className="space-y-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-md border border-red-200 dark:border-red-800">
+          <div className="space-y-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border-2 border-red-200 dark:border-red-800 shadow-sm">
             <textarea
               placeholder="Rejection reason..."
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 dark:border-red-600 bg-white dark:bg-gray-800 rounded"
+              className="w-full px-3 py-2 text-sm border-2 border-red-300 dark:border-red-600 bg-white dark:bg-slate-800 rounded-lg font-serif"
               rows={3}
             />
             <div className="flex gap-2">
@@ -257,13 +257,13 @@ export function DocumentDetailsPanel({
                   setShowRejectForm(false);
                   setRejectReason('');
                 }}
-                className="flex-1 px-3 py-1 bg-error hover:bg-red-600 text-white rounded text-sm font-medium"
+                className="flex-1 px-3 py-1 bg-error hover:bg-red-700 text-white rounded-lg text-sm font-semibold shadow-md transition-all"
               >
                 Confirm Reject
               </button>
               <button
                 onClick={() => setShowRejectForm(false)}
-                className="flex-1 px-3 py-1 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-gray-100 rounded text-sm font-medium"
+                className="flex-1 px-3 py-1 bg-slate-300 dark:bg-slate-600 text-slate-900 dark:text-slate-100 rounded-lg text-sm font-semibold hover:bg-slate-400 dark:hover:bg-slate-500 shadow-sm transition-all"
               >
                 Cancel
               </button>
@@ -274,7 +274,7 @@ export function DocumentDetailsPanel({
         {/* Download */}
         <button
           onClick={onDownload}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md font-medium text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          className="w-full px-3 py-2 border-2 border-primary-600 text-primary-600 dark:text-primary-400 dark:border-primary-400 rounded-lg font-semibold text-sm hover:bg-primary-50 dark:hover:bg-slate-700 transition-all"
         >
           Download
         </button>

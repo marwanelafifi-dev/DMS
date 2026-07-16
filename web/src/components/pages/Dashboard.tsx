@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ListChecks, FileText, CheckCircle2 } from 'lucide-react';
 import { Card, CardBody } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -6,11 +7,6 @@ import { SkeletonCard } from '../ui/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
 import type { Task, Document, Approval } from '../../types';
 import { useNavigate } from 'react-router-dom';
-
-// Icon components (svg)
-const ClipboardListIcon = ({ className }: { className?: string }) => <svg className={className || "w-12 h-12"} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>;
-const DocumentIcon = ({ className }: { className?: string }) => <svg className={className || "w-12 h-12"} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
-const CheckCircleIcon = ({ className }: { className?: string }) => <svg className={className || "w-12 h-12"} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -141,8 +137,8 @@ export function Dashboard() {
     <div className="space-y-8">
       {/* Welcome */}
       <div>
-        <h1 className="text-4xl font-bold mb-2">Welcome back, {user?.fullName}! 👋</h1>
-        <p className="text-gray-600 dark:text-gray-400">
+        <h1 className="text-4xl font-bold mb-2 text-slate-900 dark:text-slate-100">Welcome back, {user?.fullName}!</h1>
+        <p className="text-slate-600 dark:text-slate-400 font-serif text-lg">
           Here's an overview of your recent activity and pending tasks.
         </p>
       </div>
@@ -152,36 +148,36 @@ export function Dashboard() {
         <Card>
           <CardBody className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-1 font-semibold">
                 Open Tasks
               </p>
-              <p className="text-3xl font-bold">{taskStats.open}</p>
+              <p className="text-4xl font-bold text-slate-900 dark:text-slate-100">{taskStats.open}</p>
             </div>
-            <ClipboardListIcon className="w-12 h-12 text-warning opacity-20" />
+            <ListChecks className="w-12 h-12 bg-gradient-to-br from-navy-900 to-primary-500 text-white rounded-lg p-2" />
           </CardBody>
         </Card>
 
         <Card>
           <CardBody className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-1 font-semibold">
                 In Progress
               </p>
-              <p className="text-3xl font-bold">{taskStats.inProgress}</p>
+              <p className="text-4xl font-bold text-slate-900 dark:text-slate-100">{taskStats.inProgress}</p>
             </div>
-            <DocumentIcon className="w-12 h-12 text-info opacity-20" />
+            <FileText className="w-12 h-12 bg-gradient-to-br from-navy-900 to-primary-500 text-white rounded-lg p-2" />
           </CardBody>
         </Card>
 
         <Card>
           <CardBody className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-1 font-semibold">
                 Pending Approvals
               </p>
-              <p className="text-3xl font-bold">{pendingApprovals.length}</p>
+              <p className="text-4xl font-bold text-slate-900 dark:text-slate-100">{pendingApprovals.length}</p>
             </div>
-            <CheckCircleIcon className="w-12 h-12 text-success opacity-20" />
+            <CheckCircle2 className="w-12 h-12 bg-gradient-to-br from-navy-900 to-primary-500 text-white rounded-lg p-2" />
           </CardBody>
         </Card>
       </div>
@@ -191,7 +187,7 @@ export function Dashboard() {
         {/* My Tasks (Left - Takes 2 columns) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">My Tasks</h2>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100">My Tasks</h2>
             <Button
               variant="primary"
               size="sm"
@@ -205,22 +201,22 @@ export function Dashboard() {
           <div className="grid grid-cols-3 gap-3">
             <Card>
               <CardBody className="text-center">
-                <p className="text-sm text-gray-600 dark:text-gray-400">Open</p>
-                <p className="text-2xl font-bold text-warning">{taskStats.open}</p>
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">Open</p>
+                <p className="text-3xl font-bold text-warning mt-1">{taskStats.open}</p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="text-center">
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
                   In Progress
                 </p>
-                <p className="text-2xl font-bold text-info">{taskStats.inProgress}</p>
+                <p className="text-3xl font-bold text-info mt-1">{taskStats.inProgress}</p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="text-center">
-                <p className="text-sm text-gray-600 dark:text-gray-400">Done</p>
-                <p className="text-2xl font-bold text-success">{taskStats.done}</p>
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">Done</p>
+                <p className="text-3xl font-bold text-success mt-1">{taskStats.done}</p>
               </CardBody>
             </Card>
           </div>
@@ -236,8 +232,8 @@ export function Dashboard() {
                 <CardBody className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <h3 className="font-semibold text-base">{task.title}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">{task.title}</h3>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 font-serif">
                         {task.description}
                       </p>
                     </div>
@@ -262,7 +258,7 @@ export function Dashboard() {
                     >
                       {task.status.replace('_', ' ')}
                     </Badge>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                       Due:{' '}
                       {new Date(task.dueDate).toLocaleDateString()}
                     </span>
@@ -277,19 +273,19 @@ export function Dashboard() {
         <div className="space-y-6">
           {/* Recent Documents */}
           <div>
-            <h3 className="text-xl font-semibold mb-3">Recent Documents</h3>
+            <h3 className="text-2xl font-bold mb-3 text-slate-900 dark:text-slate-100">Recent Documents</h3>
             <div className="space-y-2">
               {recentDocs.slice(0, 3).map((doc) => (
                 <Card
                   key={doc.documentId}
                   onClick={() => navigate(`/documents/${doc.documentId}`)}
-                  className="cursor-pointer"
+                  className="cursor-pointer hover:shadow-lg transition-all"
                 >
                   <CardBody className="space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-medium text-sm">{doc.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                        <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">{doc.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           {(doc.fileSize / 1024).toFixed(0)} KB
                         </p>
                       </div>
@@ -312,20 +308,20 @@ export function Dashboard() {
 
           {/* Pending Approvals */}
           <div>
-            <h3 className="text-xl font-semibold mb-3">Pending Approvals</h3>
+            <h3 className="text-2xl font-bold mb-3 text-slate-900 dark:text-slate-100">Pending Approvals</h3>
             {pendingApprovals.length > 0 ? (
               <div className="space-y-2">
                 {pendingApprovals.map((approval) => (
                   <Card
                     key={approval.approvalId}
                     onClick={() => navigate(`/approvals/${approval.approvalId}`)}
-                    className="cursor-pointer border-l-4 border-l-warning"
+                    className="cursor-pointer border-l-4 border-l-warning hover:shadow-lg transition-all"
                   >
                     <CardBody className="space-y-2">
-                      <p className="font-medium text-sm">
+                      <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">
                         {approval.document?.name}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Submitted{' '}
                         {new Date(approval.submittedAt).toLocaleDateString()}
                       </p>
@@ -347,7 +343,7 @@ export function Dashboard() {
             ) : (
               <Card>
                 <CardBody className="text-center py-8">
-                  <p className="text-gray-500 dark:text-gray-400">
+                  <p className="text-slate-500 dark:text-slate-400">
                     No pending approvals
                   </p>
                 </CardBody>

@@ -197,8 +197,8 @@ export function Documents() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Documents</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100">Documents</h1>
+          <p className="text-slate-600 dark:text-slate-400 mt-1 font-serif">
             Manage and organize your documents
           </p>
         </div>
@@ -240,16 +240,16 @@ export function Documents() {
 
           {/* View Mode Toggle */}
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
               {filteredDocuments.length} document{filteredDocuments.length !== 1 ? 's' : ''}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setViewMode('table')}
-                className={`px-3 py-2 text-sm rounded-md font-medium transition-colors ${
+                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
                   viewMode === 'table'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                    ? 'bg-primary-600 text-white shadow-md'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:shadow-sm'
                 }`}
                 title="Table view"
               >
@@ -257,10 +257,10 @@ export function Documents() {
               </button>
               <button
                 onClick={() => setViewMode('grid')}
-                className={`px-3 py-2 text-sm rounded-md font-medium transition-colors ${
+                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
                   viewMode === 'grid'
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                    ? 'bg-primary-600 text-white shadow-md'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:shadow-sm'
                 }`}
                 title="Grid view"
               >

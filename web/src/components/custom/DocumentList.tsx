@@ -62,7 +62,7 @@ export function DocumentList({
     return (
       <div className="space-y-2">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-12 bg-gray-200 dark:bg-gray-700 rounded animate-skeleton" />
+          <div key={i} className="h-12 bg-slate-200 dark:bg-slate-700 rounded-lg animate-skeleton" />
         ))}
       </div>
     );
@@ -72,10 +72,10 @@ export function DocumentList({
     return (
       <Card>
         <CardBody className="text-center py-12">
-          <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-12 h-12 mx-auto text-slate-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p className="text-gray-600 dark:text-gray-400">No documents found</p>
+          <p className="text-slate-600 dark:text-slate-400">No documents found</p>
         </CardBody>
       </Card>
     );
@@ -88,7 +88,7 @@ export function DocumentList({
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md"
+          className="px-3 py-2 text-sm border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 rounded-lg font-semibold hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
         >
           <option value="name">Sort by Name</option>
           <option value="date">Sort by Date</option>
@@ -96,17 +96,17 @@ export function DocumentList({
         </select>
         <button
           onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md"
+          className="px-4 py-2 text-sm border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 rounded-lg font-semibold hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
         >
           {sortOrder === 'asc' ? '↑' : '↓'}
         </button>
       </div>
 
       {/* Document Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 shadow-md">
         <table className="w-full text-sm">
-          <thead className="border-b border-gray-200 dark:border-gray-700">
-            <tr className="text-left text-gray-600 dark:text-gray-400 font-semibold">
+          <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700/50">
+            <tr className="text-left text-slate-700 dark:text-slate-300 font-bold">
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Owner</th>
@@ -116,31 +116,31 @@ export function DocumentList({
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
             {sortedDocs.map((doc) => (
               <tr
                 key={doc.documentId}
-                className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                className="hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
               >
                 <td
-                  className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100"
+                  className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100"
                   onClick={() => onDocumentClick(doc.documentId)}
                 >
                   <div className="truncate">{doc.name}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">{doc.fileName}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">{doc.fileName}</div>
                 </td>
                 <td className="px-4 py-3">
                   <Badge status={getStatusColor(doc.status)} size="sm">
                     {doc.status.replace('_', ' ')}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {doc.uploadedByUser?.fullName || 'Unknown'}
                 </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {formatFileSize(doc.fileSize)}
                 </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {formatDate(doc.uploadedAt)}
                 </td>
                 <td className="px-4 py-3">
@@ -153,7 +153,7 @@ export function DocumentList({
                         e.stopPropagation();
                         onDownload?.(doc.documentId);
                       }}
-                      className="text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                      className="text-primary-600 hover:text-primary-700 dark:text-primary-400 font-semibold hover:scale-110 transition-transform"
                       title="Download"
                     >
                       ⬇️
@@ -163,7 +163,7 @@ export function DocumentList({
                         e.stopPropagation();
                         onDelete?.(doc.documentId);
                       }}
-                      className="text-error hover:text-red-700 dark:text-red-400"
+                      className="text-error hover:text-red-700 dark:text-red-400 font-semibold hover:scale-110 transition-transform"
                       title="Delete"
                     >
                       🗑️
