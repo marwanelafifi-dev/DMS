@@ -1,31 +1,89 @@
-import { useEffect, useState } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { MainLayout } from './components/layout/MainLayout';
+import { Dashboard } from './components/pages/Dashboard';
+import { Toaster } from 'sonner';
 
-type Health = { status: string; service: string; phase: number }
-
-// nginx proxies /api -> api:8080 in the built image (see web/nginx.conf).
-const API_BASE = '/api'
-
-export default function App() {
-  const [api, setApi] = useState<Health | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch(`${API_BASE}/health`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setApi)
-      .catch((e) => setError(String(e)))
-  }, [])
-
+function App() {
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 640, margin: '4rem auto', padding: '0 1rem' }}>
-      <h1>Enterprise DMS v7.4</h1>
-      <p style={{ color: '#666' }}>Phase 0 scaffold — the vault, workflows, and RBAC land in later phases.</p>
-      <section style={{ marginTop: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: 8 }}>
-        <h2 style={{ fontSize: '1rem', margin: 0 }}>API health</h2>
-        {api && <pre style={{ color: 'green' }}>{JSON.stringify(api, null, 2)}</pre>}
-        {error && <pre style={{ color: 'crimson' }}>API unreachable: {error}</pre>}
-        {!api && !error && <p>Checking…</p>}
-      </section>
-    </main>
-  )
+    <Router>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <MainLayout>
+              <Dashboard />
+            </MainLayout>
+          }
+        />
+
+        {/* Tasks */}
+        <Route
+          path="/tasks"
+          element={
+            <MainLayout>
+              <div className="py-8">
+                <h1 className="text-3xl font-bold mb-4">Tasks</h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Task management coming soon...
+                </p>
+              </div>
+            </MainLayout>
+          }
+        />
+
+        {/* Documents */}
+        <Route
+          path="/documents"
+          element={
+            <MainLayout>
+              <div className="py-8">
+                <h1 className="text-3xl font-bold mb-4">Documents</h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Document vault coming soon...
+                </p>
+              </div>
+            </MainLayout>
+          }
+        />
+
+        {/* Approvals */}
+        <Route
+          path="/approvals"
+          element={
+            <MainLayout>
+              <div className="py-8">
+                <h1 className="text-3xl font-bold mb-4">Approvals</h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Approval workflows coming soon...
+                </p>
+              </div>
+            </MainLayout>
+          }
+        />
+
+        {/* Settings */}
+        <Route
+          path="/settings/*"
+          element={
+            <MainLayout>
+              <div className="py-8">
+                <h1 className="text-3xl font-bold mb-4">Settings</h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Settings panel coming soon...
+                </p>
+              </div>
+            </MainLayout>
+          }
+        />
+
+        {/* 404 */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* Toast notifications */}
+      <Toaster position="bottom-right" />
+    </Router>
+  );
 }
+
+export default App;
