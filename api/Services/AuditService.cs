@@ -86,6 +86,13 @@ public static class AuditActions
     public const string DOCUMENT_APPROVED = "DOCUMENT_APPROVED";
     public const string DOCUMENT_REJECTED = "DOCUMENT_REJECTED";
 
+    public const string TASK_COMPLETED = "TASK_COMPLETED";
+
+    public const string PERMISSION_GRANTED = "PERMISSION_GRANTED";
+    public const string PERMISSION_REVOKED = "PERMISSION_REVOKED";
+
+    public const string REMINDER_SENT = "REMINDER_SENT";
+
     public const string USER_CREATED = "USER_CREATED";
     public const string USER_UPDATED = "USER_UPDATED";
     public const string USER_DEACTIVATED = "USER_DEACTIVATED";

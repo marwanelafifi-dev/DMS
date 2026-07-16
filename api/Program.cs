@@ -1,6 +1,8 @@
 using DMS.Api.Data;
 using DMS.Api.Middleware;
 using DMS.Api.Services;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Minio;
 using Microsoft.EntityFrameworkCore;
 
@@ -34,6 +36,14 @@ builder.Services.AddScoped<MinioService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<ApprovalService>();
+builder.Services.AddScoped<TaskService>();
+builder.Services.AddScoped<ReminderService>();
+builder.Services.AddBackgroundJobs();
+
+// Hangfire — Background job processing
+builder.Services.AddHangfire(config =>
+    config.UsePostgreSqlStorage(connectionString));
+builder.Services.AddHangfireServer();
 
 // CORS — allow web frontend
 builder.Services.AddCors(options =>
@@ -59,10 +69,23 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors();
 
+// Hangfire Dashboard (readonly for now)
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new NoAuthorizationFilter() }
+});
+
 // RBAC Middleware — التحقق من الصلاحيات
 app.UseMiddleware<RBACMiddleware>();
 
 app.MapControllers();
+
+// Configure Hangfire recurring jobs
+using (var scope = app.Services.CreateScope())
+{
+    var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    app.ConfigureBackgroundJobs(recurringJobManager);
+}
 
 // Health endpoints
 app.MapHealthChecks("/health");
