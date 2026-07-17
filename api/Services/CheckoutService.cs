@@ -45,7 +45,7 @@ public class CheckoutService(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Document version {VersionId} checked out by user {UserId}", versionId, userId);
 
-            return CheckoutResult.Success(new
+            return CheckoutResult.Ok(new
             {
                 version.VersionId,
                 version.DocumentId,
@@ -60,7 +60,7 @@ public class CheckoutService(DmsContext context, AuditService auditService, ILog
         catch (Exception ex)
         {
             logger.LogError(ex, "Error checking out version {VersionId}", versionId);
-            return CheckoutResult.Error(ex.Message);
+            return CheckoutResult.Fail(ex.Message);
         }
     }
 
@@ -100,7 +100,7 @@ public class CheckoutService(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Document version {VersionId} checked in by user {UserId}", versionId, userId);
 
-            return CheckoutResult.Success(new
+            return CheckoutResult.Ok(new
             {
                 version.VersionId,
                 version.DocumentId,
@@ -112,7 +112,7 @@ public class CheckoutService(DmsContext context, AuditService auditService, ILog
         catch (Exception ex)
         {
             logger.LogError(ex, "Error checking in version {VersionId}", versionId);
-            return CheckoutResult.Error(ex.Message);
+            return CheckoutResult.Fail(ex.Message);
         }
     }
 
@@ -214,10 +214,10 @@ public class CheckoutResult
     public object? Data { get; set; }
     public string? Error { get; set; }
 
-    public static CheckoutResult Success(object data) => new() { Success = true, Data = data };
+    public static CheckoutResult Ok(object data) => new() { Success = true, Data = data };
     public static CheckoutResult NotFound(string message) => new() { Success = false, Message = message, Error = "NotFound" };
     public static CheckoutResult AlreadyCheckedOut(string message) => new() { Success = false, Message = message, Error = "AlreadyCheckedOut" };
     public static CheckoutResult Invalid(string message) => new() { Success = false, Message = message, Error = "Invalid" };
     public static CheckoutResult Forbidden(string message) => new() { Success = false, Message = message, Error = "Forbidden" };
-    public static CheckoutResult Error(string message) => new() { Success = false, Message = message, Error = "InternalError" };
+    public static CheckoutResult Fail(string message) => new() { Success = false, Message = message, Error = "InternalError" };
 }

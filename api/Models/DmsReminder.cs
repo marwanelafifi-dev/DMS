@@ -10,4 +10,7 @@ public class DmsReminder
     public bool IsSent { get; set; } = false;
     public DateTime? SentAt { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    public DmsTask? Task { get; set; }
+    public DmsUser? Recipient { get; set; }
 }

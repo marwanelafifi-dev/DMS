@@ -8,4 +8,8 @@ public class DmsFolderPermission
     public string Role { get; set; } = string.Empty;
     public DateTime GrantedAt { get; set; }
     public Guid? GrantedById { get; set; }
+
+    public DmsFolder? Folder { get; set; }
+    public DmsUser? User { get; set; }
+    public DmsUser? GrantedBy { get; set; }
 }

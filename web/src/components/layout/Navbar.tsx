@@ -1,81 +1,87 @@
 import { useNavigate } from 'react-router-dom';
-import { Menu, Bell, Settings, LogOut } from 'lucide-react';
+import { Bell, Moon, Sun, LogOut } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useDarkMode } from '../../hooks/useDarkMode';
 
 interface NavbarProps {
   onMenuClick?: () => void;
 }
 
-export function Navbar({ onMenuClick }: NavbarProps) {
+export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { isDark, toggleDarkMode } = useDarkMode();
 
   return (
-    <nav className="h-navbar-height bg-gradient-to-r from-white to-blue-50 border-b border-gray-200 shadow-lg sticky top-0 z-40 rounded-b-2xl">
-      <div className="flex items-center justify-between h-full px-4 md:px-6 max-w-[1920px] mx-auto">
-        {/* Left: Logo & Menu */}
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onMenuClick}
-            className="hidden md:inline-flex lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Toggle menu"
-          >
-            <Menu className="w-6 h-6 text-navy-900" />
-          </button>
+    <nav className="h-navbar-height bg-white dark:bg-black border-b border-navy-100/50 dark:border-white/10 shadow-sm dark:shadow-black/40 sticky top-0 z-40 transition-colors duration-300">
+      <div className="relative flex items-center h-full w-full">
+        {/* Center: Logo (absolutely centered, independent of side content widths) */}
+        <button
+          onClick={() => navigate('/')}
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-opacity hover:opacity-80"
+          aria-label="Go to Dashboard"
+        >
+          <img
+            src="/images/si-ware-logo.png"
+            alt="Si-Ware DMS"
+            className="h-11 w-auto"
+          />
+        </button>
 
-          <div className="flex items-center gap-2">
-            <img
-              src="https://www.si-ware.com/en/_next/static/media/horizontal-logo.efdc2b40.svg"
-              alt="Si-Ware"
-              className="h-8"
+        {/* Right: Theme Toggle, Notifications, User */}
+        <div className="flex items-center gap-1 md:gap-2 ml-auto px-4 sm:px-6 lg:px-8">
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={toggleDarkMode}
+            className="relative p-2.5 text-navy-600 dark:text-navy-300 hover:bg-navy-50 dark:hover:bg-navy-800 rounded-lg transition-all duration-200 group"
+            aria-label="Toggle dark mode"
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <Sun
+              className={`w-5 h-5 absolute inset-0 m-auto transition-all duration-300 ${
+                isDark ? 'opacity-0 -rotate-90 scale-50' : 'opacity-100 rotate-0 scale-100 group-hover:text-navy-900'
+              }`}
             />
-            <h1 className="hidden sm:block text-lg font-bold text-navy-900">
-              DMS
-            </h1>
-          </div>
-        </div>
+            <Moon
+              className={`w-5 h-5 transition-all duration-300 ${
+                isDark ? 'opacity-100 rotate-0 scale-100 group-hover:text-white' : 'opacity-0 rotate-90 scale-50'
+              }`}
+            />
+          </button>
 
-        {/* Center: Breadcrumb (Optional) */}
-        <div className="flex-1 mx-8 hidden md:block">
-          {/* Will be populated with breadcrumb from router */}
-        </div>
-
-        {/* Right: User Menu */}
-        <div className="flex items-center gap-4">
-          {/* Notifications */}
+          {/* Notifications Button */}
           <button
-            className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="relative p-2.5 text-navy-600 dark:text-navy-300 hover:bg-navy-50 dark:hover:bg-navy-800 rounded-lg transition-all duration-200 group"
             aria-label="Notifications"
+            title="Notifications"
           >
-            <Bell className="w-6 h-6 text-navy-900" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-white rounded-full"></span>
+            <Bell className="w-5 h-5 transition-colors group-hover:text-navy-900 dark:group-hover:text-white" />
+            <span className="absolute top-1.5 right-1.5 w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-lg ring-2 ring-white dark:ring-black"></span>
           </button>
 
-          {/* Settings */}
-          <button
-            onClick={() => navigate('/settings')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Settings"
-          >
-            <Settings className="w-6 h-6 text-navy-900" />
-          </button>
+          {/* Divider */}
+          <div className="w-px h-6 bg-navy-200/50 dark:bg-navy-700/50 mx-2" />
 
-          {/* User Menu */}
-          <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-            <div className="hidden sm:block text-right">
-              <p className="text-sm font-bold text-navy-900">{user?.fullName}</p>
-              <p className="text-xs text-gray-300">{user?.role}</p>
+          {/* User Identity */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-navy-700 flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0">
+              {user?.fullName?.charAt(0).toUpperCase()}
             </div>
-
-            <button
-              onClick={logout}
-              className="p-2 hover:bg-gradient-primary rounded-lg transition-colors text-navy-900 font-semibold"
-              aria-label="Logout"
-              title="Logout"
-            >
-              <LogOut className="w-6 h-6" />
-            </button>
+            <div className="hidden sm:flex flex-col items-start gap-0.5">
+              <p className="text-sm font-semibold text-navy-900 dark:text-white leading-none">{user?.fullName}</p>
+              <p className="text-xs text-navy-500 dark:text-navy-400 font-medium leading-none">{user?.role || 'Full Access'}</p>
+            </div>
           </div>
+
+          {/* Sign Out */}
+          <button
+            onClick={logout}
+            className="p-2.5 text-navy-600 dark:text-navy-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-all duration-200"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </nav>

@@ -65,15 +65,15 @@ public class RBACMiddleware
         // التحقق من الصلاحيات بناءً على الـ endpoint والـ method
         if (IsDocumentEndpoint(path))
         {
-            await CheckDocumentPermissions(context, dbContext, userId, method, path);
-            if (context.Response.StatusCode != 200)
+            var handled = await CheckDocumentPermissions(context, dbContext, userId, method, path);
+            if (handled)
                 return;
         }
 
         if (IsFolderEndpoint(path))
         {
-            await CheckFolderPermissions(context, dbContext, userId, method, path);
-            if (context.Response.StatusCode != 200)
+            var handled = await CheckFolderPermissions(context, dbContext, userId, method, path);
+            if (handled)
                 return;
         }
 
@@ -96,19 +96,19 @@ public class RBACMiddleware
     private bool IsDocumentEndpoint(string path) => path.StartsWith("/api/documents", StringComparison.OrdinalIgnoreCase);
     private bool IsFolderEndpoint(string path) => path.StartsWith("/api/folders", StringComparison.OrdinalIgnoreCase);
 
-    private async Task CheckDocumentPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
+    // يرجع true إذا تم التعامل مع الطلب بالفعل (لا تستدعي _next بعدها)
+    private async Task<bool> CheckDocumentPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
     {
         // استخراج document ID من الـ path
         var segments = path.Split('/');
         if (segments.Length < 4 || !Guid.TryParse(segments[3], out var documentId))
         {
-            await _next(context);
-            return;
+            // لا توجد document ID (مثل GET /api/documents) — اترك الكنترولر يتعامل معها
+            return false;
         }
 
         // الحصول على المستند
         var document = await dbContext.Documents
-            .Include(d => d.Folders) // العلاقة مع المجلد
             .FirstOrDefaultAsync(d => d.DocumentId == documentId);
 
         if (document == null)
@@ -119,7 +119,7 @@ public class RBACMiddleware
                 success = false,
                 error = "Document not found"
             });
-            return;
+            return true;
         }
 
         // الحصول على صلاحيات المستخدم على المجلد الذي فيه المستند
@@ -135,7 +135,7 @@ public class RBACMiddleware
                 success = false,
                 error = "No permission to access this document"
             });
-            return;
+            return true;
         }
 
         // التحقق من الصلاحيات بناءً على الـ method
@@ -148,24 +148,24 @@ public class RBACMiddleware
                 success = false,
                 error = $"Role '{permission.Role}' cannot {method.ToLower()} documents"
             });
-            return;
+            return true;
         }
 
         context.Items["FolderId"] = document.FolderId;
         context.Items["DocumentId"] = documentId;
         context.Items["UserRole"] = permission.Role;
+        return false;
     }
 
-    private async Task CheckFolderPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
+    // يرجع true إذا تم التعامل مع الطلب بالفعل (لا تستدعي _next بعدها)
+    private async Task<bool> CheckFolderPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
     {
         // استخراج folder ID من الـ path
         var segments = path.Split('/');
         if (segments.Length < 4 || !Guid.TryParse(segments[3], out var folderId))
         {
-            // إذا لا توجد folder ID (مثل GET /api/folders)
-            // كل مستخدم يقدر يرى جميع المجلدات
-            await _next(context);
-            return;
+            // إذا لا توجد folder ID (مثل GET /api/folders) — كل مستخدم يقدر يرى جميع المجلدات
+            return false;
         }
 
         // الحصول على المجلد
@@ -180,7 +180,7 @@ public class RBACMiddleware
                 success = false,
                 error = "Folder not found"
             });
-            return;
+            return true;
         }
 
         // الحصول على صلاحيات المستخدم
@@ -196,7 +196,7 @@ public class RBACMiddleware
                 success = false,
                 error = "No permission to access this folder"
             });
-            return;
+            return true;
         }
 
         // التحقق من الصلاحيات
@@ -209,11 +209,12 @@ public class RBACMiddleware
                 success = false,
                 error = $"Role '{permission.Role}' cannot {method.ToLower()} folders"
             });
-            return;
+            return true;
         }
 
         context.Items["FolderId"] = folderId;
         context.Items["UserRole"] = permission.Role;
+        return false;
     }
 
     private bool HasPermissionForMethod(string method, string role)

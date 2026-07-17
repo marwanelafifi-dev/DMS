@@ -295,17 +295,17 @@ export function DocumentViewer() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-2 text-sm text-navy-300">
+        <div className="flex items-center gap-2 text-sm text-navy-500 dark:text-navy-300">
           <button
             onClick={() => navigate('/documents')}
-            className="text-cyan-400 hover:text-cyan-300 transition-colors font-medium"
+            className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 transition-colors font-medium"
           >
             Documents
           </button>
-          <ChevronRight className="w-4 h-4 text-navy-500" />
-          <span className="text-navy-400">Loading...</span>
+          <ChevronRight className="w-4 h-4 text-navy-400 dark:text-navy-500" />
+          <span className="text-navy-500 dark:text-navy-400">Loading...</span>
         </div>
-        <h1 className="text-3xl font-bold text-white">Document Viewer</h1>
+        <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Document Viewer</h1>
         <SkeletonCard />
       </div>
     );
@@ -315,8 +315,8 @@ export function DocumentViewer() {
     return (
       <div className="space-y-8 text-center py-12">
         <div>
-          <h2 className="text-2xl font-bold text-white mb-2">Document Not Found</h2>
-          <p className="text-navy-300">The document you're looking for doesn't exist or has been deleted.</p>
+          <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white mb-2">Document Not Found</h2>
+          <p className="text-navy-500 dark:text-navy-300">The document you're looking for doesn't exist or has been deleted.</p>
         </div>
         <button
           onClick={() => navigate('/documents')}
@@ -334,18 +334,18 @@ export function DocumentViewer() {
       <div className="flex items-center gap-2 text-sm">
         <button
           onClick={() => navigate('/documents')}
-          className="text-blue-600 hover:text-blue-700 transition-colors font-medium hover:underline"
+          className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 transition-colors font-medium hover:underline"
         >
           Documents
         </button>
-        <ChevronRight className="w-4 h-4 text-navy-400" />
-        <span className="text-blue-600 font-medium truncate">{document.name}</span>
+        <ChevronRight className="w-4 h-4 text-navy-400 dark:text-navy-500" />
+        <span className="text-blue-600 dark:text-cyan-400 font-medium truncate">{document.name}</span>
       </div>
 
       {/* Page Title */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold text-navy-900">{document.name}</h1>
+          <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">{document.name}</h1>
           <span className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${
             document.status === 'released' ? 'bg-green-100 text-green-800' :
             document.status === 'pending_approval' ? 'bg-blue-100 text-blue-800' :

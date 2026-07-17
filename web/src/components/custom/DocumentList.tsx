@@ -108,13 +108,15 @@ export function DocumentList({
       </div>
 
       {/* Document Table */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700 shadow-sm hover:shadow-md transition-shadow">
-        <table className="w-full text-sm bg-white dark:bg-navy-800">
+      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700/60 shadow-sm dark:shadow-black/30 hover:shadow-md transition-shadow">
+        <table className="w-full text-sm bg-white dark:bg-navy-900">
           {/* Table Header */}
-          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900">
+          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900 border-b-2 border-b-blue-500/40 dark:border-b-cyan-500/40">
             <tr className="text-left text-white">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Name</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Status</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Department</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Tags</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Owner</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Size</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Uploaded</th>
@@ -124,15 +126,15 @@ export function DocumentList({
           </thead>
 
           {/* Table Body */}
-          <tbody className="divide-y divide-gray-200 dark:divide-navy-700">
+          <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
             {sortedDocs.map((doc, idx) => (
               <tr
                 key={doc.documentId}
                 className={`${
                   idx % 2 === 0
-                    ? 'bg-white dark:bg-navy-800'
-                    : 'bg-gray-50 dark:bg-navy-850'
-                } hover:bg-gray-100 dark:hover:bg-navy-700/50 cursor-pointer transition-colors`}
+                    ? 'bg-white dark:bg-navy-900'
+                    : 'bg-gray-50 dark:bg-navy-950/60'
+                } hover:bg-gray-100 dark:hover:bg-navy-800 cursor-pointer transition-colors`}
               >
                 {/* Name Column */}
                 <td
@@ -140,28 +142,55 @@ export function DocumentList({
                   onClick={() => onDocumentClick(doc.documentId)}
                 >
                   <div className="truncate max-w-xs">{doc.name}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{doc.fileName}</div>
+                  <div className="text-xs text-gray-500 dark:text-navy-400 mt-0.5">{doc.fileName}</div>
                 </td>
 
                 {/* Status Column */}
                 <td className="px-6 py-4">
-                  <Badge status={getStatusColor(doc.status)} size="sm">
+                  <Badge status={getStatusColor(doc.status)} size="sm" variant="outline">
                     {doc.status.replace('_', ' ').toUpperCase()}
                   </Badge>
                 </td>
 
+                {/* Department Column */}
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200">
+                  <span className="font-medium text-sm">{doc.department || '-'}</span>
+                </td>
+
+                {/* Tags Column */}
+                <td className="px-6 py-4">
+                  <div className="flex flex-wrap gap-1.5">
+                    {doc.tags && doc.tags.length > 0 ? (
+                      <>
+                        {doc.tags.slice(0, 2).map((tag, idx) => (
+                          <Badge key={idx} status="default" size="sm" variant="outline">
+                            {tag}
+                          </Badge>
+                        ))}
+                        {doc.tags.length > 2 && (
+                          <span className="text-gray-500 dark:text-navy-400 text-xs font-medium self-center">
+                            +{doc.tags.length - 2}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-500 dark:text-navy-500 text-sm">-</span>
+                    )}
+                  </div>
+                </td>
+
                 {/* Owner Column */}
-                <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200">
                   <span className="font-medium">{doc.uploadedByUser?.fullName || 'Unknown'}</span>
                 </td>
 
                 {/* Size Column */}
-                <td className="px-6 py-4 text-gray-700 dark:text-gray-300 text-right font-medium">
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-right font-medium">
                   {formatFileSize(doc.fileSize)}
                 </td>
 
                 {/* Date Column */}
-                <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200">
                   {formatDate(doc.uploadedAt)}
                 </td>
 
@@ -184,7 +213,7 @@ export function DocumentList({
                         e.stopPropagation();
                         onDownload?.(doc.documentId);
                       }}
-                      className="inline-flex items-center justify-center p-2 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-navy-700 rounded-lg transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
+                      className="inline-flex items-center justify-center p-2 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-navy-800 rounded-lg transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-1 dark:focus:ring-offset-navy-900"
                       title="Download document"
                       aria-label="Download"
                     >
@@ -197,7 +226,7 @@ export function DocumentList({
                         e.stopPropagation();
                         onDelete?.(doc.documentId, doc.name);
                       }}
-                      className="inline-flex items-center justify-center p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-navy-700 rounded-lg transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
+                      className="inline-flex items-center justify-center p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-navy-800 rounded-lg transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-navy-900"
                       title="Delete document"
                       aria-label="Delete"
                     >

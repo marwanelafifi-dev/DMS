@@ -112,6 +112,8 @@ export function Documents() {
             uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
             updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_in',
+            department: 'Compliance',
+            tags: ['policy', 'records'],
           },
           {
             documentId: 'doc-7',
@@ -126,6 +128,8 @@ export function Documents() {
             uploadedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
             updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_in',
+            department: 'Management',
+            tags: ['review', 'q3'],
           },
           // PENDING_APPROVAL - can approve/reject
           {
@@ -142,6 +146,8 @@ export function Documents() {
             updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_out',
             checkedOutBy: 'user-1',
+            department: 'QMS',
+            tags: ['procedure', 'control'],
           },
           {
             documentId: 'doc-5',
@@ -156,6 +162,8 @@ export function Documents() {
             uploadedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
             updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_in',
+            department: 'HR',
+            tags: ['training', 'records'],
           },
           // RELEASED - already approved
           {
@@ -171,6 +179,8 @@ export function Documents() {
             uploadedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
             updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_in',
+            department: 'QMS',
+            tags: ['quality', 'iso-9001'],
           },
           {
             documentId: 'doc-4',
@@ -185,6 +195,8 @@ export function Documents() {
             uploadedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
             updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_in',
+            department: 'Audit',
+            tags: ['audit', 'q2'],
           },
           {
             documentId: 'doc-6',
@@ -199,6 +211,8 @@ export function Documents() {
             uploadedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
             updatedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_in',
+            department: 'Marketing',
+            tags: ['branding', 'logo'],
           },
         ];
 
@@ -269,7 +283,7 @@ export function Documents() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-navy-900 dark:text-white">Documents</h1>
+          <h1 className="text-4xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Documents</h1>
           <p className="text-gray-600 dark:text-gray-300 mt-1 font-serif">
             Manage and organize your documents
           </p>
@@ -368,7 +382,7 @@ export function Documents() {
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             {/* Header */}
             <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white">
-              <h3 className="text-lg font-bold flex items-center gap-2">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
                 <span>⚠️</span> Delete Document
               </h3>
             </div>

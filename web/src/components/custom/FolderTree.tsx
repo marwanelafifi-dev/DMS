@@ -37,8 +37,8 @@ export function FolderTree({
         <div
           className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer rounded-lg transition-all ${
             isSelected
-              ? 'bg-white dark:bg-white text-navy-900 dark:text-navy-900 border-l-4 border-blue-600 shadow-md'
-              : 'hover:bg-gray-100 dark:hover:bg-navy-700 text-gray-700 dark:text-gray-300 border-l-4 border-transparent'
+              ? 'bg-blue-50 dark:bg-blue-500/15 text-navy-900 dark:text-white border-l-4 border-blue-600 dark:border-cyan-400 shadow-sm dark:shadow-none'
+              : 'hover:bg-gray-100 dark:hover:bg-white/5 text-gray-700 dark:text-navy-300 border-l-4 border-transparent'
           }`}
           style={{ paddingLeft: `${12 + level * 16}px` }}
         >
@@ -51,7 +51,7 @@ export function FolderTree({
               className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
             >
               <ChevronRight
-                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''} text-gray-700 dark:text-gray-400`}
+                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''} text-gray-700 dark:text-navy-400`}
               />
             </button>
           )}
@@ -79,7 +79,7 @@ export function FolderTree({
   };
 
   return (
-    <div className="w-full bg-white dark:bg-navy-700 rounded-xl border border-gray-300 dark:border-navy-600 p-4 shadow-sm dark:shadow-lg">
+    <div className="w-full bg-white dark:bg-navy-950 rounded-xl border border-gray-300 dark:border-white/10 p-4 shadow-sm dark:shadow-black/40">
       <h3 className="text-sm font-extrabold mb-4 text-navy-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
         Folders
       </h3>
@@ -87,7 +87,7 @@ export function FolderTree({
         {folders.length > 0 ? (
           folders.map((folder) => <FolderItem key={folder.folderId} folder={folder} />)
         ) : (
-          <p className="text-sm text-gray-600 dark:text-gray-400 px-3 py-2">
+          <p className="text-sm text-gray-600 dark:text-navy-400 px-3 py-2">
             No folders yet
           </p>
         )}

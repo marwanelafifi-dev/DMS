@@ -110,12 +110,16 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
             if (await context.Users.AnyAsync(u => u.Email == req.Email.ToLower()))
                 return BadRequest(new { success = false, error = "المستخدم بهذا البريد موجود بالفعل" });
 
+            if (!string.IsNullOrEmpty(req.Password) && req.Password.Length < 8)
+                return BadRequest(new { success = false, error = "كلمة المرور يجب أن تكون 8 أحرف على الأقل" });
+
             var user = new DmsUser
             {
                 UserId = Guid.NewGuid(),
                 Email = req.Email.ToLower().Trim(),
                 FullName = req.FullName.Trim(),
                 SsoSubject = req.SsoSubject?.Trim(),
+                PasswordHash = string.IsNullOrEmpty(req.Password) ? null : PasswordHasher.Hash(req.Password),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -216,6 +220,10 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
     {
         try
         {
+            var currentUserId = GetCurrentUserId();
+            if (id == currentUserId)
+                return BadRequest(new { success = false, error = "لا يمكنك تعطيل حسابك الخاص" });
+
             var user = await context.Users
                 .FirstOrDefaultAsync(u => u.UserId == id);
 
@@ -228,7 +236,6 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
             context.Users.Update(user);
             await context.SaveChangesAsync();
 
-            var currentUserId = GetCurrentUserId();
             await auditService.LogAsync(currentUserId, USER_DEACTIVATED, new
             {
                 user.UserId,
@@ -247,7 +254,90 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
+
+    // PUT /api/users/{id}/reset-password — إعادة تعيين كلمة المرور (للمستخدمين المحليين)
+    [HttpPut("{id}/reset-password")]
+    public async Task<ActionResult<object>> ResetPassword(Guid id, [FromBody] ResetPasswordRequest req)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(req.NewPassword) || req.NewPassword.Length < 8)
+                return BadRequest(new { success = false, error = "كلمة المرور يجب أن تكون 8 أحرف على الأقل" });
+
+            var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == id);
+            if (user == null)
+                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+
+            user.PasswordHash = PasswordHasher.Hash(req.NewPassword);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            context.Users.Update(user);
+            await context.SaveChangesAsync();
+
+            var currentUserId = GetCurrentUserId();
+            await auditService.LogAsync(currentUserId, USER_PASSWORD_RESET, new
+            {
+                user.UserId,
+                user.Email,
+                ResetAt = DateTime.UtcNow
+            });
+
+            logger.LogInformation("Password reset for user {UserId}", id);
+
+            return Ok(new { success = true, message = "تم إعادة تعيين كلمة المرور بنجاح" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error resetting password for user {UserId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // DELETE /api/users/{id}/permanent — حذف نهائي (لا يمكن التراجع عنه)
+    [HttpDelete("{id}/permanent")]
+    public async Task<ActionResult<object>> DeleteUserPermanently(Guid id)
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (id == currentUserId)
+                return BadRequest(new { success = false, error = "لا يمكنك حذف حسابك الخاص" });
+
+            var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == id);
+            if (user == null)
+                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+
+            await auditService.LogAsync(currentUserId, USER_DELETED, new
+            {
+                user.UserId,
+                user.Email,
+                user.FullName,
+                DeletedAt = DateTime.UtcNow
+            });
+
+            context.Users.Remove(user);
+            await context.SaveChangesAsync();
+
+            logger.LogInformation("Permanently deleted user {UserId}", id);
+
+            return Ok(new { success = true, message = "تم حذف المستخدم نهائيًا" });
+        }
+        catch (DbUpdateException)
+        {
+            return Conflict(new
+            {
+                success = false,
+                error = "لا يمكن حذف هذا المستخدم لأنه لا يزال يملك مستندات أو مهام أو توقيعات مرتبطة به. قم بإلغاء تنشيطه بدلاً من ذلك."
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error permanently deleting user {UserId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
 }
 
-public record CreateUserRequest(string Email, string FullName, string? SsoSubject = null);
+public record CreateUserRequest(string Email, string FullName, string? SsoSubject = null, string? Password = null);
 public record UpdateUserRequest(string? FullName = null, bool? IsActive = null);
+public record ResetPasswordRequest(string NewPassword);

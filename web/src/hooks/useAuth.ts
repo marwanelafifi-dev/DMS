@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { User } from '../types';
+import { DEV_USER_ID } from '../utils/api';
 
 interface UseAuthReturn {
   user: User | null;
@@ -16,13 +17,14 @@ export function useAuth(): UseAuthReturn {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // For now, simulate authenticated user
-    // In production, this would fetch from API or auth service
+    // Dev-only bootstrap user (see infra/db/init/003_dev_seed_admin.sql) until
+    // Google Workspace SSO is wired up. In production, this would fetch from
+    // API or auth service.
     const currentUser: User = {
-      userId: 'user-1',
-      fullName: 'Ahmed Ali',
-      email: 'alii.mohamed@si-ware.com',
-      role: 'Manager',
+      userId: DEV_USER_ID,
+      fullName: 'System Admin',
+      email: 'admin@si-ware.com',
+      role: 'Admin',
       isActive: true,
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),

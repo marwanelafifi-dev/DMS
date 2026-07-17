@@ -37,7 +37,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             logger.LogInformation("Created task {TaskId} for document {DocumentId}", task.TaskId, documentId);
 
-            return TaskResult.Success(new
+            return TaskResult.Ok(new
             {
                 task.TaskId,
                 task.DocumentId,
@@ -52,7 +52,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         catch (Exception ex)
         {
             logger.LogError(ex, "Error creating task");
-            return TaskResult.Error(ex.Message);
+            return TaskResult.Fail(ex.Message);
         }
     }
 
@@ -128,7 +128,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             logger.LogInformation("Task {TaskId} completed by user {UserId}", taskId, userId);
 
-            return TaskResult.Success(new
+            return TaskResult.Ok(new
             {
                 task.TaskId,
                 task.Status,
@@ -139,7 +139,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         catch (Exception ex)
         {
             logger.LogError(ex, "Error completing task {TaskId}", taskId);
-            return TaskResult.Error(ex.Message);
+            return TaskResult.Fail(ex.Message);
         }
     }
 
@@ -174,7 +174,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             logger.LogInformation("Updated task {TaskId}", taskId);
 
-            return TaskResult.Success(new
+            return TaskResult.Ok(new
             {
                 task.TaskId,
                 task.Title,
@@ -186,7 +186,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         catch (Exception ex)
         {
             logger.LogError(ex, "Error updating task {TaskId}", taskId);
-            return TaskResult.Error(ex.Message);
+            return TaskResult.Fail(ex.Message);
         }
     }
 
@@ -260,9 +260,9 @@ public class TaskResult
     public object? Data { get; set; }
     public string? Error { get; set; }
 
-    public static TaskResult Success(object data) => new() { Success = true, Data = data };
+    public static TaskResult Ok(object data) => new() { Success = true, Data = data };
     public static TaskResult NotFound(string message) => new() { Success = false, Message = message, Error = "NotFound" };
     public static TaskResult Invalid(string message) => new() { Success = false, Message = message, Error = "Invalid" };
     public static TaskResult Forbidden(string message) => new() { Success = false, Message = message, Error = "Forbidden" };
-    public static TaskResult Error(string message) => new() { Success = false, Message = message, Error = "InternalError" };
+    public static TaskResult Fail(string message) => new() { Success = false, Message = message, Error = "InternalError" };
 }
