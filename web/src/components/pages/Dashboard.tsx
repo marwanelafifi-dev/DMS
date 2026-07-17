@@ -137,7 +137,7 @@ export function Dashboard() {
     <div className="space-y-8">
       {/* Welcome */}
       <div>
-        <h1 className="text-4xl font-bold mb-2 text-navy-900 dark:text-white">Welcome back, {user?.fullName}!</h1>
+        <h1 className="text-4xl font-serif font-bold tracking-tight mb-2 text-navy-900 dark:text-white">Welcome back, {user?.fullName}!</h1>
         <p className="text-gray-600 dark:text-gray-300 font-serif text-lg">
           Here's an overview of your recent activity and pending tasks.
         </p>
@@ -187,7 +187,7 @@ export function Dashboard() {
         {/* My Tasks (Left - Takes 2 columns) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-navy-900 dark:text-white">My Tasks</h2>
+            <h2 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">My Tasks</h2>
             <Button
               variant="primary"
               size="sm"
@@ -274,7 +274,7 @@ export function Dashboard() {
         <div className="space-y-6">
           {/* Recent Documents */}
           <div>
-            <h3 className="text-2xl font-bold mb-3 text-navy-900 dark:text-white">Recent Documents</h3>
+            <h3 className="text-2xl font-serif font-bold tracking-tight mb-3 text-navy-900 dark:text-white">Recent Documents</h3>
             <div className="space-y-2">
               {recentDocs.slice(0, 3).map((doc) => (
                 <Card
@@ -310,7 +310,7 @@ export function Dashboard() {
 
           {/* Pending Approvals */}
           <div>
-            <h3 className="text-2xl font-bold mb-3 text-navy-900 dark:text-white">Pending Approvals</h3>
+            <h3 className="text-2xl font-serif font-bold tracking-tight mb-3 text-navy-900 dark:text-white">Pending Approvals</h3>
             {pendingApprovals.length > 0 ? (
               <div className="space-y-2">
                 {pendingApprovals.map((approval) => (

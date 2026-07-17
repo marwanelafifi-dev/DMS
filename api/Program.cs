@@ -1,7 +1,9 @@
+using DMS.Api;
 using DMS.Api.Data;
 using DMS.Api.Middleware;
 using DMS.Api.Services;
 using Hangfire;
+using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
 using Minio;
 using Microsoft.EntityFrameworkCore;

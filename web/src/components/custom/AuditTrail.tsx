@@ -1,160 +1,101 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardBody, Badge, Button } from '../ui';
-import { Search, Download, Filter, Calendar, ListChecks, CheckCircle2, Users as UsersIcon, FileText } from 'lucide-react';
+import { SkeletonTable } from '../ui/Skeleton';
+import { Search, Download, Filter, Calendar, ListChecks, Users as UsersIcon, FileText } from 'lucide-react';
+import { apiClient } from '../../utils/api';
 
 interface AuditLog {
   logId: string;
   userId: string;
-  userName: string;
   action: string;
-  resource: string;
-  resourceId?: string;
-  timestamp: string;
-  ipAddress: string;
-  details: string;
-  status: 'success' | 'failure';
+  metadata: Record<string, any> | null;
+  createdAt: string;
 }
 
+interface UserLite {
+  userId: string;
+  fullName: string;
+}
+
+// Mirrors AuditActions in api/Services/AuditService.cs
 const ACTION_TYPES = [
-  'DOCUMENT_VIEWED',
-  'DOCUMENT_UPLOADED',
-  'DOCUMENT_DOWNLOADED',
-  'DOCUMENT_DELETED',
-  'DOCUMENT_APPROVED',
-  'DOCUMENT_REJECTED',
-  'USER_CREATED',
-  'USER_MODIFIED',
-  'USER_DELETED',
-  'PERMISSION_GRANTED',
-  'PERMISSION_REVOKED',
-  'SETTINGS_CHANGED',
+  'FOLDER_CREATED', 'FOLDER_UPDATED', 'FOLDER_DELETED',
+  'DOCUMENT_CREATED', 'DOCUMENT_UPDATED', 'DOCUMENT_DELETED',
+  'DOCUMENT_UPLOADED', 'DOCUMENT_DOWNLOADED',
+  'DOCUMENT_CHECKOUT', 'DOCUMENT_CHECKIN', 'DOCUMENT_CHECKOUT_EXPIRED',
+  'DOCUMENT_SUBMITTED', 'DOCUMENT_APPROVED', 'DOCUMENT_REJECTED',
+  'TASK_COMPLETED',
+  'PERMISSION_GRANTED', 'PERMISSION_REVOKED',
+  'REMINDER_SENT',
+  'USER_CREATED', 'USER_UPDATED', 'USER_DEACTIVATED',
 ];
 
-const ACTION_BADGE: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
-  'DOCUMENT_VIEWED': 'info',
-  'DOCUMENT_UPLOADED': 'success',
-  'DOCUMENT_DOWNLOADED': 'info',
-  'DOCUMENT_DELETED': 'error',
-  'DOCUMENT_APPROVED': 'success',
-  'DOCUMENT_REJECTED': 'error',
-  'USER_CREATED': 'success',
-  'USER_MODIFIED': 'warning',
-  'USER_DELETED': 'error',
-  'PERMISSION_GRANTED': 'success',
-  'PERMISSION_REVOKED': 'error',
-  'SETTINGS_CHANGED': 'default',
+const getActionBadge = (action: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
+  if (action.endsWith('_DELETED') || action.endsWith('_REJECTED') || action === 'USER_DEACTIVATED' || action === 'PERMISSION_REVOKED' || action === 'DOCUMENT_CHECKOUT_EXPIRED') return 'error';
+  if (action.endsWith('_CREATED') || action.endsWith('_APPROVED') || action.endsWith('_GRANTED') || action.endsWith('_UPLOADED') || action.endsWith('_COMPLETED')) return 'success';
+  if (action.endsWith('_UPDATED') || action === 'DOCUMENT_SUBMITTED') return 'warning';
+  return 'info';
+};
+
+const formatMetadata = (metadata: Record<string, any> | null) => {
+  if (!metadata) return '—';
+  return Object.entries(metadata)
+    .filter(([key]) => !key.toLowerCase().endsWith('id'))
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(', ') || '—';
 };
 
 export function AuditTrail() {
-  const [auditLogs] = useState<AuditLog[]>([
-    {
-      logId: 'log-1',
-      userId: 'user-2',
-      userName: 'Ahmed Ali',
-      action: 'DOCUMENT_UPLOADED',
-      resource: 'Documents',
-      resourceId: 'doc-1',
-      timestamp: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.100',
-      details: 'Uploaded ISO 9001:2015 Quality Procedure',
-      status: 'success',
-    },
-    {
-      logId: 'log-2',
-      userId: 'user-3',
-      userName: 'Sarah Johnson',
-      action: 'DOCUMENT_APPROVED',
-      resource: 'Approvals',
-      resourceId: 'doc-2',
-      timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.105',
-      details: 'Approved Document Control Procedure',
-      status: 'success',
-    },
-    {
-      logId: 'log-3',
-      userId: 'user-1',
-      userName: 'Mohammed Anwar',
-      action: 'DOCUMENT_DOWNLOADED',
-      resource: 'Documents',
-      resourceId: 'doc-4',
-      timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.110',
-      details: 'Downloaded Audit Results Q2 2026',
-      status: 'success',
-    },
-    {
-      logId: 'log-4',
-      userId: 'user-4',
-      userName: 'Lisa Chen',
-      action: 'USER_CREATED',
-      resource: 'Users',
-      timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.120',
-      details: 'Created new user: John Davis (john@si-ware.com)',
-      status: 'success',
-    },
-    {
-      logId: 'log-5',
-      userId: 'user-2',
-      userName: 'Ahmed Ali',
-      action: 'PERMISSION_GRANTED',
-      resource: 'Permissions',
-      timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.100',
-      details: 'Granted Manager role to user: Lisa Chen',
-      status: 'success',
-    },
-    {
-      logId: 'log-6',
-      userId: 'user-1',
-      userName: 'Mohammed Anwar',
-      action: 'DOCUMENT_DELETED',
-      resource: 'Documents',
-      resourceId: 'doc-99',
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.110',
-      details: 'Deleted document: Old Test Document',
-      status: 'success',
-    },
-    {
-      logId: 'log-7',
-      userId: 'user-3',
-      userName: 'Sarah Johnson',
-      action: 'DOCUMENT_VIEWED',
-      resource: 'Documents',
-      resourceId: 'doc-1',
-      timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.105',
-      details: 'Viewed ISO 9001:2015 Quality Procedure',
-      status: 'success',
-    },
-    {
-      logId: 'log-8',
-      userId: 'user-5',
-      userName: 'John Davis',
-      action: 'SETTINGS_CHANGED',
-      resource: 'Settings',
-      timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-      ipAddress: '192.168.1.115',
-      details: 'Changed user profile settings',
-      status: 'success',
-    },
-  ]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [users, setUsers] = useState<UserLite[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAction, setSelectedAction] = useState<string>('');
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
 
-  const filteredLogs = auditLogs.filter(log => {
+  const loadData = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const [logsRes, usersRes] = await Promise.all([
+        apiClient.getAuditTrail({ limit: 200 }),
+        apiClient.getUsers({ activeOnly: false }),
+      ]);
+      setLogs(logsRes.data || []);
+      setUsers(usersRes.data || []);
+    } catch (err: any) {
+      setLoadError(err.response?.data?.error || 'Failed to reach the API. Is the backend running?');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const userNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    users.forEach(u => map.set(u.userId, u.fullName));
+    return map;
+  }, [users]);
+
+  const getUserName = (userId: string) => userNameById.get(userId) || 'Unknown user';
+
+  const filteredLogs = logs.filter(log => {
+    const userName = getUserName(log.userId);
+    const details = formatMetadata(log.metadata);
+
     const matchesSearch =
-      log.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.details.toLowerCase().includes(searchQuery.toLowerCase());
+      details.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesAction = !selectedAction || log.action === selectedAction;
 
-    const logDate = log.timestamp.slice(0, 10);
+    const logDate = log.createdAt.slice(0, 10);
     const matchesFrom = !dateRange.from || logDate >= dateRange.from;
     const matchesTo = !dateRange.to || logDate <= dateRange.to;
 
@@ -172,42 +113,73 @@ export function AuditTrail() {
     });
   };
 
+  const handleExport = () => {
+    const header = ['Timestamp', 'User', 'Action', 'Details'];
+    const rows = filteredLogs.map(log => [
+      formatTimestamp(log.createdAt),
+      getUserName(log.userId),
+      log.action,
+      formatMetadata(log.metadata),
+    ]);
+    const csv = [header, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `audit-trail-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Audit Trail &amp; Logging</h2>
+        <SkeletonTable />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Audit Trail &amp; Logging</h2>
+        <Card className="border-l-4 border-l-red-600">
+          <CardBody>
+            <p className="text-red-700 dark:text-red-400 font-medium">{loadError}</p>
+            <Button variant="secondary" size="sm" className="mt-3" onClick={loadData}>
+              Retry
+            </Button>
+          </CardBody>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-navy-900 dark:text-white">Audit Trail &amp; Logging</h2>
-        <Button variant="primary" size="sm" className="flex items-center gap-2">
+        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Audit Trail &amp; Logging</h2>
+        <Button variant="primary" size="sm" className="flex items-center gap-2" onClick={handleExport}>
           <Download className="w-4 h-4" />
           Export Logs
         </Button>
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-l-4 border-l-navy-700">
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 Total Logs
               </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-white">{auditLogs.length}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-white">{logs.length}</p>
             </div>
             <ListChecks className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
-          </CardBody>
-        </Card>
-
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                Successful
-              </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-white">
-                {auditLogs.filter(l => l.status === 'success').length}
-              </p>
-            </div>
-            <CheckCircle2 className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
           </CardBody>
         </Card>
 
@@ -218,7 +190,7 @@ export function AuditTrail() {
                 Active Users
               </p>
               <p className="text-4xl font-bold text-navy-900 dark:text-white">
-                {new Set(auditLogs.map(l => l.userId)).size}
+                {new Set(logs.map(l => l.userId)).size}
               </p>
             </div>
             <UsersIcon className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
@@ -232,7 +204,7 @@ export function AuditTrail() {
                 Doc Actions
               </p>
               <p className="text-4xl font-bold text-navy-900 dark:text-white">
-                {auditLogs.filter(l => l.action.includes('DOCUMENT')).length}
+                {logs.filter(l => l.action.startsWith('DOCUMENT')).length}
               </p>
             </div>
             <FileText className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
@@ -297,9 +269,6 @@ export function AuditTrail() {
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">User</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Action</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Details</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Resource</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">IP Address</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide text-center">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-navy-700">
@@ -314,38 +283,24 @@ export function AuditTrail() {
                   } hover:bg-gray-100 dark:hover:bg-navy-700/50 transition-colors`}
                 >
                   <td className="px-6 py-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                    {formatTimestamp(log.timestamp)}
+                    {formatTimestamp(log.createdAt)}
                   </td>
                   <td className="px-6 py-4 font-semibold text-navy-900 dark:text-white whitespace-nowrap">
-                    {log.userName}
+                    {getUserName(log.userId)}
                   </td>
                   <td className="px-6 py-4">
-                    <Badge status={ACTION_BADGE[log.action] || 'default'} size="sm" variant="outline">
+                    <Badge status={getActionBadge(log.action)} size="sm" variant="outline">
                       {log.action.replace(/_/g, ' ')}
                     </Badge>
                   </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 max-w-xs">
-                    {log.details}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    {log.resource}
-                    {log.resourceId && (
-                      <span className="text-gray-400 dark:text-gray-500"> · {log.resourceId}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400 whitespace-nowrap font-mono text-xs">
-                    {log.ipAddress}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <Badge status={log.status === 'success' ? 'success' : 'error'} size="sm" variant="outline">
-                      {log.status === 'success' ? 'Success' : 'Failed'}
-                    </Badge>
+                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 max-w-md truncate">
+                    {formatMetadata(log.metadata)}
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={4} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                   No audit logs found
                 </td>
               </tr>

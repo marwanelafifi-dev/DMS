@@ -283,7 +283,7 @@ export function Documents() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-navy-900 dark:text-white">Documents</h1>
+          <h1 className="text-4xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Documents</h1>
           <p className="text-gray-600 dark:text-gray-300 mt-1 font-serif">
             Manage and organize your documents
           </p>
@@ -382,7 +382,7 @@ export function Documents() {
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             {/* Header */}
             <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white">
-              <h3 className="text-lg font-bold flex items-center gap-2">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
                 <span>⚠️</span> Delete Document
               </h3>
             </div>

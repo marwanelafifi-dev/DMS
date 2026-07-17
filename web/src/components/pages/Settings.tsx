@@ -45,7 +45,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
       <div>
         <div className="flex items-center gap-3 mb-2">
           <SettingsIcon className="w-8 h-8 text-blue-500" />
-          <h1 className="text-4xl font-bold text-navy-900 dark:text-white">Admin Panel</h1>
+          <h1 className="text-4xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Admin Panel</h1>
         </div>
         <p className="text-gray-600 dark:text-gray-300 font-serif">
           System configuration and management

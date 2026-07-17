@@ -54,7 +54,7 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Document {DocumentId} submitted for approval by user {UserId}", documentId, userId);
 
-            return ApprovalResult.Success(new
+            return ApprovalResult.Ok(new
             {
                 document.DocumentId,
                 version.VersionId,
@@ -66,7 +66,7 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
         catch (Exception ex)
         {
             logger.LogError(ex, "Error submitting document {DocumentId} for approval", documentId);
-            return ApprovalResult.Error(ex.Message);
+            return ApprovalResult.Fail(ex.Message);
         }
     }
 
@@ -116,7 +116,7 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Document {DocumentId} approved by manager {ManagerId}", documentId, managerId);
 
-            return ApprovalResult.Success(new
+            return ApprovalResult.Ok(new
             {
                 document.DocumentId,
                 version.VersionId,
@@ -128,7 +128,7 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
         catch (Exception ex)
         {
             logger.LogError(ex, "Error approving document {DocumentId}", documentId);
-            return ApprovalResult.Error(ex.Message);
+            return ApprovalResult.Fail(ex.Message);
         }
     }
 
@@ -180,7 +180,7 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Document {DocumentId} rejected by manager {ManagerId}", documentId, managerId);
 
-            return ApprovalResult.Success(new
+            return ApprovalResult.Ok(new
             {
                 document.DocumentId,
                 version.VersionId,
@@ -193,7 +193,7 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
         catch (Exception ex)
         {
             logger.LogError(ex, "Error rejecting document {DocumentId}", documentId);
-            return ApprovalResult.Error(ex.Message);
+            return ApprovalResult.Fail(ex.Message);
         }
     }
 
@@ -283,8 +283,8 @@ public class ApprovalResult
     public object? Data { get; set; }
     public string? Error { get; set; }
 
-    public static ApprovalResult Success(object data) => new() { Success = true, Data = data };
+    public static ApprovalResult Ok(object data) => new() { Success = true, Data = data };
     public static ApprovalResult NotFound(string message) => new() { Success = false, Message = message, Error = "NotFound" };
     public static ApprovalResult Invalid(string message) => new() { Success = false, Message = message, Error = "Invalid" };
-    public static ApprovalResult Error(string message) => new() { Success = false, Message = message, Error = "InternalError" };
+    public static ApprovalResult Fail(string message) => new() { Success = false, Message = message, Error = "InternalError" };
 }

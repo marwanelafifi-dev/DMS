@@ -1,4 +1,5 @@
 using DMS.Api.Data;
+using DMS.Api.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
@@ -96,7 +97,6 @@ public static class AuditActions
     public const string USER_CREATED = "USER_CREATED";
     public const string USER_UPDATED = "USER_UPDATED";
     public const string USER_DEACTIVATED = "USER_DEACTIVATED";
-
-    public const string PERMISSION_GRANTED = "PERMISSION_GRANTED";
-    public const string PERMISSION_REVOKED = "PERMISSION_REVOKED";
+    public const string USER_DELETED = "USER_DELETED";
+    public const string USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
 }

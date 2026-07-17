@@ -37,7 +37,7 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Created reminder {ReminderId} for task {TaskId}", reminder.ReminderId, taskId);
 
-            return ReminderResult.Success(new
+            return ReminderResult.Ok(new
             {
                 reminder.ReminderId,
                 reminder.TaskId,
@@ -50,7 +50,7 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
         catch (Exception ex)
         {
             logger.LogError(ex, "Error creating reminder");
-            return ReminderResult.Error(ex.Message);
+            return ReminderResult.Fail(ex.Message);
         }
     }
 
@@ -175,8 +175,8 @@ public class ReminderResult
     public object? Data { get; set; }
     public string? Error { get; set; }
 
-    public static ReminderResult Success(object data) => new() { Success = true, Data = data };
+    public static ReminderResult Ok(object data) => new() { Success = true, Data = data };
     public static ReminderResult NotFound(string message) => new() { Success = false, Message = message, Error = "NotFound" };
     public static ReminderResult Invalid(string message) => new() { Success = false, Message = message, Error = "Invalid" };
-    public static ReminderResult Error(string message) => new() { Success = false, Message = message, Error = "InternalError" };
+    public static ReminderResult Fail(string message) => new() { Success = false, Message = message, Error = "InternalError" };
 }

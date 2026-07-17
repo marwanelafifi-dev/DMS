@@ -33,16 +33,16 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         navigate(path);
         onClose?.();
       }}
-      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all ${
+      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
         isActive(path)
-          ? 'bg-white text-navy-900 shadow-lg'
-          : 'text-white hover:bg-navy-900 border border-transparent'
+          ? 'bg-white text-navy-900 shadow-sm'
+          : 'text-navy-100 hover:bg-navy-800'
       }`}
     >
-      {icon}
+      <span className="flex-shrink-0 [&>svg]:w-[18px] [&>svg]:h-[18px]">{icon}</span>
       <span className="flex-1 text-left text-sm font-medium">{label}</span>
       {badge ? (
-        <span className="bg-red-600 text-white text-xs rounded-full px-2 py-0.5 font-bold">
+        <span className="bg-red-600 text-white text-[11px] rounded-full min-w-[20px] h-5 flex items-center justify-center font-semibold px-1">
           {badge}
         </span>
       ) : null}
@@ -54,12 +54,12 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     return (
       <button
         onClick={() => toggleSection(sectionKey)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-xs font-extrabold text-white uppercase tracking-widest hover:bg-navy-900 hover:text-gray-200 transition-colors mt-4 first:mt-0 rounded-lg"
+        className="w-full flex items-center gap-2 px-4 py-2 text-sm font-serif font-semibold text-navy-200 tracking-tight hover:text-white transition-colors rounded-lg"
       >
         {isExpanded ? (
-          <ChevronDown className="w-5 h-5 flex-shrink-0 text-blue-400" />
+          <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-5 h-5 flex-shrink-0 text-gray-400" />
+          <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
         )}
         <span className="flex-1 text-left">{title}</span>
       </button>
@@ -83,12 +83,12 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         } flex flex-col overflow-y-auto`}
       >
         {/* My Tasks Section */}
-        <div className="p-4 space-y-2 border-b border-navy-800">
-          <h2 className="text-xs font-extrabold text-white uppercase tracking-widest px-2 mb-3 flex items-center gap-2">
+        <div className="p-4 space-y-1 border-b border-navy-800">
+          <h2 className="text-sm font-serif font-semibold text-navy-200 tracking-tight px-4 mb-2">
             Quick Links
           </h2>
           {menuItem(
-            <CheckCircle2 className="w-5 h-5 bg-gradient-to-br from-navy-900 to-primary-500" />,
+            <CheckCircle2 />,
             'My Tasks',
             '/tasks',
             3
@@ -96,7 +96,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         </div>
 
         {/* Vault & Approvals Section */}
-        <div className="flex-1 px-4 space-y-2 overflow-y-auto min-h-0">
+        <div className="px-4 py-2 space-y-1">
           {sectionHeader('Vault', 'vault')}
 
           {expandedSections.includes('vault') && (
@@ -138,11 +138,11 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         </div>
 
         {/* Admin Panel Section */}
-        <div className="p-4 border-t border-navy-800">
+        <div className="px-4 py-3 border-t border-navy-800">
           {sectionHeader('Admin Panel', 'admin')}
 
           {expandedSections.includes('admin') && (
-            <div className="space-y-1 pl-2 mt-2">
+            <div className="space-y-1 pl-2 mt-1">
               {menuItem(
                 <Users className="w-5 h-5" />,
                 'Users',

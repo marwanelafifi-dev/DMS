@@ -819,3 +819,187 @@ Extended the "navy-only, outline badges" formal style (established in Admin Pane
 **Verified via:** `npm run type-check` (0 errors) after each edit.
 
 **Net result:** the entire app (Dashboard, Documents, Admin Panel) now shares one consistent formal palette — navy-800 icon boxes with navy-700 border accents on stat cards, and outline-variant badges everywhere status/role/tag/action needs a color cue, reserving solid/bright color only for truly semantic states (Active/Inactive text, Locked indicator).
+
+---
+
+### Session 4 (cont. 2) — Sidebar Polish + Serif "Formal" Titles
+
+Per user feedback that the sidebar and page titles still didn't read as formal enough:
+
+**Sidebar (`Sidebar.tsx`):**
+- Fixed a layout bug: the Vault/Approvals wrapper had `flex-1`, forcing it to stretch and fill all remaining sidebar height — this pushed the Admin Panel section to the very bottom with a large dead gap in between. Removed `flex-1`; sections now stack naturally.
+- Fixed a dead hover state: non-active menu items had `hover:bg-navy-900` sitting on a `bg-navy-900` sidebar background, so hovering visibly did nothing. Changed to `hover:bg-navy-800`.
+- Removed the `uppercase tracking-widest` treatment on section labels (Quick Links/Vault/Approvals/Admin Panel) — read as shouty. Then, per a follow-up request to make these "parent" nav titles match the formal main-page titles, gave them `font-serif font-semibold tracking-tight text-navy-200` (brightens to white on hover) instead of a muted uppercase micro-label.
+- Removed a broken class (`bg-gradient-to-br` applied directly to a Lucide `<svg>`, which does nothing) from the "My Tasks" icon.
+- Normalized icon sizing centrally via `[&>svg]:w-[18px] [&>svg]:h-[18px]` in the shared `menuItem()` helper instead of repeating `className="w-5 h-5"` on every call site.
+
+**Formal serif titles (app-wide):** added `font-serif font-bold tracking-tight` (brand's Merriweather, already defined in `tailwind.config.ts`) to every page/section `<h1>/<h2>/<h3>` title — Dashboard welcome heading, My Tasks, Recent Documents, Pending Approvals, Documents, Admin Panel, User Management, Role-Based Access Control (later renamed, see Session 5), Audit Trail & Logging, Document Viewer, and the document-name heading. Previously these were plain `font-bold` sans-serif.
+
+**Files modified:** `Sidebar.tsx`, `Dashboard.tsx`, `Documents.tsx`, `Settings.tsx`, `DocumentViewer.tsx`, `UserManagement.tsx`, `RolePermissions.tsx`, `AuditTrail.tsx` (h1/h2 className only).
+
+---
+
+## 🔌 Session 5 (2026-07-17) — Wire Admin Panel to Real Backend Data
+
+**Status:** ✅ Users, Audit Trail, and Folder Permissions now call the real .NET API instead of in-component mock state.
+
+### Pre-flight findings (the "no new backend work needed" assumption from Session 4 was wrong)
+
+Before wiring anything, investigated the actual backend and found four blockers:
+
+1. **API didn't compile.** `AuditService.cs`'s `AuditActions` static class declared `PERMISSION_GRANTED`/`PERMISSION_REVOKED` twice (lines ~91-92 and ~100-101) — a C# duplicate-member error. **Fixed** by deleting the second pair.
+2. **No services running, zero seeded users** — `docker compose ps` was empty; DB had never had a user row (matches the original `GET /api/users → []` note from Phase 1).
+3. **Chicken-and-egg auth bootstrap problem.** `RBACMiddleware.cs` requires an `X-User-Id` header matching an existing **active** `dms_users` row on every endpoint except `/health`, `/test`, `/miniotest`, `/databasetest`. Since `POST /api/users` (create user) is itself gated behind this check, there was no way to create the very first user. The frontend's mock `useAuth` user (`userId: 'user-1'`) also wasn't a valid GUID, so it couldn't have satisfied the header even as a stopgap.
+4. **"Roles" doesn't exist as a backend entity.** `DmsUser` has no `Role` or `Department` column at all (checked `api/Models/DmsUser.cs`). Permissions are per-folder grants (`DmsFolderPermission`: folderId + userId + free-text `role` string — Reader/Writer/Manager/QA/Admin), not a global user role. The old `RolePermissions.tsx` mock (4 named roles × 10 togglable permissions like `view_documents`) had zero backend counterpart to wire to.
+
+Asked the user how to resolve both; chose (1) add a dev seed admin, and (2) repurpose the Roles tab to show real folder permissions instead of the fictional role/permission-bundle UI.
+
+### What was built
+
+**Backend:**
+- Fixed the duplicate-const compile error in `api/Services/AuditService.cs`.
+- Added `infra/db/init/003_dev_seed_admin.sql` — inserts one fixed-GUID admin (`00000000-0000-0000-0000-000000000001`, `admin@si-ware.com`) so there's a valid user to bootstrap auth with. **This is a temporary dev-only stopgap until real Google Workspace SSO login exists (see roadmap) — remove this file once that ships.** Note: Postgres only runs `/docker-entrypoint-initdb.d/*.sql` on an *empty* data volume — if the `db` volume already has data, this needs to be run manually against the running container instead of relying on auto-init.
+
+**Frontend (`web/src/utils/api.ts`):**
+- Exported `DEV_USER_ID` constant (must match the seed GUID above) and added it as a default `X-User-Id` header on the shared axios instance — every `apiClient` call now authenticates as the seed admin.
+- Fixed a pre-existing bug: `getAuditTrail()` called `/audit`, but `AuditTrailsController`'s actual route is `/api/audittrails`.
+- Added `updateUser()` and `deactivateUser()` (were missing; `PUT`/`DELETE /api/users/{id}` already existed server-side).
+
+**`useAuth.ts`:** mock "current user" now uses `DEV_USER_ID` and matches the seeded admin's real name/email instead of the old fake `'user-1'` / "Ahmed Ali".
+
+**`UserManagement.tsx` — rewritten for real data:**
+- Fetches `GET /api/users?activeOnly=false` on mount; loading state via `SkeletonTable`, error state with Retry button (network/API-down is now a real, handled case, not assumed-away).
+- **Removed the Role and Department columns** — no backend field backs them, so showing them would just be more fake data. Columns are now: Name (editable), Email, Status (Active/Inactive, editable), Created, Last Login, Actions.
+- Add User: real modal → `POST /api/users` (fullName + email).
+- Edit: inline fullName + isActive toggle → `PUT /api/users/{id}`.
+- Delete action renamed **Deactivate** (with confirmation modal) → `DELETE /api/users/{id}`, which is a soft-delete (`isActive = false`) server-side, not a real delete — UI wording now matches actual behavior.
+- Summary cards: Total Users / Active / Inactive (replaced the old fictional Admins/Readers-by-role cards, since role isn't a per-user concept here).
+
+**`AuditTrail.tsx` — rewritten for real data:**
+- Fetches `GET /api/audittrails?limit=200` and `GET /api/users?activeOnly=false` (for a userId→name lookup map) in parallel.
+- `ACTION_TYPES` filter list now mirrors the real `AuditActions` constants (`FOLDER_CREATED`, `DOCUMENT_CHECKOUT_EXPIRED`, `USER_DEACTIVATED`, etc.) instead of invented ones like `SETTINGS_CHANGED`.
+- **Removed IP Address and Status columns** — `DmsAuditTrail` has no such fields (just `LogId`, `UserId`, `Action`, `Metadata` JSON, `CreatedAt`); those were fabricated in the mock. Table is now Timestamp / User / Action / Details, where Details renders the action's free-form `Metadata` JSON as `key: value` pairs.
+- "Export Logs" button now does something real: generates and downloads a CSV of the currently filtered rows client-side.
+- Summary cards: Total Logs / Active Users / Doc Actions (dropped "Successful" since success/failure isn't tracked).
+
+**`RolePermissions.tsx` — repurposed as real Folder Permissions manager** (per user's explicit choice):
+- Fetches `GET /api/folders`, `GET /api/users?activeOnly=false`, then `GET /api/folderpermissions/folder/{id}` for every folder in parallel, flattens into one grants table: Folder / User / Role / Granted date / Revoke action.
+- Grant Permission modal: folder + user + role (`Reader/Writer/Manager/QA/Admin`, matching `RBACMiddleware.HasPermissionForMethod()`) dropdowns → `POST /api/folderpermissions`.
+- Revoke: confirm modal → `DELETE /api/folderpermissions/{id}`.
+- Page heading changed to **"Folder Permissions"** (sidebar nav label stays "Roles" per earlier explicit instruction — only the in-page title reflects what the feature actually is).
+- Info box explains the real permission model (per-folder grants, not global roles) instead of describing fictional permission checkboxes.
+
+### The real discovery: Phase 2 backend never actually compiled
+
+The single duplicate-const fix above was not enough — `docker compose build api` kept failing with dozens more errors. **The entire Phase 2 backend (Checkout/Approval/Task/Reminder/BackgroundJobs services, added in an earlier session and marked "✅ BACKEND COMPLETE" in this doc) had apparently never been successfully built.** Root cause: those services/controllers were written assuming EF Core navigation properties (`version.Document`, `task.AssignedTo`, `reminder.Recipient`, `permission.User`, etc.) that were never added to the models — the models only ever had scalar FK properties (an intentional Phase 1 decision, per this doc's own Session 1 notes), and nobody had reconciled the two.
+
+Full list of what was actually broken and fixed, file by file:
+
+| File | Problem | Fix |
+| :-- | :-- | :-- |
+| `Services/AuditService.cs` | `PERMISSION_GRANTED`/`PERMISSION_REVOKED` consts declared twice; missing `using DMS.Api.Models;` | removed duplicate pair; added using |
+| `Services/ApprovalService.cs`, `CheckoutService.cs`, `ReminderService.cs`, `TaskService.cs` | Each `*Result` class had a `bool Success`/`string? Error` **property** and a same-named **static factory method** — a real C# conflict (property vs. method can't share a name), not a literal duplicate | renamed the static factories: `Success(data)` → `Ok(data)`, `Error(msg)` → `Fail(msg)`; updated all call sites (confirmed via grep to be self-contained per file, no external callers) |
+| `Controllers/BackgroundJobsController.cs` | Missing `using DMS.Api.Services;`; `connection.GetStatistics()` isn't a real Hangfire API (should be via the monitoring API) | added using; changed to `JobStorage.Current.GetMonitoringApi().GetStatistics()` |
+| `Controllers/RemindersController.cs` | `jobClient.Enqueue<T>(...)` extension method not resolvable — missing `using Hangfire;` | added using |
+| `Program.cs` | `NoAuthorizationFilter` (for the Hangfire dashboard) referenced but never defined anywhere | created `/api/NoAuthorizationFilter.cs` — a minimal dev-only `IDashboardAuthorizationFilter` that allows all (`/hangfire` has no real auth yet, matches the existing "readonly for now" comment); added missing usings |
+| `Middleware/RBACMiddleware.cs` | `.Include(d => d.Folders)` — `DmsDocument` has no such nav property, and it turned out unnecessary anyway (only the scalar `document.FolderId` is read afterward) | deleted the `.Include(...)` call entirely |
+| `Controllers/FolderPermissionsController.cs` | Uses `p.User`, `p.Folder`, `p.GrantedBy` — none exist on `DmsFolderPermission` (scalar-FK-only model). This single root cause also produced misleading cascading errors (CS1503/CS0828 on unrelated `logger.LogInformation(...)` calls) because the broken anonymous-type projection poisoned type inference for the rest of the method — **lesson: when a `.NET` build log shows a nonsensical error on a normal-looking line, check for an earlier real error in the same method first** | added `Folder`/`User`/`GrantedBy` nav properties to `Models/DmsFolderPermission.cs`; wired them in `DmsContext.OnModelCreating` (changed `.HasOne<DmsUser>()` → `.HasOne(fp => fp.User)` etc., keeping existing FK/cascade config) |
+| `Services/ApprovalService.cs` | `version.Document`, `version.SubmittedBy` don't exist on `DmsDocumentVersion` | added those two nav properties + `DbContext` wiring |
+| `Services/TaskService.cs`, `Controllers/TasksController.cs` | `task.AssignedTo`, `task.Document` don't exist on `DmsTask` | added those two nav properties + `DbContext` wiring |
+| `Services/ReminderService.cs` | `reminder.Recipient`, `reminder.Task` don't exist on `DmsReminder` | added those two nav properties + `DbContext` wiring |
+
+**Files created:** `api/NoAuthorizationFilter.cs`
+**Files modified:** `Models/DmsDocumentVersion.cs`, `Models/DmsTask.cs`, `Models/DmsReminder.cs`, `Models/DmsFolderPermission.cs`, `Data/DmsContext.cs`, `Services/AuditService.cs`, `Services/ApprovalService.cs`, `Services/CheckoutService.cs`, `Services/ReminderService.cs`, `Services/TaskService.cs`, `Controllers/BackgroundJobsController.cs`, `Controllers/RemindersController.cs`, `Middleware/RBACMiddleware.cs`, `Program.cs`
+
+### Verification (this time actually end-to-end)
+- `npm run type-check`: 0 new frontend errors.
+- `docker compose build api`: **succeeds** (confirmed with `--progress=plain` to rule out BuildKit log truncation hiding errors — which is exactly what caused the "one bug" undercount earlier in this session).
+- `docker compose up -d`: all 5 services (`api`, `postgres`, `minio`, `redis`, `ocr-rag`) report `healthy`.
+- Live curl checks against the running API (`X-User-Id: 00000000-0000-0000-0000-000000000001`):
+  - `GET /api/users` → returns the seeded System Admin (confirms `003_dev_seed_admin.sql` executed on this fresh volume).
+  - `GET /api/audittrails` → `{"success":true,"data":[],"count":0}`
+  - `GET /api/folders` → `{"success":true,"data":[],"count":0}`
+- Frontend dev server (`npm run dev`) starts clean; CORS in `Program.cs` already allowlists `http://localhost:5173`, matching Vite's default port.
+- Not yet clicked through in an actual browser window this session — the curl checks confirm the API contract the frontend's `apiClient` relies on is real and correct, but a manual click-through of `/admin/users`, `/admin/roles`, `/admin/audit` is still worth doing next.
+
+### Known follow-ups
+- The dev seed admin is a stopgap. Real next step is Google Workspace SSO (already on the roadmap in this doc) — once that exists, delete `infra/db/init/003_dev_seed_admin.sql` and remove `DEV_USER_ID` from `api.ts`/`useAuth.ts`.
+- `UserManagement.tsx`'s Add User form doesn't yet surface folder-permission assignment inline — a new user has zero folder access until someone grants it via the Folder Permissions tab. Consider linking the two.
+- No pagination on Audit Trail (`limit=200` fixed) or Users list — fine at current scale, revisit if either table grows large.
+- Folders/Documents tables are currently empty (matches `GET /api/folders` above) — the Documents page frontend is still on mock data (`Documents.tsx`), not yet wired to `GET /api/folders`/`GET /api/documents`. That's a natural next wiring task, same shape as this session's work.
+- Given how much silently-broken backend code this session uncovered, it's worth a deliberate pass to actually exercise every Phase 2 endpoint (Checkout/Approval/Tasks/Reminders/BackgroundJobs) at least once — they compile now, but compiling ≠ correct, and none of them have been runtime-verified.
+
+---
+
+## 🔐 Session 6 (2026-07-17) — Self-Lockout Bug, Local Passwords, Delete User, RBAC Middleware Crash
+
+**Status:** ✅ All fixed and live-verified against the running stack.
+
+### 1. Self-deactivation lockout (found via live UI testing)
+
+While clicking through the newly-wired Admin Panel, deactivating the seed admin's own account (the *only* account that existed) locked the entire Admin Panel — every endpoint requires an active `X-User-Id`, so there was no way back in short of a direct DB write.
+
+**Recovered by hand:** `UPDATE dms_users SET is_active = true WHERE user_id = '00000000-...-001'` against the running Postgres container.
+
+**Fixed properly, both sides:**
+- `UsersController.DeactivateUser`: now returns `400` if `id == GetCurrentUserId()` — cannot deactivate your own account, full stop.
+- `UserManagement.tsx`: the Deactivate button is hidden for the row matching `DEV_USER_ID` and replaced with a disabled, greyed icon ("You cannot deactivate your own account").
+
+### 2. Local password auth + Delete User + Reset Password (new features)
+
+`DmsUser` had no way to authenticate locally at all (only `SsoSubject` for future Google Workspace SSO). Added a self-contained local password system:
+
+- **`api/Services/PasswordHasher.cs`** (new) — PBKDF2 via `System.Security.Cryptography` (no new NuGet dependency). Stored format: `V1.{iterations}.{saltBase64}.{hashBase64}`.
+- **`dms_users.password_hash`** column added (`infra/db/init/004_add_password_hash.sql`, nullable — null means SSO-only account). Like the seed-admin migration, this only auto-runs on a brand-new empty Postgres volume; applied manually this session via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+- **`POST /api/users`** (`CreateUserRequest`) now accepts an optional `Password` (min 8 chars), hashed before storage.
+- **`PUT /api/users/{id}/reset-password`** (new) — admin sets a new password for any user; audited as `USER_PASSWORD_RESET`.
+- **`DELETE /api/users/{id}/permanent`** (new, hard delete — distinct from the existing soft-delete `DELETE /api/users/{id}` which just deactivates) — same self-delete guard as deactivation; catches `DbUpdateException` from FK `RESTRICT` constraints (a user who still owns documents/tasks/e-signatures can't be hard-deleted — the API returns a `409` telling the admin to deactivate instead) and logs `USER_DELETED`.
+- **Frontend** (`UserManagement.tsx`): password field added to the Add User modal (required, 8-char minimum, client + server validated); new Reset Password modal (key icon) and Delete Permanently modal (trash icon, red confirmation, explains the FK-safety behavior) added to the Actions column, both respecting the same self-action guards as deactivate.
+- **`api.ts`**: added `resetPassword()` and `deleteUserPermanently()`.
+
+### 3. Real bug: RBAC middleware double-invocation crash
+
+User reported the Roles/Folder Permissions tab consistently showing "Failed to reach the API" — even though direct `curl` to the same endpoint returned `200` with valid JSON, which made it look like a stale-tab/CORS red herring at first (and there *was* a real stale-tab problem too, see #4 below — but fixing that alone didn't resolve this one).
+
+**Root cause** (`api/Middleware/RBACMiddleware.cs`): `CheckFolderPermissions` and `CheckDocumentPermissions` each called `await _next(context)` *themselves* for the "no ID in path" case (e.g. plain `GET /api/folders`, `GET /api/documents`), then returned. Control went back to `InvokeAsync`, which — having no way to know `_next` was already called — unconditionally called `await _next(context)` **again** at the bottom of the method. This ran the entire downstream pipeline (routing → controller → response write) **twice** on one request. The second pass crashed with `System.InvalidOperationException: StatusCode cannot be set because the response has already started`, confirmed live in `docker compose logs api` — `"Retrieved 0 folders"` appeared twice per single request, immediately followed by that exception.
+
+This explains the asymmetry the user observed: `/api/users` and `/api/audittrails` never touch `IsFolderEndpoint`/`IsDocumentEndpoint`, so they were never affected — only `/api/folders` and `/api/documents` (and by extension, once that page gets wired, the Documents list) were broken. Plain `curl` "worked" only because it received the valid first response before the server-side crash occurred on the same connection.
+
+**Fix:** `CheckFolderPermissions`/`CheckDocumentPermissions` now return `Task<bool>` (*"was the request already fully handled?"*) instead of calling `_next` themselves. `InvokeAsync` calls `_next` exactly once, at the single existing call site, gated on that bool. Verified via live log capture: `"Retrieved 0 folders"` now appears exactly once per request, zero `InvalidOperationException`.
+
+**Lesson for future debugging in this codebase:** a `.NET` build/runtime error on a normal-looking line (e.g. the earlier `FolderPermissionsController` `logger.LogInformation` CS1503/CS0828 saga in Session 5) is often a *cascading* symptom of a real error earlier in the same method/request — check upstream before trusting the reported line number.
+
+### 4. Housekeeping bug: 5 duplicate `npm run dev` processes
+
+Over the course of this session, `npm run dev` was started in the background multiple times without killing prior instances. Vite auto-increments to a new port when 5173 is taken, so by this point there were 5 separate dev server processes on different ports, and the user's open browser tab could easily have been pointed at a stale one showing old code with a dead HMR websocket connection (compounding the confusion around bug #3 above, since a genuinely-fixed backend can still look broken through a frozen frontend tab).
+
+**Fixed:** killed all `node.exe` processes, started exactly one clean `npm run dev` instance, confirmed via `curl` against the dev server's raw source that it was serving the latest edited files.
+
+### 5. Real bug: invisible modal titles (global CSS collision)
+
+`globals.css` sets an unconditional base rule `h3 { color: navy-900 }` (`h1`/`h2` similarly, at different shades). Every modal header `<h3>` built across this session's work (Add User, Deactivate User, Delete User Permanently, Reset Password, Grant Permission, Revoke Permission) — plus one pre-existing one (`Documents.tsx`'s "Delete Document" modal) — sat inside a `bg-navy-900` or red-gradient header div and relied on inheriting `text-white` from the parent, but the global element-selector rule on `h3` itself overrides inherited color. Result: navy text on a navy (or red) background — invisible, not a rendering glitch.
+
+**Fixed:** added explicit `text-white` to all 7 affected `<h3>` titles.
+
+### Files created this session
+- `api/Services/PasswordHasher.cs`
+- `infra/db/init/004_add_password_hash.sql`
+
+### Files modified this session (beyond Session 5's list)
+- `api/Controllers/UsersController.cs` — self-delete/deactivate guards, reset-password endpoint, permanent-delete endpoint
+- `api/Services/AuditService.cs` — added `USER_DELETED`, `USER_PASSWORD_RESET` actions
+- `api/Models/DmsUser.cs` — added `PasswordHash`
+- `api/Middleware/RBACMiddleware.cs` — fixed double-`_next()` invocation bug
+- `web/src/components/custom/UserManagement.tsx` — password field, Reset Password modal, Delete Permanently modal, self-action guards
+- `web/src/components/custom/RolePermissions.tsx`, `web/src/components/pages/Documents.tsx` — invisible-title CSS fix
+
+### Verification
+- `docker compose build api` clean; `docker compose ps` all healthy.
+- Live curl + log capture confirmed the RBAC fix (single invocation, zero exceptions) and the self-delete/deactivate guards (`400` rejection, account stays active/present).
+- User independently confirmed via screenshot that the Roles/Folder Permissions tab now loads correctly end-to-end after the middleware fix.
+- `npm run type-check`: 0 new errors.
+
+### Known follow-ups (additive to Session 5's list)
+- `DmsFolderPermission`'s `role` field is still a free-text string, not an enum — `RolePermissions.tsx`'s `ROLE_OPTIONS` list is the only thing keeping values consistent with `RBACMiddleware.HasPermissionForMethod()`. Consider a Postgres `CHECK` constraint or a C# enum if this grows.
+- No rate-limiting or lockout on password verification — irrelevant today since nothing actually *logs in* with a password yet (no login endpoint exists; passwords are set/reset by an admin only). Needs revisiting once a real local-login flow is built.
+- The Hangfire auto-unlock background job is throwing on every run (`column d.checked_out_by_id does not exist` — should be `checked_out_by`), spotted as noise in the logs while debugging issue #3 above. Not touched this session since it's unrelated to Admin Panel work, but it means Checkout auto-expiry is currently non-functional in the running container.

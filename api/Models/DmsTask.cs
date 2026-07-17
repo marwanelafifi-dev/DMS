@@ -20,4 +20,7 @@ public class DmsTask
     public DateTime? CompletedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    public DmsUser? AssignedTo { get; set; }
+    public DmsDocument? Document { get; set; }
 }

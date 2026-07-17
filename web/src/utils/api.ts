@@ -3,6 +3,11 @@ import type { ApiResponse } from '../types';
 
 const API_BASE = 'http://localhost:8080/api';
 
+// Dev-only bootstrap user until Google Workspace SSO is wired up (see CLAUDE.md).
+// Every protected endpoint requires X-User-Id to match an active dms_users row —
+// this must match the GUID seeded in infra/db/init/003_dev_seed_admin.sql.
+export const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
+
 class APIClient {
   private client: AxiosInstance;
 
@@ -11,6 +16,7 @@ class APIClient {
       baseURL: API_BASE,
       headers: {
         'Content-Type': 'application/json',
+        'X-User-Id': DEV_USER_ID,
       },
       timeout: 30000,
     });
@@ -39,6 +45,26 @@ class APIClient {
 
   async createUser(userData: any) {
     const { data } = await this.client.post<ApiResponse>('/users', userData);
+    return data;
+  }
+
+  async updateUser(userId: string, userData: any) {
+    const { data } = await this.client.put<ApiResponse>(`/users/${userId}`, userData);
+    return data;
+  }
+
+  async deactivateUser(userId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/users/${userId}`);
+    return data;
+  }
+
+  async resetPassword(userId: string, newPassword: string) {
+    const { data } = await this.client.put<ApiResponse>(`/users/${userId}/reset-password`, { newPassword });
+    return data;
+  }
+
+  async deleteUserPermanently(userId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/users/${userId}/permanent`);
     return data;
   }
 
@@ -239,7 +265,7 @@ class APIClient {
 
   // Audit
   async getAuditTrail(params?: any) {
-    const { data } = await this.client.get<ApiResponse>('/audit', { params });
+    const { data } = await this.client.get<ApiResponse>('/audittrails', { params });
     return data;
   }
 

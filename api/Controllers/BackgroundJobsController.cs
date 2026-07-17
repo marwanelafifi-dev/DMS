@@ -1,3 +1,4 @@
+using DMS.Api.Services;
 using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,28 +14,25 @@ public class BackgroundJobsController(ILogger<BackgroundJobsController> logger) 
     {
         try
         {
-            using (var connection = JobStorage.Current.GetConnection())
+            var stats = JobStorage.Current.GetMonitoringApi().GetStatistics();
+
+            logger.LogInformation("Retrieved background job statistics");
+
+            return Ok(new
             {
-                var stats = connection.GetStatistics();
-
-                logger.LogInformation("Retrieved background job statistics");
-
-                return Ok(new
+                success = true,
+                data = new
                 {
-                    success = true,
-                    data = new
-                    {
-                        Enqueued = stats.Enqueued,
-                        Failed = stats.Failed,
-                        Processing = stats.Processing,
-                        Scheduled = stats.Scheduled,
-                        Succeeded = stats.Succeeded,
-                        Deleted = stats.Deleted,
-                        Recurring = stats.Recurring,
-                        TimestampUtc = DateTime.UtcNow
-                    }
-                });
-            }
+                    Enqueued = stats.Enqueued,
+                    Failed = stats.Failed,
+                    Processing = stats.Processing,
+                    Scheduled = stats.Scheduled,
+                    Succeeded = stats.Succeeded,
+                    Deleted = stats.Deleted,
+                    Recurring = stats.Recurring,
+                    TimestampUtc = DateTime.UtcNow
+                }
+            });
         }
         catch (Exception ex)
         {

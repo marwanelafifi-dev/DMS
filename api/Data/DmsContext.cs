@@ -68,19 +68,19 @@ public class DmsContext : DbContext
 
         // Folder Permissions: folder (CASCADE) + user (CASCADE) + granter (SET NULL)
         modelBuilder.Entity<DmsFolderPermission>()
-            .HasOne<DmsFolder>()
+            .HasOne(fp => fp.Folder)
             .WithMany()
             .HasForeignKey(fp => fp.FolderId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<DmsFolderPermission>()
-            .HasOne<DmsUser>()
+            .HasOne(fp => fp.User)
             .WithMany()
             .HasForeignKey(fp => fp.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<DmsFolderPermission>()
-            .HasOne<DmsUser>()
+            .HasOne(fp => fp.GrantedBy)
             .WithMany()
             .HasForeignKey(fp => fp.GrantedById)
             .OnDelete(DeleteBehavior.SetNull);
@@ -106,7 +106,7 @@ public class DmsContext : DbContext
 
         // Document Versions: document (CASCADE) + checkout user (SET NULL) + submitted user (SET NULL) + approved user (SET NULL)
         modelBuilder.Entity<DmsDocumentVersion>()
-            .HasOne<DmsDocument>()
+            .HasOne(dv => dv.Document)
             .WithMany()
             .HasForeignKey(dv => dv.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
@@ -118,7 +118,7 @@ public class DmsContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<DmsDocumentVersion>()
-            .HasOne<DmsUser>()
+            .HasOne(dv => dv.SubmittedBy)
             .WithMany()
             .HasForeignKey(dv => dv.SubmittedById)
             .OnDelete(DeleteBehavior.SetNull);
@@ -210,7 +210,7 @@ public class DmsContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<DmsTask>()
-            .HasOne<DmsUser>()
+            .HasOne(t => t.AssignedTo)
             .WithMany()
             .HasForeignKey(t => t.AssignedToId)
             .OnDelete(DeleteBehavior.Restrict);
@@ -228,20 +228,20 @@ public class DmsContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<DmsTask>()
-            .HasOne<DmsDocument>()
+            .HasOne(t => t.Document)
             .WithMany()
             .HasForeignKey(t => t.DocumentId)
             .OnDelete(DeleteBehavior.SetNull);
 
         // Reminders: task (CASCADE) + recipient (RESTRICT)
         modelBuilder.Entity<DmsReminder>()
-            .HasOne<DmsTask>()
+            .HasOne(r => r.Task)
             .WithMany()
             .HasForeignKey(r => r.TaskId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<DmsReminder>()
-            .HasOne<DmsUser>()
+            .HasOne(r => r.Recipient)
             .WithMany()
             .HasForeignKey(r => r.RecipientId)
             .OnDelete(DeleteBehavior.Restrict);

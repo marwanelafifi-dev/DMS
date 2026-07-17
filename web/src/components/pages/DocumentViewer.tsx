@@ -305,7 +305,7 @@ export function DocumentViewer() {
           <ChevronRight className="w-4 h-4 text-navy-500" />
           <span className="text-navy-400">Loading...</span>
         </div>
-        <h1 className="text-3xl font-bold text-white">Document Viewer</h1>
+        <h1 className="text-3xl font-serif font-bold tracking-tight text-white">Document Viewer</h1>
         <SkeletonCard />
       </div>
     );
@@ -315,7 +315,7 @@ export function DocumentViewer() {
     return (
       <div className="space-y-8 text-center py-12">
         <div>
-          <h2 className="text-2xl font-bold text-white mb-2">Document Not Found</h2>
+          <h2 className="text-2xl font-serif font-bold tracking-tight text-white mb-2">Document Not Found</h2>
           <p className="text-navy-300">The document you're looking for doesn't exist or has been deleted.</p>
         </div>
         <button
@@ -345,7 +345,7 @@ export function DocumentViewer() {
       {/* Page Title */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold text-navy-900">{document.name}</h1>
+          <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900">{document.name}</h1>
           <span className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${
             document.status === 'released' ? 'bg-green-100 text-green-800' :
             document.status === 'pending_approval' ? 'bg-blue-100 text-blue-800' :
