@@ -8,7 +8,7 @@ interface DocumentListProps {
   documents: Document[];
   isLoading?: boolean;
   onDocumentClick: (docId: string) => void;
-  onDelete?: (docId: string) => void;
+  onDelete?: (docId: string, docName: string) => void;
   onDownload?: (docId: string) => void;
 }
 
@@ -19,7 +19,7 @@ export function DocumentList({
   onDelete,
   onDownload,
 }: DocumentListProps) {
-  const [sortBy, setSortBy] = useState<'name' | 'date' | 'size'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'date' | 'size' | 'status'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const getStatusColor = (status: Document['status']) => {
@@ -34,8 +34,22 @@ export function DocumentList({
   };
 
   const sortedDocs = [...documents].sort((a, b) => {
-    let aVal: any = a[sortBy === 'name' ? 'name' : sortBy === 'date' ? 'uploadedAt' : 'fileSize'];
-    let bVal: any = b[sortBy === 'name' ? 'name' : sortBy === 'date' ? 'uploadedAt' : 'fileSize'];
+    let aVal: any;
+    let bVal: any;
+
+    if (sortBy === 'name') {
+      aVal = a.name;
+      bVal = b.name;
+    } else if (sortBy === 'date') {
+      aVal = a.uploadedAt;
+      bVal = b.uploadedAt;
+    } else if (sortBy === 'size') {
+      aVal = a.fileSize;
+      bVal = b.fileSize;
+    } else if (sortBy === 'status') {
+      aVal = a.status;
+      bVal = b.status;
+    }
 
     if (typeof aVal === 'string') aVal = aVal.toLowerCase();
     if (typeof bVal === 'string') bVal = bVal.toLowerCase();
@@ -77,6 +91,7 @@ export function DocumentList({
           className="px-4 py-2 text-sm font-medium bg-white dark:bg-navy-800 border border-gray-300 dark:border-navy-600 text-navy-900 dark:text-white rounded-lg hover:border-gray-400 dark:hover:border-navy-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 dark:focus:ring-offset-navy-900 transition-colors"
         >
           <option value="name">Name</option>
+          <option value="status">Status</option>
           <option value="date">Date</option>
           <option value="size">Size</option>
         </select>
@@ -180,7 +195,7 @@ export function DocumentList({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDelete?.(doc.documentId);
+                        onDelete?.(doc.documentId, doc.name);
                       }}
                       className="inline-flex items-center justify-center p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-navy-700 rounded-lg transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
                       title="Delete document"

@@ -1,24 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
 import { PDFToolbar } from './PDFToolbar';
+import { FileText, FileSpreadsheet, File } from 'lucide-react';
 
 interface PDFViewerProps {
   fileUrl: string;
   fileName: string;
+  contentType?: string;
 }
 
-export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
+export function PDFViewer({ fileUrl, fileName, contentType = 'application/pdf' }: PDFViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Mock PDF rendering - in production would use PDF.js
+  // Determine file type
+  const getFileType = () => {
+    const ext = fileName.toLowerCase().split('.').pop();
+    if (['pdf'].includes(ext || '')) return 'pdf';
+    if (['xlsx', 'xls', 'csv'].includes(ext || '')) return 'excel';
+    if (['docx', 'doc'].includes(ext || '')) return 'word';
+    if (['pptx', 'ppt'].includes(ext || '')) return 'powerpoint';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
+    return 'unknown';
+  };
+
+  const fileType = getFileType();
+
+  // Mock rendering - in production would use actual libraries
   useEffect(() => {
-    // Simulate loading a PDF with 10 pages
+    // Simulate loading with 10 pages
     setTotalPages(10);
     renderPage();
-  }, [currentPage, zoom, rotation]);
+  }, [currentPage, zoom, rotation, fileType]);
 
   const renderPage = () => {
     const canvas = canvasRef.current;
@@ -27,7 +42,7 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Mock PDF page rendering
+    // Mock page rendering
     const width = 800 * (zoom / 100);
     const height = 1000 * (zoom / 100);
 
@@ -38,10 +53,22 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw page number
+    // Draw content based on file type
     ctx.fillStyle = '#333333';
     ctx.font = `${24 * (zoom / 100)}px Arial`;
     ctx.textAlign = 'center';
+
+    const fileTypeLabels = {
+      pdf: 'PDF Document',
+      excel: 'Excel Spreadsheet',
+      word: 'Word Document',
+      powerpoint: 'PowerPoint Presentation',
+      image: 'Image File',
+      unknown: 'Document'
+    };
+
+    ctx.fillText(`${fileTypeLabels[fileType as keyof typeof fileTypeLabels]}`, width / 2, height / 2 - 40);
+    ctx.font = `${16 * (zoom / 100)}px Arial`;
     ctx.fillText(`Page ${currentPage}`, width / 2, height / 2);
 
     // Draw subtle border

@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import { PDFViewer } from '../custom/PDFViewer';
 import { DocumentDetailsPanel } from '../custom/DocumentDetailsPanel';
 import { useToast } from '../../hooks/useToast';
+import { useDocumentStore } from '../../hooks/useDocumentState';
 import type { Document } from '../../types';
 import { SkeletonCard } from '../ui';
 
@@ -11,10 +12,12 @@ export function DocumentViewer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showSuccess, showError, showInfo } = useToast();
+  const { updateDocument, applyChanges } = useDocumentStore();
 
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLockingLoading, setIsLockingLoading] = useState(false);
+  const [statusChanged, setStatusChanged] = useState(false);
 
   // Load Document
   useEffect(() => {
@@ -22,30 +25,112 @@ export function DocumentViewer() {
       try {
         setIsLoading(true);
 
-        // Mock Document Data
-        const mockDocument: Document = {
-          documentId: id || 'doc-1',
-          folderId: 'folder-1',
-          name: 'ISO 9001:2015 Quality Procedure',
-          fileName: 'quality-procedure.pdf',
-          fileSize: 2048576,
-          contentType: 'application/pdf',
-          status: 'released',
-          uploadedBy: 'user-2',
-          uploadedByUser: {
-            userId: 'user-2',
-            fullName: 'Ahmed Ali',
-            email: 'ahmed@si-ware.com',
-            role: 'Manager',
-            isActive: true,
-            createdAt: '',
+        // Mock Document Data - keyed by ID
+        const mockDocuments: Record<string, Document> = {
+          'doc-1': {
+            documentId: 'doc-1',
+            folderId: 'folder-1',
+            name: 'ISO 9001:2015 Quality Procedure',
+            fileName: 'quality-procedure.pdf',
+            fileSize: 2048576,
+            contentType: 'application/pdf',
+            status: 'released',
+            uploadedBy: 'user-2',
+            uploadedByUser: { userId: 'user-2', fullName: 'Ahmed Ali', email: 'ahmed@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
+            uploadedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+            checkoutStatus: 'checked_in',
           },
-          uploadedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          checkoutStatus: 'checked_in',
+          'doc-2': {
+            documentId: 'doc-2',
+            folderId: 'folder-1',
+            name: 'Document Control Procedure',
+            fileName: 'doc-control.pdf',
+            fileSize: 1536000,
+            contentType: 'application/pdf',
+            status: 'pending_approval',
+            uploadedBy: 'user-3',
+            uploadedByUser: { userId: 'user-3', fullName: 'Mohammed Anwar', email: 'mohamm@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
+            uploadedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            checkoutStatus: 'checked_out',
+            checkedOutBy: 'user-1',
+          },
+          'doc-3': {
+            documentId: 'doc-3',
+            folderId: 'folder-1',
+            name: 'Records Management Policy',
+            fileName: 'records-policy.pdf',
+            fileSize: 2097152,
+            contentType: 'application/pdf',
+            status: 'draft',
+            uploadedBy: 'user-1',
+            uploadedByUser: { userId: 'user-1', fullName: 'You', email: 'you@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
+            uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+            checkoutStatus: 'checked_in',
+          },
+          'doc-4': {
+            documentId: 'doc-4',
+            folderId: 'folder-1',
+            name: 'Audit Results Q2 2026',
+            fileName: 'audit-results-q2.xlsx',
+            fileSize: 512000,
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            status: 'released',
+            uploadedBy: 'user-4',
+            uploadedByUser: { userId: 'user-4', fullName: 'Sarah Johnson', email: 'sarah@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
+            uploadedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            checkoutStatus: 'checked_in',
+          },
+          'doc-5': {
+            documentId: 'doc-5',
+            folderId: 'folder-1',
+            name: 'Employee Training Records',
+            fileName: 'training-records.docx',
+            fileSize: 1024000,
+            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            status: 'pending_approval',
+            uploadedBy: 'user-5',
+            uploadedByUser: { userId: 'user-5', fullName: 'Lisa Chen', email: 'lisa@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
+            uploadedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+            checkoutStatus: 'checked_in',
+          },
+          'doc-6': {
+            documentId: 'doc-6',
+            folderId: 'folder-1',
+            name: 'Company Logo High Resolution',
+            fileName: 'logo-hires.png',
+            fileSize: 3072000,
+            contentType: 'image/png',
+            status: 'released',
+            uploadedBy: 'user-6',
+            uploadedByUser: { userId: 'user-6', fullName: 'Design Team', email: 'design@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
+            uploadedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+            checkoutStatus: 'checked_in',
+          },
+          'doc-7': {
+            documentId: 'doc-7',
+            folderId: 'folder-1',
+            name: 'Q3 2026 Management Review',
+            fileName: 'q3-management-review.pptx',
+            fileSize: 4096000,
+            contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            status: 'draft',
+            uploadedBy: 'user-2',
+            uploadedByUser: { userId: 'user-2', fullName: 'Ahmed Ali', email: 'ahmed@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
+            uploadedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+            checkoutStatus: 'checked_in',
+          },
         };
 
-        setDocument(mockDocument);
+        const mockDocument = mockDocuments[id || 'doc-1'] || mockDocuments['doc-1'];
+        const documentWithChanges = applyChanges(mockDocument);
+        setDocument(documentWithChanges);
       } catch (error) {
         showError('Failed to load document');
         navigate('/documents');
@@ -62,19 +147,27 @@ export function DocumentViewer() {
 
     try {
       setIsLockingLoading(true);
-      // In real implementation, would call apiClient.checkoutDocument()
+      // Call backend API: POST /api/documents/{id}/versions/{versionId}/checkout
       showInfo('Locking file for editing...');
+      // const response = await apiClient.checkoutDocument(document.documentId, document.uploadedAt);
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Update local state
-      setDocument({
+      const updatedDoc = {
         ...document,
+        checkoutStatus: 'checked_out',
+        checkedOutBy: 'user-1',
+        checkedOutAt: new Date().toISOString(),
+      };
+      setDocument(updatedDoc);
+      updateDocument(document.documentId, {
         checkoutStatus: 'checked_out',
         checkedOutBy: 'user-1',
         checkedOutAt: new Date().toISOString(),
       });
 
-      showSuccess('File locked for editing (60-min timeout)');
+      setStatusChanged(true);
+      setTimeout(() => setStatusChanged(false), 2000);
+      showSuccess('✓ File locked for editing (60-min timeout)');
     } catch (error) {
       showError('Lock failed');
     } finally {
@@ -86,16 +179,20 @@ export function DocumentViewer() {
     if (!document) return;
 
     try {
-      // In real implementation, would call apiClient.submitForApproval()
+      // Call backend API: POST /api/documents/{id}/submit
       showInfo('Submitting for approval...');
+      // const response = await apiClient.submitForApproval(document.documentId);
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      setDocument({
+      const updatedDoc = {
         ...document,
-        status: 'pending_approval',
-      });
-
-      showSuccess('Document submitted for approval');
+        status: 'pending_approval' as const,
+      };
+      setDocument(updatedDoc);
+      updateDocument(document.documentId, { status: 'pending_approval' });
+      setStatusChanged(true);
+      setTimeout(() => setStatusChanged(false), 2000);
+      showSuccess('✓ Document submitted for approval! Status: DRAFT → PENDING APPROVAL');
     } catch (error) {
       showError('Submission failed');
     }
@@ -105,16 +202,21 @@ export function DocumentViewer() {
     if (!document) return;
 
     try {
-      // In real implementation, would call apiClient.approveDocument()
+      // Call backend API: POST /api/documents/{id}/approve
       showInfo('Approving document...');
+      // const response = await apiClient.approveDocument(document.documentId);
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      setDocument({
+      const updatedDoc = {
         ...document,
-        status: 'released',
-      });
+        status: 'released' as const,
+      };
+      setDocument(updatedDoc);
+      updateDocument(document.documentId, { status: 'released' });
 
-      showSuccess('Document approved');
+      setStatusChanged(true);
+      setTimeout(() => setStatusChanged(false), 2000);
+      showSuccess('✓ Document approved! Status: PENDING APPROVAL → RELEASED');
     } catch (error) {
       showError('Approval failed');
     }
@@ -124,18 +226,52 @@ export function DocumentViewer() {
     if (!document) return;
 
     try {
-      // In real implementation, would call apiClient.rejectDocument()
+      // Call backend API: POST /api/documents/{id}/reject
       showInfo('Rejecting document...');
+      // const response = await apiClient.rejectDocument(document.documentId);
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      setDocument({
+      const updatedDoc = {
         ...document,
-        status: 'draft',
-      });
+        status: 'draft' as const,
+      };
+      setDocument(updatedDoc);
+      updateDocument(document.documentId, { status: 'draft' });
 
-      showSuccess('Document rejected, returned to draft');
+      setStatusChanged(true);
+      setTimeout(() => setStatusChanged(false), 2000);
+      showSuccess('✓ Document rejected and returned to DRAFT for corrections');
     } catch (error) {
       showError('Rejection failed');
+    }
+  };
+
+  const handleUnlock = async () => {
+    if (!document) return;
+
+    try {
+      // Call backend API: DELETE /api/documents/{id}/versions/{versionId}/checkout
+      showInfo('Unlocking file...');
+      // const response = await apiClient.checkinDocument(document.documentId);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const updatedDoc = {
+        ...document,
+        checkoutStatus: 'checked_in',
+        checkedOutBy: undefined,
+        checkedOutAt: undefined,
+      };
+      setDocument(updatedDoc);
+      updateDocument(document.documentId, {
+        checkoutStatus: 'checked_in',
+        checkedOutBy: undefined,
+        checkedOutAt: undefined,
+      });
+      setStatusChanged(true);
+      setTimeout(() => setStatusChanged(false), 2000);
+      showSuccess('✓ File unlocked by admin');
+    } catch (error) {
+      showError('Unlock failed');
     }
   };
 
@@ -143,8 +279,9 @@ export function DocumentViewer() {
     if (!document) return;
 
     try {
-      // In real implementation, would call apiClient.downloadDocument()
+      // Call backend API: GET /api/documents/{id}/download
       showInfo('Downloading document...');
+      // const response = await apiClient.downloadDocument(document.documentId);
       const link = globalThis.document.createElement('a');
       link.href = `/documents/${document.documentId}/download`;
       link.download = document.fileName;
@@ -207,7 +344,19 @@ export function DocumentViewer() {
 
       {/* Page Title */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-navy-900">{document.name}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-navy-900">{document.name}</h1>
+          <span className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${
+            document.status === 'released' ? 'bg-green-100 text-green-800' :
+            document.status === 'pending_approval' ? 'bg-blue-100 text-blue-800' :
+            'bg-orange-100 text-orange-800'
+          }`}>
+            {document.status.replace('_', ' ').toUpperCase()}
+          </span>
+          {statusChanged && (
+            <span className="text-sm text-green-600 font-semibold animate-pulse">✓ Updated</span>
+          )}
+        </div>
       </div>
 
       {/* Main Content: Split Screen (60% PDF, 40% Details) */}
@@ -222,6 +371,7 @@ export function DocumentViewer() {
           <DocumentDetailsPanel
             document={document}
             onLockForEditing={handleLockForEditing}
+            onUnlock={handleUnlock}
             onSubmitApproval={handleSubmitApproval}
             onApprove={handleApprove}
             onReject={handleReject}
