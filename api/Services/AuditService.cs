@@ -34,8 +34,18 @@ public class AuditService(DmsContext context, ILogger<AuditService> logger)
 
     public async Task<List<object>> GetAuditTrailAsync(Guid? userId = null, string? action = null, int limit = 100)
     {
+        var (items, _) = await GetAuditTrailPageAsync(userId, action, page: 1, pageSize: limit);
+        return items;
+    }
+
+    public async Task<(List<object> Items, int TotalCount)> GetAuditTrailPageAsync(
+        Guid? userId = null, string? action = null, int page = 1, int pageSize = 100)
+    {
         try
         {
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 500);
+
             var query = context.AuditTrails.AsQueryable();
 
             if (userId.HasValue)
@@ -44,9 +54,12 @@ public class AuditService(DmsContext context, ILogger<AuditService> logger)
             if (!string.IsNullOrEmpty(action))
                 query = query.Where(a => a.Action == action);
 
+            var totalCount = await query.CountAsync();
+
             var trails = await query
                 .OrderByDescending(a => a.CreatedAt)
-                .Take(limit)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(a => new
                 {
                     a.LogId,
@@ -57,9 +70,9 @@ public class AuditService(DmsContext context, ILogger<AuditService> logger)
                 })
                 .ToListAsync();
 
-            logger.LogInformation("Retrieved {Count} audit trails", trails.Count);
+            logger.LogInformation("Retrieved {Count}/{Total} audit trails (page {Page})", trails.Count, totalCount, page);
 
-            return trails.Cast<object>().ToList();
+            return (trails.Cast<object>().ToList(), totalCount);
         }
         catch (Exception ex)
         {

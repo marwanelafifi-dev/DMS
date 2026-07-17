@@ -24,7 +24,12 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
           <img
             src="/images/si-ware-logo.png"
             alt="Si-Ware DMS"
-            className="h-11 w-auto"
+            className="h-11 w-auto block dark:hidden"
+          />
+          <img
+            src="/images/si-ware-logo-dark.png"
+            alt="Si-Ware DMS"
+            className="h-11 w-auto hidden dark:block"
           />
         </button>
 

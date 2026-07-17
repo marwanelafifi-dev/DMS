@@ -9,17 +9,35 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class AuditTrailsController(DmsContext context, AuditService auditService, ILogger<AuditTrailsController> logger) : BaseController
 {
-    // GET /api/audittrails — قائمة جميع السجلات
+    // GET /api/audittrails — قائمة جميع السجلات (paginated)
     [HttpGet]
-    public async Task<ActionResult<object>> GetAuditTrails([FromQuery] Guid? userId, [FromQuery] string? action, [FromQuery] int limit = 100)
+    public async Task<ActionResult<object>> GetAuditTrails(
+        [FromQuery] Guid? userId,
+        [FromQuery] string? action,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        [FromQuery] int? limit = null)
     {
         try
         {
-            var trails = await auditService.GetAuditTrailAsync(userId, action, limit);
+            // `limit` kept for backward compatibility with existing callers — maps to a single-page request.
+            if (limit.HasValue)
+                pageSize = limit.Value;
 
-            logger.LogInformation("Retrieved {Count} audit trails", trails.Count);
+            var (trails, totalCount) = await auditService.GetAuditTrailPageAsync(userId, action, page, pageSize);
 
-            return Ok(new { success = true, data = trails, count = trails.Count });
+            logger.LogInformation("Retrieved {Count}/{Total} audit trails (page {Page})", trails.Count, totalCount, page);
+
+            return Ok(new
+            {
+                success = true,
+                data = trails,
+                count = trails.Count,
+                page,
+                pageSize,
+                totalCount,
+                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+            });
         }
         catch (Exception ex)
         {

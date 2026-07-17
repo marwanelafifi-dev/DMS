@@ -159,6 +159,10 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
   count?: number;
+  page?: number;
+  pageSize?: number;
+  totalCount?: number;
+  totalPages?: number;
 }
 
 // Pagination

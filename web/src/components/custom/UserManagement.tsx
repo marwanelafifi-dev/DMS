@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Card, CardBody, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, Users as UsersIcon, X, KeyRound, Trash2 } from 'lucide-react';
+import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, Users as UsersIcon, X, KeyRound, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+
+const PAGE_SIZE = 10;
 
 interface User {
   userId: string;
@@ -12,6 +14,7 @@ interface User {
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
+  authType: 'Google' | 'Local';
 }
 
 export function UserManagement() {
@@ -34,12 +37,18 @@ export function UserManagement() {
   const [resetPasswordFor, setResetPasswordFor] = useState<{ userId?: string; fullName?: string }>({});
   const [newPassword, setNewPassword] = useState('');
 
-  const loadUsers = async () => {
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const loadUsers = async (targetPage = page) => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const res = await apiClient.getUsers({ activeOnly: false });
+      const res = await apiClient.getUsers({ activeOnly: false, page: targetPage, pageSize: PAGE_SIZE });
       setUsers(res.data || []);
+      setTotalCount(res.totalCount ?? res.data?.length ?? 0);
+      setTotalPages(res.totalPages ?? 1);
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API. Is the backend running?');
     } finally {
@@ -48,8 +57,9 @@ export function UserManagement() {
   };
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    loadUsers(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   const filteredUsers = users.filter(u =>
     u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -154,7 +164,7 @@ export function UserManagement() {
         <Card className="border-l-4 border-l-red-600">
           <CardBody>
             <p className="text-red-700 dark:text-red-400 font-medium">{loadError}</p>
-            <Button variant="secondary" size="sm" className="mt-3" onClick={loadUsers}>
+            <Button variant="secondary" size="sm" className="mt-3" onClick={() => loadUsers(page)}>
               Retry
             </Button>
           </CardBody>
@@ -187,7 +197,7 @@ export function UserManagement() {
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 Total Users
               </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-white">{users.length}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-white">{totalCount}</p>
             </div>
             <UsersIcon className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
           </CardBody>
@@ -197,7 +207,7 @@ export function UserManagement() {
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                Active
+                Active (this page)
               </p>
               <p className="text-4xl font-bold text-navy-900 dark:text-white">{users.filter(u => u.isActive).length}</p>
             </div>
@@ -209,7 +219,7 @@ export function UserManagement() {
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                Inactive
+                Inactive (this page)
               </p>
               <p className="text-4xl font-bold text-navy-900 dark:text-white">{users.filter(u => !u.isActive).length}</p>
             </div>
@@ -235,12 +245,12 @@ export function UserManagement() {
         <table className="w-full text-sm bg-white dark:bg-navy-900">
           <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900 border-b-2 border-b-blue-500/40 dark:border-b-cyan-500/40">
             <tr className="text-left text-white">
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Name</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Email</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">User</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Auth Type</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Status</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Created</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Last Login</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Actions</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
@@ -254,28 +264,46 @@ export function UserManagement() {
                 } hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
               >
                 <td className="px-6 py-4">
-                  {editingId === user.userId ? (
-                    <input
-                      type="text"
-                      value={editData.fullName}
-                      onChange={(e) => setEditData({ ...editData, fullName: e.target.value })}
-                      className="px-3 py-1 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-950 text-navy-900 dark:text-white text-sm w-full"
-                    />
-                  ) : (
-                    <span className="font-semibold text-navy-900 dark:text-white">{user.fullName}</span>
-                  )}
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-navy-700 flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0">
+                      {user.fullName?.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      {editingId === user.userId ? (
+                        <input
+                          type="text"
+                          value={editData.fullName}
+                          onChange={(e) => setEditData({ ...editData, fullName: e.target.value })}
+                          className="px-3 py-1 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-950 text-navy-900 dark:text-white text-sm w-full"
+                        />
+                      ) : (
+                        <p className="font-semibold text-navy-900 dark:text-white truncate">{user.fullName}</p>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-navy-400 truncate">{user.email}</p>
+                    </div>
+                  </div>
                 </td>
-                <td className="px-6 py-4 text-gray-700 dark:text-navy-200">
-                  {user.email}
+                <td className="px-6 py-4">
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                    user.authType === 'Google'
+                      ? 'border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400'
+                      : 'border-gray-300 text-gray-600 dark:border-navy-600 dark:text-navy-300'
+                  }`}>
+                    {user.authType}
+                  </span>
                 </td>
                 <td className="px-6 py-4">
                   {editingId === user.userId ? (
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label
+                      className={`flex items-center gap-2 ${user.userId === DEV_USER_ID ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      title={user.userId === DEV_USER_ID ? 'You cannot deactivate your own account' : undefined}
+                    >
                       <input
                         type="checkbox"
                         checked={editData.isActive}
+                        disabled={user.userId === DEV_USER_ID}
                         onChange={(e) => setEditData({ ...editData, isActive: e.target.checked })}
-                        className="w-4 h-4 rounded border-gray-300 text-green-600"
+                        className="w-4 h-4 rounded border-gray-300 text-green-600 disabled:cursor-not-allowed"
                       />
                       <span className="text-sm text-gray-700 dark:text-navy-200">Active</span>
                     </label>
@@ -295,16 +323,16 @@ export function UserManagement() {
                     </div>
                   )}
                 </td>
-                <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
-                  {new Date(user.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm whitespace-nowrap">
+                  {new Date(user.createdAt).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </td>
                 <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
                   {user.lastLoginAt
                     ? new Date(user.lastLoginAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
                     : 'Never'}
                 </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
+                <td className="px-6 py-4">
+                  <div className="flex justify-start gap-2">
                     {editingId === user.userId ? (
                       <>
                         <button
@@ -329,13 +357,15 @@ export function UserManagement() {
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => setResetPasswordFor({ userId: user.userId, fullName: user.fullName })}
-                          className="p-2 hover:bg-gray-200 dark:hover:bg-navy-700 rounded-lg transition-colors text-blue-600 dark:text-blue-400"
-                          title="Reset password"
-                        >
-                          <KeyRound className="w-4 h-4" />
-                        </button>
+                        {user.authType !== 'Google' && (
+                          <button
+                            onClick={() => setResetPasswordFor({ userId: user.userId, fullName: user.fullName })}
+                            className="p-2 hover:bg-gray-200 dark:hover:bg-navy-700 rounded-lg transition-colors text-blue-600 dark:text-blue-400"
+                            title="Reset password"
+                          >
+                            <KeyRound className="w-4 h-4" />
+                          </button>
+                        )}
                         {user.isActive && user.userId !== DEV_USER_ID && (
                           <button
                             onClick={() => setDeactivateConfirm({ userId: user.userId, fullName: user.fullName })}
@@ -378,6 +408,33 @@ export function UserManagement() {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-6 py-3 bg-gray-50 dark:bg-navy-950/60 border-t border-gray-200 dark:border-navy-800">
+          <p className="text-sm text-gray-600 dark:text-navy-400">
+            Page <span className="font-semibold text-navy-900 dark:text-white">{page}</span> of{' '}
+            <span className="font-semibold text-navy-900 dark:text-white">{totalPages}</span>
+            {' '}&mdash; {totalCount} total users
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Next page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {filteredUsers.length === 0 && (

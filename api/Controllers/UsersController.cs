@@ -12,8 +12,13 @@ namespace DMS.Api.Controllers;
 public class UsersController(DmsContext context, AuditService auditService, ILogger<UsersController> logger) : BaseController
 {
     // GET /api/users — قائمة المستخدمين
+    // Pass `page`/`pageSize` to paginate (used by the Users admin table); omit both to get
+    // the full list unpaginated (used by lookup/dropdown callers like Audit Trail and Folder Permissions).
     [HttpGet]
-    public async Task<ActionResult<object>> GetUsers([FromQuery] bool? activeOnly = true)
+    public async Task<ActionResult<object>> GetUsers(
+        [FromQuery] bool? activeOnly = true,
+        [FromQuery] int? page = null,
+        [FromQuery] int? pageSize = null)
     {
         try
         {
@@ -21,6 +26,20 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
 
             if (activeOnly == true)
                 query = query.Where(u => u.IsActive);
+
+            query = query.OrderBy(u => u.FullName);
+
+            int? totalCount = null;
+            if (page.HasValue || pageSize.HasValue)
+            {
+                var effectivePage = Math.Max(1, page ?? 1);
+                var effectivePageSize = Math.Clamp(pageSize ?? 20, 1, 500);
+
+                totalCount = await query.CountAsync();
+                query = query.Skip((effectivePage - 1) * effectivePageSize).Take(effectivePageSize);
+                page = effectivePage;
+                pageSize = effectivePageSize;
+            }
 
             var users = await query
                 .Select(u => new
@@ -30,12 +49,27 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                     u.FullName,
                     u.IsActive,
                     u.CreatedAt,
-                    u.LastLoginAt
+                    u.LastLoginAt,
+                    AuthType = u.SsoSubject != null ? "Google" : "Local"
                 })
-                .OrderBy(u => u.FullName)
                 .ToListAsync();
 
             logger.LogInformation("Retrieved {Count} users", users.Count);
+
+            if (totalCount.HasValue)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    data = users,
+                    count = users.Count,
+                    page,
+                    pageSize,
+                    totalCount = totalCount.Value,
+                    totalPages = (int)Math.Ceiling(totalCount.Value / (double)pageSize!.Value)
+                });
+            }
+
             return Ok(new { success = true, data = users, count = users.Count });
         }
         catch (Exception ex)
@@ -164,6 +198,9 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
     {
         try
         {
+            if (req.IsActive == false && id == GetCurrentUserId())
+                return BadRequest(new { success = false, error = "You cannot deactivate your own account" });
+
             var user = await context.Users
                 .FirstOrDefaultAsync(u => u.UserId == id);
 

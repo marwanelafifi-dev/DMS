@@ -81,6 +81,9 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
     {
         try
         {
+            if (!FolderRoles.IsValid(req.Role))
+                return BadRequest(new { success = false, error = $"Role must be one of: {string.Join(", ", FolderRoles.All)}" });
+
             var grantedBy = GetCurrentUserId();
 
             var folder = await context.Folders.FirstOrDefaultAsync(f => f.FolderId == req.FolderId);

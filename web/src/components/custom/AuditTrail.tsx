@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card, CardBody, Badge, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Search, Download, Filter, Calendar, ListChecks, Users as UsersIcon, FileText } from 'lucide-react';
+import { Search, Download, Filter, Calendar, ListChecks, Users as UsersIcon, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '../../utils/api';
+
+const PAGE_SIZE = 25;
 
 interface AuditLog {
   logId: string;
@@ -55,15 +57,21 @@ export function AuditTrail() {
   const [selectedAction, setSelectedAction] = useState<string>('');
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
 
-  const loadData = async () => {
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const loadData = async (targetPage = page) => {
     setIsLoading(true);
     setLoadError(null);
     try {
       const [logsRes, usersRes] = await Promise.all([
-        apiClient.getAuditTrail({ limit: 200 }),
+        apiClient.getAuditTrail({ page: targetPage, pageSize: PAGE_SIZE }),
         apiClient.getUsers({ activeOnly: false }),
       ]);
       setLogs(logsRes.data || []);
+      setTotalCount(logsRes.totalCount ?? logsRes.data?.length ?? 0);
+      setTotalPages(logsRes.totalPages ?? 1);
       setUsers(usersRes.data || []);
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API. Is the backend running?');
@@ -73,8 +81,9 @@ export function AuditTrail() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   const userNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -149,7 +158,7 @@ export function AuditTrail() {
         <Card className="border-l-4 border-l-red-600">
           <CardBody>
             <p className="text-red-700 dark:text-red-400 font-medium">{loadError}</p>
-            <Button variant="secondary" size="sm" className="mt-3" onClick={loadData}>
+            <Button variant="secondary" size="sm" className="mt-3" onClick={() => loadData(page)}>
               Retry
             </Button>
           </CardBody>
@@ -177,7 +186,7 @@ export function AuditTrail() {
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 Total Logs
               </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-white">{logs.length}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-white">{totalCount}</p>
             </div>
             <ListChecks className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
           </CardBody>
@@ -187,7 +196,7 @@ export function AuditTrail() {
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                Active Users
+                Active Users (this page)
               </p>
               <p className="text-4xl font-bold text-navy-900 dark:text-white">
                 {new Set(logs.map(l => l.userId)).size}
@@ -201,7 +210,7 @@ export function AuditTrail() {
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                Doc Actions
+                Doc Actions (this page)
               </p>
               <p className="text-4xl font-bold text-navy-900 dark:text-white">
                 {logs.filter(l => l.action.startsWith('DOCUMENT')).length}
@@ -307,6 +316,33 @@ export function AuditTrail() {
             )}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-6 py-3 bg-gray-50 dark:bg-navy-950/60 border-t border-gray-200 dark:border-navy-800">
+          <p className="text-sm text-gray-600 dark:text-navy-400">
+            Page <span className="font-semibold text-navy-900 dark:text-white">{page}</span> of{' '}
+            <span className="font-semibold text-navy-900 dark:text-white">{totalPages}</span>
+            {' '}&mdash; {totalCount} total logs
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Next page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Info Box */}
