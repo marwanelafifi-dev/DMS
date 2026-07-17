@@ -36,6 +36,13 @@ public class DmsContext : DbContext
             }
         }
 
+        // Override: DmsDocumentVersion.CheckedOutById maps to the "checked_out_by" column
+        // (the actual DB column, per 002_core_schema.sql, has no "_id" suffix) — the generic
+        // ToSnakeCase pass above would otherwise produce "checked_out_by_id", which doesn't exist.
+        modelBuilder.Entity<DmsDocumentVersion>()
+            .Property(dv => dv.CheckedOutById)
+            .HasColumnName("checked_out_by");
+
         // === PRIMARY KEYS & TABLE NAMES (explicit configuration) ===
         modelBuilder.Entity<DmsUser>().ToTable("dms_users").HasKey(u => u.UserId);
         modelBuilder.Entity<DmsFolder>().ToTable("dms_folders").HasKey(f => f.FolderId);
