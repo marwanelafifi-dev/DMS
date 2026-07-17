@@ -25,8 +25,8 @@ function App() {
           element={
             <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4 text-white">Tasks</h1>
-                <p className="text-navy-300 dark:text-navy-300">
+                <h1 className="text-3xl font-serif font-bold tracking-tight mb-4 text-navy-900 dark:text-white">Tasks</h1>
+                <p className="text-navy-500 dark:text-navy-300">
                   Task management coming soon...
                 </p>
               </div>
@@ -60,8 +60,8 @@ function App() {
           element={
             <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4 text-white">Approvals</h1>
-                <p className="text-navy-300 dark:text-navy-300">
+                <h1 className="text-3xl font-serif font-bold tracking-tight mb-4 text-navy-900 dark:text-white">Approvals</h1>
+                <p className="text-navy-500 dark:text-navy-300">
                   Approval workflows coming soon...
                 </p>
               </div>

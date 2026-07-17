@@ -231,9 +231,9 @@ export function UserManagement() {
       </div>
 
       {/* Users Table */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700 shadow-sm">
-        <table className="w-full text-sm bg-white dark:bg-navy-800">
-          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900">
+      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700/60 shadow-sm dark:shadow-black/30">
+        <table className="w-full text-sm bg-white dark:bg-navy-900">
+          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900 border-b-2 border-b-blue-500/40 dark:border-b-cyan-500/40">
             <tr className="text-left text-white">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Name</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Email</th>
@@ -243,15 +243,15 @@ export function UserManagement() {
               <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-navy-700">
+          <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
             {filteredUsers.map((user, idx) => (
               <tr
                 key={user.userId}
                 className={`${
                   idx % 2 === 0
-                    ? 'bg-white dark:bg-navy-800'
-                    : 'bg-gray-50 dark:bg-navy-850'
-                } hover:bg-gray-100 dark:hover:bg-navy-700/50 transition-colors`}
+                    ? 'bg-white dark:bg-navy-900'
+                    : 'bg-gray-50 dark:bg-navy-950/60'
+                } hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
               >
                 <td className="px-6 py-4">
                   {editingId === user.userId ? (
@@ -259,13 +259,13 @@ export function UserManagement() {
                       type="text"
                       value={editData.fullName}
                       onChange={(e) => setEditData({ ...editData, fullName: e.target.value })}
-                      className="px-3 py-1 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white text-sm w-full"
+                      className="px-3 py-1 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-950 text-navy-900 dark:text-white text-sm w-full"
                     />
                   ) : (
                     <span className="font-semibold text-navy-900 dark:text-white">{user.fullName}</span>
                   )}
                 </td>
-                <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200">
                   {user.email}
                 </td>
                 <td className="px-6 py-4">
@@ -277,28 +277,28 @@ export function UserManagement() {
                         onChange={(e) => setEditData({ ...editData, isActive: e.target.checked })}
                         className="w-4 h-4 rounded border-gray-300 text-green-600"
                       />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Active</span>
+                      <span className="text-sm text-gray-700 dark:text-navy-200">Active</span>
                     </label>
                   ) : (
                     <div className="flex items-center gap-2">
                       {user.isActive ? (
                         <>
-                          <CheckCircle className="w-4 h-4 text-green-600" />
+                          <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
                           <span className="text-green-700 dark:text-green-400 font-medium">Active</span>
                         </>
                       ) : (
                         <>
-                          <XCircle className="w-4 h-4 text-red-600" />
+                          <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
                           <span className="text-red-700 dark:text-red-400 font-medium">Inactive</span>
                         </>
                       )}
                     </div>
                   )}
                 </td>
-                <td className="px-6 py-4 text-gray-700 dark:text-gray-300 text-sm">
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
                   {new Date(user.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                 </td>
-                <td className="px-6 py-4 text-gray-700 dark:text-gray-300 text-sm">
+                <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
                   {user.lastLoginAt
                     ? new Date(user.lastLoginAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
                     : 'Never'}
@@ -315,7 +315,7 @@ export function UserManagement() {
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
-                          className="px-3 py-1 bg-gray-300 hover:bg-gray-400 dark:bg-navy-600 dark:hover:bg-navy-500 text-gray-900 dark:text-white rounded-lg text-sm font-medium transition-colors"
+                          className="px-3 py-1 bg-gray-300 hover:bg-gray-400 dark:bg-black/40 dark:hover:bg-black/60 dark:border dark:border-white/10 text-gray-900 dark:text-white rounded-lg text-sm font-medium transition-colors"
                         >
                           Cancel
                         </button>
@@ -381,8 +381,8 @@ export function UserManagement() {
       </div>
 
       {filteredUsers.length === 0 && (
-        <div className="text-center py-12 bg-gray-50 dark:bg-navy-800 rounded-lg">
-          <p className="text-gray-500 dark:text-gray-400">No users found</p>
+        <div className="text-center py-12 bg-gray-50 dark:bg-navy-900 rounded-lg border border-transparent dark:border-navy-700/60">
+          <p className="text-gray-500 dark:text-navy-400">No users found</p>
         </div>
       )}
 

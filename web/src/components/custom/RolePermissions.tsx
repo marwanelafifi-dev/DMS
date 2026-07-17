@@ -204,9 +204,9 @@ export function RolePermissions() {
       </div>
 
       {/* Grants Table */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700 shadow-sm">
-        <table className="w-full text-sm bg-white dark:bg-navy-800">
-          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900">
+      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700/60 shadow-sm dark:shadow-black/30">
+        <table className="w-full text-sm bg-white dark:bg-navy-900">
+          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900 border-b-2 border-b-blue-500/40 dark:border-b-cyan-500/40">
             <tr className="text-left text-white">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Folder</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">User</th>
@@ -215,25 +215,25 @@ export function RolePermissions() {
               <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-navy-700">
+          <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
             {grants.length > 0 ? (
               grants.map((grant, idx) => (
                 <tr
                   key={grant.permissionId}
                   className={`${
                     idx % 2 === 0
-                      ? 'bg-white dark:bg-navy-800'
-                      : 'bg-gray-50 dark:bg-navy-850'
-                  } hover:bg-gray-100 dark:hover:bg-navy-700/50 transition-colors`}
+                      ? 'bg-white dark:bg-navy-900'
+                      : 'bg-gray-50 dark:bg-navy-950/60'
+                  } hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
                 >
                   <td className="px-6 py-4 font-semibold text-navy-900 dark:text-white">{grant.folderName}</td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300">{grant.userName}</td>
+                  <td className="px-6 py-4 text-gray-700 dark:text-navy-200">{grant.userName}</td>
                   <td className="px-6 py-4">
                     <Badge status={getRoleBadge(grant.role)} size="sm" variant="outline">
                       {grant.role}
                     </Badge>
                   </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 text-sm">
+                  <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
                     {new Date(grant.grantedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -249,7 +249,7 @@ export function RolePermissions() {
               ))
             ) : (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-navy-400">
                   No folder permissions granted yet
                 </td>
               </tr>

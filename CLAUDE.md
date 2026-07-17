@@ -5,7 +5,7 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Current Date:** 2026-07-17  
 **Working Directory:** d:\Si ware\DMS  
-**Status:** Phase 2 Frontend — COMPLETE ✅ (Production Ready) + State Management Implemented + Admin Panel (Users/Roles/Audit Trail) Implemented
+**Status:** Phase 2 Frontend — COMPLETE ✅ (Production Ready) + State Management Implemented + Admin Panel (Users/Roles/Audit Trail) Implemented + Enterprise Dark Mode (black/navy palette) shipped across Navbar/Sidebar/all pages
 
 ---
 
@@ -1003,3 +1003,62 @@ Over the course of this session, `npm run dev` was started in the background mul
 - `DmsFolderPermission`'s `role` field is still a free-text string, not an enum — `RolePermissions.tsx`'s `ROLE_OPTIONS` list is the only thing keeping values consistent with `RBACMiddleware.HasPermissionForMethod()`. Consider a Postgres `CHECK` constraint or a C# enum if this grows.
 - No rate-limiting or lockout on password verification — irrelevant today since nothing actually *logs in* with a password yet (no login endpoint exists; passwords are set/reset by an admin only). Needs revisiting once a real local-login flow is built.
 - The Hangfire auto-unlock background job is throwing on every run (`column d.checked_out_by_id does not exist` — should be `checked_out_by`), spotted as noise in the logs while debugging issue #3 above. Not touched this session since it's unrelated to Admin Panel work, but it means Checkout auto-expiry is currently non-functional in the running container.
+
+---
+
+## 🌓 Session 7 (2026-07-17) — Enterprise Dark Mode + Navbar/Sidebar Redesign
+
+**Status:** ✅ Complete — formal black-based dark mode shipped across the whole app, Navbar and Sidebar redesigned and iterated to final layout.
+
+### 1. Navbar — final layout
+
+Iterated through several layouts (icon-only, hamburger + brand block, full user menu dropdown) before landing on the final design:
+- **Left:** nothing (removed the "DMS / Si-Ware Systems" brand block + hamburger — redundant once the Sidebar got its own matching header and its own expand/collapse toggle).
+- **Center:** Si-Ware logo, **absolutely positioned** (`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2`) rather than flex-centered with matching spacers. This was a real centering bug fix: the old `flex-1` spacer approach broke because the right-side actions block has real width with nothing to balance it on the left, so the logo drifted off-center. Absolute centering is width-independent and stays centered in both themes since it carries no `dark:` conditional.
+- **Right:** dark-mode Sun/Moon toggle, notifications bell, divider, user avatar (initial) + name + role, sign-out icon.
+- Logo renders with its **true, unmodified brand colors** in both modes — tried a white background plate, then a CSS `invert + hue-rotate(180deg)` trick to recolor navy text without a box, but the user explicitly wanted the original PNG untouched with no filter/plate, so both were reverted. Net result: exact brand colors always, accepting the navy wordmark has lower contrast on the black dark-mode bar.
+
+**File:** `web/src/components/layout/Navbar.tsx` (also `web/src/hooks/useDarkMode.ts` — new).
+
+### 2. Sidebar — expandable icon rail + active-state styling
+
+- Collapsed by default (80px, icon-only with hover tooltips), expands to 256px on toggle showing full labels + section headers (Navigation / Vault / Administration / System).
+- Expanded header shows **"DMS" / "Si-Ware Systems"** (kept in sync with what used to be in the Navbar, since the Navbar's own copy was removed — single source of truth for the brand mark is now the Sidebar header).
+- **Active menu item styling iterated twice** based on user reference screenshots:
+  1. First pass: solid blue gradient pill (`bg-gradient-to-r from-blue-500 to-blue-600`, white text) — matched a generic "filled button" reference.
+  2. **Final pass:** user clarified they wanted the *unfilled* look instead — light blue background (`bg-blue-50` / `dark:bg-blue-500/15`) with a `border-l-4 border-l-blue-600` accent bar and navy/white text, matching the same "QMS Documents" folder-tree active style already used in `FolderTree.tsx`. This is now the one consistent "selected" pattern across Sidebar nav items and the Documents folder tree.
+
+**File:** `web/src/components/layout/Sidebar.tsx`.
+
+### 3. Dark mode system — built, broken, rebuilt properly
+
+**First attempt failed:** wiring `dark:` classes onto Navbar/Sidebar/MainLayout while the rest of the app (Dashboard, Documents, Settings, the 4 data tables, etc.) had pre-existing, inconsistent `dark:` classes from earlier sessions turned the whole app into an unreadable mess the moment the toggle was flipped (screenshot showed washed-out gray table rows, invisible text). Rather than patch around it, **removed dark mode entirely** first (deleted `useDarkMode.ts`, stripped `dark:` conditionals from Navbar/Sidebar/MainLayout) to get back to a known-good light-only baseline, then rebuilt from scratch deliberately.
+
+**Root causes found and fixed on rebuild:**
+- `MainLayout.tsx`'s outer wrapper and `<main>` had **no dark background at all** (`bg-white` with zero `dark:` variant) — the single biggest reason white kept bleeding through everywhere once dark mode was re-added.
+- `Sidebar.tsx`'s `<aside>` and both header variants had **no dark background at all** either — same class of bug.
+- 4 data tables (`DocumentList.tsx`, `UserManagement.tsx`, `RolePermissions.tsx`, `AuditTrail.tsx`) all zebra-striped rows using `dark:bg-navy-850` — **that shade never existed in the Tailwind config** (navy only went to 900 at the time), so the class silently failed and odd rows fell back to pale `bg-gray-50`, producing the washed-out unreadable striping the user screenshotted.
+- `Skeleton.tsx` applied `bg-navy-700`/`bg-navy-600` **unconditionally** (not gated by `dark:` at all) — loading skeletons were always dark navy even in light mode, a pre-existing bug unrelated to this session's dark-mode work but caught in the same audit.
+- `FolderTree.tsx`'s selected-folder state was hardcoded `bg-white dark:bg-white text-navy-900 dark:text-navy-900` — forced a white chip regardless of theme.
+- `DocumentViewer.tsx` loading/not-found states and the two `App.tsx` placeholder routes (`/tasks`, `/approvals`) had bare `text-white` with **no light-mode counterpart at all** — invisible text on the white page background, a bug that predates this session's dark-mode work entirely.
+
+**Palette decision (iterated with the user):** started with a dark-navy-tinted surface (`navy-950` as a very dark blue), then the user explicitly asked for **true black surfaces with navy/blue/cyan reserved as accents only** ("use black and all dark colors mixed with white text"). Redefined `navy-950` in `tailwind.config.ts` to a true near-black (`#0a0c10`) rather than touching every file individually, since it was already wired into every dark surface from the first pass — one config change cascaded correctly everywhere. `Navbar`/`Sidebar`/`MainLayout` then moved to literal `bg-black` for their primary canvases, with `Card` elevated to `navy-900`/`navy-950` surfaces on top of that black page for a layered look, and blue/cyan strictly reserved for active states, borders, and badges.
+
+**Polish:** added a subtle **radial navy vignette** (`radial-gradient(ellipse_80%_50%_at_50%_-10%, #002E5C33, transparent)`) on the main content canvas instead of flat black or a loud diagonal gradient — recommended as the enterprise-appropriate middle ground (flat black reads cheap/empty, a vivid gradient reads consumer-y).
+
+**Anti-flash-of-wrong-theme:** added a small blocking inline `<script>` in `index.html`'s `<head>` that reads `localStorage`/`prefers-color-scheme` and applies the `.dark` class before first paint, so there's no flicker on load — this pairs with `useDarkMode.ts`, which now only toggles the class + persists to `localStorage` (no longer responsible for the initial-paint decision).
+
+**Files created:** `web/src/hooks/useDarkMode.ts`.
+**Files modified:** `web/index.html`, `web/tailwind.config.ts` (added `navy-950`), `web/src/App.tsx`, `web/src/components/layout/{Navbar,Sidebar,MainLayout}.tsx`, `web/src/components/ui/{Card,Skeleton}.tsx`, `web/src/components/custom/{DocumentList,UserManagement,RolePermissions,AuditTrail,FolderTree}.tsx`, `web/src/components/pages/DocumentViewer.tsx`.
+
+### 4. Logo asset
+
+Copied `Si-Ware Logo.png` (repo root) into `web/public/images/si-ware-logo.png` so the Navbar can reference it as a static asset (`/images/si-ware-logo.png`) instead of the external `si-ware.com` CDN URL used previously.
+
+### Verification
+- `npm run type-check`: 0 new errors after every edit in this session (checked incrementally, file by file).
+- No backend changes this session — frontend/styling only.
+
+### Known follow-ups
+- Logo has genuinely low contrast on the black dark-mode navbar (navy wordmark on near-black) — accepted tradeoff per explicit user choice to keep exact brand colors with no filter/plate. A dedicated "logo on dark" asset (navy text recolored to white, cyan icon untouched) would fix this properly but requires image-processing tooling (Python/PIL, ImageMagick, or the `sharp` npm package) that isn't currently available in this environment — none of `python`, `magick`/`convert` (ImageMagick), or `sharp` were found installed when checked this session.
+- The Hangfire `checked_out_by_id` bug flagged at the end of Session 6 is still unfixed (frontend-only session).

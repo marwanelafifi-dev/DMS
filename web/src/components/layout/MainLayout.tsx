@@ -7,21 +7,24 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
   return (
-    <div className="h-screen bg-white flex flex-col">
+    <div className="h-screen bg-white dark:bg-black flex flex-col transition-colors duration-300">
       {/* Top Navbar */}
-      <Navbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+      <Navbar onMenuClick={() => setSidebarExpanded(!sidebarExpanded)} />
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          isExpanded={sidebarExpanded}
+          onToggleExpand={() => setSidebarExpanded(!sidebarExpanded)}
+        />
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto bg-white">
-          <div className="max-w-[1920px] mx-auto p-4 md:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto bg-white dark:bg-black dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,_#002E5C33,_transparent)] transition-colors duration-300">
+          <div className="w-full mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-8">
             {children}
           </div>
         </main>
