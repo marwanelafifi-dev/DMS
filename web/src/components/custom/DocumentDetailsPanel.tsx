@@ -6,6 +6,7 @@ import { formatFileSize, formatDate } from '../../utils/formatters';
 interface DocumentDetailsPanelProps {
   document: Document;
   onLockForEditing?: () => void;
+  onUnlock?: () => void;
   onSubmitApproval?: () => void;
   onApprove?: () => void;
   onReject?: () => void;
@@ -16,6 +17,7 @@ interface DocumentDetailsPanelProps {
 export function DocumentDetailsPanel({
   document,
   onLockForEditing,
+  onUnlock,
   onSubmitApproval,
   onApprove,
   onReject,
@@ -202,15 +204,25 @@ export function DocumentDetailsPanel({
 
       {/* Action Buttons */}
       <div className="px-6 py-4 border-t border-gray-200 dark:border-navy-600 bg-gray-50 dark:bg-navy-800 space-y-3">
-        {/* Lock File for Editing */}
+        {/* Lock File for Editing / Unlock (Admin) */}
         <div className="flex gap-2">
-          <button
-            onClick={onLockForEditing}
-            disabled={isLockingLoading || document.checkoutStatus === 'checked_out'}
-            className="flex-1 px-3 py-2 bg-gradient-primary hover:shadow-lg text-white rounded-lg font-semibold text-sm shadow-md disabled:opacity-50 disabled:shadow-none transition-all"
-          >
-            {isLockingLoading ? 'Locking...' : document.checkoutStatus === 'checked_out' ? 'Locked' : 'Lock File for Editing'}
-          </button>
+          {document.checkoutStatus === 'checked_out' ? (
+            <button
+              onClick={onUnlock}
+              className="flex-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all"
+              title="Admin unlock"
+            >
+              🔓 Unlock (Admin)
+            </button>
+          ) : (
+            <button
+              onClick={onLockForEditing}
+              disabled={isLockingLoading}
+              className="flex-1 px-3 py-2 bg-gradient-primary hover:shadow-lg text-white rounded-lg font-semibold text-sm shadow-md disabled:opacity-50 disabled:shadow-none transition-all"
+            >
+              {isLockingLoading ? 'Locking...' : 'Lock File for Editing'}
+            </button>
+          )}
         </div>
 
         {/* Approval Actions */}

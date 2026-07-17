@@ -50,5 +50,9 @@ The same compose file runs unchanged; `cloudflared` dials out to Cloudflare (no 
 
 ## Phase status
 
-Phase 0 (foundations) — scaffold + portable compose stack with health checks. ✅
-Next: Phase 1 — core schema, RBAC, and the WORM audit ledger.
+✅ **Phase 0** — Foundations complete (scaffold + Docker stack)
+✅ **Phase 1** — Core API + RBAC + Audit logging complete
+✅ **Phase 2 Backend** — Document checkout, approvals, tasks complete
+✅ **Phase 2 Frontend** — Professional UI, multi-format viewer, state management complete
+
+**Next:** Phase 3 — OCR integration + Workflow templates

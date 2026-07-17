@@ -7,7 +7,7 @@ interface DocumentGridProps {
   documents: Document[];
   isLoading?: boolean;
   onDocumentClick: (docId: string) => void;
-  onDelete?: (docId: string) => void;
+  onDelete?: (docId: string, docName: string) => void;
   onDownload?: (docId: string) => void;
 }
 
@@ -132,7 +132,7 @@ export function DocumentGrid({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete?.(doc.documentId);
+                  onDelete?.(doc.documentId, doc.name);
                 }}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-navy-800"
                 title="Delete document"
