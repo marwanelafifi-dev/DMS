@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CheckCircle2, Folder, ClipboardList, Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import { CheckCircle2, Folder, ClipboardList, ChevronDown, ChevronRight, Lock, Users, FileText } from 'lucide-react';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -10,7 +10,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [expandedSections, setExpandedSections] = useState<string[]>(['vault']);
+  const [expandedSections, setExpandedSections] = useState<string[]>(['admin']);
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) =>
@@ -54,14 +54,14 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     return (
       <button
         onClick={() => toggleSection(sectionKey)}
-        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-extrabold text-white uppercase tracking-widest hover:text-gray-300 transition-colors mt-4 first:mt-0"
+        className="w-full flex items-center gap-3 px-4 py-3 text-xs font-extrabold text-white uppercase tracking-widest hover:bg-navy-900 hover:text-gray-200 transition-colors mt-4 first:mt-0 rounded-lg"
       >
-        <span className="flex-1 text-left">{title}</span>
         {isExpanded ? (
-          <ChevronDown className="w-4 h-4" />
+          <ChevronDown className="w-5 h-5 flex-shrink-0 text-blue-400" />
         ) : (
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-5 h-5 flex-shrink-0 text-gray-400" />
         )}
+        <span className="flex-1 text-left">{title}</span>
       </button>
     );
   };
@@ -78,9 +78,9 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static left-0 top-navbar-height-mobile lg:top-0 w-full sm:w-sidebar-width h-[calc(100vh-var(--navbar-mobile-height))] lg:h-screen bg-navy-900 border-r border-navy-800 transform transition-transform lg:transform-none z-40 shadow-xl ${
+        className={`fixed lg:static left-0 top-navbar-height-mobile lg:top-0 w-full sm:w-sidebar-width h-[calc(100vh-var(--navbar-mobile-height))] lg:h-full bg-navy-900 border-r border-navy-800 transform transition-transform lg:transform-none z-40 shadow-xl ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        } overflow-y-auto flex flex-col`}
+        } flex flex-col overflow-y-auto`}
       >
         {/* My Tasks Section */}
         <div className="p-4 space-y-2 border-b border-navy-800">
@@ -95,8 +95,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           )}
         </div>
 
-        {/* Vault Section */}
-        <div className="flex-1 px-4 space-y-2 overflow-y-auto">
+        {/* Vault & Approvals Section */}
+        <div className="flex-1 px-4 space-y-2 overflow-y-auto min-h-0">
           {sectionHeader('Vault', 'vault')}
 
           {expandedSections.includes('vault') && (
@@ -137,20 +137,28 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           )}
         </div>
 
-        {/* Settings Section */}
-        <div className="p-4 border-t border-navy-800 space-y-2">
-          <h2 className="text-xs font-extrabold text-white uppercase tracking-widest px-2 mb-3 flex items-center gap-2">
-            Settings
-          </h2>
-          {menuItem(
-            <Settings className="w-5 h-5" />,
-            'Permissions',
-            '/settings/permissions'
-          )}
-          {menuItem(
-            <Settings className="w-5 h-5" />,
-            'Audit Log',
-            '/settings/audit'
+        {/* Admin Panel Section */}
+        <div className="p-4 border-t border-navy-800">
+          {sectionHeader('Admin Panel', 'admin')}
+
+          {expandedSections.includes('admin') && (
+            <div className="space-y-1 pl-2 mt-2">
+              {menuItem(
+                <Users className="w-5 h-5" />,
+                'Users',
+                '/admin/users'
+              )}
+              {menuItem(
+                <Lock className="w-5 h-5" />,
+                'Roles',
+                '/admin/roles'
+              )}
+              {menuItem(
+                <FileText className="w-5 h-5" />,
+                'Audit Trail',
+                '/admin/audit'
+              )}
+            </div>
           )}
         </div>
       </aside>

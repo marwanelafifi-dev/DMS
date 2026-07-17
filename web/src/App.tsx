@@ -3,6 +3,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './components/pages/Dashboard';
 import { Documents } from './components/pages/Documents';
 import { DocumentViewer } from './components/pages/DocumentViewer';
+import { Settings } from './components/pages/Settings';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -68,17 +69,40 @@ function App() {
           }
         />
 
-        {/* Settings */}
+        {/* Admin Panel */}
+        <Route
+          path="/admin/users"
+          element={
+            <MainLayout>
+              <Settings defaultTab="users" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/roles"
+          element={
+            <MainLayout>
+              <Settings defaultTab="roles" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/audit"
+          element={
+            <MainLayout>
+              <Settings defaultTab="audit" />
+            </MainLayout>
+          }
+        />
+
+        {/* Legacy settings routes */}
         <Route
           path="/settings/*"
           element={
             <MainLayout>
-              <div className="py-8">
-                <h1 className="text-3xl font-bold mb-4 text-white">Settings</h1>
-                <p className="text-navy-300 dark:text-navy-300">
-                  Settings panel coming soon...
-                </p>
-              </div>
+              <Settings />
             </MainLayout>
           }
         />

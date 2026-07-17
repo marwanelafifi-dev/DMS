@@ -85,7 +85,7 @@ export function DocumentGrid({
 
             {/* Status Badge */}
             <div className="flex items-center gap-2">
-              <Badge status={getStatusColor(doc.status)} size="sm">
+              <Badge status={getStatusColor(doc.status)} size="sm" variant="outline">
                 {doc.status.replace('_', ' ').toUpperCase()}
               </Badge>
             </div>

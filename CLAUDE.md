@@ -5,7 +5,7 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Current Date:** 2026-07-17  
 **Working Directory:** d:\Si ware\DMS  
-**Status:** Phase 2 Frontend — COMPLETE ✅ (Production Ready) + State Management Implemented
+**Status:** Phase 2 Frontend — COMPLETE ✅ (Production Ready) + State Management Implemented + Admin Panel (Users/Roles/Audit Trail) Implemented
 
 ---
 
@@ -42,7 +42,7 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 - **Document Viewer** — Multi-format support (PDF, Excel, Word, PowerPoint, Images), toolbar (zoom, rotate, print, download)
 - **Approvals** — Status tracking, approval timeline, approve/reject workflows
 - **Tasks** — Task list with status tracking, overdue detection
-- **Settings** — Placeholder ready for permissions & audit logs
+- **Settings / Admin Panel** — Users, Roles, and Audit Trail management (see Session 4)
 
 #### 3. **Multi-Format Document Support** ✅
 - PDF (.pdf)
@@ -737,3 +737,85 @@ npm run dev
 ---
 
 **Next:** Ready to build Pages 2-5 (Documents, Approvals, Tasks, Settings)
+
+---
+
+## 🛠️ Session 4 (2026-07-17) — Documents Metadata + Admin Panel (Users, Roles, Audit Trail)
+
+**Status:** ✅ Complete — Admin Panel is production-styled with mock data, ready for API wiring
+
+### 1. Documents Table — Department & Tags Columns
+- Extended `Document` type (`/web/src/types/index.ts`) with `department?: string` and `tags?: string[]`
+- Added mock department/tag values to all seeded documents in `Documents.tsx`
+- `DocumentList.tsx` — new **Department** and **Tags** columns (tags render as `Badge` outline chips, capped at 2 visible + "+N" overflow indicator — see formalization pass below)
+
+### 2. Admin Panel (replaces old Settings placeholder)
+Restructured sidebar navigation: removed flat "Permissions"/"Audit Log" links, added a collapsible **Admin Panel** section (`Sidebar.tsx`) nested under Quick Links/Vault/Approvals, containing:
+- **Users** → `/admin/users`
+- **Roles** → `/admin/roles`
+- **Audit Trail** → `/admin/audit`
+
+All three routes render the same `Settings.tsx` page component with a `defaultTab` prop (`users` | `roles` | `audit`) that syncs via `useEffect` when the route changes — fixes an early bug where switching sidebar links didn't update the active tab.
+
+**New components created:**
+- `/web/src/components/pages/Settings.tsx` — Admin Panel shell: header, 3 quick-nav cards (Users/Roles/Audit Trail), renders active tab content
+- `/web/src/components/custom/UserManagement.tsx` — User CRUD table (Name/Email/Role/Department/Status/Last Login/Actions), inline edit, search, summary stat cards
+- `/web/src/components/custom/RolePermissions.tsx` — Role-based access control: 4 built-in roles (Admin/Manager/Writer/Reader) × 10 togglable permissions, inline edit mode
+- `/web/src/components/custom/AuditTrail.tsx` — Formal audit log **table** (Timestamp/User/Action/Details/Resource/IP/Status columns), search + action-type filter + working date-range filter, summary stat cards, Export Logs button
+
+**Styling decisions (per user feedback):**
+- Summary stat cards use the Dashboard's formal pattern: left-border accent + icon-in-box on the right + big number — not centered plain-text cards
+- Toned down to a **navy-only palette** for stat card borders/icons (no blue/emerald/amber/purple mix) — kept semantic green/red only for Active/Inactive status text since that's meaningful, not decorative
+- Role and Action badges use `Badge variant="outline"` instead of solid — less saturated, more enterprise-formal
+- "Export Logs" button uses the shared `Button variant="primary"` component so it matches "Add User" exactly (same gradient)
+- Card order: **Users first**, then Roles, then Audit Trail (both as sidebar order and as the default tab)
+
+**Bug fixed — sidebar clipping:**
+`Sidebar.tsx`'s `<aside>` had `lg:h-screen` (100vh) while nested inside a flex row that already lost height to the `Navbar`; the parent (`MainLayout.tsx`) has `overflow-hidden`, so the last item (Audit Trail) was silently clipped instead of being scrollable. Fixed by changing to `lg:h-full` so the sidebar respects its actual flex-allocated height, with `overflow-y-auto` restored on the `<aside>` itself.
+
+**Files created:**
+- `/web/src/components/pages/Settings.tsx`
+- `/web/src/components/custom/UserManagement.tsx`
+- `/web/src/components/custom/RolePermissions.tsx`
+- `/web/src/components/custom/AuditTrail.tsx`
+
+**Files modified:**
+- `/web/src/App.tsx` — added `/admin/users`, `/admin/roles`, `/admin/audit` routes
+- `/web/src/components/layout/Sidebar.tsx` — Admin Panel collapsible section, height/overflow fix
+- `/web/src/types/index.ts` — `department`/`tags` fields on `Document`
+- `/web/src/components/pages/Documents.tsx` — mock data department/tags
+- `/web/src/components/custom/DocumentList.tsx` — Department/Tags columns
+
+**Known env note:** `docker compose up` for `web` currently fails at build (`vite:terser` — terser not installed as it's an optional Vite v3+ dependency). Ran `npm install terser` in `/web` and used `npm run dev` directly instead of the Docker image for this session's UI iteration. Worth adding `terser` to `web/package.json` devDependencies before the next Docker rebuild.
+
+**Everything verified via:** `npm run type-check` (0 errors) after each change; visual verification via user screenshots (no automated Playwright/browser testing set up this session).
+
+**Next:** Wire Admin Panel components to real `.NET` API endpoints (Users/Folder Permissions/Audit Trails controllers already exist from Phase 1/2 backend — see `UsersController.cs`, `FolderPermissionsController.cs`, `AuditTrailsController.cs`); add `terser` to package.json for Docker builds.
+
+---
+
+### Session 4 (cont.) — Formal Navy Palette Rollout (Documents + Dashboard)
+
+Extended the "navy-only, outline badges" formal style (established in Admin Panel above) to the rest of the app, per user feedback that the Documents table and Dashboard still looked too colorful/inconsistent.
+
+**Documents (`DocumentList.tsx`, `DocumentGrid.tsx`):**
+- Status badges (Released/Draft/Pending Approval) switched from solid to `Badge variant="outline"`
+- Tags column now uses the shared `Badge` component (`status="default" variant="outline"`) instead of custom blue `<span>` pills — subdued gray chips, same 2-visible + "+N" overflow behavior
+- Applied identically to `DocumentGrid.tsx` for table/grid view parity
+
+**Dashboard (`Dashboard.tsx`):**
+- Quick Stats cards (Open Tasks/In Progress/Pending Approvals): icons changed from `bg-gradient-primary` (bright blue gradient) to solid `bg-navy-800`, added `border-l-4 border-l-navy-700` accent — matches the Users/Audit Trail stat-card pattern exactly
+- Task priority badges (critical/high/medium) and recent-document status badges: switched to `variant="outline"`
+- Task-stat mini cards (Open/In Progress/Done): number color changed from `dark:text-cyan-400` to `dark:text-white`
+- Pending Approvals card left-border accent changed from `border-l-blue-600` to `border-l-navy-700`
+
+**Note:** the floating "Logout" box reported in a screenshot during this pass does not correspond to any component in `/web/src` (only `Navbar.tsx` renders a logout control, as an icon button inside the user-menu cluster, not a standalone bordered box) — most likely a browser extension overlay, not an app bug. No fix applied; flag again if it persists after a hard refresh in a clean browser profile.
+
+**Files modified (this pass):**
+- `/web/src/components/custom/DocumentList.tsx`
+- `/web/src/components/custom/DocumentGrid.tsx`
+- `/web/src/components/pages/Dashboard.tsx`
+
+**Verified via:** `npm run type-check` (0 errors) after each edit.
+
+**Net result:** the entire app (Dashboard, Documents, Admin Panel) now shares one consistent formal palette — navy-800 icon boxes with navy-700 border accents on stat cards, and outline-variant badges everywhere status/role/tag/action needs a color cue, reserving solid/bright color only for truly semantic states (Active/Inactive text, Locked indicator).

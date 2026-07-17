@@ -145,39 +145,39 @@ export function Dashboard() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+        <Card className="border-l-4 border-l-navy-700">
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 Open Tasks
               </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-cyan-400">{taskStats.open}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-white">{taskStats.open}</p>
             </div>
-            <ListChecks className="w-12 h-12 bg-gradient-primary text-white rounded-lg p-2" />
+            <ListChecks className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
           </CardBody>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-navy-700">
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 In Progress
               </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-cyan-400">{taskStats.inProgress}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-white">{taskStats.inProgress}</p>
             </div>
-            <FileText className="w-12 h-12 bg-gradient-primary text-white rounded-lg p-2" />
+            <FileText className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
           </CardBody>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-navy-700">
           <CardBody className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
                 Pending Approvals
               </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-cyan-400">{pendingApprovals.length}</p>
+              <p className="text-4xl font-bold text-navy-900 dark:text-white">{pendingApprovals.length}</p>
             </div>
-            <CheckCircle2 className="w-12 h-12 bg-gradient-primary text-white rounded-lg p-2" />
+            <CheckCircle2 className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
           </CardBody>
         </Card>
       </div>
@@ -202,7 +202,7 @@ export function Dashboard() {
             <Card>
               <CardBody className="text-center">
                 <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Open</p>
-                <p className="text-3xl font-bold text-navy-900 dark:text-cyan-400 mt-1">{taskStats.open}</p>
+                <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{taskStats.open}</p>
               </CardBody>
             </Card>
             <Card>
@@ -210,13 +210,13 @@ export function Dashboard() {
                 <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                   In Progress
                 </p>
-                <p className="text-3xl font-bold text-navy-900 dark:text-cyan-400 mt-1">{taskStats.inProgress}</p>
+                <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{taskStats.inProgress}</p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="text-center">
                 <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Done</p>
-                <p className="text-3xl font-bold text-navy-900 dark:text-cyan-400 mt-1">{taskStats.done}</p>
+                <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{taskStats.done}</p>
               </CardBody>
             </Card>
           </div>
@@ -246,6 +246,7 @@ export function Dashboard() {
                             : 'info'
                       }
                       size="sm"
+                      variant="outline"
                     >
                       {task.priority}
                     </Badge>
@@ -296,6 +297,7 @@ export function Dashboard() {
                             : 'warning'
                         }
                         size="sm"
+                        variant="outline"
                       >
                         {doc.status.replace('_', ' ')}
                       </Badge>
@@ -315,7 +317,7 @@ export function Dashboard() {
                   <Card
                     key={approval.approvalId}
                     onClick={() => navigate(`/approvals/${approval.approvalId}`)}
-                    className="cursor-pointer border-l-4 border-l-blue-600 hover:shadow-lg transition-all"
+                    className="cursor-pointer border-l-4 border-l-navy-700 hover:shadow-lg transition-all"
                   >
                     <CardBody className="space-y-2">
                       <p className="font-semibold text-sm text-navy-900 dark:text-white">

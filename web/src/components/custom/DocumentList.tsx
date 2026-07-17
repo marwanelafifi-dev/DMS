@@ -115,6 +115,8 @@ export function DocumentList({
             <tr className="text-left text-white">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Name</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Status</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Department</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Tags</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Owner</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Size</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Uploaded</th>
@@ -145,9 +147,36 @@ export function DocumentList({
 
                 {/* Status Column */}
                 <td className="px-6 py-4">
-                  <Badge status={getStatusColor(doc.status)} size="sm">
+                  <Badge status={getStatusColor(doc.status)} size="sm" variant="outline">
                     {doc.status.replace('_', ' ').toUpperCase()}
                   </Badge>
+                </td>
+
+                {/* Department Column */}
+                <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
+                  <span className="font-medium text-sm">{doc.department || '-'}</span>
+                </td>
+
+                {/* Tags Column */}
+                <td className="px-6 py-4">
+                  <div className="flex flex-wrap gap-1.5">
+                    {doc.tags && doc.tags.length > 0 ? (
+                      <>
+                        {doc.tags.slice(0, 2).map((tag, idx) => (
+                          <Badge key={idx} status="default" size="sm" variant="outline">
+                            {tag}
+                          </Badge>
+                        ))}
+                        {doc.tags.length > 2 && (
+                          <span className="text-gray-500 dark:text-gray-400 text-xs font-medium self-center">
+                            +{doc.tags.length - 2}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-500 dark:text-gray-400 text-sm">-</span>
+                    )}
+                  </div>
                 </td>
 
                 {/* Owner Column */}

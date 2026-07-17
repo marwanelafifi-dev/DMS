@@ -43,6 +43,8 @@ export interface Document {
   checkedOutAt?: string;
   checkedOutExpires?: string;
   approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
+  department?: string;
+  tags?: string[];
 }
 
 // Document Version
