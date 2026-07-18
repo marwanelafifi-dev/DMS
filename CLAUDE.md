@@ -1062,3 +1062,71 @@ Copied `Si-Ware Logo.png` (repo root) into `web/public/images/si-ware-logo.png` 
 ### Known follow-ups
 - Logo has genuinely low contrast on the black dark-mode navbar (navy wordmark on near-black) — accepted tradeoff per explicit user choice to keep exact brand colors with no filter/plate. A dedicated "logo on dark" asset (navy text recolored to white, cyan icon untouched) would fix this properly but requires image-processing tooling (Python/PIL, ImageMagick, or the `sharp` npm package) that isn't currently available in this environment — none of `python`, `magick`/`convert` (ImageMagick), or `sharp` were found installed when checked this session.
 - The Hangfire `checked_out_by_id` bug flagged at the end of Session 6 is still unfixed (frontend-only session).
+
+---
+
+## 🔧 Session 8 (2026-07-18) — Bug fixes, pagination, dark-mode logo, folder-role validation
+
+**Status:** ✅ Complete — all changes built, deployed to the running containers, and verified live via curl before committing.
+
+### 1. Real bug: Hangfire auto-unlock column mismatch (finally fixed)
+
+Root cause confirmed: `DmsDocumentVersion.CheckedOutById` was left to the generic PascalCase→snake_case converter in `DmsContext.OnModelCreating`, which produced `checked_out_by_id` — but the actual column (`002_core_schema.sql`) is `checked_out_by` (no `_id` suffix, since it's a plain FK-typed column, not named with an `Id` suffix in SQL). Added an explicit `HasColumnName("checked_out_by")` override. Verified live: Hangfire's `succeeded` counter now increments on every run with `failed: 0`, and the logged SQL shows `d.checked_out_by` instead of the nonexistent column.
+
+**File:** `api/Data/DmsContext.cs`.
+
+### 2. Dev environment: Docker `web` container was shadowing the Vite dev server
+
+`docker-compose.yml`'s `web` service defaulted to `${WEB_PORT:-5173}` — the exact same port Vite's dev server binds by default. Any `docker compose up` (even when only touching backend services) silently started/recreated the `web` container on 5173, causing the browser to serve a stale pre-built image instead of the live dev server — this is what caused several "my last changes aren't showing" reports this session, compounded by leftover `npm run dev` processes accumulated across the long session (echoing the exact "5 duplicate dev servers" issue from Session 6). Changed the default `WEB_PORT` to `5174` in `.env`/`.env.example` so the two can never collide again. Killed stray Node processes and confirmed via `netstat`/`Get-CimInstance` that exactly one Vite process owns 5173.
+
+**Files:** `.env`, `.env.example`.
+
+### 2b. Real bug: self-deactivation possible via the inline "Active" checkbox
+
+The Session 6 self-lockout fix only guarded the dedicated `DELETE /api/users/{id}` (deactivate) and `DELETE /api/users/{id}/permanent` endpoints. It missed the generic `PUT /api/users/{id}` update endpoint — and `UserManagement.tsx`'s inline edit row has its own "Active" checkbox that calls `PUT`, not the deactivate button. The user hit this twice live in this session (locking themselves out of the whole Admin Panel both times, recovered each time via a direct `UPDATE dms_users SET is_active = true ...` against the running Postgres container). Fixed both ends: `UsersController.UpdateUser` now rejects `{ isActive: false }` targeting the caller's own ID (`400`), and the inline checkbox is disabled + shows a tooltip for the current dev user, matching the pattern already used on the Deactivate/Delete buttons. Verified live via curl that the exact request that caused the lockout now returns `400` and the account stays active.
+
+**Files:** `api/Controllers/UsersController.cs`, `web/src/components/custom/UserManagement.tsx`.
+
+### 3. Pagination added to Audit Trail and Users
+
+Both `GET /api/audittrails` and `GET /api/users` now accept `page`/`pageSize` and return `{ totalCount, totalPages }` alongside `data`. Backward compatibility mattered here: three existing frontend call sites (`AuditTrail.tsx`, `RolePermissions.tsx` for the folder-permissions dropdown, and `UserManagement.tsx`'s own lookup use) all fetch the **full unpaginated list** for dropdowns/lookup maps — so `GetUsers` only switches into paginated mode when `page`/`pageSize` is actually passed; omitting both still returns everything, exactly as before. `AuditService.GetAuditTrailAsync` (the old signature) is now a thin wrapper over the new `GetAuditTrailPageAsync` so the two other existing call sites (`GetUserAuditTrails`, `GetActionAuditTrails`) kept working unchanged.
+
+Frontend: both `AuditTrail.tsx` and `UserManagement.tsx` got page state + Prev/Next controls under their tables, and their summary stat cards were split into "total" (from the server's `totalCount`, accurate across all pages) vs "(this page)" labels (previously-accurate-looking numbers that were silently only ever the current in-memory array — now labeled honestly instead of quietly wrong).
+
+**Files:** `api/Controllers/{AuditTrailsController,UsersController}.cs`, `api/Services/AuditService.cs`, `web/src/components/custom/{AuditTrail,UserManagement}.tsx`, `web/src/types/index.ts` (extended `ApiResponse<T>` with `page`/`pageSize`/`totalCount`/`totalPages`).
+
+### 4. Proper dark-mode logo asset (the Session 7 follow-up, now unblocked)
+
+`sharp` installed successfully this session (`npm install --save-dev sharp` — no network/environment issue this time, unlike when Python/ImageMagick were checked in Session 7). Wrote a one-off Node script that:
+1. Reads the raw RGBA buffer of `si-ware-logo.png`.
+2. Classifies every opaque pixel by hue — sampled the four dominant colors first (`(40,55,119)` navy text, `(103,128,171)` gray-blue "Systems" subtitle, `(110,197,216)` and `(1,107,178)` the two cyan/blue icon-arc tones) and found hue was the only clean separator: icon tones sit at ~190–204°, both text tones sit above 212° (228.5° and 217.9°). Luminance alone doesn't work — the gray "Systems" text is actually *lighter* than the icon's darker blue arc.
+3. Recolors every pixel with hue > 212° to solid white, leaving icon pixels byte-identical, alpha channel untouched throughout.
+
+Output written to `web/public/images/si-ware-logo-dark.png` (347,395 pixels recolored; icon colors' pixel counts unchanged, confirmed via histogram before/after). Navbar now renders `si-ware-logo.png` in light mode and `si-ware-logo-dark.png` in dark mode via a `block dark:hidden` / `hidden dark:block` pair of `<img>` tags (can't conditionally swap `src` on one `<img>` with Tailwind alone).
+
+**Files:** `web/src/components/layout/Navbar.tsx`, `web/public/images/si-ware-logo-dark.png` (new), `web/package.json` (added `sharp` devDependency).
+
+### 5. `DmsFolderPermission.role` — added the CHECK constraint (Session 5's flagged follow-up)
+
+Went with the CHECK-constraint option over a C# enum, since `role` is compared as a plain string in `RBACMiddleware.HasPermissionForMethod()` and passed as a plain string through `GrantPermissionRequest` — an enum would've meant touching every one of those call sites for no functional gain. Added:
+- `infra/db/init/005_folder_permission_role_check.sql` — `CHECK (role IN ('Reader','Writer','Manager','QA','Admin'))`, applied manually to the running DB (same "only auto-runs on an empty volume" caveat as 003/004).
+- `api/Models/FolderRoles.cs` (new) — canonical `string[]` of the five role names plus an `IsValid()` helper, so the DB constraint, the middleware's switch statement, and the controller's request validation all trace back to one documented source of truth (even though the middleware itself wasn't refactored to use it, to keep the diff minimal).
+- `FolderPermissionsController.GrantPermission` now validates `req.Role` up front and returns a clean `400` with the valid list, instead of letting an invalid role hit the new DB constraint and bubble up as an opaque Postgres exception.
+
+Verified live: `POST /api/folderpermissions` with `"role":"SuperAdmin"` now returns `{"success":false,"error":"Role must be one of: Reader, Writer, Manager, QA, Admin"}`.
+
+**Files:** `infra/db/init/005_folder_permission_role_check.sql` (new), `api/Models/FolderRoles.cs` (new), `api/Controllers/FolderPermissionsController.cs`.
+
+### 6. Also fixed while in the area
+
+- Moved `terser` from `dependencies` to `devDependencies` in `web/package.json` — it's a build-only minifier, was misplaced by an earlier plain `npm install terser` (Session 4).
+- Deleted the `fix/admin-panel-backend-wiring` branch (local + origin) after confirming GitHub had already merged it into `main` via PR #13.
+
+### Verification
+- `docker compose build api` clean on every change; API container rebuilt and restarted after each fix, confirmed `healthy`.
+- Every fix in this session was verified against the **running containers via curl**, not just compiled — the Hangfire fix, both self-deactivation guards, pagination's `totalCount`/`totalPages` shape, the invalid-role rejection, and the dark logo asset's actual served bytes were all checked live, not just typechecked.
+- `npm run type-check`: only the two pre-existing, unrelated errors remain (`PDFViewer.tsx` unused imports, `DocumentViewer.tsx` `checkoutStatus` type mismatch) — both predate this session and weren't touched.
+
+### Known follow-ups
+- `PDFViewer.tsx`/`DocumentViewer.tsx` type-check errors noted above are still open (pre-existing, not investigated this session).
+- Documents/Tasks/Approvals pages are still the main remaining frontend gap — still on mock data / placeholder routes, same shape as the Users/Roles/Audit Trail wiring already done in Session 5.
