@@ -263,6 +263,161 @@ class APIClient {
     return data;
   }
 
+  // Document Versions
+  async getDocumentVersions(documentId: string, params?: any) {
+    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions`, { params });
+    return data;
+  }
+
+  async getDocumentVersion(documentId: string, versionId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}`);
+    return data;
+  }
+
+  async rollbackVersion(documentId: string, versionId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/rollback`);
+    return data;
+  }
+
+  // Workflows
+  async getWorkflows(params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/workflows', { params });
+    return data;
+  }
+
+  async getWorkflow(workflowId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/workflows/${workflowId}`);
+    return data;
+  }
+
+  async createWorkflow(workflowData: any) {
+    const { data } = await this.client.post<ApiResponse>('/workflows', workflowData);
+    return data;
+  }
+
+  async updateWorkflow(workflowId: string, workflowData: any) {
+    const { data } = await this.client.put<ApiResponse>(`/workflows/${workflowId}`, workflowData);
+    return data;
+  }
+
+  async getWorkflowSteps(workflowId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/workflows/${workflowId}/steps`);
+    return data;
+  }
+
+  async completeWorkflowStep(stepId: string, stepData?: any) {
+    const { data } = await this.client.post<ApiResponse>(`/workflow-steps/${stepId}/complete`, stepData);
+    return data;
+  }
+
+  // OCR
+  async triggerOcr(documentId: string, versionId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr`);
+    return data;
+  }
+
+  async getOcrStatus(documentId: string, versionId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr-status`);
+    return data;
+  }
+
+  async getOcrText(documentId: string, versionId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr-text`);
+    return data;
+  }
+
+  // E-Signatures
+  async signDocument(documentId: string, versionId: string, signatureData: any) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/sign`, signatureData);
+    return data;
+  }
+
+  async getSignatures(documentId: string, versionId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/signatures`);
+    return data;
+  }
+
+  // Search & Filtering
+  async searchDocuments(query: string, params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/documents/search', {
+      params: { ...params, q: query },
+    });
+    return data;
+  }
+
+  async advancedSearch(searchCriteria: any) {
+    const { data } = await this.client.post<ApiResponse>('/documents/advanced-search', searchCriteria);
+    return data;
+  }
+
+  // Bulk Operations
+  async bulkApprove(documentIds: string[], comments?: string) {
+    const { data } = await this.client.post<ApiResponse>('/documents/bulk-approve', {
+      documentIds,
+      comments,
+    });
+    return data;
+  }
+
+  async bulkReject(documentIds: string[], reason: string) {
+    const { data } = await this.client.post<ApiResponse>('/documents/bulk-reject', {
+      documentIds,
+      reason,
+    });
+    return data;
+  }
+
+  async bulkDelete(documentIds: string[]) {
+    const { data } = await this.client.post<ApiResponse>('/documents/bulk-delete', {
+      documentIds,
+    });
+    return data;
+  }
+
+  async bulkDownload(documentIds: string[]) {
+    const response = await this.client.post('/documents/bulk-download', {
+      documentIds,
+    }, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  // Reports & Exports
+  async exportAuditLog(format: 'csv' | 'pdf', params?: any) {
+    const response = await this.client.get(`/audittrails/export`, {
+      params: { ...params, format },
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async getComplianceReport(params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/reports/compliance', { params });
+    return data;
+  }
+
+  async getActivityReport(params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/reports/activity', { params });
+    return data;
+  }
+
+  // Reminders - Additional
+  async updateReminder(reminderId: string, reminderData: any) {
+    const { data } = await this.client.put<ApiResponse>(`/reminders/${reminderId}`, reminderData);
+    return data;
+  }
+
+  async deleteReminder(reminderId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/reminders/${reminderId}`);
+    return data;
+  }
+
+  async markReminderAsRead(reminderId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/reminders/${reminderId}/mark-read`);
+    return data;
+  }
+
   // Audit
   async getAuditTrail(params?: any) {
     const { data } = await this.client.get<ApiResponse>('/audittrails', { params });

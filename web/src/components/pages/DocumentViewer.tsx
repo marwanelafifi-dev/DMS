@@ -1,31 +1,40 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Download, Lock, Unlock, CheckCircle2, XCircle, X } from 'lucide-react';
 import { PDFViewer } from '../custom/PDFViewer';
-import { DocumentDetailsPanel } from '../custom/DocumentDetailsPanel';
 import { useToast } from '../../hooks/useToast';
-import { useDocumentStore } from '../../hooks/useDocumentState';
+import { apiClient } from '../../utils/api';
+import { Card, CardBody, Button, Badge } from '../ui';
+import { SkeletonCard } from '../ui/Skeleton';
 import type { Document } from '../../types';
-import { SkeletonCard } from '../ui';
+import { formatFileSize, formatDate } from '../../utils/formatters';
 
 export function DocumentViewer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { showSuccess, showError, showInfo } = useToast();
-  const { updateDocument, applyChanges } = useDocumentStore();
+  const { showSuccess, showError } = useToast();
 
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLockingLoading, setIsLockingLoading] = useState(false);
-  const [statusChanged, setStatusChanged] = useState(false);
+  const [isOperating, setIsOperating] = useState(false);
 
-  // Load Document
+  // Modals
+  const [rejectModal, setRejectModal] = useState({ isOpen: false, reason: '' });
+  const [approveModal, setApproveModal] = useState({ isOpen: false, comments: '' });
+
+  // Load Document from Backend (with mock fallback for testing)
   useEffect(() => {
     const loadDocument = async () => {
+      if (!id) {
+        showError('No document ID provided');
+        navigate('/documents');
+        return;
+      }
+
       try {
         setIsLoading(true);
 
-        // Mock Document Data - keyed by ID
+        // Mock data for testing Document Viewer features
         const mockDocuments: Record<string, Document> = {
           'doc-1': {
             documentId: 'doc-1',
@@ -53,8 +62,7 @@ export function DocumentViewer() {
             uploadedByUser: { userId: 'user-3', fullName: 'Mohammed Anwar', email: 'mohamm@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
             uploadedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
             updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_out',
-            checkedOutBy: 'user-1',
+            checkoutStatus: 'checked_in',
           },
           'doc-3': {
             documentId: 'doc-3',
@@ -70,69 +78,23 @@ export function DocumentViewer() {
             updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
             checkoutStatus: 'checked_in',
           },
-          'doc-4': {
-            documentId: 'doc-4',
-            folderId: 'folder-1',
-            name: 'Audit Results Q2 2026',
-            fileName: 'audit-results-q2.xlsx',
-            fileSize: 512000,
-            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            status: 'released',
-            uploadedBy: 'user-4',
-            uploadedByUser: { userId: 'user-4', fullName: 'Sarah Johnson', email: 'sarah@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-          },
-          'doc-5': {
-            documentId: 'doc-5',
-            folderId: 'folder-1',
-            name: 'Employee Training Records',
-            fileName: 'training-records.docx',
-            fileSize: 1024000,
-            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            status: 'pending_approval',
-            uploadedBy: 'user-5',
-            uploadedByUser: { userId: 'user-5', fullName: 'Lisa Chen', email: 'lisa@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-          },
-          'doc-6': {
-            documentId: 'doc-6',
-            folderId: 'folder-1',
-            name: 'Company Logo High Resolution',
-            fileName: 'logo-hires.png',
-            fileSize: 3072000,
-            contentType: 'image/png',
-            status: 'released',
-            uploadedBy: 'user-6',
-            uploadedByUser: { userId: 'user-6', fullName: 'Design Team', email: 'design@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-          },
-          'doc-7': {
-            documentId: 'doc-7',
-            folderId: 'folder-1',
-            name: 'Q3 2026 Management Review',
-            fileName: 'q3-management-review.pptx',
-            fileSize: 4096000,
-            contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            status: 'draft',
-            uploadedBy: 'user-2',
-            uploadedByUser: { userId: 'user-2', fullName: 'Ahmed Ali', email: 'ahmed@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-          },
         };
 
-        const mockDocument = mockDocuments[id || 'doc-1'] || mockDocuments['doc-1'];
-        const documentWithChanges = applyChanges(mockDocument);
-        setDocument(documentWithChanges);
-      } catch (error) {
-        showError('Failed to load document');
+        const mockDoc = mockDocuments[id];
+        if (mockDoc) {
+          setDocument(mockDoc);
+        } else {
+          // Try to load from API
+          const res = await apiClient.getDocument(id);
+          if (res.data) {
+            setDocument(res.data);
+          } else {
+            showError('Document not found');
+            navigate('/documents');
+          }
+        }
+      } catch (err: any) {
+        showError(err.response?.data?.error || 'Failed to load document');
         navigate('/documents');
       } finally {
         setIsLoading(false);
@@ -142,168 +104,131 @@ export function DocumentViewer() {
     loadDocument();
   }, [id, navigate, showError]);
 
-  const handleLockForEditing = async () => {
+  // Handle Lock Document
+  const handleLock = async () => {
     if (!document) return;
 
+    setIsOperating(true);
     try {
-      setIsLockingLoading(true);
-      // Call backend API: POST /api/documents/{id}/versions/{versionId}/checkout
-      showInfo('Locking file for editing...');
-      // const response = await apiClient.checkoutDocument(document.documentId, document.uploadedAt);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await apiClient.checkoutDocument(document.documentId);
+      showSuccess('✓ Document locked for editing (60-min timeout)');
 
-      const updatedDoc = {
-        ...document,
-        checkoutStatus: 'checked_out',
-        checkedOutBy: 'user-1',
-        checkedOutAt: new Date().toISOString(),
-      };
-      setDocument(updatedDoc);
-      updateDocument(document.documentId, {
-        checkoutStatus: 'checked_out',
-        checkedOutBy: 'user-1',
-        checkedOutAt: new Date().toISOString(),
-      });
-
-      setStatusChanged(true);
-      setTimeout(() => setStatusChanged(false), 2000);
-      showSuccess('✓ File locked for editing (60-min timeout)');
-    } catch (error) {
-      showError('Lock failed');
+      // Reload document
+      const res = await apiClient.getDocument(document.documentId);
+      if (res.data) setDocument(res.data);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to lock document');
     } finally {
-      setIsLockingLoading(false);
+      setIsOperating(false);
     }
   };
 
-  const handleSubmitApproval = async () => {
-    if (!document) return;
-
-    try {
-      // Call backend API: POST /api/documents/{id}/submit
-      showInfo('Submitting for approval...');
-      // const response = await apiClient.submitForApproval(document.documentId);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const updatedDoc = {
-        ...document,
-        status: 'pending_approval' as const,
-      };
-      setDocument(updatedDoc);
-      updateDocument(document.documentId, { status: 'pending_approval' });
-      setStatusChanged(true);
-      setTimeout(() => setStatusChanged(false), 2000);
-      showSuccess('✓ Document submitted for approval! Status: DRAFT → PENDING APPROVAL');
-    } catch (error) {
-      showError('Submission failed');
-    }
-  };
-
-  const handleApprove = async () => {
-    if (!document) return;
-
-    try {
-      // Call backend API: POST /api/documents/{id}/approve
-      showInfo('Approving document...');
-      // const response = await apiClient.approveDocument(document.documentId);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const updatedDoc = {
-        ...document,
-        status: 'released' as const,
-      };
-      setDocument(updatedDoc);
-      updateDocument(document.documentId, { status: 'released' });
-
-      setStatusChanged(true);
-      setTimeout(() => setStatusChanged(false), 2000);
-      showSuccess('✓ Document approved! Status: PENDING APPROVAL → RELEASED');
-    } catch (error) {
-      showError('Approval failed');
-    }
-  };
-
-  const handleReject = async () => {
-    if (!document) return;
-
-    try {
-      // Call backend API: POST /api/documents/{id}/reject
-      showInfo('Rejecting document...');
-      // const response = await apiClient.rejectDocument(document.documentId);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const updatedDoc = {
-        ...document,
-        status: 'draft' as const,
-      };
-      setDocument(updatedDoc);
-      updateDocument(document.documentId, { status: 'draft' });
-
-      setStatusChanged(true);
-      setTimeout(() => setStatusChanged(false), 2000);
-      showSuccess('✓ Document rejected and returned to DRAFT for corrections');
-    } catch (error) {
-      showError('Rejection failed');
-    }
-  };
-
+  // Handle Unlock Document
   const handleUnlock = async () => {
     if (!document) return;
 
+    setIsOperating(true);
     try {
-      // Call backend API: DELETE /api/documents/{id}/versions/{versionId}/checkout
-      showInfo('Unlocking file...');
-      // const response = await apiClient.checkinDocument(document.documentId);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await apiClient.checkinDocument(document.documentId);
+      showSuccess('✓ Document unlocked');
 
-      const updatedDoc = {
-        ...document,
-        checkoutStatus: 'checked_in',
-        checkedOutBy: undefined,
-        checkedOutAt: undefined,
-      };
-      setDocument(updatedDoc);
-      updateDocument(document.documentId, {
-        checkoutStatus: 'checked_in',
-        checkedOutBy: undefined,
-        checkedOutAt: undefined,
-      });
-      setStatusChanged(true);
-      setTimeout(() => setStatusChanged(false), 2000);
-      showSuccess('✓ File unlocked by admin');
-    } catch (error) {
-      showError('Unlock failed');
+      // Reload document
+      const res = await apiClient.getDocument(document.documentId);
+      if (res.data) setDocument(res.data);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to unlock document');
+    } finally {
+      setIsOperating(false);
     }
   };
 
+  // Handle Submit for Approval
+  const handleSubmitApproval = async () => {
+    if (!document) return;
+
+    setIsOperating(true);
+    try {
+      await apiClient.submitForApproval(document.documentId);
+      showSuccess('✓ Document submitted for approval');
+
+      // Reload document
+      const res = await apiClient.getDocument(document.documentId);
+      if (res.data) setDocument(res.data);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to submit document');
+    } finally {
+      setIsOperating(false);
+    }
+  };
+
+  // Handle Approve Document
+  const handleApprove = async () => {
+    if (!document) return;
+
+    setIsOperating(true);
+    try {
+      await apiClient.approveDocument(document.documentId, approveModal.comments);
+      showSuccess('✓ Document approved');
+      setApproveModal({ isOpen: false, comments: '' });
+
+      // Reload document
+      const res = await apiClient.getDocument(document.documentId);
+      if (res.data) setDocument(res.data);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to approve document');
+    } finally {
+      setIsOperating(false);
+    }
+  };
+
+  // Handle Reject Document
+  const handleReject = async () => {
+    if (!document || !rejectModal.reason.trim()) {
+      showError('Please provide a rejection reason');
+      return;
+    }
+
+    setIsOperating(true);
+    try {
+      await apiClient.rejectDocument(document.documentId, rejectModal.reason);
+      showSuccess('✓ Document rejected and returned to draft');
+      setRejectModal({ isOpen: false, reason: '' });
+
+      // Reload document
+      const res = await apiClient.getDocument(document.documentId);
+      if (res.data) setDocument(res.data);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to reject document');
+    } finally {
+      setIsOperating(false);
+    }
+  };
+
+  // Handle Download
   const handleDownload = async () => {
     if (!document) return;
 
     try {
-      // Call backend API: GET /api/documents/{id}/download
-      showInfo('Downloading document...');
-      // const response = await apiClient.downloadDocument(document.documentId);
-      const link = globalThis.document.createElement('a');
-      link.href = `/documents/${document.documentId}/download`;
-      link.download = document.fileName;
-      link.click();
-      showSuccess('Download started');
-    } catch (error) {
-      showError('Download failed');
+      await apiClient.downloadDocument(document.documentId);
+      showSuccess('Document download started');
+    } catch (err: any) {
+      showError('Failed to download document');
     }
   };
 
+  // Loading State
   if (isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2 text-sm text-navy-500 dark:text-navy-300">
           <button
             onClick={() => navigate('/documents')}
-            className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 transition-colors font-medium"
+            className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 font-medium"
           >
             Documents
           </button>
-          <ChevronRight className="w-4 h-4 text-navy-400 dark:text-navy-500" />
-          <span className="text-navy-500 dark:text-navy-400">Loading...</span>
+          <ChevronRight className="w-4 h-4" />
+          <span>Loading...</span>
         </div>
         <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Document Viewer</h1>
         <SkeletonCard />
@@ -311,6 +236,7 @@ export function DocumentViewer() {
     );
   }
 
+  // Not Found State
   if (!document) {
     return (
       <div className="space-y-8 text-center py-12">
@@ -318,78 +244,305 @@ export function DocumentViewer() {
           <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white mb-2">Document Not Found</h2>
           <p className="text-navy-500 dark:text-navy-300">The document you're looking for doesn't exist or has been deleted.</p>
         </div>
-        <button
-          onClick={() => navigate('/documents')}
-          className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all"
-        >
+        <Button variant="primary" onClick={() => navigate('/documents')}>
           Back to Documents
-        </button>
+        </Button>
       </div>
     );
   }
 
+  const getStatusColor = (status: Document['status']): any => {
+    switch (status) {
+      case 'draft':
+        return 'warning';
+      case 'pending_approval':
+        return 'info';
+      case 'released':
+        return 'success';
+      case 'rejected':
+        return 'error';
+      case 'archived':
+        return 'default';
+      default:
+        return 'default';
+    }
+  };
+
+  const isCheckedOut = document.checkoutStatus === 'checked_out';
+  const isDraft = document.status === 'draft';
+  const isPending = document.status === 'pending_approval';
+
   return (
     <div className="space-y-6">
-      {/* Breadcrumb Navigation */}
+      {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
         <button
           onClick={() => navigate('/documents')}
-          className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 transition-colors font-medium hover:underline"
+          className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 font-medium"
         >
           Documents
         </button>
-        <ChevronRight className="w-4 h-4 text-navy-400 dark:text-navy-500" />
-        <span className="text-blue-600 dark:text-cyan-400 font-medium truncate">{document.name}</span>
+        <ChevronRight className="w-4 h-4 text-navy-400" />
+        <span className="text-navy-600 dark:text-navy-300 truncate">{document.name}</span>
       </div>
 
-      {/* Page Title */}
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">{document.name}</h1>
-          <span className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${
-            document.status === 'released' ? 'bg-green-100 text-green-800' :
-            document.status === 'pending_approval' ? 'bg-blue-100 text-blue-800' :
-            'bg-orange-100 text-orange-800'
-          }`}>
-            {document.status.replace('_', ' ').toUpperCase()}
-          </span>
-          {statusChanged && (
-            <span className="text-sm text-green-600 font-semibold animate-pulse">✓ Updated</span>
+        <div className="flex items-center gap-3 flex-1">
+          <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white truncate">
+            {document.name}
+          </h1>
+          <Badge status={getStatusColor(document.status)} variant="outline">
+            {document.status.replace('_', ' ')}
+          </Badge>
+          {isCheckedOut && (
+            <Badge status="warning" variant="outline">
+              🔒 Locked
+            </Badge>
           )}
         </div>
+        <Button
+          variant="secondary"
+          onClick={handleDownload}
+          disabled={isOperating}
+        >
+          <Download className="w-4 h-4 mr-2 inline" />
+          Download
+        </Button>
       </div>
 
-      {/* Main Content: Split Screen (60% PDF, 40% Details) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-280px)]">
-        {/* Left: PDF Viewer (60%) */}
+      {/* Main Content: PDF + Sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* PDF Viewer */}
         <div className="lg:col-span-2">
-          <PDFViewer fileUrl="" fileName={document.fileName} />
+          <Card>
+            <div className="bg-white dark:bg-navy-950 rounded-lg p-4 h-[500px] flex items-center justify-center">
+              <PDFViewer fileUrl="" fileName={document.fileName} />
+            </div>
+          </Card>
         </div>
 
-        {/* Right: Document Details Panel (40%) */}
-        <div className="lg:col-span-1">
-          <DocumentDetailsPanel
-            document={document}
-            onLockForEditing={handleLockForEditing}
-            onUnlock={handleUnlock}
-            onSubmitApproval={handleSubmitApproval}
-            onApprove={handleApprove}
-            onReject={handleReject}
-            onDownload={handleDownload}
-            isLockingLoading={isLockingLoading}
-          />
+        {/* Sidebar: Document Details & Actions */}
+        <div className="lg:col-span-1 space-y-4">
+          {/* Document Info Card */}
+          <Card>
+            <div className="p-6 border-b border-gray-200 dark:border-navy-700">
+              <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Document Info</h2>
+            </div>
+            <CardBody className="space-y-4 text-sm">
+              <div>
+                <p className="text-gray-600 dark:text-gray-400">File Name</p>
+                <p className="font-medium text-navy-900 dark:text-white break-all">{document.fileName}</p>
+              </div>
+              <div>
+                <p className="text-gray-600 dark:text-gray-400">File Size</p>
+                <p className="font-medium text-navy-900 dark:text-white">{formatFileSize(document.fileSize)}</p>
+              </div>
+              <div>
+                <p className="text-gray-600 dark:text-gray-400">Uploaded By</p>
+                <p className="font-medium text-navy-900 dark:text-white">{document.uploadedByUser?.fullName || 'Unknown'}</p>
+                <p className="text-xs text-gray-500">{document.uploadedByUser?.email}</p>
+              </div>
+              <div>
+                <p className="text-gray-600 dark:text-gray-400">Uploaded At</p>
+                <p className="font-medium text-navy-900 dark:text-white">{formatDate(document.uploadedAt)}</p>
+              </div>
+              {document.description && (
+                <div>
+                  <p className="text-gray-600 dark:text-gray-400">Description</p>
+                  <p className="font-medium text-navy-900 dark:text-white">{document.description}</p>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Checkout Status Card */}
+          {isCheckedOut && (
+            <Card className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900">
+              <CardBody className="text-sm space-y-3">
+                <p className="font-medium text-yellow-900 dark:text-yellow-300">
+                  🔒 This document is locked for editing
+                </p>
+                <p className="text-xs text-yellow-800 dark:text-yellow-400">
+                  Checked out by: <span className="font-medium">{document.checkedOutBy}</span>
+                </p>
+                {document.checkedOutAt && (
+                  <p className="text-xs text-yellow-800 dark:text-yellow-400">
+                    Since: <span className="font-medium">{formatDate(document.checkedOutAt)}</span>
+                  </p>
+                )}
+              </CardBody>
+            </Card>
+          )}
+
+          {/* Document Actions */}
+          <Card>
+            <div className="p-6 border-b border-gray-200 dark:border-navy-700">
+              <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Actions</h2>
+            </div>
+            <CardBody className="space-y-2">
+              {/* Lock/Unlock Actions */}
+              {isDraft && !isCheckedOut && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleLock}
+                  disabled={isOperating}
+                  className="w-full justify-center"
+                >
+                  <Lock className="w-4 h-4 mr-2 inline" />
+                  Lock for Editing
+                </Button>
+              )}
+
+              {isCheckedOut && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleUnlock}
+                  disabled={isOperating}
+                  className="w-full justify-center"
+                >
+                  <Unlock className="w-4 h-4 mr-2 inline" />
+                  Unlock
+                </Button>
+              )}
+
+              {/* Submit for Approval */}
+              {isDraft && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSubmitApproval}
+                  disabled={isOperating || isCheckedOut}
+                  className="w-full justify-center"
+                >
+                  📤 Submit for Approval
+                </Button>
+              )}
+
+              {/* Approve/Reject (for Managers) */}
+              {isPending && (
+                <>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setApproveModal({ isOpen: true, comments: '' })}
+                    disabled={isOperating}
+                    className="w-full justify-center bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2 inline" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setRejectModal({ isOpen: true, reason: '' })}
+                    disabled={isOperating}
+                    className="w-full justify-center"
+                  >
+                    <XCircle className="w-4 h-4 mr-2 inline" />
+                    Reject
+                  </Button>
+                </>
+              )}
+            </CardBody>
+          </Card>
         </div>
       </div>
 
-      {/* Mobile Layout: Stacked */}
-      <style>{`
-        @media (max-width: 1024px) {
-          .grid {
-            grid-template-columns: 1fr !important;
-            height: auto !important;
-          }
-        }
-      `}</style>
+      {/* Approval Modal */}
+      {approveModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700 bg-green-50 dark:bg-green-900/20">
+              <h2 className="text-lg font-serif font-bold text-green-900 dark:text-green-300">Approve Document</h2>
+              <button
+                onClick={() => setApproveModal({ isOpen: false, comments: '' })}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <CardBody className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">
+                  Comments (Optional)
+                </label>
+                <textarea
+                  placeholder="Add approval comments..."
+                  value={approveModal.comments}
+                  onChange={(e) => setApproveModal({ ...approveModal, comments: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-green-500 h-24"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => setApproveModal({ isOpen: false, comments: '' })}
+                  disabled={isOperating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleApprove}
+                  disabled={isOperating}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isOperating ? 'Approving...' : 'Approve'}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {/* Rejection Modal */}
+      {rejectModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700 bg-red-50 dark:bg-red-900/20">
+              <h2 className="text-lg font-serif font-bold text-red-900 dark:text-red-300">Reject Document</h2>
+              <button
+                onClick={() => setRejectModal({ isOpen: false, reason: '' })}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <CardBody className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">
+                  Rejection Reason *
+                </label>
+                <textarea
+                  placeholder="Explain why this document is being rejected..."
+                  value={rejectModal.reason}
+                  onChange={(e) => setRejectModal({ ...rejectModal, reason: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-red-500 h-24"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => setRejectModal({ isOpen: false, reason: '' })}
+                  disabled={isOperating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={handleReject}
+                  disabled={isOperating || !rejectModal.reason.trim()}
+                >
+                  {isOperating ? 'Rejecting...' : 'Reject'}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,91 +4,56 @@ import { Button } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { DocumentList } from '../custom/DocumentList';
 import { DocumentGrid } from '../custom/DocumentGrid';
-import { UploadZone } from '../custom/UploadZone';
-import { SearchFilter } from '../custom/SearchFilter';
 import { useToast } from '../../hooks/useToast';
-import { useDocumentStore } from '../../hooks/useDocumentState';
+import { apiClient, DEV_USER_ID } from '../../utils/api';
+import { SkeletonTable } from '../ui/Skeleton';
+import { Upload, Grid3x3, List, ChevronRight, X } from 'lucide-react';
+import { Card, CardBody } from '../ui';
 import type { Folder, Document } from '../../types';
 
 export function Documents() {
   const navigate = useNavigate();
-  const { showSuccess, showError, showInfo } = useToast();
-  const { applyChanges } = useDocumentStore();
+  const { showSuccess, showError } = useToast();
 
   const [folders, setFolders] = useState<Folder[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
+  const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [showUploadZone, setShowUploadZone] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<any>({});
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; docId?: string; docName?: string }>({ isOpen: false });
 
-  // Mock Folders Data
+  // Load Folders from Backend
   useEffect(() => {
-    const mockFolders: Folder[] = [
-      {
-        folderId: 'folder-1',
-        name: 'QMS Documents',
-        parentFolderId: undefined,
-        ownerId: 'user-1',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isArchived: false,
-        children: [
-          {
-            folderId: 'folder-1-1',
-            name: 'Procedures',
-            parentFolderId: 'folder-1',
-            ownerId: 'user-1',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            isArchived: false,
-            children: [],
-          },
-          {
-            folderId: 'folder-1-2',
-            name: 'Work Instructions',
-            parentFolderId: 'folder-1',
-            ownerId: 'user-1',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            isArchived: false,
-            children: [],
-          },
-        ],
-      },
-      {
-        folderId: 'folder-2',
-        name: 'ISMS Documents',
-        parentFolderId: undefined,
-        ownerId: 'user-1',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isArchived: false,
-        children: [
-          {
-            folderId: 'folder-2-1',
-            name: 'Policies',
-            parentFolderId: 'folder-2',
-            ownerId: 'user-1',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            isArchived: false,
-            children: [],
-          },
-        ],
-      },
-    ];
+    const loadFolders = async () => {
+      setIsLoadingFolders(true);
+      try {
+        const res = await apiClient.getFolders();
+        const foldersList = res.data || [];
+        setFolders(foldersList);
 
-    setFolders(mockFolders);
-    setSelectedFolderId('folder-1');
+        // Set first folder as selected by default
+        if (foldersList.length > 0) {
+          setSelectedFolder(foldersList[0]);
+          setSelectedFolderId(foldersList[0].folderId);
+        }
+      } catch (err: any) {
+        showError('Failed to load folders');
+        console.error(err);
+      } finally {
+        setIsLoadingFolders(false);
+      }
+    };
+
+    loadFolders();
   }, []);
-
-  // Subscribe to store changes to reload documents when they're updated
-  const storeDocuments = useDocumentStore((state) => state.documents);
 
   // Load Documents for Selected Folder
   useEffect(() => {
@@ -97,280 +62,283 @@ export function Documents() {
     const loadDocuments = async () => {
       setIsLoadingDocs(true);
       try {
-        // Mock Documents Data - ordered by status (DRAFT first for testing)
-        const baseMockDocuments: Document[] = [
-          // DRAFT - can submit for approval
-          {
-            documentId: 'doc-3',
-            folderId: selectedFolderId,
-            name: 'Records Management Policy',
-            fileName: 'records-policy.pdf',
-            fileSize: 2097152,
-            contentType: 'application/pdf',
-            status: 'draft',
-            uploadedBy: 'user-1',
-            uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-            department: 'Compliance',
-            tags: ['policy', 'records'],
-          },
-          {
-            documentId: 'doc-7',
-            folderId: selectedFolderId,
-            name: 'Q3 2026 Management Review',
-            fileName: 'q3-management-review.pptx',
-            fileSize: 4096000,
-            contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            status: 'draft',
-            uploadedBy: 'user-2',
-            uploadedByUser: { userId: 'user-2', fullName: 'Ahmed Ali', email: 'ahmed@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-            department: 'Management',
-            tags: ['review', 'q3'],
-          },
-          // PENDING_APPROVAL - can approve/reject
-          {
-            documentId: 'doc-2',
-            folderId: selectedFolderId,
-            name: 'Document Control Procedure',
-            fileName: 'doc-control.pdf',
-            fileSize: 1536000,
-            contentType: 'application/pdf',
-            status: 'pending_approval',
-            uploadedBy: 'user-3',
-            uploadedByUser: { userId: 'user-3', fullName: 'Mohammed Anwar', email: 'mohamm@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_out',
-            checkedOutBy: 'user-1',
-            department: 'QMS',
-            tags: ['procedure', 'control'],
-          },
-          {
-            documentId: 'doc-5',
-            folderId: selectedFolderId,
-            name: 'Employee Training Records',
-            fileName: 'training-records.docx',
-            fileSize: 1024000,
-            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            status: 'pending_approval',
-            uploadedBy: 'user-5',
-            uploadedByUser: { userId: 'user-5', fullName: 'Lisa Chen', email: 'lisa@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-            department: 'HR',
-            tags: ['training', 'records'],
-          },
-          // RELEASED - already approved
-          {
-            documentId: 'doc-1',
-            folderId: selectedFolderId,
-            name: 'ISO 9001:2015 Quality Procedure',
-            fileName: 'quality-procedure.pdf',
-            fileSize: 2048576,
-            contentType: 'application/pdf',
-            status: 'released',
-            uploadedBy: 'user-2',
-            uploadedByUser: { userId: 'user-2', fullName: 'Ahmed Ali', email: 'ahmed@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-            department: 'QMS',
-            tags: ['quality', 'iso-9001'],
-          },
-          {
-            documentId: 'doc-4',
-            folderId: selectedFolderId,
-            name: 'Audit Results Q2 2026',
-            fileName: 'audit-results-q2.xlsx',
-            fileSize: 512000,
-            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            status: 'released',
-            uploadedBy: 'user-4',
-            uploadedByUser: { userId: 'user-4', fullName: 'Sarah Johnson', email: 'sarah@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-            department: 'Audit',
-            tags: ['audit', 'q2'],
-          },
-          {
-            documentId: 'doc-6',
-            folderId: selectedFolderId,
-            name: 'Company Logo High Resolution',
-            fileName: 'logo-hires.png',
-            fileSize: 3072000,
-            contentType: 'image/png',
-            status: 'released',
-            uploadedBy: 'user-6',
-            uploadedByUser: { userId: 'user-6', fullName: 'Design Team', email: 'design@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-            department: 'Marketing',
-            tags: ['branding', 'logo'],
-          },
-        ];
-
-        // Apply any global state changes from Zustand store
-        const documentsWithChanges = baseMockDocuments.map(doc => applyChanges(doc));
-
-        setDocuments(documentsWithChanges);
-      } catch (error) {
+        const res = await apiClient.getDocuments(selectedFolderId);
+        const docsList = res.data || [];
+        setDocuments(docsList);
+      } catch (err: any) {
         showError('Failed to load documents');
+        console.error(err);
       } finally {
         setIsLoadingDocs(false);
       }
     };
 
     loadDocuments();
-  }, [selectedFolderId, showError, storeDocuments]);
+  }, [selectedFolderId]);
 
-  // Filter Documents
-  const filteredDocuments = documents.filter((doc) => {
-    const matchesSearch = searchQuery === '' || doc.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = !filters.status || filters.status === 'All Statuses' || doc.status === filters.status;
-    const matchesOwner = !filters.owner || doc.uploadedByUser?.fullName.toLowerCase().includes(filters.owner.toLowerCase());
+  // Handle Folder Selection
+  const handleFolderSelect = (folderId: string) => {
+    const folder = folders.find(f => f.folderId === folderId);
+    if (folder) {
+      setSelectedFolder(folder);
+      setSelectedFolderId(folder.folderId);
+    }
+  };
 
-    return matchesSearch && matchesStatus && matchesOwner;
+  // Filter Documents based on search
+  const filteredDocuments = documents.filter(doc => {
+    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (doc.uploadedByUser?.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+    return matchesSearch;
   });
 
-  const handleFilesSelected = async (files: File[]) => {
+  // Handle Document Delete
+  const handleDeleteDocument = async (docId: string) => {
+    try {
+      await apiClient.deleteDocument(docId);
+      showSuccess('Document deleted successfully');
+      setDeleteConfirm({ isOpen: false });
+      // Reload documents
+      if (selectedFolderId) {
+        const res = await apiClient.getDocuments(selectedFolderId);
+        setDocuments(res.data || []);
+      }
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to delete document');
+    }
+  };
+
+  // Handle Document Download
+  const handleDownloadDocument = async (docId: string) => {
+    try {
+      await apiClient.downloadDocument(docId);
+      showSuccess('Document download started');
+    } catch (err: any) {
+      showError('Failed to download document');
+    }
+  };
+
+  // Handle Document Upload
+  const handleUploadDocument = async () => {
+    if (!selectedFolderId || !uploadFile) {
+      showError('Please select a folder and file');
+      return;
+    }
+
     setIsUploading(true);
     try {
-      for (const file of files) {
-        // In real implementation, would call apiClient.uploadDocument()
-        showInfo(`Uploading ${file.name}...`);
-        // Simulate upload delay
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      const file = uploadFile;
+
+      // Create document record first
+      const docRes = await apiClient.createDocument({
+        folderId: selectedFolderId,
+        name: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
+        fileName: file.name,
+        fileSize: file.size,
+        contentType: file.type,
+        uploadedBy: DEV_USER_ID,
+      });
+
+      if (docRes.data?.documentId) {
+        // Upload file
+        await apiClient.uploadDocument(docRes.data.documentId, file);
+        showSuccess('Document uploaded successfully');
+        setShowUploadModal(false);
+        setUploadFile(null);
+
+        // Reload documents
+        const res = await apiClient.getDocuments(selectedFolderId);
+        setDocuments(res.data || []);
       }
-      showSuccess(`Successfully uploaded ${files.length} file(s)`);
-      setShowUploadZone(false);
-      // Reload documents
-    } catch (error) {
-      showError('Upload failed');
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to upload document');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleDocumentClick = (docId: string) => {
-    navigate(`/documents/${docId}`);
-  };
-
-  const handleDownload = () => {
-    showInfo('Downloading document...');
-    // In real implementation, would call apiClient.downloadDocument()
-  };
-
-  const handleDelete = (docId: string, docName: string) => {
-    setDeleteConfirm({ isOpen: true, docId, docName });
-  };
-
-  const handleConfirmDelete = () => {
-    // In real implementation, would call apiClient.deleteDocument()
-    showSuccess('Document deleted successfully');
-    setDeleteConfirm({ isOpen: false });
-    // Reload documents (in real app, would fetch from API)
-  };
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Documents</h1>
-          <p className="text-gray-600 dark:text-gray-300 mt-1 font-serif">
-            Manage and organize your documents
-          </p>
-        </div>
-        <Button
-          variant="primary"
-          onClick={() => setShowUploadZone(!showUploadZone)}
-        >
-          {showUploadZone ? 'Cancel' : '+ Upload Document'}
-        </Button>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+        <span>Documents</span>
+        {selectedFolder && (
+          <>
+            <ChevronRight className="w-4 h-4" />
+            <span className="font-medium text-navy-900 dark:text-white">{selectedFolder.name}</span>
+          </>
+        )}
       </div>
 
-      {/* Upload Zone */}
-      {showUploadZone && (
-        <UploadZone
-          onFilesSelected={handleFilesSelected}
-          isLoading={isUploading}
-        />
+      {/* Header with View Toggle */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Documents</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode('table')}
+            className={`p-2 rounded-lg transition-colors ${
+              viewMode === 'table'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 dark:bg-navy-800 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-navy-700'
+            }`}
+            title="Table view"
+          >
+            <List className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`p-2 rounded-lg transition-colors ${
+              viewMode === 'grid'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 dark:bg-navy-800 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-navy-700'
+            }`}
+            title="Grid view"
+          >
+            <Grid3x3 className="w-5 h-5" />
+          </button>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => setShowUploadModal(true)}
+            disabled={!selectedFolder || isUploading}
+          >
+            <Upload className="w-4 h-4 mr-2 inline" />
+            {isUploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
+              <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Upload Document</h2>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadFile(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <CardBody className="space-y-4">
+              <div className="border-2 border-dashed border-gray-300 dark:border-navy-700 rounded-lg p-6 text-center">
+                <input
+                  type="file"
+                  id="fileInput"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      setUploadFile(e.target.files[0]);
+                    }
+                  }}
+                />
+                <label htmlFor="fileInput" className="cursor-pointer">
+                  <p className="text-sm font-medium text-navy-900 dark:text-white mb-2">
+                    {uploadFile ? uploadFile.name : 'Click to select a file or drag and drop'}
+                  </p>
+                  {!uploadFile && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Supported formats: PDF, Word, Excel, PowerPoint, Images
+                    </p>
+                  )}
+                </label>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setUploadFile(null);
+                  }}
+                  disabled={isUploading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleUploadDocument}
+                  disabled={!uploadFile || isUploading}
+                >
+                  {isUploading ? 'Uploading...' : 'Upload'}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
       )}
 
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Sidebar: Folder Tree */}
-        <div>
-          <FolderTree
-            folders={folders}
-            selectedFolderId={selectedFolderId}
-            onSelectFolder={setSelectedFolderId}
-          />
+        {/* Sidebar - Folder Tree */}
+        <div className="lg:col-span-1">
+          {isLoadingFolders ? (
+            <div className="bg-white dark:bg-navy-950 rounded-lg p-4 space-y-2">
+              <div className="h-8 bg-gray-200 dark:bg-navy-800 rounded animate-skeleton" />
+              <div className="h-8 bg-gray-200 dark:bg-navy-800 rounded animate-skeleton" />
+              <div className="h-8 bg-gray-200 dark:bg-navy-800 rounded animate-skeleton" />
+            </div>
+          ) : folders.length === 0 ? (
+            <div className="bg-gray-50 dark:bg-navy-950 rounded-lg p-4 text-center text-gray-500 dark:text-gray-400">
+              <p className="text-sm">No folders available</p>
+            </div>
+          ) : (
+            <FolderTree
+              folders={folders}
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={handleFolderSelect}
+            />
+          )}
         </div>
 
-        {/* Main: Documents */}
-        <div className="lg:col-span-3 space-y-6">
-          {/* Search & Filter */}
-          <SearchFilter
-            onSearch={setSearchQuery}
-            onAdvancedFilter={setFilters}
-            showAdvanced={true}
-          />
-
-          {/* View Mode Toggle */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              {filteredDocuments.length} document{filteredDocuments.length !== 1 ? 's' : ''}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-                  viewMode === 'table'
-                    ? 'bg-gradient-primary text-white shadow-md'
-                    : 'bg-white dark:bg-navy-700 text-navy-900 dark:text-white border border-gray-300 dark:border-navy-600 hover:shadow-sm'
-                }`}
-                title="Table view"
-              >
-                ≡
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-                  viewMode === 'grid'
-                    ? 'bg-gradient-primary text-white shadow-md'
-                    : 'bg-white dark:bg-navy-700 text-navy-900 dark:text-white border border-gray-300 dark:border-navy-600 hover:shadow-sm'
-                }`}
-                title="Grid view"
-              >
-                ⊞
-              </button>
-            </div>
+        {/* Main - Document List */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* Search */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search documents by name or owner..."
+              className="w-full px-4 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
 
           {/* Documents View */}
-          {viewMode === 'table' ? (
+          {isLoadingDocs ? (
+            <SkeletonTable />
+          ) : filteredDocuments.length === 0 ? (
+            <div className="bg-white dark:bg-navy-950 rounded-lg p-12 text-center">
+              <p className="text-gray-500 dark:text-gray-400 mb-4">
+                {documents.length === 0 ? 'No documents in this folder' : 'No documents matching your search'}
+              </p>
+              {documents.length === 0 && selectedFolder && (
+                <Button
+                  variant="primary"
+                  onClick={() => setShowUploadModal(true)}
+                >
+                  <Upload className="w-4 h-4 mr-2 inline" />
+                  Upload First Document
+                </Button>
+              )}
+            </div>
+          ) : viewMode === 'table' ? (
             <DocumentList
               documents={filteredDocuments}
-              isLoading={isLoadingDocs}
-              onDocumentClick={handleDocumentClick}
-              onDownload={handleDownload}
-              onDelete={(docId, docName) => handleDelete(docId, docName)}
+              onDocumentClick={(docId: string) => navigate(`/documents/${docId}`)}
+              onDownload={(docId: string) => handleDownloadDocument(docId)}
+              onDelete={(docId: string, docName: string) => setDeleteConfirm({ isOpen: true, docId, docName })}
             />
           ) : (
             <DocumentGrid
               documents={filteredDocuments}
-              isLoading={isLoadingDocs}
-              onDocumentClick={handleDocumentClick}
-              onDownload={handleDownload}
-              onDelete={(docId, docName) => handleDelete(docId, docName)}
+              onDocumentClick={(docId: string) => navigate(`/documents/${docId}`)}
+              onDownload={(docId: string) => handleDownloadDocument(docId)}
+              onDelete={(docId: string, docName: string) => setDeleteConfirm({ isOpen: true, docId, docName })}
             />
           )}
         </div>
@@ -378,41 +346,37 @@ export function Documents() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
-            {/* Header */}
-            <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white">
-              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
-                <span>⚠️</span> Delete Document
-              </h3>
-            </div>
-
-            {/* Content */}
-            <div className="px-6 py-4 space-y-4">
-              <p className="text-gray-700 dark:text-gray-300">
-                Are you sure you want to delete <span className="font-semibold text-navy-900 dark:text-blue-300">"{deleteConfirm.docName}"</span>?
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                This action cannot be undone. The document will be permanently removed from the system.
-              </p>
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-sm">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
+              <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Delete Document</h2>
               <button
                 onClick={() => setDeleteConfirm({ isOpen: false })}
-                className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-700 transition-colors"
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
-              >
-                Delete
+                <X className="w-6 h-6" />
               </button>
             </div>
-          </div>
+            <CardBody>
+              <p className="text-gray-700 dark:text-gray-300 mb-6">
+                Are you sure you want to delete <span className="font-semibold">"{deleteConfirm.docName}"</span>? This action cannot be undone.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => setDeleteConfirm({ isOpen: false })}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => deleteConfirm.docId && handleDeleteDocument(deleteConfirm.docId)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
         </div>
       )}
     </div>
