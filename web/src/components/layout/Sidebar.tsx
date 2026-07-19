@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronRight, CheckCircle2, Folder, ClipboardList, Lock, Users, FileText, Settings, Home, Bell } from 'lucide-react';
+import { ChevronRight, CheckCircle2, Folder, ClipboardList, Lock, Users, FileText, Settings, Home, Bell, Clock, Search as SearchIcon } from 'lucide-react';
 import { useState } from 'react';
 
 interface SidebarProps {
@@ -119,7 +119,9 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
           {sectionHeader('Vault')}
           <div className="py-2 px-2">
             {menuItem(<Folder />, 'Documents', '/documents')}
+            {menuItem(<SearchIcon />, 'Search', '/search')}
             {menuItem(<ClipboardList />, 'Approvals', '/approvals', 2)}
+            {menuItem(<Clock />, 'Reminders', '/reminders')}
           </div>
 
           {/* Administration */}

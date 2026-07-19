@@ -29,6 +29,7 @@ export interface Document {
   folderId: string;
   folder?: Folder;
   name: string;
+  title?: string; // Alias for name
   description?: string;
   fileName: string;
   fileSize: number;
@@ -37,6 +38,7 @@ export interface Document {
   uploadedBy: string;
   uploadedByUser?: User;
   uploadedAt: string;
+  createdAt?: string; // Alias for uploadedAt
   updatedAt: string;
   checkoutStatus?: 'checked_out' | 'checked_in';
   checkedOutBy?: string;
@@ -52,9 +54,11 @@ export interface DocumentVersion {
   versionId: string;
   documentId: string;
   version: number;
+  versionNumber?: number; // Alias for version
   uploadedBy: string;
   uploadedByUser?: User;
   uploadedAt: string;
+  createdAt?: string; // Alias for uploadedAt
   changeNotes?: string;
   fileSize: number;
 }
@@ -116,10 +120,14 @@ export interface Reminder {
   taskId?: string;
   task?: Task;
   message: string;
+  description?: string; // Alias for message
   reminderType: 'task_due' | 'task_overdue' | 'approval_pending' | 'checkout_expiring';
   isRead: boolean;
+  isSent?: boolean; // Alias for tracking if sent
   sentAt: string;
+  dueDate?: string; // When the reminder should be sent
   readAt?: string;
+  recipientId?: string;
 }
 
 // Folder Permission

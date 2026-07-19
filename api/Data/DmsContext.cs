@@ -43,6 +43,15 @@ public class DmsContext : DbContext
             .Property(dv => dv.CheckedOutById)
             .HasColumnName("checked_out_by");
 
+        // Configure JSONB columns (PostgreSQL-specific)
+        modelBuilder.Entity<DmsFolder>()
+            .Property(f => f.MetadataSchema)
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<DmsAuditTrail>()
+            .Property(at => at.Metadata)
+            .HasColumnType("jsonb");
+
         // === PRIMARY KEYS & TABLE NAMES (explicit configuration) ===
         modelBuilder.Entity<DmsUser>().ToTable("dms_users").HasKey(u => u.UserId);
         modelBuilder.Entity<DmsFolder>().ToTable("dms_folders").HasKey(f => f.FolderId);

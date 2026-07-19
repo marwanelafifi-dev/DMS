@@ -4,6 +4,10 @@ import { Dashboard } from './components/pages/Dashboard';
 import { Documents } from './components/pages/Documents';
 import { DocumentViewer } from './components/pages/DocumentViewer';
 import { Settings } from './components/pages/Settings';
+import { Tasks } from './components/pages/Tasks';
+import { Approvals } from './components/pages/Approvals';
+import { Reminders } from './components/pages/Reminders';
+import { Search } from './components/pages/Search';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -25,10 +29,7 @@ function App() {
           element={
             <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-serif font-bold tracking-tight mb-4 text-navy-900 dark:text-white">Tasks</h1>
-                <p className="text-navy-500 dark:text-navy-300">
-                  Task management coming soon...
-                </p>
+                <Tasks />
               </div>
             </MainLayout>
           }
@@ -60,10 +61,31 @@ function App() {
           element={
             <MainLayout>
               <div className="py-8">
-                <h1 className="text-3xl font-serif font-bold tracking-tight mb-4 text-navy-900 dark:text-white">Approvals</h1>
-                <p className="text-navy-500 dark:text-navy-300">
-                  Approval workflows coming soon...
-                </p>
+                <Approvals />
+              </div>
+            </MainLayout>
+          }
+        />
+
+        {/* Reminders */}
+        <Route
+          path="/reminders"
+          element={
+            <MainLayout>
+              <div className="py-8">
+                <Reminders />
+              </div>
+            </MainLayout>
+          }
+        />
+
+        {/* Search */}
+        <Route
+          path="/search"
+          element={
+            <MainLayout>
+              <div className="py-8">
+                <Search />
               </div>
             </MainLayout>
           }

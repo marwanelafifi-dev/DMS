@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { PDFToolbar } from './PDFToolbar';
-import { FileText, FileSpreadsheet, File } from 'lucide-react';
 
 interface PDFViewerProps {
   fileUrl: string;
   fileName: string;
-  contentType?: string;
 }
 
-export function PDFViewer({ fileUrl, fileName, contentType = 'application/pdf' }: PDFViewerProps) {
+export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [zoom, setZoom] = useState(100);
