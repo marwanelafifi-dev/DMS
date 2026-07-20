@@ -9,6 +9,9 @@ import { SkeletonCard } from '../ui/Skeleton';
 import type { Document } from '../../types';
 import { formatFileSize, formatDate } from '../../utils/formatters';
 
+const getCurrentVersionId = (document: Document) =>
+  document.currentVersionId ?? document.versions?.[0]?.versionId;
+
 export function DocumentViewer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -21,6 +24,14 @@ export function DocumentViewer() {
   // Modals
   const [rejectModal, setRejectModal] = useState({ isOpen: false, reason: '' });
   const [approveModal, setApproveModal] = useState({ isOpen: false, comments: '' });
+
+  const requireCurrentVersionId = (missingVersionMessage = 'This document does not have an uploaded file version') => {
+    if (!document) return undefined;
+
+    const versionId = getCurrentVersionId(document);
+    if (!versionId) showError(missingVersionMessage);
+    return versionId;
+  };
 
   // Load Document from Backend (with mock fallback for testing)
   useEffect(() => {
@@ -108,9 +119,12 @@ export function DocumentViewer() {
   const handleLock = async () => {
     if (!document) return;
 
+    const versionId = requireCurrentVersionId();
+    if (!versionId) return;
+
     setIsOperating(true);
     try {
-      await apiClient.checkoutDocument(document.documentId);
+      await apiClient.checkoutDocument(document.documentId, versionId);
       showSuccess('✓ Document locked for editing (60-min timeout)');
 
       // Reload document
@@ -127,9 +141,12 @@ export function DocumentViewer() {
   const handleUnlock = async () => {
     if (!document) return;
 
+    const versionId = requireCurrentVersionId();
+    if (!versionId) return;
+
     setIsOperating(true);
     try {
-      await apiClient.checkinDocument(document.documentId);
+      await apiClient.checkinDocument(document.documentId, versionId);
       showSuccess('✓ Document unlocked');
 
       // Reload document
@@ -146,9 +163,12 @@ export function DocumentViewer() {
   const handleSubmitApproval = async () => {
     if (!document) return;
 
+    const versionId = requireCurrentVersionId('Upload a document version before submitting it for approval');
+    if (!versionId) return;
+
     setIsOperating(true);
     try {
-      await apiClient.submitForApproval(document.documentId);
+      await apiClient.submitForApproval(document.documentId, versionId);
       showSuccess('✓ Document submitted for approval');
 
       // Reload document
@@ -165,9 +185,12 @@ export function DocumentViewer() {
   const handleApprove = async () => {
     if (!document) return;
 
+    const versionId = requireCurrentVersionId();
+    if (!versionId) return;
+
     setIsOperating(true);
     try {
-      await apiClient.approveDocument(document.documentId, approveModal.comments);
+      await apiClient.approveDocument(document.documentId, versionId, approveModal.comments);
       showSuccess('✓ Document approved');
       setApproveModal({ isOpen: false, comments: '' });
 
@@ -188,9 +211,12 @@ export function DocumentViewer() {
       return;
     }
 
+    const versionId = requireCurrentVersionId();
+    if (!versionId) return;
+
     setIsOperating(true);
     try {
-      await apiClient.rejectDocument(document.documentId, rejectModal.reason);
+      await apiClient.rejectDocument(document.documentId, versionId, rejectModal.reason);
       showSuccess('✓ Document rejected and returned to draft');
       setRejectModal({ isOpen: false, reason: '' });
 
@@ -208,8 +234,11 @@ export function DocumentViewer() {
   const handleDownload = async () => {
     if (!document) return;
 
+    const versionId = requireCurrentVersionId();
+    if (!versionId) return;
+
     try {
-      await apiClient.downloadDocument(document.documentId);
+      await apiClient.downloadDocument(document.documentId, versionId);
       showSuccess('Document download started');
     } catch (err: any) {
       showError('Failed to download document');

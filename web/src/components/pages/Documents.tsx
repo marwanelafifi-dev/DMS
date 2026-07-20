@@ -87,8 +87,8 @@ export function Documents() {
 
   // Filter Documents based on search
   const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (doc.uploadedByUser?.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+    const matchesSearch = (doc.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+      (doc.uploadedByUser?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
     return matchesSearch;
   });
 
@@ -111,7 +111,13 @@ export function Documents() {
   // Handle Document Download
   const handleDownloadDocument = async (docId: string) => {
     try {
-      await apiClient.downloadDocument(docId);
+      const document = documents.find(doc => doc.documentId === docId);
+      if (!document?.currentVersionId) {
+        showError('This document does not have an uploaded file version');
+        return;
+      }
+
+      await apiClient.downloadDocument(docId, document.currentVersionId);
       showSuccess('Document download started');
     } catch (err: any) {
       showError('Failed to download document');
@@ -132,11 +138,8 @@ export function Documents() {
       // Create document record first
       const docRes = await apiClient.createDocument({
         folderId: selectedFolderId,
-        name: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
-        fileName: file.name,
-        fileSize: file.size,
-        contentType: file.type,
-        uploadedBy: DEV_USER_ID,
+        title: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
+        ownerId: DEV_USER_ID,
       });
 
       if (docRes.data?.documentId) {

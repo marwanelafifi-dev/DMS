@@ -50,7 +50,7 @@ export function DocumentVersionHistory({ documentId, onClose }: DocumentVersionH
 
   const handleDownload = async (versionId: string) => {
     try {
-      const blob = await apiClient.downloadDocument(documentId);
+      const blob = await apiClient.downloadDocument(documentId, versionId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

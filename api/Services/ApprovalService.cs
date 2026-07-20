@@ -238,7 +238,7 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
         }
     }
 
-    public async Task<List<object>> GetPendingApprovalsAsync(Guid? folderId = null, int limit = 100)
+    public async Task<(List<object> Items, int TotalCount)> GetPendingApprovalsAsync(Guid? folderId = null, int page = 1, int pageSize = 100)
     {
         try
         {
@@ -250,28 +250,48 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
                 query = query.Where(v => v.Document.FolderId == folderId);
             }
 
+            var totalCount = await query.CountAsync();
+
             var pending = await query
                 .OrderByDescending(v => v.SubmittedAt)
-                .Take(limit)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(v => new
                 {
+                    ApprovalId = v.VersionId,
                     v.VersionId,
                     v.DocumentId,
-                    v.Document.Title,
+                    Document = new
+                    {
+                        v.Document.DocumentId,
+                        Name = v.Document.Title,
+                        v.Document.Title,
+                        v.Document.FolderId,
+                        v.Document.Status,
+                        CurrentVersionId = v.VersionId
+                    },
                     v.VersionNumber,
                     v.Status,
-                    SubmittedBy = v.SubmittedBy == null ? null : v.SubmittedBy.FullName,
+                    ApprovalStatus = "pending",
+                    SubmittedBy = v.SubmittedById,
+                    SubmittedByUser = v.SubmittedBy == null ? null : new
+                    {
+                        v.SubmittedBy.UserId,
+                        v.SubmittedBy.FullName,
+                        v.SubmittedBy.Email
+                    },
                     v.SubmittedAt,
-                    v.Document.FolderId
+                    v.Document.FolderId,
+                    Comments = v.ApprovalComment
                 })
                 .ToListAsync();
 
-            return pending.Cast<object>().ToList();
+            return (pending.Cast<object>().ToList(), totalCount);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error getting pending approvals");
-            return new List<object>();
+            throw;
         }
     }
 }

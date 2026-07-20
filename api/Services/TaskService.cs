@@ -6,7 +6,7 @@ namespace DMS.Api.Services;
 
 public class TaskService(DmsContext context, AuditService auditService, ILogger<TaskService> logger)
 {
-    public async Task<TaskResult> CreateTaskAsync(Guid documentId, Guid assignedToId, string title, string? description = null, string? taskType = null, DateTime? dueDate = null)
+    public async Task<TaskResult> CreateTaskAsync(Guid documentId, Guid assignedToId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null)
     {
         try
         {
@@ -25,6 +25,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                 Title = title.Trim(),
                 Description = description?.Trim(),
                 TaskType = taskType ?? "correction",
+                RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,
                 DueDate = dueDate,
                 Status = "open",
@@ -47,7 +48,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                 task.DueDate,
                 task.Status,
                 task.CreatedAt
-            });
+            }, task.TaskId);
         }
         catch (Exception ex)
         {
@@ -56,7 +57,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         }
     }
 
-    public async Task<List<object>> GetMyTasksAsync(Guid userId, string? status = null, int limit = 100)
+    public async Task<(List<object> Items, int TotalCount)> GetMyTasksAsync(Guid userId, string? status = null, int page = 1, int pageSize = 100)
     {
         try
         {
@@ -65,10 +66,15 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(t => t.Status == status);
 
+            var today = DateTime.UtcNow.Date;
+            var totalCount = await query.CountAsync();
+
             var tasks = await query
-                .OrderByDescending(t => t.DueDate ?? DateTime.MaxValue)
+                .OrderBy(t => !t.DueDate.HasValue)
+                .ThenBy(t => t.DueDate)
                 .ThenByDescending(t => t.CreatedAt)
-                .Take(limit)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(t => new
                 {
                     t.TaskId,
@@ -77,19 +83,22 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                     t.Title,
                     t.Description,
                     t.TaskType,
+                    t.RiskSeverity,
+                    Priority = t.RiskSeverity ?? "medium",
+                    t.AssignedToId,
                     t.DueDate,
                     t.Status,
-                    IsOverdue = t.DueDate.HasValue && t.DueDate < DateTime.Now && t.Status != "completed",
+                    IsOverdue = t.DueDate.HasValue && t.DueDate < today && t.Status != "completed",
                     t.CreatedAt
                 })
                 .ToListAsync();
 
-            return tasks.Cast<object>().ToList();
+            return (tasks.Cast<object>().ToList(), totalCount);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error getting tasks for user {UserId}", userId);
-            return new List<object>();
+            throw;
         }
     }
 
@@ -143,7 +152,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         }
     }
 
-    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? rca = null, string? preventiveActions = null)
+    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? preventiveActions = null)
     {
         try
         {
@@ -160,6 +169,21 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             if (dueDate.HasValue)
                 task.DueDate = dueDate;
+
+            if (!string.IsNullOrWhiteSpace(riskSeverity))
+                task.RiskSeverity = riskSeverity.Trim().ToLowerInvariant();
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                var normalizedStatus = status == "done" ? "completed" : status.Trim().ToLowerInvariant();
+                if (normalizedStatus == "completed")
+                    return TaskResult.Invalid("Use the task completion endpoint to complete a task");
+
+                if (normalizedStatus is not ("open" or "in_progress"))
+                    return TaskResult.Invalid("Status must be open or in_progress");
+
+                task.Status = normalizedStatus;
+            }
 
             if (!string.IsNullOrWhiteSpace(rca))
                 task.RcaText = rca.Trim();
@@ -259,8 +283,9 @@ public class TaskResult
     public string? Message { get; set; }
     public object? Data { get; set; }
     public string? Error { get; set; }
+    public Guid? ResourceId { get; set; }
 
-    public static TaskResult Ok(object data) => new() { Success = true, Data = data };
+    public static TaskResult Ok(object data, Guid? resourceId = null) => new() { Success = true, Data = data, ResourceId = resourceId };
     public static TaskResult NotFound(string message) => new() { Success = false, Message = message, Error = "NotFound" };
     public static TaskResult Invalid(string message) => new() { Success = false, Message = message, Error = "Invalid" };
     public static TaskResult Forbidden(string message) => new() { Success = false, Message = message, Error = "Forbidden" };

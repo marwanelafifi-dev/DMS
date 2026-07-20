@@ -51,8 +51,8 @@ export function DocumentList({
       bVal = b.status;
     }
 
-    if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-    if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+    if (typeof aVal === 'string') aVal = aVal?.toLowerCase() || '';
+    if (typeof bVal === 'string') bVal = bVal?.toLowerCase() || '';
 
     if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
     if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;

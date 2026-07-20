@@ -65,9 +65,14 @@ export function Search() {
     }
   };
 
-  const handleDownload = async (docId: string) => {
+  const handleDownload = async (document: Document) => {
+    if (!document.currentVersionId) {
+      showError('This document does not have an uploaded file version');
+      return;
+    }
+
     try {
-      await apiClient.downloadDocument(docId);
+      await apiClient.downloadDocument(document.documentId, document.currentVersionId);
       showSuccess('Download started');
     } catch {
       showError('Failed to download document');
@@ -306,7 +311,7 @@ export function Search() {
                           <Eye className="w-4 h-4 text-blue-600" />
                         </button>
                         <button
-                          onClick={() => handleDownload(doc.documentId)}
+                          onClick={() => handleDownload(doc)}
                           className="p-2 hover:bg-gray-200 dark:hover:bg-navy-700 rounded transition-colors"
                           title="Download"
                         >

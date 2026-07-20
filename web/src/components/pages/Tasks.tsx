@@ -4,7 +4,7 @@ import { SkeletonTable } from '../ui/Skeleton';
 import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
-import type { Task } from '../../types';
+import type { Document, Task } from '../../types';
 
 const PAGE_SIZE = 10;
 
@@ -30,6 +30,7 @@ export function Tasks() {
   const { showSuccess, showError } = useToast();
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -67,8 +68,9 @@ export function Tasks() {
       const res = await apiClient.getTasks({ page: targetPage, pageSize: PAGE_SIZE });
       const allTasks = res.data || [];
       setTasks(allTasks);
-      setTotalCount(res.totalCount ?? allTasks.length ?? 0);
-      setTotalPages(res.totalPages ?? 1);
+      const count = res.totalCount ?? res.count ?? allTasks.length ?? 0;
+      setTotalCount(count);
+      setTotalPages(res.totalPages ?? (Math.ceil(count / PAGE_SIZE) || 1));
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API');
     } finally {
@@ -85,9 +87,19 @@ export function Tasks() {
     }
   };
 
+  const loadDocuments = async () => {
+    try {
+      const res = await apiClient.getDocuments();
+      setDocuments(res.data || []);
+    } catch (err) {
+      showError('Failed to load documents for task creation');
+    }
+  };
+
   useEffect(() => {
     loadTasks(page);
     loadUsers();
+    loadDocuments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -119,12 +131,25 @@ export function Tasks() {
       showError('Due date is required');
       return;
     }
+    if (!newTask.documentId) {
+      showError('Document is required');
+      return;
+    }
+    if (!newTask.assignedTo) {
+      showError('Assignee is required');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       await apiClient.createTask({
-        ...newTask,
-        assignedBy: DEV_USER_ID,
+        title: newTask.title,
+        description: newTask.description,
+        taskType: newTask.taskType,
+        riskSeverity: newTask.priority,
+        documentId: newTask.documentId,
+        assignedToId: newTask.assignedTo,
+        dueDate: newTask.dueDate,
       });
       showSuccess('Task created successfully');
       setShowAddForm(false);
@@ -187,7 +212,7 @@ export function Tasks() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await apiClient.updateTask(taskId, { status: 'done' });
+      await apiClient.completeTask(taskId);
       showSuccess('Task marked as complete');
       setDeleteConfirm({});
       loadTasks();
@@ -553,6 +578,20 @@ export function Tasks() {
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document *</label>
+                <select
+                  value={newTask.documentId || ''}
+                  onChange={(e) => setNewTask({ ...newTask, documentId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                >
+                  <option value="">Select a document...</option>
+                  {documents.map(doc => (
+                    <option key={doc.documentId} value={doc.documentId}>{doc.title || doc.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

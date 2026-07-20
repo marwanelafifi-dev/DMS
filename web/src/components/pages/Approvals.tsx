@@ -33,7 +33,7 @@ export function Approvals() {
       const res = await apiClient.getPendingApprovals({ page: targetPage, pageSize: PAGE_SIZE });
       const allApprovals = res.data || [];
       setApprovals(allApprovals);
-      setTotalCount(res.totalCount ?? allApprovals.length ?? 0);
+      setTotalCount(res.totalCount ?? res.count ?? allApprovals.length ?? 0);
       setTotalPages(res.totalPages ?? 1);
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API');
@@ -63,6 +63,10 @@ export function Approvals() {
 
   const handleApprovalAction = async () => {
     if (!actionModal.approval) return;
+    if (!actionModal.approval.versionId) {
+      showError('This approval is missing its document version');
+      return;
+    }
 
     if (actionModal.actionType === 'reject' && !actionText.trim()) {
       showError('Rejection reason is required');
@@ -76,9 +80,9 @@ export function Approvals() {
     setIsSubmittingAction(true);
     try {
       if (actionModal.actionType === 'approve') {
-        await apiClient.approveDocument(actionModal.approval.documentId, actionText);
+        await apiClient.approveDocument(actionModal.approval.documentId, actionModal.approval.versionId, actionText);
       } else {
-        await apiClient.rejectDocument(actionModal.approval.documentId, actionText);
+        await apiClient.rejectDocument(actionModal.approval.documentId, actionModal.approval.versionId, actionText);
       }
       showSuccess(`Document ${actionModal.actionType === 'approve' ? 'approved' : 'rejected'} successfully`);
       setActionModal({ isOpen: false });
