@@ -99,7 +99,9 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
             if (string.IsNullOrWhiteSpace(req.Title))
                 return BadRequest(new { success = false, error = "العنوان مطلوب" });
 
+            var managerId = GetCurrentUserId();
             var result = await taskService.CreateTaskAsync(
+                managerId,
                 req.DocumentId,
                 req.AssignedToId,
                 req.Title,

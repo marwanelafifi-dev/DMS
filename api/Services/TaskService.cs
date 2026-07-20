@@ -6,7 +6,7 @@ namespace DMS.Api.Services;
 
 public class TaskService(DmsContext context, AuditService auditService, ILogger<TaskService> logger)
 {
-    public async Task<TaskResult> CreateTaskAsync(Guid documentId, Guid assignedToId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null)
+    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid documentId, Guid assignedToId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null)
     {
         try
         {
@@ -27,6 +27,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                 TaskType = taskType ?? "correction",
                 RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,
+                ManagerId = managerId,
                 DueDate = dueDate,
                 Status = "open",
                 CreatedAt = DateTime.UtcNow,
@@ -44,6 +45,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                 task.DocumentId,
                 task.Title,
                 task.AssignedToId,
+                task.ManagerId,
                 AssignedToName = assignee.FullName,
                 task.DueDate,
                 task.Status,
@@ -61,7 +63,9 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
     {
         try
         {
-            var query = context.Tasks.Where(t => t.AssignedToId == userId);
+            // A manager must be able to track work they delegated, while the
+            // assignee still sees the same task in their personal queue.
+            var query = context.Tasks.Where(t => t.AssignedToId == userId || t.ManagerId == userId);
 
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(t => t.Status == status);
@@ -86,6 +90,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                     t.RiskSeverity,
                     Priority = t.RiskSeverity ?? "medium",
                     t.AssignedToId,
+                    t.ManagerId,
                     t.DueDate,
                     t.Status,
                     IsOverdue = t.DueDate.HasValue && t.DueDate < today && t.Status != "completed",

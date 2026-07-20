@@ -162,7 +162,8 @@ export function Tasks() {
         assignedTo: DEV_USER_ID,
         documentId: '',
       });
-      loadTasks();
+      setPage(1);
+      loadTasks(1);
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create task');
     } finally {
