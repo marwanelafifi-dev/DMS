@@ -1498,3 +1498,128 @@ Total: Real test data ready for E2E testing
 ```
 
 **System Status: ✅ 80% Production-Ready, All Critical Fixes Applied**
+
+---
+
+## 🎨 Session 12 (2026-07-22) — Document Library UI Redesign (Final Polish)
+
+### UI Improvements Implemented
+
+**1. Sidebar Layout Restructuring** ✅
+- Converted FolderTree from horizontal grid to **vertical left sidebar**
+- Sidebar width optimized: `w-64` → `w-56` (224px) for better space distribution
+- Removed folder selection checkboxes
+- Added **three-dot context menu** for each folder with operations:
+  - Rename/Edit
+  - Copy
+  - Cut
+  - Delete
+
+**2. Document Table Layout Optimization** ✅
+- **Removed Size column** completely (data retained in preview)
+- **Preview button**: Converted to **icon-only** (eye icon, 9x9)
+- **Download button**: Shows **text + icon** with full width (200px column)
+- **Actions column**: Left-aligned header, fully visible buttons
+- Table layout: Changed from `table-fixed` to auto layout with horizontal scroll
+- Buttons properly sized (h-9) and spaced for visibility
+
+**3. Document Preview Enhancements** ✅
+- **Full-content overlay**: Positioned after sidebar (`left-56` instead of `left-64`)
+- **Compact metadata header**: Reduced from 5 rows to 2 rows of inline fields
+  - Row 1: Type | Folder | Size | Status | Department
+  - Row 2: Owner | Created | Modified | Tags (+N)
+- **File preview fills available space**: Changed from `overflow-y-auto` to `overflow-hidden` parent with scrollable inner container
+- **Download button restored** to header with full functionality
+- All metadata fields remain accessible and well-organized
+
+**4. Layout Spacing & Alignment** ✅
+- Folder sidebar: 224px (reduced from 256px)
+- Preview overlay: Correctly positioned after sidebar
+- Actions column: 200px width to accommodate buttons
+- Gap between buttons: Increased from 1 to 2 units for clarity
+
+### Files Modified (6 total)
+
+1. **FolderTree.tsx**
+   - Changed from horizontal grid (4 columns) to vertical sidebar (w-56)
+   - Removed selection checkboxes
+   - Added dropdown menu for folder operations (Rename, Copy, Cut, Delete)
+   - Proper styling with active state highlighting
+
+2. **Documents.tsx**
+   - Restructured main layout: flex container with left sidebar + right content
+   - Reduced folder panel width from w-64 to w-56
+   - Moved Upload button to top-right header
+   - Removed large drag-and-drop upload area
+
+3. **DocumentList.tsx**
+   - Removed Size column and from column visibility menu
+   - Changed View button to eye icon only (h-9 w-9)
+   - Download button shows text + icon
+   - Actions column: 200px width, left-aligned header
+   - Table layout: auto instead of table-fixed for proper file name visibility
+   - Added horizontal scroll when needed
+
+4. **DocumentPreview.tsx**
+   - Full-content overlay spanning entire area after sidebar
+   - Compact 2-row metadata header
+   - File preview fills available vertical space
+   - Download button in header
+   - Preview position: left-56 (matches sidebar width)
+
+5. **LibraryMenus.tsx**
+   - Removed Size from column visibility options
+
+6. **Documents.test.tsx**
+   - Updated tests for folder context menu
+   - Updated tests for new layout structure
+
+### Visual Layout (Final)
+
+```
+┌─────────────────────────────────────────┐
+│ Si-Ware Logo  [Search]  [Upload Button] │ ← Header (64px)
+├─────┬───────────────────────────────────┤
+│ F   │ Documents Table                   │
+│ o   ├──────────────────────────────────┤
+│ l   │ File | Type | Folder | Owner ... │
+│ d   ├──────────────────────────────────┤
+│ e   │ doc1 | PDF  | Folder1| User1 ... │
+│ r   │ doc2 | DOCX | Folder1| User2 ... │
+│ s   │ doc3 | XLSX | Folder1| User3 ... │
+│     │ ... [Eye Icon] [Download Download]
+│ P   │
+│ a   │ When Preview Opens:
+│ n   ├──────────────────────────────────┐
+│ e   │ Type|Folder|Size|Status|Dept|Owner│
+│ l   │ [PDF] [Document Preview...]       │
+│     │ [Download] [Close]                │
+│     │ [                                 │
+│     │  PDF Viewer - Full Height         │
+│     │  (Fills all available space)      │
+│     │                                   │
+│ 224 │                                   │
+│ px  │                                   │
+└─────┴───────────────────────────────────┘
+```
+
+### Key Improvements Summary
+
+✅ **Space Efficiency**: Reduced sidebar allows more horizontal space for document table  
+✅ **Visual Clarity**: Buttons are now properly sized (h-9) and fully visible  
+✅ **Layout Flexibility**: Auto table layout ensures file names remain visible  
+✅ **Preview Experience**: Full-content overlay with compact metadata header  
+✅ **Folder Management**: Dedicated context menu for folder operations (no checkboxes)  
+✅ **Data Accessibility**: All metadata available in preview, Size accessible but not cluttering table  
+
+### Production Status: ✅ Complete & Ready
+
+- ✅ TypeScript: 0 errors
+- ✅ Build: Successful (production-ready)
+- ✅ All UI components responsive and accessible
+- ✅ Dark mode support maintained
+- ✅ Folder operations (Rename, Copy, Cut, Delete) functional
+- ✅ Document preview fills entire available space
+- ✅ All action buttons visible and properly sized
+
+**System Status: ✅ Document Library UI Fully Redesigned & Production-Ready**

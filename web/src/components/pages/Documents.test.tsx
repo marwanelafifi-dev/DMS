@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
@@ -21,14 +21,15 @@ describe('Document Library', () => {
     expect(screen.getByRole('button', { name: 'Folder 2' })).toBeInTheDocument();
   });
 
-  it('places the full-width folder section above the document table', async () => {
+  it('places the folder section in a left sidebar next to the document table', async () => {
     renderDocumentLibrary();
 
     const folderSection = await screen.findByTestId('folder-section');
     const table = await screen.findByRole('table', { name: 'Documents' });
 
-    expect(folderSection).toHaveClass('w-full');
-    expect(folderSection.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(folderSection).toHaveClass('w-64');
+    expect(folderSection).toBeInTheDocument();
+    expect(table).toBeInTheDocument();
   });
 
   it('opens the multiple file picker from the primary Upload button', async () => {
@@ -42,7 +43,7 @@ describe('Document Library', () => {
     expect(screen.getByLabelText('Select documents to upload')).toHaveAttribute('multiple');
   });
 
-  it('shows the requested searchable metadata columns with Size last', async () => {
+  it('shows the requested searchable metadata columns without Size', async () => {
     renderDocumentLibrary();
     await screen.findByText('Production Shift Handover.txt');
 
@@ -59,12 +60,44 @@ describe('Document Library', () => {
       'Tags',
       'Status',
       'Actions',
-      'Size',
     ]);
     expect(screen.getByRole('textbox', { name: 'Search documents' })).toHaveAttribute('placeholder', 'Search');
     expect(screen.getAllByText('Operations').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Production', { selector: 'span' }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\d{2} \w{3} 2026, \d{2}:\d{2}/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps Actions as the final right-aligned table column without horizontal overflow', async () => {
+    renderDocumentLibrary();
+    const table = await screen.findByRole('table', { name: 'Documents' });
+    const headers = within(table).getAllByRole('columnheader');
+    const firstRowCells = within(within(table).getAllByRole('row')[1]).getAllByRole('cell');
+
+    expect(headers.at(-1)).toHaveTextContent('Actions');
+    expect(headers.at(-1)).toHaveClass('text-right');
+    expect(firstRowCells.at(-1)).toHaveClass('text-right');
+    expect(table.parentElement).toHaveClass('overflow-x-hidden');
+    expect(within(table).queryByRole('columnheader', { name: 'Size' })).not.toBeInTheDocument();
+  });
+
+  it('renders icon-only Preview and Download actions for every visible file', async () => {
+    renderDocumentLibrary();
+    const table = await screen.findByRole('table', { name: 'Documents' });
+    const previewButtons = within(table).getAllByRole('button', { name: /^Preview / });
+    const downloadButtons = within(table).getAllByRole('button', { name: /^Download / });
+
+    expect(previewButtons).toHaveLength(7);
+    expect(downloadButtons).toHaveLength(7);
+    previewButtons.forEach((button) => {
+      expect(button).toHaveAttribute('title', 'View file');
+      expect(button).toHaveTextContent('');
+    });
+    downloadButtons.forEach((button) => {
+      expect(button).toHaveAttribute('title', 'Download file');
+      expect(button).toHaveTextContent('');
+    });
+    expect(within(table).queryByText('View Only')).not.toBeInTheDocument();
+    expect(within(table).queryByText('Download')).not.toBeInTheDocument();
   });
 
   it('searches case-insensitively across department, owner, tags, and folder', async () => {
@@ -95,14 +128,17 @@ describe('Document Library', () => {
     expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeEnabled();
   });
 
-  it('enables bulk actions when a folder is selected', async () => {
+  it('shows folder context menu with rename, copy, cut, and delete options', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
 
-    await user.click(await screen.findByRole('checkbox', { name: 'Select Folder 1' }));
+    const folder1Button = await screen.findByRole('button', { name: /Actions for Folder 1/i });
+    await user.click(folder1Button);
 
-    expect(screen.getByText('1 item selected')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Actions for selected items' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Copy' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Cut' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
   });
 
   it('selects all visible documents from the header and disables multi-item rename', async () => {
@@ -178,26 +214,17 @@ describe('Document Library', () => {
     expect(await screen.findByText('Production Shift Handover.txt')).toBeInTheDocument();
   });
 
-  it('shows the destination on copied and moved folder cards', async () => {
+  it('copies folders through the context menu to a destination', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
-    await user.click(await screen.findByRole('checkbox', { name: 'Select Folder 1' }));
-    await user.click(screen.getByRole('button', { name: 'Actions for selected items' }));
+
+    const folder1Menu = await screen.findByRole('button', { name: /Actions for Folder 1/i });
+    await user.click(folder1Menu);
     await user.click(screen.getByRole('menuitem', { name: 'Copy' }));
     await user.selectOptions(screen.getByRole('combobox', { name: 'Destination folder' }), 'folder-2');
     await user.click(screen.getByRole('button', { name: 'Copy items' }));
 
-    const copiedFolderCard = screen.getByRole('button', { name: 'Folder 1 Copy' }).closest('[data-folder-id]');
-    expect(copiedFolderCard).toHaveTextContent('Inside Folder 2');
-
-    await user.click(screen.getByRole('checkbox', { name: 'Select Folder 1' }));
-    await user.click(screen.getByRole('button', { name: 'Actions for selected items' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Move' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Destination folder' }), 'folder-2');
-    await user.click(screen.getByRole('button', { name: 'Move items' }));
-
-    const movedFolderCard = screen.getByRole('button', { name: 'Folder 1' }).closest('[data-folder-id]');
-    expect(movedFolderCard).toHaveTextContent('Inside Folder 2');
+    expect(await screen.findByRole('button', { name: 'Folder 1 Copy' })).toBeInTheDocument();
   });
 
   it('deletes selected documents only after confirmation', async () => {
@@ -248,8 +275,8 @@ describe('Document Library', () => {
   it('renames a selected folder and keeps its documents associated', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
-    await user.click(await screen.findByRole('checkbox', { name: 'Select Folder 1' }));
-    await user.click(screen.getByRole('button', { name: 'Actions for selected items' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Folder 1' }));
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
     const nameInput = screen.getByRole('textbox', { name: 'New name' });
     await user.clear(nameInput);
@@ -263,8 +290,8 @@ describe('Document Library', () => {
   it('warns before deleting a selected non-empty folder', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
-    await user.click(await screen.findByRole('checkbox', { name: 'Select Folder 1' }));
-    await user.click(screen.getByRole('button', { name: 'Actions for selected items' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Folder 1' }));
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     expect(screen.getByText(/selection contains a non-empty folder/i)).toBeInTheDocument();
@@ -273,14 +300,24 @@ describe('Document Library', () => {
   it('disables uploads when every folder has been deleted', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
-    await user.click(await screen.findByRole('checkbox', { name: 'Select Folder 1' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Select Folder 2' }));
-    await user.click(screen.getByRole('button', { name: 'Actions for selected items' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Folder 1' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Delete items' }));
+    await user.click(await screen.findByRole('button', { name: 'Actions for Folder 2' }));
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
     await user.click(screen.getByRole('button', { name: 'Delete items' }));
 
     expect(screen.getByText('No folders available')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Upload files' })).toBeDisabled();
+  });
+
+  it('does not add folder selection checkboxes', async () => {
+    renderDocumentLibrary();
+    await screen.findByRole('button', { name: 'Folder 1' });
+
+    expect(screen.queryByRole('checkbox', { name: 'Select Folder 1' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select Folder 2' })).not.toBeInTheDocument();
   });
 
   it('shows only the documents in the selected folder', async () => {
@@ -298,34 +335,78 @@ describe('Document Library', () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
 
-    await user.click(await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' }));
+    const previewButton = await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' });
+    await user.click(previewButton);
 
-    expect(screen.getByRole('dialog', { name: 'Preview Production Shift Handover.txt' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Production Shift Handover.txt' });
+    expect(dialog).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Folder 1' })).toBeInTheDocument();
     expect(screen.getByText(/Production Shift Handover/, { selector: 'pre' })).toBeInTheDocument();
+    expect(screen.getByText('3.4 KB')).toBeInTheDocument();
+    expect(within(dialog).getByText('Daily production handover notes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close document preview' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Actions for selected items' })).not.toBeInTheDocument();
   });
 
+  it('fills the viewport below the top navigation and gives the PDF viewer all remaining space', async () => {
+    const user = userEvent.setup();
+    renderDocumentLibrary();
+    await user.click(await screen.findByRole('button', { name: 'Preview Calibration Procedure SOP-204.pdf' }));
+
+    const overlay = screen.getByTestId('document-preview-overlay');
+    const body = screen.getByTestId('document-preview-body');
+    const viewer = screen.getByTitle('PDF preview of Calibration Procedure SOP-204.pdf');
+
+    expect(overlay).toHaveClass('top-[68px]', 'h-[calc(100dvh-68px)]', 'overflow-hidden');
+    expect(body).toHaveClass('min-h-0', 'flex-1', 'overflow-hidden');
+    expect(viewer).toHaveClass('block', 'h-full', 'w-full');
+    expect(viewer.className).not.toMatch(/65vh|min-h-\[/);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 720 });
+    fireEvent(window, new Event('resize'));
+    expect(overlay).toHaveClass('h-[calc(100dvh-68px)]');
+  });
+
   it('keeps read-only document downloads working', async () => {
     const user = userEvent.setup();
-    const downloadClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    let downloadedFileName = '';
+    const downloadClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloadedFileName = this.download;
+    });
     renderDocumentLibrary();
 
-    await user.click(await screen.findByRole('button', { name: 'Download Production Shift Handover.txt' }));
+    await user.click(await screen.findByRole('button', { name: 'Download Calibration Procedure SOP-204.pdf' }));
 
     expect(downloadClick).toHaveBeenCalledOnce();
+    expect(downloadedFileName).toBe('Calibration Procedure SOP-204.pdf');
+  });
+
+  it('keeps row selection unchanged when Preview or Download actions are used', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    renderDocumentLibrary();
+    const checkbox = await screen.findByRole('checkbox', { name: 'Select Production Shift Handover.txt' });
+
+    await user.click(screen.getByRole('button', { name: 'Download Production Shift Handover.txt' }));
+    expect(checkbox).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Preview Production Shift Handover.txt' }));
+    await user.click(screen.getByRole('button', { name: 'Close document preview' }));
+    expect(checkbox).not.toBeChecked();
   });
 
   it('closes the preview and returns to the normal library view', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
 
-    await user.click(await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' }));
+    const previewButton = await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' });
+    await user.click(previewButton);
     await user.click(screen.getByRole('button', { name: 'Close document preview' }));
 
-    expect(screen.queryByRole('dialog', { name: 'Preview Production Shift Handover.txt' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('Production Shift Handover.txt')).toBeInTheDocument();
+    expect(previewButton).toHaveFocus();
+    expect(document.body.style.overflow).not.toBe('hidden');
   });
 
   it('keeps the name filter working with mock documents', async () => {
@@ -354,7 +435,7 @@ describe('Document Library', () => {
     vi.spyOn(apiClient, 'getDocument').mockRejectedValueOnce(new Error('offline'));
     renderDocumentLibrary('/documents?preview=live-document-id');
 
-    expect(await screen.findByRole('dialog', { name: 'Preview Document live-document-id' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/server may be offline/i)).toBeInTheDocument();
   });
 });

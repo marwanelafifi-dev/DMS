@@ -45,6 +45,7 @@ export function Documents() {
   const [previewDocument, setPreviewDocument] = useState<MockLibraryDocument | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
+  const [requestedFolderAction, setRequestedFolderAction] = useState<LibraryBulkAction | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<OptionalDocumentColumn>>(() => new Set(defaultVisibleDocumentColumns));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
@@ -230,6 +231,12 @@ export function Documents() {
     setSelectedFolderIds(new Set());
   };
 
+  const requestFolderAction = (action: 'rename' | 'copy' | 'cut' | 'delete', folderId: string) => {
+    setSelectedDocumentIds(new Set());
+    setSelectedFolderIds(new Set([folderId]));
+    setRequestedFolderAction(action === 'cut' ? 'move' : action);
+  };
+
   const handleBulkAction = (action: LibraryBulkAction, value?: string) => {
     try {
       const currentState = { folders, documents: allDocuments };
@@ -348,34 +355,31 @@ export function Documents() {
   };
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="page-heading">Document Library</h1>
-        <p className="page-subtitle">Secure vault · Documents are view-only by default</p>
-      </div>
-
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-white dark:bg-slate-950">
+      {/* Folders Sidebar */}
       {isLoadingFolders ? (
-        <div className="w-full space-y-2 rounded-[5px] border border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900" role="status" aria-label="Loading folders">
+        <div className="w-56 space-y-2 border-r border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900" role="status" aria-label="Loading folders">
           {[1, 2].map((item) => <div key={item} className="h-12 animate-skeleton rounded bg-slate-100 dark:bg-slate-800" />)}
         </div>
       ) : folders.length === 0 ? (
-        <div className="w-full rounded-[5px] border border-[#dbe2ec] bg-white p-5 text-center dark:border-white/10 dark:bg-slate-900"><p className="text-sm">No folders available</p></div>
+        <div className="w-56 border-r border-[#dbe2ec] bg-white p-5 text-center dark:border-white/10 dark:bg-slate-900"><p className="text-sm">No folders available</p></div>
       ) : (
         <FolderTree
           folders={folders}
           selectedFolderId={selectedFolderId}
-          selectedFolderIds={selectedFolderIds}
           onSelectFolder={handleFolderSelect}
-          onToggleFolderSelection={(folderId) => setSelectedFolderIds((current) => {
-            const next = new Set(current);
-            if (next.has(folderId)) next.delete(folderId);
-            else next.add(folderId);
-            return next;
-          })}
+          onFolderAction={requestFolderAction}
         />
       )}
 
-      <div className="min-w-0 space-y-4">
+      {/* Main Content Area */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Header with Title and Upload Button */}
+        <div className="flex items-start justify-between border-b border-[#dbe2ec] bg-white px-6 py-5 dark:border-white/10 dark:bg-slate-900">
+          <div>
+            <h1 className="page-heading">Document Library</h1>
+            <p className="page-subtitle">Secure vault · Documents are view-only by default</p>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -387,19 +391,21 @@ export function Documents() {
               event.target.value = '';
             }}
           />
-          <div
-            className="flex min-h-[100px] flex-col items-center justify-center gap-3 rounded-[5px] border-2 border-dashed border-[#cbd5e3] bg-white px-5 py-4 text-center hover:border-[#74a8d2] dark:border-slate-700 dark:bg-slate-900 sm:flex-row sm:justify-between sm:text-left"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => { event.preventDefault(); stageFiles(Array.from(event.dataTransfer.files ?? [])); }}
+          <button
+            type="button"
+            aria-label="Upload files"
+            disabled={!selectedFolder}
+            title={selectedFolder ? 'Upload files to the selected folder' : 'A folder is required before uploading'}
+            onClick={() => fileInputRef.current?.click()}
+            className="ml-6 flex-shrink-0 inline-flex h-9 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-4 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
           >
-            <div className="flex items-center gap-3">
-              <UploadCloud className="h-7 w-7 flex-shrink-0 text-[#93a4bd]" />
-              <p className="text-sm text-[#718198]">Drag &amp; drop files here, or choose files. New uploads enter the C-Doc workflow.</p>
-            </div>
-            <Button type="button" aria-label="Upload files" disabled={!selectedFolder} title={selectedFolder ? 'Upload files to the selected folder' : 'A folder is required before uploading'} onClick={() => fileInputRef.current?.click()} leftIcon={<UploadCloud className="h-4 w-4" />}>Upload</Button>
-          </div>
+            <UploadCloud className="h-4 w-4" /> Upload
+          </button>
+        </div>
 
-          <Card className="overflow-hidden">
+        {/* Documents Table and Filters */}
+        <div className="flex-1 overflow-y-auto">
+          <Card className="m-4 overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-[#e2e8f0] p-3 dark:border-white/10 sm:flex-row sm:items-center">
               <input type="text" placeholder="Search" className="field-control h-9 w-full sm:max-w-[230px]" aria-label="Search documents" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
               <select className="field-control h-9 w-full sm:w-[150px]" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter documents by status">
@@ -420,6 +426,9 @@ export function Documents() {
                   folders={folders}
                   disabledDestinationIds={getInvalidDestinationIds(folders, selectedFolderIds)}
                   containsNonEmptyFolder={selectionContainsNonEmptyFolder({ folders, documents: allDocuments }, librarySelection)}
+                  requestedAction={requestedFolderAction}
+                  onRequestedActionHandled={() => setRequestedFolderAction(null)}
+                  onRequestedActionDismissed={() => setSelectedFolderIds(new Set())}
                   onConfirm={handleBulkAction}
                 />
                 <ColumnVisibilityMenu visibleColumns={visibleColumns} onChange={setVisibleColumns} />
@@ -441,6 +450,7 @@ export function Documents() {
               />
             )}
           </Card>
+        </div>
       </div>
 
       {previewDocument && <DocumentPreview document={previewDocument} onClose={closePreview} onDownload={downloadMockDocument} />}

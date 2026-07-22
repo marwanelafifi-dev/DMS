@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Eye, FileText } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
-import { formatDateTime, formatFileSize } from '../../utils/formatters';
+import { formatDateTime } from '../../utils/formatters';
 
-export type OptionalDocumentColumn = 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status' | 'size';
+export type OptionalDocumentColumn = 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
 
 export const defaultVisibleDocumentColumns: ReadonlySet<OptionalDocumentColumn> = new Set([
   'department',
@@ -12,7 +12,6 @@ export const defaultVisibleDocumentColumns: ReadonlySet<OptionalDocumentColumn> 
   'modifiedAt',
   'tags',
   'status',
-  'size',
 ]);
 
 interface DocumentListProps {
@@ -25,7 +24,7 @@ interface DocumentListProps {
   onDownload?: (docId: string) => void;
 }
 
-type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status' | 'fileSize';
+type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
 
 const statusStyles: Record<MockLibraryDocument['status'], string> = {
   draft: 'bg-[#edf1f5] text-[#62718a]',
@@ -101,7 +100,6 @@ export function DocumentList({
       modifiedAt: [new Date(a.modifiedAt).getTime(), new Date(b.modifiedAt).getTime()],
       tags: [a.tags.join(' '), b.tags.join(' ')],
       status: [a.status, b.status],
-      fileSize: [a.fileSize, b.fileSize],
     };
     const [left, right] = values[sortBy];
     const comparison = typeof left === 'number' && typeof right === 'number'
@@ -148,8 +146,21 @@ export function DocumentList({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="data-table min-w-[1540px]" aria-label="Documents">
+    <div className="w-full overflow-x-auto">
+      <table className="data-table library-document-table w-full" aria-label="Documents">
+        <colgroup>
+          <col className="w-10" />
+          <col />
+          <col className="w-[60px]" />
+          <col className="w-[76px]" />
+          {visibleColumns.has('department') && <col className="w-[105px]" />}
+          {visibleColumns.has('owner') && <col className="w-[100px]" />}
+          {visibleColumns.has('createdAt') && <col className="w-[132px]" />}
+          {visibleColumns.has('modifiedAt') && <col className="w-[132px]" />}
+          {visibleColumns.has('tags') && <col className="w-[120px]" />}
+          {visibleColumns.has('status') && <col className="w-[90px]" />}
+          <col className="w-[200px]" />
+        </colgroup>
         <thead className="sticky top-0 z-10">
           <tr>
             <th className="w-10 px-3">
@@ -161,16 +172,15 @@ export function DocumentList({
               />
             </th>
             <th>{header('File name', 'fileName')}</th>
-            <th className="w-[70px]">{header('Type', 'extension')}</th>
-            <th className="w-[90px]">{header('Folder', 'folderName')}</th>
-            {visibleColumns.has('department') && <th className="w-[135px]">{header('Department', 'department')}</th>}
-            {visibleColumns.has('owner') && <th className="w-[120px]">{header('Owner', 'owner')}</th>}
-            {visibleColumns.has('createdAt') && <th className="w-[160px]">{header('Creation date', 'createdAt')}</th>}
-            {visibleColumns.has('modifiedAt') && <th className="w-[160px]">{header('Modified date', 'modifiedAt')}</th>}
-            {visibleColumns.has('tags') && <th className="min-w-[160px]">{header('Tags', 'tags')}</th>}
-            {visibleColumns.has('status') && <th className="w-[100px]">{header('Status', 'status')}</th>}
-            <th className="min-w-[180px] text-right">Actions</th>
-            {visibleColumns.has('size') && <th className="w-[90px]">{header('Size', 'fileSize')}</th>}
+            <th>{header('Type', 'extension')}</th>
+            <th>{header('Folder', 'folderName')}</th>
+            {visibleColumns.has('department') && <th>{header('Department', 'department')}</th>}
+            {visibleColumns.has('owner') && <th>{header('Owner', 'owner')}</th>}
+            {visibleColumns.has('createdAt') && <th>{header('Creation date', 'createdAt')}</th>}
+            {visibleColumns.has('modifiedAt') && <th>{header('Modified date', 'modifiedAt')}</th>}
+            {visibleColumns.has('tags') && <th>{header('Tags', 'tags')}</th>}
+            {visibleColumns.has('status') && <th>{header('Status', 'status')}</th>}
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -179,21 +189,21 @@ export function DocumentList({
               <td className="px-3">
                 <SelectionCheckbox checked={selectedDocumentIds.has(document.documentId)} onChange={() => toggleSelected(document.documentId)} label={`Select ${document.fileName}`} />
               </td>
-              <td>
-                <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex max-w-[270px] items-center gap-2.5 text-left" aria-label={`Preview ${document.fileName}`}>
+              <td className="min-w-0">
+                <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}`}>
                   <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded ${extensionStyles[document.extension]}`}><FileText className="h-4 w-4" /></span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-[#2e4083] dark:text-slate-100">{document.fileName}</span>
+                    <span className="block truncate text-sm font-semibold text-[#2e4083] dark:text-slate-100" title={document.fileName}>{document.fileName}</span>
                     <span className="mt-0.5 block truncate text-xs text-[#718198]">{document.description}</span>
                   </span>
                 </button>
               </td>
               <td><span className={`rounded px-2 py-1 text-[11px] font-semibold uppercase ${extensionStyles[document.extension]}`}>{document.extension}</span></td>
               <td className="whitespace-nowrap text-[#52627a] dark:text-slate-200">{document.folderName}</td>
-              {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200">{document.department}</td>}
-              {visibleColumns.has('owner') && <td className="whitespace-nowrap text-[#52627a] dark:text-slate-200">{document.owner.fullName}</td>}
-              {visibleColumns.has('createdAt') && <td className="whitespace-nowrap text-[#718198]" title={new Date(document.createdAt).toLocaleString()}>{formatDateTime(document.createdAt)}</td>}
-              {visibleColumns.has('modifiedAt') && <td className="whitespace-nowrap text-[#718198]" title={new Date(document.modifiedAt).toLocaleString()}>{formatDateTime(document.modifiedAt)}</td>}
+              {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><span className="block max-h-10 overflow-hidden leading-5" title={document.department}>{document.department}</span></td>}
+              {visibleColumns.has('owner') && <td className="truncate text-[#52627a] dark:text-slate-200" title={document.owner.fullName}>{document.owner.fullName}</td>}
+              {visibleColumns.has('createdAt') && <td className="whitespace-nowrap text-[11px] text-[#718198]" title={new Date(document.createdAt).toLocaleString()}>{formatDateTime(document.createdAt)}</td>}
+              {visibleColumns.has('modifiedAt') && <td className="whitespace-nowrap text-[11px] text-[#718198]" title={new Date(document.modifiedAt).toLocaleString()}>{formatDateTime(document.modifiedAt)}</td>}
               {visibleColumns.has('tags') && (
                 <td>
                   {document.tags.length ? (
@@ -203,16 +213,15 @@ export function DocumentList({
               )}
               {visibleColumns.has('status') && <td><span className={`rounded px-2 py-1 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></td>}
               <td>
-                <div className="flex items-center justify-end gap-1.5">
-                  <button type="button" onClick={() => onDocumentClick(document.documentId)} className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[4px] bg-[#2f3e83] px-2.5 text-xs font-medium text-white hover:bg-[#263472]" aria-label={`Open preview for ${document.fileName}`}>
-                    <Eye className="h-3.5 w-3.5" /> View Only
+                <div className="flex items-center gap-2">
+                  <button type="button" title="Preview file" onClick={(event) => { event.stopPropagation(); onDocumentClick(document.documentId); }} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#2f3e83] text-white hover:bg-[#263472] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Preview ${document.fileName}`}>
+                    <Eye className="h-5 w-5" />
                   </button>
-                  <button type="button" onClick={() => onDownload?.(document.documentId)} className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[4px] bg-[#f1f4f8] px-2.5 text-xs font-medium text-[#52627a] hover:bg-[#e7ecf2]" aria-label={`Download ${document.fileName}`}>
-                    <Download className="h-3.5 w-3.5" /> Download
+                  <button type="button" onClick={(event) => { event.stopPropagation(); onDownload?.(document.documentId); }} className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-[4px] bg-[#f1f4f8] px-3 text-xs font-medium text-[#52627a] hover:bg-[#e7ecf2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" aria-label={`Download ${document.fileName}`}>
+                    <Download className="h-4 w-4" /> Download
                   </button>
                 </div>
               </td>
-              {visibleColumns.has('size') && <td className="whitespace-nowrap text-[#718198]">{formatFileSize(document.fileSize)}</td>}
             </tr>
           ))}
         </tbody>

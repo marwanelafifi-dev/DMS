@@ -13,7 +13,6 @@ const columnOptions: Array<{ id: OptionalDocumentColumn; label: string }> = [
   { id: 'modifiedAt', label: 'Modified date' },
   { id: 'tags', label: 'Tags' },
   { id: 'status', label: 'Status' },
-  { id: 'size', label: 'Size' },
 ];
 
 const menuContentClass = 'z-[95] min-w-[190px] rounded-[5px] border border-[#dbe2ec] bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900';
@@ -68,6 +67,9 @@ interface LibraryBulkActionsProps {
   folders: Folder[];
   disabledDestinationIds?: Set<string>;
   containsNonEmptyFolder?: boolean;
+  requestedAction?: LibraryBulkAction | null;
+  onRequestedActionHandled?: () => void;
+  onRequestedActionDismissed?: () => void;
   onConfirm: (action: LibraryBulkAction, value?: string) => string | undefined;
 }
 
@@ -85,12 +87,23 @@ export function LibraryBulkActions({
   folders,
   disabledDestinationIds = new Set(),
   containsNonEmptyFolder = false,
+  requestedAction = null,
+  onRequestedActionHandled,
+  onRequestedActionDismissed,
   onConfirm,
 }: LibraryBulkActionsProps) {
   const [action, setAction] = useState<LibraryBulkAction | null>(null);
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
   const [extensionConfirmed, setExtensionConfirmed] = useState(false);
+  const [isRequestedAction, setIsRequestedAction] = useState(false);
+
+  useEffect(() => {
+    if (!requestedAction || selectedCount === 0) return;
+    setIsRequestedAction(true);
+    setAction(requestedAction);
+    onRequestedActionHandled?.();
+  }, [onRequestedActionHandled, requestedAction, selectedCount]);
 
   useEffect(() => {
     if (action === 'rename') setValue(renameCurrentName ?? '');
@@ -129,6 +142,7 @@ export function LibraryBulkActions({
       setError(operationError);
       return;
     }
+    setIsRequestedAction(false);
     setAction(null);
   };
 
@@ -163,7 +177,12 @@ export function LibraryBulkActions({
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
-      <Dialog.Root open={action !== null} onOpenChange={(open) => !open && setAction(null)}>
+      <Dialog.Root open={action !== null} onOpenChange={(open) => {
+        if (open) return;
+        setAction(null);
+        if (isRequestedAction) onRequestedActionDismissed?.();
+        setIsRequestedAction(false);
+      }}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[5px] border border-[#dbe2ec] bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
