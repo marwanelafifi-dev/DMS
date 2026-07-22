@@ -304,7 +304,7 @@ export function Search() {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => navigate(`/documents/${doc.documentId}`)}
+                          onClick={() => navigate(`/documents?preview=${encodeURIComponent(doc.documentId)}`)}
                           className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors"
                           title="View"
                         >

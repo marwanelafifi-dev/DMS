@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './components/pages/Dashboard';
 import { Documents } from './components/pages/Documents';
-import { DocumentViewer } from './components/pages/DocumentViewer';
 import { Settings } from './components/pages/Settings';
 import { Tasks } from './components/pages/Tasks';
 import { Approvals } from './components/pages/Approvals';
@@ -39,16 +38,6 @@ function App() {
           element={
             <MainLayout>
               <Documents />
-            </MainLayout>
-          }
-        />
-
-        {/* Document Viewer */}
-        <Route
-          path="/documents/:id"
-          element={
-            <MainLayout>
-              <DocumentViewer />
             </MainLayout>
           }
         />
