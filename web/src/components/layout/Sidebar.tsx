@@ -2,7 +2,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Check,
   ClipboardCheck,
-  Eye,
   FileWarning,
   Folder,
   LayoutDashboard,
@@ -18,7 +17,6 @@ interface SidebarProps {
 const navItems = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true },
   { label: 'Document Library', path: '/documents', icon: Folder },
-  { label: 'Preview Canvas', path: '/documents/doc-1', icon: Eye, preview: true },
   { label: 'C-Doc Workflow', path: '/approvals', icon: ClipboardCheck },
   { label: 'PCAR / Corrective Action', path: '/tasks', icon: FileWarning },
   { label: 'Admin Panel', path: '/admin/roles', icon: Settings, admin: true },
@@ -30,18 +28,13 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
 
   const isActive = (item: (typeof navItems)[number]) => {
     if (item.exact) return location.pathname === '/';
-    if (item.preview) return /^\/documents\/[^/]+/.test(location.pathname);
     if (item.admin) return location.pathname.startsWith('/admin') || location.pathname.startsWith('/settings');
     if (item.path === '/documents') return location.pathname === '/documents';
     return location.pathname.startsWith(item.path);
   };
 
   const goTo = (item: (typeof navItems)[number]) => {
-    if (item.preview) {
-      navigate(item.path);
-    } else {
-      navigate(item.path);
-    }
+    navigate(item.path);
     if (isExpanded) onToggleExpand?.();
   };
 
