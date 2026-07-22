@@ -12,7 +12,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Helvetica Neue"', 'Arial', 'sans-serif', ...defaultTheme.fontFamily.sans],
-        serif: ['"Merriweather"', 'Georgia', 'serif'],
+        serif: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
         mono: ['"Fira Code"', '"SF Mono"', 'Monaco', '"Cascadia Code"', 'Consolas', '"Courier New"', 'monospace'],
       },
       colors: {

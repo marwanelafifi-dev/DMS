@@ -1,111 +1,145 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronRight, Download, Lock, Unlock, CheckCircle2, XCircle, X } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Activity, CheckCircle2, Download, Eye, History, Lock, ShieldCheck, Unlock, X, XCircle } from 'lucide-react';
 import { PDFViewer } from '../custom/PDFViewer';
+import { Button, Card, CardBody } from '../ui';
+import { SkeletonCard } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { apiClient } from '../../utils/api';
-import { Card, CardBody, Button, Badge } from '../ui';
-import { SkeletonCard } from '../ui/Skeleton';
+import { formatFileSize } from '../../utils/formatters';
 import type { Document } from '../../types';
-import { formatFileSize, formatDate } from '../../utils/formatters';
 
-const getCurrentVersionId = (document: Document) =>
-  document.currentVersionId ?? document.versions?.[0]?.versionId;
+const getCurrentVersionId = (document: Document) => document.currentVersionId ?? document.versions?.[0]?.versionId;
+
+const mockDocuments: Record<string, Document> = {
+  'doc-1': {
+    documentId: 'doc-1',
+    folderId: 'folder-1',
+    trackingCode: 'SOP-204',
+    name: 'Standard Operating Procedure',
+    description: 'Production Line Calibration · Rev 3',
+    fileName: 'quality-procedure.pdf',
+    fileSize: 412 * 1024,
+    contentType: 'application/pdf',
+    status: 'released',
+    uploadedBy: 'user-2',
+    uploadedByUser: { userId: 'user-2', fullName: 'A. Khaled', email: 'ahmed@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
+    uploadedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    checkoutStatus: 'checked_in',
+  },
+  'doc-2': {
+    documentId: 'doc-2',
+    folderId: 'folder-1',
+    trackingCode: 'WI-118',
+    name: 'Document Control Procedure',
+    fileName: 'doc-control.pdf',
+    fileSize: 1536000,
+    contentType: 'application/pdf',
+    status: 'pending_approval',
+    uploadedBy: 'user-3',
+    uploadedByUser: { userId: 'user-3', fullName: 'Mohammed Anwar', email: 'mohamm@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
+    uploadedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    checkoutStatus: 'checked_in',
+  },
+  'doc-3': {
+    documentId: 'doc-3',
+    folderId: 'folder-1',
+    trackingCode: 'FRM-007',
+    name: 'Records Management Policy',
+    fileName: 'records-policy.pdf',
+    fileSize: 2097152,
+    contentType: 'application/pdf',
+    status: 'draft',
+    uploadedBy: 'user-1',
+    uploadedByUser: { userId: 'user-1', fullName: 'You', email: 'you@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
+    uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    checkoutStatus: 'checked_in',
+  },
+};
+
+interface DecisionDialogProps {
+  type: 'approve' | 'reject';
+  value: string;
+  isSubmitting: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}
+
+function DecisionDialog({ type, value, isSubmitting, onChange, onClose, onSubmit }: DecisionDialogProps) {
+  const approving = type === 'approve';
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSubmitting) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSubmitting, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="document-decision-title">
+      <Card className="w-full max-w-md">
+        <div className="flex items-center justify-between border-b border-[#e2e8f0] p-5 dark:border-white/10">
+          <h2 id="document-decision-title" className="section-heading">{approving ? 'Approve Document' : 'Reject Document'}</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-700" aria-label="Close dialog"><X className="h-5 w-5" /></button>
+        </div>
+        <CardBody className="space-y-4">
+          <label className="block text-sm font-medium text-[#26334d] dark:text-white">
+            {approving ? 'Comments' : 'Rejection Reason'} {approving ? '(optional)' : '*'}
+            <textarea
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder={approving ? 'Add approval comments...' : 'Explain why this document is being rejected...'}
+              className="field-control mt-2 h-28 w-full py-3"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+            <Button variant={approving ? 'primary' : 'danger'} onClick={onSubmit} disabled={isSubmitting || (!approving && !value.trim())}>
+              {isSubmitting ? `${approving ? 'Approving' : 'Rejecting'}...` : approving ? 'Approve' : 'Reject'}
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
 
 export function DocumentViewer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
-
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOperating, setIsOperating] = useState(false);
+  const [decision, setDecision] = useState<{ type: 'approve' | 'reject'; value: string } | null>(null);
 
-  // Modals
-  const [rejectModal, setRejectModal] = useState({ isOpen: false, reason: '' });
-  const [approveModal, setApproveModal] = useState({ isOpen: false, comments: '' });
-
-  const requireCurrentVersionId = (missingVersionMessage = 'This document does not have an uploaded file version') => {
-    if (!document) return undefined;
-
-    const versionId = getCurrentVersionId(document);
-    if (!versionId) showError(missingVersionMessage);
-    return versionId;
+  const reloadDocument = async (documentId: string) => {
+    const response = await apiClient.getDocument(documentId);
+    if (response.data) setDocument(response.data);
   };
 
-  // Load Document from Backend (with mock fallback for testing)
   useEffect(() => {
     const loadDocument = async () => {
       if (!id) {
-        showError('No document ID provided');
         navigate('/documents');
         return;
       }
 
+      setIsLoading(true);
       try {
-        setIsLoading(true);
-
-        // Mock data for testing Document Viewer features
-        const mockDocuments: Record<string, Document> = {
-          'doc-1': {
-            documentId: 'doc-1',
-            folderId: 'folder-1',
-            name: 'ISO 9001:2015 Quality Procedure',
-            fileName: 'quality-procedure.pdf',
-            fileSize: 2048576,
-            contentType: 'application/pdf',
-            status: 'released',
-            uploadedBy: 'user-2',
-            uploadedByUser: { userId: 'user-2', fullName: 'Ahmed Ali', email: 'ahmed@si-ware.com', role: 'Manager', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-          },
-          'doc-2': {
-            documentId: 'doc-2',
-            folderId: 'folder-1',
-            name: 'Document Control Procedure',
-            fileName: 'doc-control.pdf',
-            fileSize: 1536000,
-            contentType: 'application/pdf',
-            status: 'pending_approval',
-            uploadedBy: 'user-3',
-            uploadedByUser: { userId: 'user-3', fullName: 'Mohammed Anwar', email: 'mohamm@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-          },
-          'doc-3': {
-            documentId: 'doc-3',
-            folderId: 'folder-1',
-            name: 'Records Management Policy',
-            fileName: 'records-policy.pdf',
-            fileSize: 2097152,
-            contentType: 'application/pdf',
-            status: 'draft',
-            uploadedBy: 'user-1',
-            uploadedByUser: { userId: 'user-1', fullName: 'You', email: 'you@si-ware.com', role: 'Writer', isActive: true, createdAt: '' },
-            uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            checkoutStatus: 'checked_in',
-          },
-        };
-
-        const mockDoc = mockDocuments[id];
-        if (mockDoc) {
-          setDocument(mockDoc);
+        if (mockDocuments[id]) {
+          setDocument(mockDocuments[id]);
         } else {
-          // Try to load from API
-          const res = await apiClient.getDocument(id);
-          if (res.data) {
-            setDocument(res.data);
-          } else {
-            showError('Document not found');
-            navigate('/documents');
-          }
+          const response = await apiClient.getDocument(id);
+          if (!response.data) throw new Error('Document not found');
+          setDocument(response.data);
         }
-      } catch (err: any) {
-        showError(err.response?.data?.error || 'Failed to load document');
+      } catch (error: any) {
+        showError(error.response?.data?.error || error.message || 'Failed to load document');
         navigate('/documents');
       } finally {
         setIsLoading(false);
@@ -115,463 +149,146 @@ export function DocumentViewer() {
     loadDocument();
   }, [id, navigate, showError]);
 
-  // Handle Lock Document
-  const handleLock = async () => {
+  const requireVersionId = () => {
+    if (!document) return undefined;
+    const versionId = getCurrentVersionId(document);
+    if (!versionId) showError('This document does not have an uploaded file version');
+    return versionId;
+  };
+
+  const runAction = async (action: (documentId: string, versionId: string) => Promise<unknown>, successMessage: string) => {
     if (!document) return;
-
-    const versionId = requireCurrentVersionId();
+    const versionId = requireVersionId();
     if (!versionId) return;
 
     setIsOperating(true);
     try {
-      await apiClient.checkoutDocument(document.documentId, versionId);
-      showSuccess('✓ Document locked for editing (60-min timeout)');
-
-      // Reload document
-      const res = await apiClient.getDocument(document.documentId);
-      if (res.data) setDocument(res.data);
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to lock document');
+      await action(document.documentId, versionId);
+      showSuccess(successMessage);
+      await reloadDocument(document.documentId);
+    } catch (error: any) {
+      showError(error.response?.data?.error || 'Document action failed');
     } finally {
       setIsOperating(false);
     }
   };
 
-  // Handle Unlock Document
-  const handleUnlock = async () => {
-    if (!document) return;
-
-    const versionId = requireCurrentVersionId();
+  const handleDecision = async () => {
+    if (!document || !decision) return;
+    const versionId = requireVersionId();
     if (!versionId) return;
 
     setIsOperating(true);
     try {
-      await apiClient.checkinDocument(document.documentId, versionId);
-      showSuccess('✓ Document unlocked');
-
-      // Reload document
-      const res = await apiClient.getDocument(document.documentId);
-      if (res.data) setDocument(res.data);
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to unlock document');
+      if (decision.type === 'approve') await apiClient.approveDocument(document.documentId, versionId, decision.value);
+      else await apiClient.rejectDocument(document.documentId, versionId, decision.value);
+      showSuccess(`Document ${decision.type === 'approve' ? 'approved' : 'rejected'}`);
+      setDecision(null);
+      await reloadDocument(document.documentId);
+    } catch (error: any) {
+      showError(error.response?.data?.error || `Failed to ${decision.type} document`);
     } finally {
       setIsOperating(false);
     }
   };
 
-  // Handle Submit for Approval
-  const handleSubmitApproval = async () => {
-    if (!document) return;
-
-    const versionId = requireCurrentVersionId('Upload a document version before submitting it for approval');
-    if (!versionId) return;
-
-    setIsOperating(true);
-    try {
-      await apiClient.submitForApproval(document.documentId, versionId);
-      showSuccess('✓ Document submitted for approval');
-
-      // Reload document
-      const res = await apiClient.getDocument(document.documentId);
-      if (res.data) setDocument(res.data);
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to submit document');
-    } finally {
-      setIsOperating(false);
-    }
-  };
-
-  // Handle Approve Document
-  const handleApprove = async () => {
-    if (!document) return;
-
-    const versionId = requireCurrentVersionId();
-    if (!versionId) return;
-
-    setIsOperating(true);
-    try {
-      await apiClient.approveDocument(document.documentId, versionId, approveModal.comments);
-      showSuccess('✓ Document approved');
-      setApproveModal({ isOpen: false, comments: '' });
-
-      // Reload document
-      const res = await apiClient.getDocument(document.documentId);
-      if (res.data) setDocument(res.data);
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to approve document');
-    } finally {
-      setIsOperating(false);
-    }
-  };
-
-  // Handle Reject Document
-  const handleReject = async () => {
-    if (!document || !rejectModal.reason.trim()) {
-      showError('Please provide a rejection reason');
-      return;
-    }
-
-    const versionId = requireCurrentVersionId();
-    if (!versionId) return;
-
-    setIsOperating(true);
-    try {
-      await apiClient.rejectDocument(document.documentId, versionId, rejectModal.reason);
-      showSuccess('✓ Document rejected and returned to draft');
-      setRejectModal({ isOpen: false, reason: '' });
-
-      // Reload document
-      const res = await apiClient.getDocument(document.documentId);
-      if (res.data) setDocument(res.data);
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to reject document');
-    } finally {
-      setIsOperating(false);
-    }
-  };
-
-  // Handle Download
   const handleDownload = async () => {
     if (!document) return;
-
-    const versionId = requireCurrentVersionId();
+    const versionId = requireVersionId();
     if (!versionId) return;
-
     try {
       await apiClient.downloadDocument(document.documentId, versionId);
       showSuccess('Document download started');
-    } catch (err: any) {
+    } catch {
       showError('Failed to download document');
     }
   };
 
-  // Loading State
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 text-sm text-navy-500 dark:text-navy-300">
-          <button
-            onClick={() => navigate('/documents')}
-            className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 font-medium"
-          >
-            Documents
-          </button>
-          <ChevronRight className="w-4 h-4" />
-          <span>Loading...</span>
-        </div>
-        <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Document Viewer</h1>
-        <SkeletonCard />
-      </div>
-    );
-  }
+  if (isLoading) return <div className="space-y-4"><h1 className="page-heading">Preview Canvas</h1><SkeletonCard /></div>;
 
-  // Not Found State
   if (!document) {
-    return (
-      <div className="space-y-8 text-center py-12">
-        <div>
-          <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white mb-2">Document Not Found</h2>
-          <p className="text-navy-500 dark:text-navy-300">The document you're looking for doesn't exist or has been deleted.</p>
-        </div>
-        <Button variant="primary" onClick={() => navigate('/documents')}>
-          Back to Documents
-        </Button>
-      </div>
-    );
+    return <Card><CardBody className="py-14 text-center"><h2 className="section-heading">Document Not Found</h2><p className="mt-2 text-sm">The requested document is no longer available.</p><Button className="mt-5" onClick={() => navigate('/documents')}>Back to Documents</Button></CardBody></Card>;
   }
-
-  const getStatusColor = (status: Document['status']): any => {
-    switch (status) {
-      case 'draft':
-        return 'warning';
-      case 'pending_approval':
-        return 'info';
-      case 'released':
-        return 'success';
-      case 'rejected':
-        return 'error';
-      case 'archived':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
 
   const isCheckedOut = document.checkoutStatus === 'checked_out';
   const isDraft = document.status === 'draft';
   const isPending = document.status === 'pending_approval';
+  const versions = document.versions?.length ? document.versions.slice(0, 4) : [{ version: 1, versionNumber: 1, uploadedAt: document.updatedAt }];
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm">
-        <button
-          onClick={() => navigate('/documents')}
-          className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 font-medium"
-        >
-          Documents
-        </button>
-        <ChevronRight className="w-4 h-4 text-navy-400" />
-        <span className="text-navy-600 dark:text-navy-300 truncate">{document.name}</span>
+    <div className="space-y-5">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="page-heading">Preview Canvas</h1>
+          <p className="page-subtitle">{document.trackingCode || document.name} · {document.description || document.fileName}</p>
+        </div>
+        <div className="flex items-center gap-4 text-sm text-[#52627a]">
+          <span className="inline-flex h-9 items-center gap-2 rounded-[5px] bg-[#d8f5e4] px-3 font-medium text-[#27885a]"><Lock className="h-4 w-4" />View Only</span>
+          <span className="hidden sm:inline">No download · No print · No right-click</span>
+        </div>
       </div>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 flex-1">
-          <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white truncate">
-            {document.name}
-          </h1>
-          <Badge status={getStatusColor(document.status)} variant="outline">
-            {document.status.replace('_', ' ')}
-          </Badge>
-          {isCheckedOut && (
-            <Badge status="warning" variant="outline">
-              🔒 Locked
-            </Badge>
-          )}
-        </div>
-        <Button
-          variant="secondary"
-          onClick={handleDownload}
-          disabled={isOperating}
-        >
-          <Download className="w-4 h-4 mr-2 inline" />
-          Download
-        </Button>
-      </div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(300px,0.95fr)]">
+        <Card className="overflow-hidden">
+          <div className="relative flex min-h-[630px] items-center justify-center bg-white p-4">
+            <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(45deg,#eef2f7_25%,transparent_25%),linear-gradient(-45deg,#eef2f7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#eef2f7_75%),linear-gradient(-45deg,transparent_75%,#eef2f7_75%)] [background-position:0_0,0_28px,28px_-28px,-28px_0] [background-size:56px_56px]" />
+            <div className="relative h-[590px] w-full overflow-hidden rounded-[3px] bg-white/80"><PDFViewer fileUrl="" fileName={document.fileName} readOnly /></div>
+          </div>
+        </Card>
 
-      {/* Main Content: PDF + Sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* PDF Viewer */}
-        <div className="lg:col-span-2">
+        <div className="space-y-4">
           <Card>
-            <div className="bg-white dark:bg-navy-950 rounded-lg p-4 h-[500px] flex items-center justify-center">
-              <PDFViewer fileUrl="" fileName={document.fileName} />
-            </div>
-          </Card>
-        </div>
-
-        {/* Sidebar: Document Details & Actions */}
-        <div className="lg:col-span-1 space-y-4">
-          {/* Document Info Card */}
-          <Card>
-            <div className="p-6 border-b border-gray-200 dark:border-navy-700">
-              <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Document Info</h2>
-            </div>
-            <CardBody className="space-y-4 text-sm">
-              <div>
-                <p className="text-gray-600 dark:text-gray-400">File Name</p>
-                <p className="font-medium text-navy-900 dark:text-white break-all">{document.fileName}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 dark:text-gray-400">File Size</p>
-                <p className="font-medium text-navy-900 dark:text-white">{formatFileSize(document.fileSize)}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 dark:text-gray-400">Uploaded By</p>
-                <p className="font-medium text-navy-900 dark:text-white">{document.uploadedByUser?.fullName || 'Unknown'}</p>
-                <p className="text-xs text-gray-500">{document.uploadedByUser?.email}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 dark:text-gray-400">Uploaded At</p>
-                <p className="font-medium text-navy-900 dark:text-white">{formatDate(document.uploadedAt)}</p>
-              </div>
-              {document.description && (
-                <div>
-                  <p className="text-gray-600 dark:text-gray-400">Description</p>
-                  <p className="font-medium text-navy-900 dark:text-white">{document.description}</p>
-                </div>
-              )}
+            <CardBody className="p-4">
+              <h2 className="section-heading flex items-center gap-2"><ShieldCheck className="h-4 w-4" />Document Properties</h2>
+              <dl className="mt-4 space-y-3 text-sm">
+                {[
+                  ['ID', document.trackingCode || document.documentId.slice(0, 12)],
+                  ['Version', String(document.versions?.[0]?.versionNumber ?? document.versions?.[0]?.version ?? '1.0')],
+                  ['Status', document.status.replace('_', ' ')],
+                  ['Owner', document.uploadedByUser?.fullName || 'Unknown'],
+                  ['File', document.fileName],
+                  ['Size', formatFileSize(document.fileSize)],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-start justify-between gap-4"><dt className="text-[#718198]">{label}</dt><dd className="max-w-[65%] break-words text-right font-medium capitalize text-[#26334d]">{value}</dd></div>
+                ))}
+              </dl>
             </CardBody>
           </Card>
 
-          {/* Checkout Status Card */}
-          {isCheckedOut && (
-            <Card className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900">
-              <CardBody className="text-sm space-y-3">
-                <p className="font-medium text-yellow-900 dark:text-yellow-300">
-                  🔒 This document is locked for editing
-                </p>
-                <p className="text-xs text-yellow-800 dark:text-yellow-400">
-                  Checked out by: <span className="font-medium">{document.checkedOutBy}</span>
-                </p>
-                {document.checkedOutAt && (
-                  <p className="text-xs text-yellow-800 dark:text-yellow-400">
-                    Since: <span className="font-medium">{formatDate(document.checkedOutAt)}</span>
-                  </p>
-                )}
+          <Card>
+            <CardBody className="p-4">
+              <h2 className="section-heading flex items-center gap-2"><History className="h-4 w-4" />Version History</h2>
+              <div className="mt-4 space-y-3 text-sm">
+                {versions.map((version, index) => (
+                  <div key={index} className="flex items-center justify-between gap-3"><span className="text-[#334155]">v{Number(version.versionNumber ?? version.version).toFixed(1)} · {index === 0 ? document.status.replace('_', ' ') : 'Superseded'}</span><span className="text-xs text-[#94a3b8]">{new Date(version.uploadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span></div>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody className="p-4">
+              <h2 className="section-heading flex items-center gap-2"><Activity className="h-4 w-4" />Access Log</h2>
+              <div className="mt-4 space-y-3 text-sm text-[#52627a]"><div>{document.uploadedByUser?.fullName || 'Owner'} viewed · {new Date(document.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div><div className="flex items-center gap-2"><Eye className="h-3.5 w-3.5" />You viewed · Just now</div></div>
+            </CardBody>
+          </Card>
+
+          {(isDraft || isPending || isCheckedOut) && (
+            <Card>
+              <CardBody className="space-y-2 p-4">
+                <h2 className="section-heading mb-3">Document Actions</h2>
+                <Button variant="secondary" size="sm" onClick={handleDownload} disabled={isOperating} className="w-full" leftIcon={<Download className="h-4 w-4" />}>Download read-only</Button>
+                {isDraft && !isCheckedOut && <Button variant="secondary" size="sm" onClick={() => runAction((documentId, versionId) => apiClient.checkoutDocument(documentId, versionId), 'Document locked for editing')} disabled={isOperating} className="w-full" leftIcon={<Lock className="h-4 w-4" />}>Lock for Editing</Button>}
+                {isCheckedOut && <Button variant="secondary" size="sm" onClick={() => runAction((documentId, versionId) => apiClient.checkinDocument(documentId, versionId), 'Document unlocked')} disabled={isOperating} className="w-full" leftIcon={<Unlock className="h-4 w-4" />}>Unlock</Button>}
+                {isDraft && <Button size="sm" onClick={() => runAction((documentId, versionId) => apiClient.submitForApproval(documentId, versionId), 'Document submitted for approval')} disabled={isOperating || isCheckedOut} className="w-full">Submit for Approval</Button>}
+                {isPending && <div className="grid grid-cols-2 gap-2"><Button size="sm" onClick={() => setDecision({ type: 'approve', value: '' })} className="bg-[#399a68] hover:bg-[#2f895b]" leftIcon={<CheckCircle2 className="h-4 w-4" />}>Approve</Button><Button variant="danger" size="sm" onClick={() => setDecision({ type: 'reject', value: '' })} leftIcon={<XCircle className="h-4 w-4" />}>Reject</Button></div>}
               </CardBody>
             </Card>
           )}
-
-          {/* Document Actions */}
-          <Card>
-            <div className="p-6 border-b border-gray-200 dark:border-navy-700">
-              <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Actions</h2>
-            </div>
-            <CardBody className="space-y-2">
-              {/* Lock/Unlock Actions */}
-              {isDraft && !isCheckedOut && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleLock}
-                  disabled={isOperating}
-                  className="w-full justify-center"
-                >
-                  <Lock className="w-4 h-4 mr-2 inline" />
-                  Lock for Editing
-                </Button>
-              )}
-
-              {isCheckedOut && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleUnlock}
-                  disabled={isOperating}
-                  className="w-full justify-center"
-                >
-                  <Unlock className="w-4 h-4 mr-2 inline" />
-                  Unlock
-                </Button>
-              )}
-
-              {/* Submit for Approval */}
-              {isDraft && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSubmitApproval}
-                  disabled={isOperating || isCheckedOut}
-                  className="w-full justify-center"
-                >
-                  📤 Submit for Approval
-                </Button>
-              )}
-
-              {/* Approve/Reject (for Managers) */}
-              {isPending && (
-                <>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => setApproveModal({ isOpen: true, comments: '' })}
-                    disabled={isOperating}
-                    className="w-full justify-center bg-green-600 hover:bg-green-700"
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-2 inline" />
-                    Approve
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => setRejectModal({ isOpen: true, reason: '' })}
-                    disabled={isOperating}
-                    className="w-full justify-center"
-                  >
-                    <XCircle className="w-4 h-4 mr-2 inline" />
-                    Reject
-                  </Button>
-                </>
-              )}
-            </CardBody>
-          </Card>
         </div>
       </div>
 
-      {/* Approval Modal */}
-      {approveModal.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700 bg-green-50 dark:bg-green-900/20">
-              <h2 className="text-lg font-serif font-bold text-green-900 dark:text-green-300">Approve Document</h2>
-              <button
-                onClick={() => setApproveModal({ isOpen: false, comments: '' })}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <CardBody className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">
-                  Comments (Optional)
-                </label>
-                <textarea
-                  placeholder="Add approval comments..."
-                  value={approveModal.comments}
-                  onChange={(e) => setApproveModal({ ...approveModal, comments: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-green-500 h-24"
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="secondary"
-                  onClick={() => setApproveModal({ isOpen: false, comments: '' })}
-                  disabled={isOperating}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleApprove}
-                  disabled={isOperating}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {isOperating ? 'Approving...' : 'Approve'}
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-      )}
-
-      {/* Rejection Modal */}
-      {rejectModal.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700 bg-red-50 dark:bg-red-900/20">
-              <h2 className="text-lg font-serif font-bold text-red-900 dark:text-red-300">Reject Document</h2>
-              <button
-                onClick={() => setRejectModal({ isOpen: false, reason: '' })}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <CardBody className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">
-                  Rejection Reason *
-                </label>
-                <textarea
-                  placeholder="Explain why this document is being rejected..."
-                  value={rejectModal.reason}
-                  onChange={(e) => setRejectModal({ ...rejectModal, reason: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-red-500 h-24"
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="secondary"
-                  onClick={() => setRejectModal({ isOpen: false, reason: '' })}
-                  disabled={isOperating}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={handleReject}
-                  disabled={isOperating || !rejectModal.reason.trim()}
-                >
-                  {isOperating ? 'Rejecting...' : 'Reject'}
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-      )}
+      {decision && <DecisionDialog type={decision.type} value={decision.value} isSubmitting={isOperating} onChange={(value) => setDecision({ ...decision, value })} onClose={() => setDecision(null)} onSubmit={handleDecision} />}
     </div>
   );
 }

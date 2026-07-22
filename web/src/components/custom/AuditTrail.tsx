@@ -270,10 +270,10 @@ export function AuditTrail() {
       </div>
 
       {/* Logs Table */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-navy-700/60 shadow-sm dark:shadow-black/30">
+      <div className="overflow-hidden rounded-[5px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
         <table className="w-full text-sm bg-white dark:bg-navy-900">
-          <thead className="bg-gradient-to-r from-navy-900 to-navy-800 dark:from-navy-950 dark:to-navy-900 border-b-2 border-b-blue-500/40 dark:border-b-cyan-500/40">
-            <tr className="text-left text-white">
+          <thead className="border-b border-[#e2e8f0] bg-[#f7f9fc] dark:border-white/10 dark:bg-slate-950">
+            <tr className="text-left text-xs uppercase text-[#64748b] dark:text-slate-400">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Timestamp</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">User</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Action</th>

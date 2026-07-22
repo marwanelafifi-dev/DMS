@@ -1,94 +1,103 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PDFToolbar } from './PDFToolbar';
 
 interface PDFViewerProps {
   fileUrl: string;
   fileName: string;
+  readOnly?: boolean;
 }
 
-export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
+export function PDFViewer({ fileUrl, fileName, readOnly = false }: PDFViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Determine file type
-  const getFileType = () => {
-    const ext = fileName.toLowerCase().split('.').pop();
-    if (['pdf'].includes(ext || '')) return 'pdf';
-    if (['xlsx', 'xls', 'csv'].includes(ext || '')) return 'excel';
-    if (['docx', 'doc'].includes(ext || '')) return 'word';
-    if (['pptx', 'ppt'].includes(ext || '')) return 'powerpoint';
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
-    return 'unknown';
-  };
+  const fileType = (() => {
+    const extension = fileName.toLowerCase().split('.').pop();
+    if (extension === 'pdf') return 'PDF Document';
+    if (['xlsx', 'xls', 'csv'].includes(extension || '')) return 'Excel Spreadsheet';
+    if (['docx', 'doc'].includes(extension || '')) return 'Word Document';
+    if (['pptx', 'ppt'].includes(extension || '')) return 'PowerPoint Presentation';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')) return 'Image File';
+    return 'Document';
+  })();
 
-  const fileType = getFileType();
-
-  // Mock rendering - in production would use actual libraries
   useEffect(() => {
-    // Simulate loading with 10 pages
     setTotalPages(10);
-    renderPage();
-  }, [currentPage, zoom, rotation, fileType]);
-
-  const renderPage = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Mock page rendering
-    const width = 800 * (zoom / 100);
-    const height = 1000 * (zoom / 100);
-
+    const scale = zoom / 100;
+    const width = (readOnly ? 1100 : 800) * scale;
+    const height = (readOnly ? 700 : 1000) * scale;
     canvas.width = width;
     canvas.height = height;
 
-    // Clear canvas with white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
 
-    // Draw content based on file type
-    ctx.fillStyle = '#333333';
-    ctx.font = `${24 * (zoom / 100)}px Arial`;
-    ctx.textAlign = 'center';
+    if (readOnly) {
+      context.textAlign = 'center';
+      context.fillStyle = '#718198';
+      context.font = `${13 * scale}px Inter, Arial`;
+      context.fillText('SI-WARE SYSTEMS', width / 2, 70 * scale);
+      context.fillStyle = '#2f3e83';
+      context.font = `600 ${25 * scale}px Inter, Arial`;
+      context.fillText('Standard Operating Procedure', width / 2, 108 * scale);
+      context.fillStyle = '#52627a';
+      context.font = `${15 * scale}px Inter, Arial`;
+      context.fillText(fileName, width / 2, 135 * scale);
 
-    const fileTypeLabels = {
-      pdf: 'PDF Document',
-      excel: 'Excel Spreadsheet',
-      word: 'Word Document',
-      powerpoint: 'PowerPoint Presentation',
-      image: 'Image File',
-      unknown: 'Document'
-    };
+      const sections = [
+        ['1. Purpose.', 'This procedure defines the calibration cadence and acceptance criteria for controlled production equipment.'],
+        ['2. Scope.', 'Applies to all calibrated instruments listed in the Master Equipment Register and associated laboratories.'],
+        ['3. Responsibilities.', 'The Production Manager assigns calibration tasks; QA verifies results and records the outcome.'],
+        ['4. Procedure.', 'Each instrument is calibrated at the defined interval. Out-of-tolerance results trigger corrective action.'],
+        ['5. Records.', 'Calibration certificates are retained as read-only controlled copies in the document vault.'],
+      ];
 
-    ctx.fillText(`${fileTypeLabels[fileType as keyof typeof fileTypeLabels]}`, width / 2, height / 2 - 40);
-    ctx.font = `${16 * (zoom / 100)}px Arial`;
-    ctx.fillText(`Page ${currentPage}`, width / 2, height / 2);
+      context.textAlign = 'left';
+      sections.forEach(([heading, copy], index) => {
+        const y = (205 + index * 70) * scale;
+        context.fillStyle = '#26334d';
+        context.font = `600 ${15 * scale}px Inter, Arial`;
+        context.fillText(heading, 120 * scale, y);
+        context.fillStyle = '#52627a';
+        context.font = `${15 * scale}px Inter, Arial`;
+        context.fillText(copy, 255 * scale, y);
+      });
 
-    // Draw subtle border
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, width, height);
-
-    // Apply rotation
-    if (rotation !== 0) {
-      ctx.save();
-      ctx.translate(width / 2, height / 2);
-      ctx.rotate((rotation * Math.PI) / 180);
-      ctx.translate(-width / 2, -height / 2);
-      ctx.restore();
+      context.strokeStyle = '#9aa8c1';
+      context.lineWidth = 2;
+      context.strokeRect(395 * scale, 555 * scale, 310 * scale, 95 * scale);
+      context.textAlign = 'center';
+      context.fillStyle = '#718198';
+      context.font = `${11 * scale}px Inter, Arial`;
+      context.fillText('DIGITALLY SIGNED', width / 2, 585 * scale);
+      context.fillStyle = '#2f3e83';
+      context.font = `600 ${16 * scale}px Inter, Arial`;
+      context.fillText('A. Khaled', width / 2, 612 * scale);
+    } else {
+      context.fillStyle = '#333333';
+      context.font = `${24 * scale}px Arial`;
+      context.textAlign = 'center';
+      context.fillText(fileType, width / 2, height / 2 - 40);
+      context.font = `${16 * scale}px Arial`;
+      context.fillText(`Page ${currentPage}`, width / 2, height / 2);
     }
-  };
+
+    context.strokeStyle = '#e5e7eb';
+    context.lineWidth = 1;
+    context.strokeRect(0, 0, width, height);
+  }, [currentPage, fileName, fileType, readOnly, rotation, zoom]);
 
   const handlePrint = () => {
     const printWindow = window.open(fileUrl, '_blank');
-    if (printWindow) {
-      printWindow.print();
-    }
+    if (printWindow) printWindow.print();
   };
 
   const handleDownload = () => {
@@ -98,50 +107,33 @@ export function PDFViewer({ fileUrl, fileName }: PDFViewerProps) {
     link.click();
   };
 
-  const handleSearch = (query: string) => {
-    console.log('Searching for:', query);
-    // In production, would search PDF text
-  };
-
-  const handleRotate = () => {
-    setRotation((prev) => (prev + 90) % 360);
-  };
-
   return (
-    <div className="bg-white dark:bg-navy-900 rounded-lg border border-gray-200 dark:border-navy-800 overflow-hidden flex flex-col h-full shadow-sm">
-      {/* Toolbar */}
-      <PDFToolbar
-        currentPage={currentPage}
-        totalPages={totalPages}
-        zoom={zoom}
-        onPageChange={setCurrentPage}
-        onZoomChange={setZoom}
-        onPrint={handlePrint}
-        onDownload={handleDownload}
-        onSearch={handleSearch}
-        onRotate={handleRotate}
-      />
+    <div className="flex h-full flex-col overflow-hidden rounded-[4px] border border-[#e2e8f0] bg-white">
+      {!readOnly && (
+        <PDFToolbar
+          currentPage={currentPage}
+          totalPages={totalPages}
+          zoom={zoom}
+          onPageChange={setCurrentPage}
+          onZoomChange={setZoom}
+          onPrint={handlePrint}
+          onDownload={handleDownload}
+          onSearch={(query) => console.log('Searching for:', query)}
+          onRotate={() => setRotation((current) => (current + 90) % 360)}
+        />
+      )}
 
-      {/* PDF Canvas Area */}
-      <div className="flex-1 overflow-auto bg-gray-50 dark:bg-navy-950 flex items-center justify-center p-6">
-        <div
-          className="bg-white rounded-lg shadow-md overflow-hidden transition-transform"
-          style={{ transform: `rotate(${rotation}deg)` }}
-        >
-          <canvas
-            ref={canvasRef}
-            className="max-w-full"
-            style={{ height: 'auto' }}
-          />
+      <div className={`flex flex-1 items-center justify-center overflow-auto ${readOnly ? 'bg-white p-0' : 'bg-gray-50 p-6'}`}>
+        <div className="overflow-hidden rounded bg-white shadow-sm" style={{ transform: `rotate(${rotation}deg)` }}>
+          <canvas ref={canvasRef} className="max-w-full" style={{ height: 'auto' }} />
         </div>
       </div>
 
-      {/* Page Info Footer */}
-      <div className="bg-navy-900 border-t border-navy-800 px-4 py-3 text-center text-sm text-white font-medium">
-        Page <span className="text-white">{currentPage}</span> of{' '}
-        <span className="text-white">{totalPages}</span> • Zoom{' '}
-        <span className="text-white">{zoom}%</span>
-      </div>
+      {!readOnly && (
+        <div className="border-t border-navy-800 bg-navy-900 px-4 py-3 text-center text-sm font-medium text-white">
+          Page {currentPage} of {totalPages} · Zoom {zoom}%
+        </div>
+      )}
     </div>
   );
 }

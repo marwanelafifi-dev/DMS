@@ -9,8 +9,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={`
-        bg-white dark:bg-navy-900 border border-gray-300 dark:border-white/10
-        rounded-xl shadow-sm hover:shadow-md dark:shadow-lg dark:shadow-black/40 dark:hover:border-white/20 transition-all duration-normal
+        rounded-[5px] border border-[#dbe2ec] bg-white shadow-none dark:border-white/10 dark:bg-slate-900
         ${className}
       `}
       {...props}
@@ -28,7 +27,7 @@ export const CardHeader = forwardRef<HTMLDivElement, CardHeaderProps>(
   ({ className = '', ...props }, ref) => (
     <div
       ref={ref}
-      className={`px-6 py-4 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-navy-950 rounded-t-xl ${className}`}
+      className={`rounded-t-[5px] border-b border-[#e2e8f0] bg-white px-5 py-4 dark:border-white/10 dark:bg-slate-900 ${className}`}
       {...props}
     />
   )
@@ -42,7 +41,7 @@ interface CardBodyProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export const CardBody = forwardRef<HTMLDivElement, CardBodyProps>(
   ({ className = '', ...props }, ref) => (
-    <div ref={ref} className={`p-6 ${className}`} {...props} />
+    <div ref={ref} className={`p-5 ${className}`} {...props} />
   )
 );
 
@@ -56,7 +55,7 @@ export const CardFooter = forwardRef<HTMLDivElement, CardFooterProps>(
   ({ className = '', ...props }, ref) => (
     <div
       ref={ref}
-      className={`px-6 py-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-navy-950 flex gap-3 justify-end rounded-b-xl ${className}`}
+      className={`flex justify-end gap-3 rounded-b-[5px] border-t border-[#e2e8f0] bg-[#f8fafc] px-5 py-4 dark:border-white/10 dark:bg-slate-950 ${className}`}
       {...props}
     />
   )

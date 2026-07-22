@@ -35,10 +35,11 @@ export function FolderTree({
     return (
       <div key={folder.folderId}>
         <div
-          className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer rounded-lg transition-all ${
+          onClick={() => onSelectFolder(folder.folderId)}
+          className={`flex cursor-pointer items-center gap-2 rounded-[4px] px-3 py-2 transition-colors ${
             isSelected
-              ? 'bg-blue-50 dark:bg-blue-500/15 text-navy-900 dark:text-white border-l-4 border-blue-600 dark:border-cyan-400 shadow-sm dark:shadow-none'
-              : 'hover:bg-gray-100 dark:hover:bg-white/5 text-gray-700 dark:text-navy-300 border-l-4 border-transparent'
+              ? 'bg-[#e8f0f8] text-[#3f8bca] dark:bg-blue-500/15 dark:text-white'
+              : 'text-[#34425b] hover:bg-[#f4f7fa] dark:text-slate-300 dark:hover:bg-white/5'
           }`}
           style={{ paddingLeft: `${12 + level * 16}px` }}
         >
@@ -51,17 +52,16 @@ export function FolderTree({
               className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
             >
               <ChevronRight
-                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''} text-gray-700 dark:text-navy-400`}
+                className={`h-4 w-4 text-[#718198] transition-transform ${isExpanded ? 'rotate-90' : ''} dark:text-slate-400`}
               />
             </button>
           )}
           {!hasChildren && <div className="w-4" />}
 
-          <Folder className="w-5 h-5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+          <Folder className="h-[18px] w-[18px] flex-shrink-0 fill-[#f4bd42] text-[#f4bd42]" />
 
           <span
-            onClick={() => onSelectFolder(folder.folderId)}
-            className="flex-1 text-sm font-semibold truncate"
+            className="flex-1 truncate text-sm font-medium"
           >
             {folder.name}
           </span>
@@ -79,8 +79,8 @@ export function FolderTree({
   };
 
   return (
-    <div className="w-full bg-white dark:bg-navy-950 rounded-xl border border-gray-300 dark:border-white/10 p-4 shadow-sm dark:shadow-black/40">
-      <h3 className="text-sm font-extrabold mb-4 text-navy-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+    <div className="w-full rounded-[5px] border border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+      <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#64748b] dark:text-white">
         Folders
       </h3>
       <div className="space-y-1">

@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ListChecks, FileText, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, ClipboardCheck, Clock3, Download, FilePlus2, TriangleAlert } from 'lucide-react';
 import { Card, CardBody } from '../ui/Card';
-import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { SkeletonCard } from '../ui/Skeleton';
-import { useAuth } from '../../hooks/useAuth';
 import type { Task, Document, Approval } from '../../types';
 import { useNavigate } from 'react-router-dom';
 
 export function Dashboard() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [recentDocs, setRecentDocs] = useState<Document[]>([]);
@@ -114,14 +111,21 @@ export function Dashboard() {
     done: tasks.filter((t) => t.status === 'done').length,
   };
 
-  const getStatusColor = (
-    status: 'open' | 'in_progress' | 'done'
-  ): 'warning' | 'info' | 'success' => {
-    return {
-      open: 'warning',
-      in_progress: 'info',
-      done: 'success',
-    }[status] as 'warning' | 'info' | 'success';
+  const exportDashboard = () => {
+    const rows = [
+      ['Metric', 'Value'],
+      ['Total Documents', String(recentDocs.length)],
+      ['Pending Approvals', String(pendingApprovals.length)],
+      ['Checked Out', String(recentDocs.filter((doc) => doc.checkoutStatus === 'checked_out').length)],
+      ['Open PCARs', String(taskStats.open + taskStats.inProgress)],
+    ];
+    const blob = new Blob([rows.map((row) => row.join(',')).join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = 'dms-dashboard.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   if (isLoading) {
@@ -133,226 +137,102 @@ export function Dashboard() {
     );
   }
 
+  const analytics = [
+    { week: 'W1', approved: 54, review: 12, rejected: 3 },
+    { week: 'W2', approved: 67, review: 18, rejected: 4 },
+    { week: 'W3', approved: 60, review: 22, rejected: 5 },
+    { week: 'W4', approved: 73, review: 11, rejected: 4 },
+    { week: 'W5', approved: 85, review: 17, rejected: 5 },
+    { week: 'W6', approved: 70, review: 22, rejected: 3 },
+  ];
+
+  const metrics = [
+    { label: 'Total Documents', value: recentDocs.length, detail: '▲ 2.4% this week', detailClass: 'text-[#319d68]' },
+    { label: 'Pending Approvals', value: pendingApprovals.length, detail: '▲ 5 since yesterday', detailClass: 'text-[#d27a08]' },
+    { label: 'Checked Out', value: recentDocs.filter((doc) => doc.checkoutStatus === 'checked_out').length, detail: '3 overdue', detailClass: 'text-[#64748b]' },
+    { label: 'Open PCARs', value: taskStats.open + taskStats.inProgress, detail: `${tasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]' },
+  ];
+
+  const taskIcons = [Clock3, CheckCircle2, TriangleAlert, ClipboardCheck];
+  const taskColors = ['border-[#f2b51d] text-[#e4a400]', 'border-[#3f8bca] text-[#3f8bca]', 'border-[#ef6b70] text-[#ef5b61]', 'border-[#cbd5e3] text-[#8292aa]'];
+
   return (
-    <div className="space-y-8">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-4xl font-serif font-bold tracking-tight mb-2 text-navy-900 dark:text-white">Welcome back, {user?.fullName}!</h1>
-        <p className="text-gray-600 dark:text-gray-300 font-serif text-lg">
-          Here's an overview of your recent activity and pending tasks.
-        </p>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                Open Tasks
-              </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-white">{taskStats.open}</p>
-            </div>
-            <ListChecks className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
-          </CardBody>
-        </Card>
-
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                In Progress
-              </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-white">{taskStats.inProgress}</p>
-            </div>
-            <FileText className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
-          </CardBody>
-        </Card>
-
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mb-1 font-semibold">
-                Pending Approvals
-              </p>
-              <p className="text-4xl font-bold text-navy-900 dark:text-white">{pendingApprovals.length}</p>
-            </div>
-            <CheckCircle2 className="w-11 h-11 bg-navy-800 text-white rounded-lg p-2.5 flex-shrink-0" />
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* My Tasks (Left - Takes 2 columns) */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">My Tasks</h2>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => navigate('/tasks')}
-            >
-              View All
-            </Button>
-          </div>
-
-          {/* Task Stats */}
-          <div className="grid grid-cols-3 gap-3">
-            <Card>
-              <CardBody className="text-center">
-                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Open</p>
-                <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{taskStats.open}</p>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody className="text-center">
-                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                  In Progress
-                </p>
-                <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{taskStats.inProgress}</p>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody className="text-center">
-                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Done</p>
-                <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{taskStats.done}</p>
-              </CardBody>
-            </Card>
-          </div>
-
-          {/* Task List */}
-          <div className="space-y-2">
-            {tasks.slice(0, 3).map((task) => (
-              <Card
-                key={task.taskId}
-                onClick={() => navigate(`/tasks/${task.taskId}`)}
-                className="cursor-pointer hover:shadow-lg transition-all"
-              >
-                <CardBody className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <h3 className="font-bold text-base text-navy-900 dark:text-white">{task.title}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 font-serif">
-                        {task.description}
-                      </p>
-                    </div>
-                    <Badge
-                      status={
-                        task.priority === 'critical'
-                          ? 'error'
-                          : task.priority === 'high'
-                            ? 'warning'
-                            : 'info'
-                      }
-                      size="sm"
-                      variant="outline"
-                    >
-                      {task.priority}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Badge
-                      status={getStatusColor(task.status)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {task.status.replace('_', ' ')}
-                    </Badge>
-                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-                      Due:{' '}
-                      {new Date(task.dueDate).toLocaleDateString()}
-                    </span>
-                  </div>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="page-heading">Dashboard</h1>
+          <p className="page-subtitle">System overview · Last sync {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, 09:41</p>
         </div>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={exportDashboard} leftIcon={<Download className="h-4 w-4" />}>Export</Button>
+          <Button onClick={() => navigate('/documents')} leftIcon={<FilePlus2 className="h-4 w-4" />}>New Document</Button>
+        </div>
+      </div>
 
-        {/* Recent Documents & Approvals (Right) */}
-        <div className="space-y-6">
-          {/* Recent Documents */}
-          <div>
-            <h3 className="text-2xl font-serif font-bold tracking-tight mb-3 text-navy-900 dark:text-white">Recent Documents</h3>
-            <div className="space-y-2">
-              {recentDocs.slice(0, 3).map((doc) => (
-                <Card
-                  key={doc.documentId}
-                  onClick={() => navigate(`/documents/${doc.documentId}`)}
-                  className="cursor-pointer hover:shadow-lg transition-all"
-                >
-                  <CardBody className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-sm text-navy-900 dark:text-white">{doc.name}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">
-                          {(doc.fileSize / 1024).toFixed(0)} KB
-                        </p>
-                      </div>
-                      <Badge
-                        status={
-                          doc.status === 'released'
-                            ? 'success'
-                            : 'warning'
-                        }
-                        size="sm"
-                        variant="outline"
-                      >
-                        {doc.status.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                  </CardBody>
-                </Card>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric, index) => (
+          <Card key={metric.label}>
+            <CardBody className="p-4">
+              <div className="text-xs font-medium uppercase tracking-wide text-[#687a95]">{metric.label}</div>
+              <div className={`mt-2 text-[29px] font-semibold leading-none ${index === 1 ? 'text-[#3f8bca]' : index === 3 ? 'text-[#e24c53]' : 'text-[#2d3d80]'}`}>{metric.value.toLocaleString()}</div>
+              <div className={`mt-3 text-xs ${metric.detailClass}`}>{metric.detail}</div>
+            </CardBody>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(330px,0.85fr)]">
+        <Card>
+          <CardBody className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="section-heading">Approval-Cycle Analytics</h2>
+              <select className="field-control h-8 px-3 text-xs" defaultValue="30" aria-label="Analytics date range">
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+              </select>
+            </div>
+            <div className="mt-7 flex h-[235px] items-end justify-around gap-3 px-2 sm:px-8">
+              {analytics.map((item) => (
+                <div key={item.week} className="flex h-full flex-1 flex-col items-center justify-end">
+                  <div className="flex w-8 flex-col justify-end overflow-hidden rounded-[4px] sm:w-12" style={{ height: `${item.approved + item.review + item.rejected}%` }}>
+                    <div className="bg-[#ef6b70]" style={{ height: `${item.rejected}%` }} />
+                    <div className="bg-[#3f87c2]" style={{ height: `${item.review}%` }} />
+                    <div className="flex-1 bg-[#2f3e83]" />
+                  </div>
+                  <div className="mt-3 text-xs text-[#7b8ba3]">{item.week}</div>
+                </div>
               ))}
             </div>
-          </div>
+            <div className="mt-4 flex flex-wrap gap-5 text-xs text-[#52627a]">
+              <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-sm bg-[#2f3e83]" />Approved</span>
+              <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-sm bg-[#3f87c2]" />In Review</span>
+              <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-sm bg-[#ef6b70]" />Rejected</span>
+            </div>
+          </CardBody>
+        </Card>
 
-          {/* Pending Approvals */}
-          <div>
-            <h3 className="text-2xl font-serif font-bold tracking-tight mb-3 text-navy-900 dark:text-white">Pending Approvals</h3>
-            {pendingApprovals.length > 0 ? (
-              <div className="space-y-2">
-                {pendingApprovals.map((approval) => (
-                  <Card
-                    key={approval.approvalId}
-                    onClick={() => navigate(`/approvals/${approval.approvalId}`)}
-                    className="cursor-pointer border-l-4 border-l-navy-700 hover:shadow-lg transition-all"
-                  >
-                    <CardBody className="space-y-2">
-                      <p className="font-semibold text-sm text-navy-900 dark:text-white">
-                        {approval.document?.name}
-                      </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Submitted{' '}
-                        {new Date(approval.submittedAt).toLocaleDateString()}
-                      </p>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        className="w-full"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/approvals/${approval.approvalId}`);
-                        }}
-                      >
-                        Review
-                      </Button>
-                    </CardBody>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card>
-                <CardBody className="text-center py-8">
-                  <p className="text-gray-600 dark:text-gray-400">
-                    No pending approvals
-                  </p>
-                </CardBody>
-              </Card>
-            )}
-          </div>
-        </div>
+        <Card>
+          <CardBody className="p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="section-heading">My Tasks</h2>
+              <button onClick={() => navigate('/tasks')} className="text-xs font-medium text-[#3f8bca] hover:underline">View all</button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {tasks.slice(0, 4).map((task, index) => {
+                const Icon = taskIcons[index % taskIcons.length];
+                return (
+                  <button key={task.taskId} onClick={() => navigate('/tasks')} className={`flex w-full gap-3 rounded-[4px] border-l-2 px-3 py-2.5 text-left hover:bg-[#f8fafc] ${taskColors[index % taskColors.length]}`}>
+                    <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-[#26334d] dark:text-white">{task.title}</span>
+                      <span className="mt-1 block text-xs text-[#718198]">Due {new Date(task.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} · {task.taskType.replace('_', ' ')}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardBody>
+        </Card>
       </div>
     </div>
   );

@@ -28,9 +28,7 @@ function App() {
           path="/tasks"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Tasks />
-              </div>
+              <Tasks />
             </MainLayout>
           }
         />
@@ -60,9 +58,7 @@ function App() {
           path="/approvals"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Approvals />
-              </div>
+              <Approvals />
             </MainLayout>
           }
         />
@@ -72,9 +68,7 @@ function App() {
           path="/reminders"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Reminders />
-              </div>
+              <Reminders />
             </MainLayout>
           }
         />
@@ -84,9 +78,7 @@ function App() {
           path="/search"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Search />
-              </div>
+              <Search />
             </MainLayout>
           }
         />

@@ -158,6 +158,16 @@ class APIClient {
     const response = await this.client.get(`/documents/${documentId}/versions/${versionId}/download`, {
       responseType: 'blob',
     });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const encodedFileName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const quotedFileName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+    const fileName = encodedFileName ? decodeURIComponent(encodedFileName) : quotedFileName || `document-${versionId}`;
+    const objectUrl = URL.createObjectURL(response.data);
+    const link = window.document.createElement('a');
+    link.href = objectUrl;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(objectUrl);
     return response.data;
   }
 
