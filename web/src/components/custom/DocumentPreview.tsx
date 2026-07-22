@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, FileText, Lock, Presentation, Sheet, X } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
-import { formatFileSize } from '../../utils/formatters';
+import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
 
 interface DocumentPreviewProps {
@@ -141,7 +141,7 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#718198]">
               <span className="font-semibold uppercase">{document.extension}</span>
               <span>{formatFileSize(document.fileSize)}</span>
-              <span>Modified {new Date(document.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              <span title={new Date(document.modifiedAt).toLocaleString()}>Modified {formatDateTime(document.modifiedAt)}</span>
               <span>{document.folderName}</span>
             </div>
           </div>

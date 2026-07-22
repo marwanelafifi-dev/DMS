@@ -18,6 +18,11 @@ export type LibraryPreview = TextPreview | WordPreview | SpreadsheetPreview | Pr
 export interface MockLibraryDocument extends Document {
   extension: LibraryFileExtension;
   folderName: string;
+  department: string;
+  owner: User;
+  createdAt: string;
+  modifiedAt: string;
+  tags: string[];
   preview: LibraryPreview;
   sourceUrl?: string;
   fallbackDownload?: {
@@ -33,6 +38,14 @@ const owner: User = {
   role: 'Manager',
   isActive: true,
   createdAt: '2025-01-08T08:00:00.000Z',
+};
+
+const libraryOwners = {
+  operations: { ...owner, userId: 'user-operations', fullName: 'Omar Hassan', email: 'omar.hassan@si-ware.com' },
+  quality: { ...owner, userId: 'user-quality', fullName: 'Mona Saleh', email: 'mona.saleh@si-ware.com', role: 'QA' as const },
+  audit: { ...owner, userId: 'user-audit', fullName: 'Rami Faraj', email: 'rami.faraj@si-ware.com' },
+  hr: { ...owner, userId: 'user-hr', fullName: 'Nadia Ibrahim', email: 'nadia.ibrahim@si-ware.com', role: 'Manager' as const },
+  it: { ...owner, userId: 'user-it', fullName: 'Youssef Adel', email: 'youssef.adel@si-ware.com' },
 };
 
 export const mockLibraryFolders: Folder[] = [
@@ -97,7 +110,11 @@ interface DocumentSeed {
   fileSize: number;
   contentType: string;
   status: Document['status'];
+  department: string;
+  owner: User;
+  createdAt: string;
   modifiedAt: string;
+  tags: string[];
   description: string;
   preview: LibraryPreview;
 }
@@ -124,15 +141,21 @@ function createDocument(seed: DocumentSeed): MockLibraryDocument {
     fileSize: seed.fileSize,
     contentType: seed.contentType,
     status: seed.status,
+    department: seed.department,
+    owner: seed.owner,
+    ownerId: seed.owner.userId,
+    createdAt: seed.createdAt,
+    modifiedAt: seed.modifiedAt,
+    tags: seed.tags,
     description: seed.description,
     preview: seed.preview,
     fallbackDownload: fallbackContent ? {
       fileName: `${seed.fileName}-preview.txt`,
       content: fallbackContent,
     } : undefined,
-    uploadedBy: owner.userId,
-    uploadedByUser: owner,
-    uploadedAt: seed.modifiedAt,
+    uploadedBy: seed.owner.userId,
+    uploadedByUser: seed.owner,
+    uploadedAt: seed.createdAt,
     updatedAt: seed.modifiedAt,
     checkoutStatus: 'checked_in',
     versions: [{
@@ -140,9 +163,9 @@ function createDocument(seed: DocumentSeed): MockLibraryDocument {
       documentId: seed.id,
       version: 1,
       versionNumber: 1,
-      uploadedBy: owner.userId,
-      uploadedByUser: owner,
-      uploadedAt: seed.modifiedAt,
+      uploadedBy: seed.owner.userId,
+      uploadedByUser: seed.owner,
+      uploadedAt: seed.createdAt,
       fileSize: seed.fileSize,
     }],
   };
@@ -151,37 +174,44 @@ function createDocument(seed: DocumentSeed): MockLibraryDocument {
 const folder1Seeds: DocumentSeed[] = [
   {
     id: 'folder-1-txt', folderId: 'folder-1', fileName: 'Production Shift Handover.txt', extension: 'txt', fileSize: 3480,
-    contentType: 'text/plain', status: 'released', modifiedAt: '2026-07-21T09:42:00.000Z', description: 'Daily production handover notes',
+    contentType: 'text/plain', status: 'released', department: 'Operations', owner: libraryOwners.operations,
+    createdAt: '2026-07-15T07:30:00.000Z', modifiedAt: '2026-07-21T09:42:00.000Z', tags: ['Production', 'Internal'], description: 'Daily production handover notes',
     preview: { kind: 'text', content: 'Production Shift Handover\n\nLine 2 completed calibration without deviations.\nOpen action: verify replacement sensor stock before the next shift.\nOwner: Production Operations.' },
   },
   {
     id: 'folder-1-doc', folderId: 'folder-1', fileName: 'Supplier Audit Checklist.doc', extension: 'doc', fileSize: 184320,
-    contentType: 'application/msword', status: 'pending_approval', modifiedAt: '2026-07-20T16:10:00.000Z', description: 'Legacy supplier audit checklist',
+    contentType: 'application/msword', status: 'pending_approval', department: 'Quality Assurance', owner: libraryOwners.audit,
+    createdAt: '2026-06-04T10:15:00.000Z', modifiedAt: '2026-07-20T16:10:00.000Z', tags: ['Audit', 'Quality'], description: 'Legacy supplier audit checklist',
     preview: { kind: 'word', title: 'Supplier Audit Checklist', paragraphs: ['Confirm the supplier quality certificate is current.', 'Review incoming inspection records and corrective actions.', 'Record the audit outcome and required follow-up date.'] },
   },
   {
     id: 'folder-1-docx', folderId: 'folder-1', fileName: 'Quality Management Manual.docx', extension: 'docx', fileSize: 426240,
-    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', status: 'released', modifiedAt: '2026-07-18T14:22:00.000Z', description: 'Controlled quality management manual',
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', status: 'released', department: 'Quality Assurance', owner: libraryOwners.quality,
+    createdAt: '2026-01-12T08:45:00.000Z', modifiedAt: '2026-07-18T14:22:00.000Z', tags: ['Controlled', 'Quality'], description: 'Controlled quality management manual',
     preview: { kind: 'word', title: 'Quality Management Manual', paragraphs: ['Purpose: define the quality management system used across production and laboratories.', 'Scope: applies to controlled processes, records, suppliers, and internal audits.', 'All printed copies are uncontrolled unless explicitly stamped.'] },
   },
   {
     id: 'folder-1-xlsx', folderId: 'folder-1', fileName: 'Production Metrics Q2.xlsx', extension: 'xlsx', fileSize: 96256,
-    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', status: 'released', modifiedAt: '2026-07-17T11:05:00.000Z', description: 'Quarterly production performance metrics',
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', status: 'released', department: 'Operations', owner: libraryOwners.operations,
+    createdAt: '2026-07-01T09:00:00.000Z', modifiedAt: '2026-07-17T11:05:00.000Z', tags: ['Production', 'Quality'], description: 'Quarterly production performance metrics',
     preview: { kind: 'spreadsheet', columns: ['Metric', 'April', 'May', 'June'], rows: [['First pass yield', '98.1%', '98.6%', '98.9%'], ['Downtime', '4.2 h', '3.8 h', '3.1 h'], ['Units inspected', '12,440', '13,090', '13,520']] },
   },
   {
     id: 'folder-1-pptx', folderId: 'folder-1', fileName: 'Operations Review Q2.pptx', extension: 'pptx', fileSize: 2846720,
-    contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', status: 'draft', modifiedAt: '2026-07-16T08:30:00.000Z', description: 'Quarterly operations review deck',
+    contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', status: 'draft', department: 'Operations', owner: libraryOwners.operations,
+    createdAt: '2026-07-08T13:20:00.000Z', modifiedAt: '2026-07-16T08:30:00.000Z', tags: ['Production', 'Internal'], description: 'Quarterly operations review deck',
     preview: { kind: 'presentation', slides: [{ title: 'Q2 Operations Review', bullets: ['Production targets achieved', 'Calibration backlog reduced by 18%'] }, { title: 'Next Quarter Priorities', bullets: ['Automate line clearance records', 'Complete supplier requalification'] }] },
   },
   {
     id: 'folder-1-pdf', folderId: 'folder-1', fileName: 'Calibration Procedure SOP-204.pdf', extension: 'pdf', fileSize: 421888,
-    contentType: 'application/pdf', status: 'released', modifiedAt: '2026-07-15T13:05:00.000Z', description: 'Approved production calibration procedure',
+    contentType: 'application/pdf', status: 'released', department: 'Quality Assurance', owner: libraryOwners.quality,
+    createdAt: '2026-03-11T11:00:00.000Z', modifiedAt: '2026-07-15T13:05:00.000Z', tags: ['Controlled', 'Quality', 'Production'], description: 'Approved production calibration procedure',
     preview: { kind: 'pdf', url: createPdfDataUrl('Calibration Procedure SOP-204', 'Controlled copy - view only') },
   },
   {
     id: 'folder-1-png', folderId: 'folder-1', fileName: 'si-ware-brand-reference.png', extension: 'png', fileSize: 58231,
-    contentType: 'image/png', status: 'released', modifiedAt: '2026-07-14T10:40:00.000Z', description: 'Approved corporate brand reference',
+    contentType: 'image/png', status: 'released', department: 'Human Resources', owner: libraryOwners.hr,
+    createdAt: '2026-05-19T12:10:00.000Z', modifiedAt: '2026-07-14T10:40:00.000Z', tags: ['Controlled', 'Internal'], description: 'Approved corporate brand reference',
     preview: { kind: 'image', url: '/images/si-ware-logo.png', alt: 'Si-Ware corporate logo reference' },
   },
 ];
@@ -189,37 +219,44 @@ const folder1Seeds: DocumentSeed[] = [
 const folder2Seeds: DocumentSeed[] = [
   {
     id: 'folder-2-txt', folderId: 'folder-2', fileName: 'Incident Response Notes.txt', extension: 'txt', fileSize: 5120,
-    contentType: 'text/plain', status: 'draft', modifiedAt: '2026-07-21T08:15:00.000Z', description: 'Security incident tabletop notes',
+    contentType: 'text/plain', status: 'draft', department: 'IT', owner: libraryOwners.it,
+    createdAt: '2026-07-20T14:30:00.000Z', modifiedAt: '2026-07-21T08:15:00.000Z', tags: ['Internal'], description: 'Security incident tabletop notes',
     preview: { kind: 'text', content: 'Incident Response Tabletop\n\nScenario: suspicious authentication activity detected.\nActions: isolate affected account, preserve logs, notify the incident commander.\nOutcome: escalation path verified successfully.' },
   },
   {
     id: 'folder-2-doc', folderId: 'folder-2', fileName: 'Training Attendance Register.doc', extension: 'doc', fileSize: 147456,
-    contentType: 'application/msword', status: 'archived', modifiedAt: '2026-07-19T12:45:00.000Z', description: 'Legacy training attendance register',
+    contentType: 'application/msword', status: 'archived', department: 'Human Resources', owner: libraryOwners.hr,
+    createdAt: '2025-09-08T09:30:00.000Z', modifiedAt: '2026-07-19T12:45:00.000Z', tags: ['Training', 'Internal'], description: 'Legacy training attendance register',
     preview: { kind: 'word', title: 'Training Attendance Register', paragraphs: ['Course: Controlled Document Handling', 'Department: Quality Assurance', 'Attendance verified by the training coordinator.'] },
   },
   {
     id: 'folder-2-docx', folderId: 'folder-2', fileName: 'Records Retention Schedule.docx', extension: 'docx', fileSize: 312320,
-    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', status: 'released', modifiedAt: '2026-07-18T09:20:00.000Z', description: 'Corporate retention schedule',
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', status: 'released', department: 'Finance', owner: libraryOwners.audit,
+    createdAt: '2026-02-02T10:40:00.000Z', modifiedAt: '2026-07-18T09:20:00.000Z', tags: ['Controlled', 'Internal'], description: 'Corporate retention schedule',
     preview: { kind: 'word', title: 'Records Retention Schedule', paragraphs: ['Quality records: retain for seven years after supersession.', 'Training records: retain for the duration of employment plus three years.', 'Security logs: retain for twelve months unless placed on legal hold.'] },
   },
   {
     id: 'folder-2-xlsx', folderId: 'folder-2', fileName: 'Quality KPI Tracker.xlsx', extension: 'xlsx', fileSize: 118784,
-    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', status: 'pending_approval', modifiedAt: '2026-07-17T15:30:00.000Z', description: 'Monthly quality KPI tracker',
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', status: 'pending_approval', department: 'Quality Assurance', owner: libraryOwners.quality,
+    createdAt: '2026-07-01T08:10:00.000Z', modifiedAt: '2026-07-17T15:30:00.000Z', tags: ['Quality', 'Audit'], description: 'Monthly quality KPI tracker',
     preview: { kind: 'spreadsheet', columns: ['KPI', 'Target', 'Actual', 'Trend'], rows: [['CAPA closure', '30 days', '27 days', 'Improving'], ['Audit actions overdue', '0', '2', 'Watch'], ['Training compliance', '100%', '99.2%', 'Stable']] },
   },
   {
     id: 'folder-2-pptx', folderId: 'folder-2', fileName: 'Security Awareness Briefing.pptx', extension: 'pptx', fileSize: 1974272,
-    contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', status: 'released', modifiedAt: '2026-07-16T14:00:00.000Z', description: 'Staff security awareness briefing',
+    contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', status: 'released', department: 'IT', owner: libraryOwners.it,
+    createdAt: '2026-06-22T11:25:00.000Z', modifiedAt: '2026-07-16T14:00:00.000Z', tags: ['Training', 'Internal'], description: 'Staff security awareness briefing',
     preview: { kind: 'presentation', slides: [{ title: 'Protect Company Information', bullets: ['Use approved storage locations', 'Report suspicious requests immediately'] }, { title: 'Access Hygiene', bullets: ['Use unique credentials', 'Lock unattended workstations'] }] },
   },
   {
     id: 'folder-2-pdf', folderId: 'folder-2', fileName: 'Emergency Response Plan.pdf', extension: 'pdf', fileSize: 638976,
-    contentType: 'application/pdf', status: 'released', modifiedAt: '2026-07-15T09:10:00.000Z', description: 'Approved emergency response plan',
+    contentType: 'application/pdf', status: 'released', department: 'Operations', owner: libraryOwners.audit,
+    createdAt: '2026-04-07T07:50:00.000Z', modifiedAt: '2026-07-15T09:10:00.000Z', tags: ['Controlled', 'Training'], description: 'Approved emergency response plan',
     preview: { kind: 'pdf', url: createPdfDataUrl('Emergency Response Plan', 'Controlled copy - view only') },
   },
   {
     id: 'folder-2-png', folderId: 'folder-2', fileName: 'si-ware-brand-reference-dark.png', extension: 'png', fileSize: 61440,
-    contentType: 'image/png', status: 'released', modifiedAt: '2026-07-14T08:50:00.000Z', description: 'Approved dark-background brand reference',
+    contentType: 'image/png', status: 'released', department: 'Human Resources', owner: libraryOwners.hr,
+    createdAt: '2026-05-19T12:15:00.000Z', modifiedAt: '2026-07-14T08:50:00.000Z', tags: ['Controlled'], description: 'Approved dark-background brand reference',
     preview: { kind: 'image', url: '/images/si-ware-logo-dark.png', alt: 'Si-Ware dark corporate logo reference' },
   },
 ];
@@ -253,6 +290,11 @@ export function createUnavailableLibraryDocument(source: Document, message: stri
     contentType: source.contentType || 'application/octet-stream',
     folderName,
     extension,
+    department: source.department ?? 'General',
+    owner: source.owner ?? source.uploadedByUser ?? owner,
+    createdAt: source.createdAt ?? source.uploadedAt,
+    modifiedAt: source.modifiedAt ?? source.updatedAt,
+    tags: source.tags ?? [],
     preview: { kind: 'unavailable', message },
   };
 }

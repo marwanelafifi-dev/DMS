@@ -30,6 +30,7 @@ export interface Document {
   currentVersionId?: string;
   trackingCode?: string;
   ownerId?: string;
+  owner?: User;
   folder?: Folder;
   name: string;
   title?: string; // Alias for name
@@ -43,6 +44,7 @@ export interface Document {
   uploadedAt: string;
   createdAt?: string; // Alias for uploadedAt
   updatedAt: string;
+  modifiedAt?: string; // Display-friendly alias for updatedAt
   checkoutStatus?: 'checked_out' | 'checked_in';
   checkedOutBy?: string;
   checkedOutAt?: string;

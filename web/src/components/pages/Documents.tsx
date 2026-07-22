@@ -1,41 +1,68 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Columns3, UploadCloud, X } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
-import { DocumentList } from '../custom/DocumentList';
+import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
 import { DocumentPreview } from '../custom/DocumentPreview';
+import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import {
   createUnavailableLibraryDocument,
-  getMockDocumentsByFolder,
-  getMockLibraryDocument,
+  mockLibraryDocuments,
   mockLibraryFolders,
   type MockLibraryDocument,
 } from '../../fixtures/documentLibrary';
 import type { Document } from '../../types';
+import {
+  copyLibraryItems,
+  deleteLibraryItems,
+  getInvalidDestinationIds,
+  moveLibraryItems,
+  renameLibraryItem,
+  selectionContainsNonEmptyFolder,
+} from '../../services/documentLibraryOperations';
 
 const defaultFolder = mockLibraryFolders[0];
 
 export function Documents() {
   const { showSuccess, showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [folders, setFolders] = useState(() => mockLibraryFolders.map((folder) => ({ ...folder })));
+  const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
   const [selectedFolderId, setSelectedFolderId] = useState(defaultFolder.folderId);
-  const [documents, setDocuments] = useState<MockLibraryDocument[]>([]);
   const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [previewDocument, setPreviewDocument] = useState<MockLibraryDocument | null>(null);
-  const [uploadedDocuments, setUploadedDocuments] = useState<MockLibraryDocument[]>([]);
-  const uploadedDocumentsRef = useRef<MockLibraryDocument[]>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
+  const [visibleColumns, setVisibleColumns] = useState<Set<OptionalDocumentColumn>>(() => new Set(defaultVisibleDocumentColumns));
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const objectUrlsRef = useRef<Set<string>>(new Set());
 
-  const selectedFolder = mockLibraryFolders.find((folder) => folder.folderId === selectedFolderId) ?? defaultFolder;
+  const documents = useMemo(() => allDocuments.filter((document) => document.folderId === selectedFolderId), [allDocuments, selectedFolderId]);
+  const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
+  const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
+  const selectedNames = [
+    ...folders.filter((folder) => selectedFolderIds.has(folder.folderId)).map((folder) => folder.name),
+    ...allDocuments.filter((document) => selectedDocumentIds.has(document.documentId)).map((document) => document.fileName),
+  ];
+  const renameDocument = selectedDocumentIds.size === 1 && selectedFolderIds.size === 0
+    ? allDocuments.find((document) => selectedDocumentIds.has(document.documentId))
+    : undefined;
+  const renameFolder = selectedFolderIds.size === 1 && selectedDocumentIds.size === 0
+    ? folders.find((folder) => selectedFolderIds.has(folder.folderId))
+    : undefined;
+  const librarySelection = { folderIds: selectedFolderIds, documentIds: selectedDocumentIds };
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIsLoadingFolders(false), 80);
@@ -44,30 +71,23 @@ export function Documents() {
 
   useEffect(() => {
     setIsLoadingDocs(true);
-    const timer = window.setTimeout(() => {
-      setDocuments([
-        ...getMockDocumentsByFolder(selectedFolderId),
-        ...uploadedDocuments.filter((document) => document.folderId === selectedFolderId),
-      ]);
-      setIsLoadingDocs(false);
-    }, 80);
+    const timer = window.setTimeout(() => setIsLoadingDocs(false), 80);
     return () => window.clearTimeout(timer);
-  }, [selectedFolderId, uploadedDocuments]);
-
-  useEffect(() => {
-    uploadedDocumentsRef.current = uploadedDocuments;
-  }, [uploadedDocuments]);
+  }, [selectedFolderId]);
 
   useEffect(() => () => {
-    uploadedDocumentsRef.current.forEach((document) => {
-      if (document.sourceUrl) URL.revokeObjectURL(document.sourceUrl);
-    });
+    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
-  const findLibraryDocument = useCallback((documentId: string) => (
-    getMockLibraryDocument(documentId)
-    ?? uploadedDocuments.find((document) => document.documentId === documentId)
-  ), [uploadedDocuments]);
+  const findLibraryDocument = useCallback(
+    (documentId: string) => allDocuments.find((document) => document.documentId === documentId),
+    [allDocuments],
+  );
+
+  useEffect(() => {
+    if (folders.some((folder) => folder.folderId === selectedFolderId)) return;
+    setSelectedFolderId(folders[0]?.folderId ?? '');
+  }, [folders, selectedFolderId]);
 
   useEffect(() => {
     const previewId = searchParams.get('preview');
@@ -112,22 +132,14 @@ export function Documents() {
     return () => { cancelled = true; };
   }, [findLibraryDocument, searchParams]);
 
-  useEffect(() => {
-    if (!showUploadModal) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || isUploading) return;
-      setShowUploadModal(false);
-      setUploadFile(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isUploading, showUploadModal]);
-
   const filteredDocuments = useMemo(() => documents.filter((document) => {
     const query = searchQuery.trim().toLowerCase();
     const matchesSearch = !query
       || document.fileName.toLowerCase().includes(query)
-      || document.description?.toLowerCase().includes(query);
+      || document.department.toLowerCase().includes(query)
+      || document.owner.fullName.toLowerCase().includes(query)
+      || document.tags.some((tag) => tag.toLowerCase().includes(query))
+      || document.folderName.toLowerCase().includes(query);
     const matchesStatus = !statusFilter || document.status === statusFilter;
     return matchesSearch && matchesStatus;
   }), [documents, searchQuery, statusFilter]);
@@ -147,6 +159,8 @@ export function Documents() {
 
   const handleFolderSelect = (folderId: string) => {
     setSelectedFolderId(folderId);
+    setSelectedDocumentIds(new Set());
+    setSelectedFolderIds(new Set());
     setPreviewDocument(null);
     clearPreviewParam();
   };
@@ -211,66 +225,126 @@ export function Documents() {
     if (libraryDocument) void downloadMockDocument(libraryDocument);
   };
 
+  const clearSelection = () => {
+    setSelectedDocumentIds(new Set());
+    setSelectedFolderIds(new Set());
+  };
+
+  const handleBulkAction = (action: LibraryBulkAction, value?: string) => {
+    try {
+      const currentState = { folders, documents: allDocuments };
+      const nextState = action === 'copy'
+        ? copyLibraryItems(currentState, librarySelection, value ?? '')
+        : action === 'move'
+          ? moveLibraryItems(currentState, librarySelection, value ?? '')
+          : action === 'delete'
+            ? deleteLibraryItems(currentState, librarySelection)
+            : renameLibraryItem(currentState, librarySelection, value ?? '');
+      setFolders(nextState.folders);
+      setAllDocuments(nextState.documents);
+      if (action === 'delete' && !nextState.folders.some((folder) => folder.folderId === selectedFolderId)) {
+        setSelectedFolderId(nextState.folders[0]?.folderId ?? '');
+      }
+      if (previewDocument && !nextState.documents.some((document) => document.documentId === previewDocument.documentId)) closePreview();
+      clearSelection();
+      showSuccess(`${action[0].toUpperCase()}${action.slice(1)} completed successfully`);
+      return undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The operation could not be completed.';
+      showError(message);
+      return message;
+    }
+  };
+
   const handleUploadDocument = async () => {
-    if (!uploadFile) {
-      showError('Please select a file');
+    if (!selectedFolder) {
+      showError('Create or restore a folder before uploading documents');
+      return;
+    }
+    if (uploadFiles.length === 0) {
+      showError('Please select at least one file');
       return;
     }
 
     setIsUploading(true);
+    setUploadProgress({ complete: 0, total: uploadFiles.length });
+    const uploaded: MockLibraryDocument[] = [];
+    const errors: string[] = [];
     try {
-      const docRes = await apiClient.createDocument({
-        folderId: selectedFolderId,
-        title: uploadFile.name.replace(/\.[^/.]+$/, ''),
-        ownerId: DEV_USER_ID,
-      });
-      if (!docRes.data?.documentId) throw new Error('The server did not return a document ID');
-      await apiClient.uploadDocument(docRes.data.documentId, uploadFile);
+      for (const uploadFile of uploadFiles) {
+        try {
+          const docRes = await apiClient.createDocument({
+            folderId: selectedFolderId,
+            title: uploadFile.name.replace(/\.[^/.]+$/, ''),
+            ownerId: DEV_USER_ID,
+          });
+          if (!docRes.data?.documentId) throw new Error('The server did not return a document ID');
+          await apiClient.uploadDocument(docRes.data.documentId, uploadFile);
 
-      const extension = uploadFile.name.toLowerCase().split('.').pop();
-      const sourceUrl = URL.createObjectURL(uploadFile);
-      const source: Document = {
-        documentId: docRes.data.documentId,
-        currentVersionId: docRes.data.currentVersionId,
-        folderId: selectedFolderId,
-        name: uploadFile.name.replace(/\.[^/.]+$/, ''),
-        fileName: uploadFile.name,
-        fileSize: uploadFile.size,
-        contentType: uploadFile.type || 'application/octet-stream',
-        status: docRes.data.status ?? 'draft',
-        uploadedBy: DEV_USER_ID,
-        uploadedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      const uploadedDocument = createUnavailableLibraryDocument(
-        source,
-        'A browser preview is not available for this newly uploaded file. Download the read-only source to view it locally.',
-      );
-      uploadedDocument.sourceUrl = sourceUrl;
-      if (extension === 'txt') uploadedDocument.preview = { kind: 'text', content: await uploadFile.text() };
-      if (extension === 'pdf') uploadedDocument.preview = { kind: 'pdf', url: sourceUrl };
-      if (['png', 'jpg', 'jpeg'].includes(extension ?? '')) uploadedDocument.preview = { kind: 'image', url: sourceUrl, alt: uploadFile.name };
-      setUploadedDocuments((current) => [...current, uploadedDocument]);
-      showSuccess('Document uploaded successfully');
-      setShowUploadModal(false);
-      setUploadFile(null);
-    } catch (error: any) {
-      showError(error.response?.data?.error || 'Failed to upload document');
+          const extension = uploadFile.name.toLowerCase().split('.').pop();
+          const sourceUrl = URL.createObjectURL(uploadFile);
+          objectUrlsRef.current.add(sourceUrl);
+          const timestamp = new Date().toISOString();
+          const source: Document = {
+            documentId: docRes.data.documentId,
+            currentVersionId: docRes.data.currentVersionId,
+            folderId: selectedFolderId,
+            folder: selectedFolder,
+            name: uploadFile.name.replace(/\.[^/.]+$/, ''),
+            fileName: uploadFile.name,
+            fileSize: uploadFile.size,
+            contentType: uploadFile.type || 'application/octet-stream',
+            status: docRes.data.status ?? 'draft',
+            department: 'General',
+            tags: [],
+            uploadedBy: DEV_USER_ID,
+            uploadedAt: timestamp,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            modifiedAt: timestamp,
+          };
+          const uploadedDocument = createUnavailableLibraryDocument(
+            source,
+            'A browser preview is not available for this newly uploaded file. Download the read-only source to view it locally.',
+          );
+          uploadedDocument.sourceUrl = sourceUrl;
+          if (extension === 'txt') uploadedDocument.preview = { kind: 'text', content: await uploadFile.text() };
+          if (extension === 'pdf') uploadedDocument.preview = { kind: 'pdf', url: sourceUrl };
+          if (['png', 'jpg', 'jpeg'].includes(extension ?? '')) uploadedDocument.preview = { kind: 'image', url: sourceUrl, alt: uploadFile.name };
+          uploaded.push(uploadedDocument);
+        } catch (error: any) {
+          errors.push(error.response?.data?.error || `${uploadFile.name} could not be uploaded`);
+        } finally {
+          setUploadProgress((current) => ({ ...current, complete: current.complete + 1 }));
+        }
+      }
+      if (uploaded.length > 0) setAllDocuments((current) => [...current, ...uploaded]);
+      if (errors.length > 0) showError(`${uploaded.length} uploaded; ${errors.length} failed`);
+      else showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} uploaded successfully`);
+      if (errors.length === 0) {
+        setShowUploadModal(false);
+        setUploadFiles([]);
+      }
     } finally {
       setIsUploading(false);
     }
   };
 
-  const stageFile = (file?: File) => {
-    if (!file) return;
-    setUploadFile(file);
+  const stageFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    if (!selectedFolder) {
+      showError('Create or restore a folder before uploading documents');
+      return;
+    }
+    setUploadFiles(files);
+    setUploadProgress({ complete: 0, total: files.length });
     setShowUploadModal(true);
   };
 
   const closeUploadModal = () => {
     if (isUploading) return;
     setShowUploadModal(false);
-    setUploadFile(null);
+    setUploadFiles([]);
   };
 
   return (
@@ -280,38 +354,54 @@ export function Documents() {
         <p className="page-subtitle">Secure vault · Documents are view-only by default</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(235px,0.72fr)_minmax(0,3.2fr)]">
-        <div>
-          {isLoadingFolders ? (
-            <div className="space-y-2 rounded-[5px] border border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900" role="status" aria-label="Loading folders">
-              {[1, 2].map((item) => <div key={item} className="h-8 animate-skeleton rounded bg-slate-100 dark:bg-slate-800" />)}
-            </div>
-          ) : mockLibraryFolders.length === 0 ? (
-            <div className="rounded-[5px] border border-[#dbe2ec] bg-white p-5 text-center dark:border-white/10 dark:bg-slate-900"><p className="text-sm">No folders available</p></div>
-          ) : (
-            <FolderTree folders={mockLibraryFolders} selectedFolderId={selectedFolderId} onSelectFolder={handleFolderSelect} />
-          )}
+      {isLoadingFolders ? (
+        <div className="w-full space-y-2 rounded-[5px] border border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900" role="status" aria-label="Loading folders">
+          {[1, 2].map((item) => <div key={item} className="h-12 animate-skeleton rounded bg-slate-100 dark:bg-slate-800" />)}
         </div>
+      ) : folders.length === 0 ? (
+        <div className="w-full rounded-[5px] border border-[#dbe2ec] bg-white p-5 text-center dark:border-white/10 dark:bg-slate-900"><p className="text-sm">No folders available</p></div>
+      ) : (
+        <FolderTree
+          folders={folders}
+          selectedFolderId={selectedFolderId}
+          selectedFolderIds={selectedFolderIds}
+          onSelectFolder={handleFolderSelect}
+          onToggleFolderSelection={(folderId) => setSelectedFolderIds((current) => {
+            const next = new Set(current);
+            if (next.has(folderId)) next.delete(folderId);
+            else next.add(folderId);
+            return next;
+          })}
+        />
+      )}
 
-        <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-4">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            aria-label="Select documents to upload"
+            onChange={(event) => {
+              stageFiles(Array.from(event.target.files ?? []));
+              event.target.value = '';
+            }}
+          />
           <div
-            className="flex min-h-[100px] cursor-pointer items-center justify-center rounded-[5px] border-2 border-dashed border-[#cbd5e3] bg-white px-5 text-center hover:border-[#74a8d2] dark:border-slate-700 dark:bg-slate-900"
-            onClick={() => setShowUploadModal(true)}
+            className="flex min-h-[100px] flex-col items-center justify-center gap-3 rounded-[5px] border-2 border-dashed border-[#cbd5e3] bg-white px-5 py-4 text-center hover:border-[#74a8d2] dark:border-slate-700 dark:bg-slate-900 sm:flex-row sm:justify-between sm:text-left"
             onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => { event.preventDefault(); stageFile(event.dataTransfer.files?.[0]); }}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && setShowUploadModal(true)}
+            onDrop={(event) => { event.preventDefault(); stageFiles(Array.from(event.dataTransfer.files ?? [])); }}
           >
-            <div>
-              <UploadCloud className="mx-auto h-7 w-7 text-[#93a4bd]" />
-              <p className="mt-2 text-sm text-[#718198]">Drag &amp; drop files here, or <span className="font-medium text-[#3f8bca]">browse</span>. New uploads enter the C-Doc workflow.</p>
+            <div className="flex items-center gap-3">
+              <UploadCloud className="h-7 w-7 flex-shrink-0 text-[#93a4bd]" />
+              <p className="text-sm text-[#718198]">Drag &amp; drop files here, or choose files. New uploads enter the C-Doc workflow.</p>
             </div>
+            <Button type="button" aria-label="Upload files" disabled={!selectedFolder} title={selectedFolder ? 'Upload files to the selected folder' : 'A folder is required before uploading'} onClick={() => fileInputRef.current?.click()} leftIcon={<UploadCloud className="h-4 w-4" />}>Upload</Button>
           </div>
 
           <Card className="overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-[#e2e8f0] p-3 dark:border-white/10 sm:flex-row sm:items-center">
-              <input type="text" placeholder="Filter by name..." className="field-control h-9 w-full sm:max-w-[230px]" aria-label="Filter documents by name" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+              <input type="text" placeholder="Search" className="field-control h-9 w-full sm:max-w-[230px]" aria-label="Search documents" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
               <select className="field-control h-9 w-full sm:w-[150px]" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter documents by status">
                 <option value="">All statuses</option>
                 <option value="draft">Draft</option>
@@ -320,7 +410,20 @@ export function Documents() {
                 <option value="rejected">Rejected</option>
                 <option value="archived">Archived</option>
               </select>
-              <button className="ml-auto inline-flex h-9 items-center gap-2 px-2 text-sm text-[#64748b] hover:text-[#283a7a]" type="button"><Columns3 className="h-4 w-4" /> Columns</button>
+              <div className="ml-auto flex items-center gap-2">
+                <LibraryBulkActions
+                  selectedCount={selectedItemCount}
+                  selectedNames={selectedNames}
+                  canRename={selectedItemCount === 1}
+                  renameCurrentName={renameDocument?.fileName ?? renameFolder?.name}
+                  renameIsFile={Boolean(renameDocument)}
+                  folders={folders}
+                  disabledDestinationIds={getInvalidDestinationIds(folders, selectedFolderIds)}
+                  containsNonEmptyFolder={selectionContainsNonEmptyFolder({ folders, documents: allDocuments }, librarySelection)}
+                  onConfirm={handleBulkAction}
+                />
+                <ColumnVisibilityMenu visibleColumns={visibleColumns} onChange={setVisibleColumns} />
+              </div>
             </div>
 
             {isLoadingDocs ? (
@@ -328,39 +431,59 @@ export function Documents() {
             ) : filteredDocuments.length === 0 ? (
               <div className="p-12 text-center"><p className="text-sm text-[#718198]">{documents.length === 0 ? 'No documents in this folder' : 'No documents matching your filters'}</p></div>
             ) : (
-              <DocumentList documents={filteredDocuments} onDocumentClick={openDocumentPreview} onDownload={handleDownloadDocument} />
+              <DocumentList
+                documents={filteredDocuments}
+                selectedDocumentIds={selectedDocumentIds}
+                visibleColumns={visibleColumns}
+                onSelectedDocumentIdsChange={setSelectedDocumentIds}
+                onDocumentClick={openDocumentPreview}
+                onDownload={handleDownloadDocument}
+              />
             )}
           </Card>
-        </div>
       </div>
 
       {previewDocument && <DocumentPreview document={previewDocument} onClose={closePreview} onDownload={downloadMockDocument} />}
 
-      {showUploadModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="upload-document-title">
-          <Card className="w-full max-w-md">
+      <Dialog.Root open={showUploadModal} onOpenChange={(open) => open ? setShowUploadModal(true) : closeUploadModal()}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
+          <Dialog.Content asChild>
+            <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] p-5 dark:border-white/10">
-              <h2 id="upload-document-title" className="section-heading">Upload Document</h2>
-              <button onClick={closeUploadModal} className="text-slate-500 hover:text-slate-700 dark:text-slate-400" aria-label="Close upload dialog"><X className="h-5 w-5" /></button>
+              <Dialog.Title className="section-heading">Upload Documents</Dialog.Title>
+              <Dialog.Close asChild><button type="button" disabled={isUploading} className="text-slate-500 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400" aria-label="Close upload dialog"><X className="h-5 w-5" /></button></Dialog.Close>
             </div>
+            <Dialog.Description className="sr-only">Review selected files and upload them to the current folder.</Dialog.Description>
             <CardBody className="space-y-4">
-              <div className="rounded-[5px] border-2 border-dashed border-[#cbd5e3] p-6 text-center dark:border-slate-700">
-                <input type="file" id="fileInput" className="hidden" onChange={(event) => stageFile(event.target.files?.[0])} />
-                <label htmlFor="fileInput" className="cursor-pointer">
-                  <UploadCloud className="mx-auto mb-3 h-7 w-7 text-[#93a4bd]" />
-                  <p className="mb-2 text-sm font-medium text-[#26334d] dark:text-white">{uploadFile ? uploadFile.name : 'Click to select a file or drag and drop'}</p>
-                  {!uploadFile && <p className="text-xs text-[#718198]">PDF, Word, Excel, PowerPoint, text, or images</p>}
-                </label>
+              <div className="rounded-[5px] border-2 border-dashed border-[#cbd5e3] p-5 dark:border-slate-700">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-[#26334d] dark:text-white">{uploadFiles.length} {uploadFiles.length === 1 ? 'file' : 'files'} ready</p>
+                    <p className="mt-1 text-xs text-[#718198]">PDF, Word, Excel, PowerPoint, text, or images</p>
+                  </div>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => fileInputRef.current?.click()}>Choose files</Button>
+                </div>
+                <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto text-xs text-[#52627a]">
+                  {uploadFiles.map((file) => <li key={`${file.name}-${file.size}`} className="truncate">{file.name}</li>)}
+                </ul>
               </div>
-              <p className="text-xs text-[#718198]">Uploading to {selectedFolder.name}. New documents remain view-only while entering review.</p>
+              <p className="text-xs text-[#718198]">{selectedFolder ? `Uploading to ${selectedFolder.name}. New documents remain view-only while entering review.` : 'A folder is required before uploading documents.'}</p>
+              {isUploading && (
+                <div role="status" aria-label="Upload progress" className="space-y-1.5">
+                  <div className="flex justify-between text-xs text-[#52627a]"><span>Uploading</span><span>{uploadProgress.complete} / {uploadProgress.total}</span></div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#3f8bca] transition-all" style={{ width: `${uploadProgress.total ? (uploadProgress.complete / uploadProgress.total) * 100 : 0}%` }} /></div>
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Button variant="secondary" onClick={closeUploadModal} disabled={isUploading}>Cancel</Button>
-                <Button onClick={handleUploadDocument} disabled={!uploadFile || isUploading}>{isUploading ? 'Uploading...' : 'Upload'}</Button>
+                <Button onClick={handleUploadDocument} disabled={uploadFiles.length === 0 || isUploading}>{isUploading ? 'Uploading...' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'file' : 'files'}`}</Button>
               </div>
             </CardBody>
-          </Card>
-        </div>
-      )}
+            </Card>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

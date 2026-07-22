@@ -22,4 +22,14 @@ describe('document library mock data', () => {
     expect(extensions).toEqual([...requiredLibraryExtensions].sort());
     expect(mockLibraryDocuments.filter((document) => document.folderName === folderName)).toHaveLength(7);
   });
+
+  it('provides the required searchable metadata for every document', () => {
+    mockLibraryDocuments.forEach((document) => {
+      expect(document.department).toBeTruthy();
+      expect(document.owner.fullName).toBeTruthy();
+      expect(document.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(document.modifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(Array.isArray(document.tags)).toBe(true);
+    });
+  });
 });
