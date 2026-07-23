@@ -1,12 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Fira+Code:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* {
-  @apply transition-colors duration-normal;
-}
+* { box-sizing: border-box; }
 
 html {
   scroll-behavior: smooth;
@@ -15,37 +13,36 @@ html {
 }
 
 body {
-  @apply bg-white text-navy-900;
+  @apply bg-[#f3f6fa] text-[#17213a];
   font-family: Inter, system-ui, sans-serif;
-  letter-spacing: -0.01em;
-  line-height: 1.6;
+  letter-spacing: -0.005em;
+  line-height: 1.5;
+  margin: 0;
 }
 
 h1 {
-  @apply text-4xl font-bold tracking-tight text-navy-900 dark:text-white;
+  @apply font-semibold tracking-tight text-[#283a7a] dark:text-white;
   font-family: Inter, sans-serif;
-  letter-spacing: -0.02em;
 }
 
 h2 {
-  @apply text-3xl font-bold tracking-tight text-navy-900 dark:text-white;
-  font-family: Merriweather, serif;
-  letter-spacing: -0.01em;
+  @apply font-semibold tracking-tight text-[#283a7a] dark:text-white;
+  font-family: Inter, sans-serif;
 }
 
 h3 {
-  @apply text-2xl font-semibold text-navy-900 dark:text-white;
+  @apply font-semibold text-[#283a7a] dark:text-white;
   font-family: Inter, sans-serif;
 }
 
 h4 {
-  @apply text-lg font-semibold text-navy-900 dark:text-navy-200;
+  @apply font-semibold text-[#283a7a] dark:text-slate-200;
   font-family: Inter, sans-serif;
 }
 
 p {
-  @apply text-base text-gray-600 dark:text-navy-300 leading-relaxed;
-  font-family: Merriweather, serif;
+  @apply text-[#5f708b] dark:text-slate-300;
+  font-family: Inter, sans-serif;
 }
 
 strong {
@@ -58,17 +55,32 @@ strong {
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-navy-100 dark:bg-navy-800;
+  @apply bg-slate-100 dark:bg-slate-800;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-navy-300 dark:bg-navy-600 rounded hover:bg-navy-400 dark:hover:bg-navy-500;
+  @apply rounded bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-500;
 }
 
 /* Focus styles */
 :focus-visible {
-  @apply outline-none ring-2 ring-cyan-500 ring-offset-2 dark:ring-offset-navy-900;
+  @apply outline-none ring-2 ring-[#3f8bca] ring-offset-2 dark:ring-offset-slate-900;
 }
+
+button, input, select, textarea { font: inherit; }
+
+::selection { background: #cfe7f8; color: #17213a; }
+
+.page-heading { @apply text-[22px] leading-7 text-[#283a7a] dark:text-white; }
+.page-subtitle { @apply mt-0.5 text-sm text-[#697b97] dark:text-slate-400; }
+.section-heading { @apply text-[16px] font-semibold text-[#283a7a] dark:text-white; }
+.field-control { @apply rounded-[5px] border border-[#cbd5e3] bg-white px-3 text-sm text-[#17213a] outline-none placeholder:text-[#9aa7ba] focus:border-[#3f8bca] focus:ring-2 focus:ring-[#3f8bca]/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white; }
+.data-table { @apply w-full text-left text-sm; }
+.data-table thead { @apply border-y border-[#e2e8f0] bg-[#f7f9fc] text-[12px] uppercase text-[#64748b] dark:border-white/10 dark:bg-slate-950 dark:text-slate-400; }
+.data-table th { @apply px-4 py-3 font-semibold; }
+.data-table td { @apply border-b border-[#edf1f5] px-4 py-3.5 dark:border-white/10; }
+.library-document-table th { @apply px-2; }
+.library-document-table td { @apply px-2; }
 
 /* Animations */
 @keyframes spin-slow {

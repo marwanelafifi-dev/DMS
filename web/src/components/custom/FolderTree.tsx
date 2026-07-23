@@ -1,97 +1,102 @@
-import { useState } from 'react';
-import { ChevronRight, Folder } from 'lucide-react';
+import { useRef, useState } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { Folder, MoreVertical, Copy, FolderInput, Trash2, Pencil } from 'lucide-react';
 import type { Folder as FolderType } from '../../types';
 
 interface FolderTreeProps {
   folders: FolderType[];
   selectedFolderId?: string;
   onSelectFolder: (folderId: string) => void;
+  onFolderAction?: (action: 'rename' | 'copy' | 'cut' | 'delete', folderId: string) => void;
 }
+
+const menuContentClass = 'z-[95] min-w-[150px] rounded-[5px] border border-[#dbe2ec] bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900';
+const menuItemClass = 'flex h-9 select-none items-center gap-2 rounded-[4px] px-2.5 text-sm text-[#34425b] outline-none data-[highlighted]:bg-[#edf2f8] dark:text-slate-200 dark:data-[highlighted]:bg-slate-800';
 
 export function FolderTree({
   folders,
   selectedFolderId,
   onSelectFolder,
+  onFolderAction,
 }: FolderTreeProps) {
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(['root'])
-  );
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  const toggleFolder = (folderId: string) => {
-    const newExpanded = new Set(expandedFolders);
-    if (newExpanded.has(folderId)) {
-      newExpanded.delete(folderId);
-    } else {
-      newExpanded.add(folderId);
-    }
-    setExpandedFolders(newExpanded);
-  };
-
-  const FolderItem = ({ folder, level = 0 }: { folder: FolderType; level?: number }) => {
-    const hasChildren = folder.children && folder.children.length > 0;
-    const isExpanded = expandedFolders.has(folder.folderId);
-    const isSelected = selectedFolderId === folder.folderId;
-
-    return (
-      <div key={folder.folderId}>
-        <div
-          className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer rounded-lg transition-all ${
-            isSelected
-              ? 'bg-blue-50 dark:bg-blue-500/15 text-navy-900 dark:text-white border-l-4 border-blue-600 dark:border-cyan-400 shadow-sm dark:shadow-none'
-              : 'hover:bg-gray-100 dark:hover:bg-white/5 text-gray-700 dark:text-navy-300 border-l-4 border-transparent'
-          }`}
-          style={{ paddingLeft: `${12 + level * 16}px` }}
-        >
-          {hasChildren && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleFolder(folder.folderId);
-              }}
-              className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
-            >
-              <ChevronRight
-                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''} text-gray-700 dark:text-navy-400`}
-              />
-            </button>
-          )}
-          {!hasChildren && <div className="w-4" />}
-
-          <Folder className="w-5 h-5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
-
-          <span
-            onClick={() => onSelectFolder(folder.folderId)}
-            className="flex-1 text-sm font-semibold truncate"
-          >
-            {folder.name}
-          </span>
-        </div>
-
-        {hasChildren && isExpanded && (
-          <div>
-            {folder.children?.map((child) => (
-              <FolderItem key={child.folderId} folder={child} level={level + 1} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
+  const handleMenuClose = () => setOpenMenuId(null);
 
   return (
-    <div className="w-full bg-white dark:bg-navy-950 rounded-xl border border-gray-300 dark:border-white/10 p-4 shadow-sm dark:shadow-black/40">
-      <h3 className="text-sm font-extrabold mb-4 text-navy-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+    <aside
+      className="flex w-56 flex-col gap-2 border-r border-[#dbe2ec] bg-white py-4 dark:border-white/10 dark:bg-slate-900"
+      data-testid="folder-section"
+      aria-labelledby="folder-section-title"
+    >
+      <h2 id="folder-section-title" className="px-4 text-xs font-semibold uppercase tracking-wide text-[#64748b] dark:text-white">
         Folders
-      </h3>
-      <div className="space-y-1">
-        {folders.length > 0 ? (
-          folders.map((folder) => <FolderItem key={folder.folderId} folder={folder} />)
-        ) : (
-          <p className="text-sm text-gray-600 dark:text-navy-400 px-3 py-2">
-            No folders yet
-          </p>
-        )}
-      </div>
-    </div>
+      </h2>
+      {folders.length > 0 ? (
+        <nav className="flex flex-col gap-1 px-2">
+          {folders.map((folder) => {
+            const isCurrent = selectedFolderId === folder.folderId;
+            return (
+              <div
+                key={folder.folderId}
+                ref={(el) => el && menuRefs.current.set(folder.folderId, el)}
+                data-folder-id={folder.folderId}
+                className="group/folder relative flex items-center gap-2 rounded-[5px] px-3 py-2.5 transition-colors hover:bg-[#f0f4f8] dark:hover:bg-slate-800/50"
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelectFolder(folder.folderId)}
+                  aria-current={isCurrent ? 'page' : undefined}
+                  aria-label={folder.name}
+                  className={`flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] rounded-[4px] px-1 py-0.5 ${
+                    isCurrent
+                      ? 'text-[#2f6f9f] dark:text-white'
+                      : 'text-[#34425b] dark:text-slate-300'
+                  }`}
+                >
+                  <Folder className={`h-4 w-4 flex-shrink-0 ${
+                    isCurrent
+                      ? 'fill-[#f4bd42] text-[#f4bd42]'
+                      : 'fill-[#cbd5e3] text-[#cbd5e3] dark:fill-slate-600 dark:text-slate-600'
+                  }`} />
+                  <span className="min-w-0 truncate text-sm font-medium">{folder.name}</span>
+                </button>
+                <DropdownMenu.Root open={openMenuId === folder.folderId} onOpenChange={(open) => setOpenMenuId(open ? folder.folderId : null)}>
+                  <DropdownMenu.Trigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Actions for ${folder.name}`}
+                      title={`Actions for ${folder.name}`}
+                      className="flex-shrink-0 rounded p-1 text-[#64748b] hover:bg-[#e2e8f0] dark:text-slate-400 dark:hover:bg-slate-700"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content className={menuContentClass} sideOffset={6} align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
+                      <DropdownMenu.Item className={menuItemClass} onSelect={() => { onFolderAction?.('rename', folder.folderId); handleMenuClose(); }}>
+                        <Pencil className="h-4 w-4" /> Rename
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item className={menuItemClass} onSelect={() => { onFolderAction?.('copy', folder.folderId); handleMenuClose(); }}>
+                        <Copy className="h-4 w-4" /> Copy
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item className={menuItemClass} onSelect={() => { onFolderAction?.('cut', folder.folderId); handleMenuClose(); }}>
+                        <FolderInput className="h-4 w-4" /> Cut
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item className={`${menuItemClass} text-[#c73c44]`} onSelect={() => { onFolderAction?.('delete', folder.folderId); handleMenuClose(); }}>
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
+            );
+          })}
+        </nav>
+      ) : (
+        <p className="px-4 text-sm text-[#718198] dark:text-slate-400">No folders yet</p>
+      )}
+    </aside>
   );
 }

@@ -13,7 +13,7 @@ export function formatDate(date: string | Date): string {
 }
 
 export function formatDateTime(date: string | Date): string {
-  return format(new Date(date), 'MMM dd, yyyy HH:mm');
+  return format(new Date(date), 'dd MMM yyyy, HH:mm');
 }
 
 export function formatRelativeTime(date: string | Date): string {

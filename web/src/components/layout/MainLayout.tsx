@@ -7,24 +7,20 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="h-screen bg-white dark:bg-black flex flex-col transition-colors duration-300">
-      {/* Top Navbar */}
-      <Navbar onMenuClick={() => setSidebarExpanded(!sidebarExpanded)} />
+    <div className="flex h-screen overflow-hidden bg-[#f3f6fa] text-[#17213a] dark:bg-slate-950 dark:text-white">
+      <Sidebar
+        isExpanded={sidebarOpen}
+        onToggleExpand={() => setSidebarOpen((open) => !open)}
+      />
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar
-          isExpanded={sidebarExpanded}
-          onToggleExpand={() => setSidebarExpanded(!sidebarExpanded)}
-        />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Navbar onMenuClick={() => setSidebarOpen((open) => !open)} />
 
-        {/* Content Area */}
-        <main className="flex-1 overflow-y-auto bg-white dark:bg-black dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,_#002E5C33,_transparent)] transition-colors duration-300">
-          <div className="w-full mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-8">
+        <main className="flex-1 overflow-y-auto bg-[#f3f6fa] dark:bg-slate-950">
+          <div className="mx-auto w-full max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
             {children}
           </div>
         </main>

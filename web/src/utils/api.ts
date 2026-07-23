@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import type { ApiResponse } from '../types';
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = '/api';
 
 // Dev-only bootstrap user until Google Workspace SSO is wired up (see CLAUDE.md).
 // Every protected endpoint requires X-User-Id to match an active dms_users row —
@@ -124,18 +124,18 @@ class APIClient {
   }
 
   // Document Checkout
-  async checkoutDocument(documentId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/checkout`);
+  async checkoutDocument(documentId: string, versionId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/checkout`);
     return data;
   }
 
-  async checkinDocument(documentId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/checkin`);
+  async checkinDocument(documentId: string, versionId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/documents/${documentId}/versions/${versionId}/checkout`);
     return data;
   }
 
-  async getCheckoutStatus(documentId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/checkout-status`);
+  async getCheckoutStatus(documentId: string, versionId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/checkout`);
     return data;
   }
 
@@ -154,47 +154,65 @@ class APIClient {
     return data;
   }
 
-  async downloadDocument(documentId: string) {
-    const response = await this.client.get(`/documents/${documentId}/download`, {
+  async downloadDocument(documentId: string, versionId: string) {
+    const response = await this.client.get(`/documents/${documentId}/versions/${versionId}/download`, {
       responseType: 'blob',
     });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const encodedFileName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const quotedFileName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+    const fileName = encodedFileName ? decodeURIComponent(encodedFileName) : quotedFileName || `document-${versionId}`;
+    const objectUrl = URL.createObjectURL(response.data);
+    const link = window.document.createElement('a');
+    link.href = objectUrl;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(objectUrl);
     return response.data;
   }
 
   // Document Approval
-  async submitForApproval(documentId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/submit`);
-    return data;
-  }
-
-  async approveDocument(documentId: string, comments?: string) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/approve`, {
-      comments,
+  async submitForApproval(documentId: string, versionId: string, comment?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/submit`, {
+      versionId,
+      comment,
     });
     return data;
   }
 
-  async rejectDocument(documentId: string, reason: string) {
+  async approveDocument(documentId: string, versionId: string, comment?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/approve`, {
+      versionId,
+      comment,
+    });
+    return data;
+  }
+
+  async rejectDocument(documentId: string, versionId: string, reason: string) {
     const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/reject`, {
-      rejectionReason: reason,
+      versionId,
+      reason,
     });
     return data;
   }
 
   async getPendingApprovals(params?: any) {
-    const { data } = await this.client.get<ApiResponse>('/approvals/pending', { params });
+    const { data } = await this.client.get<ApiResponse>('/documents/pending-approvals/list', { params });
     return data;
   }
 
   // Tasks
   async getTasks(params?: any) {
     const { data } = await this.client.get<ApiResponse>('/tasks', { params });
-    return data;
+    return {
+      ...data,
+      data: Array.isArray(data.data) ? data.data.map(task => this.normalizeTask(task)) : data.data,
+    };
   }
 
   async getTask(taskId: string) {
     const { data } = await this.client.get<ApiResponse>(`/tasks/${taskId}`);
-    return data;
+    return { ...data, data: data.data ? this.normalizeTask(data.data) : data.data };
   }
 
   async createTask(taskData: any) {
@@ -213,13 +231,31 @@ class APIClient {
   }
 
   async getTasksByDocument(documentId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/tasks/by-document/${documentId}`);
-    return data;
+    const { data } = await this.client.get<ApiResponse>(`/tasks/document/${documentId}`);
+    return {
+      ...data,
+      data: Array.isArray(data.data) ? data.data.map(task => this.normalizeTask(task)) : data.data,
+    };
   }
 
   async getOverdueTasks() {
-    const { data } = await this.client.get<ApiResponse>('/tasks/overdue');
-    return data;
+    const { data } = await this.client.get<ApiResponse>('/tasks/overdue/list');
+    return {
+      ...data,
+      data: Array.isArray(data.data) ? data.data.map(task => this.normalizeTask(task)) : data.data,
+    };
+  }
+
+  private normalizeTask(task: any) {
+    return {
+      ...task,
+      assignedTo: task.assignedToId ?? task.assignedTo?.userId ?? '',
+      assignedToUser: task.assignedToUser ?? task.assignedTo,
+      assignedBy: task.assignedBy ?? '',
+      priority: task.priority ?? task.riskSeverity ?? 'medium',
+      status: task.status === 'completed' ? 'done' : task.status,
+      dueDate: task.dueDate ?? '',
+    };
   }
 
   // Reminders

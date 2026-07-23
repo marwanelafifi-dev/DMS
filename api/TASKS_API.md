@@ -25,7 +25,7 @@ Special: Overdue = Open + DueDate < today
 ## API Endpoints
 
 ### 1️⃣ GET /api/tasks
-**Get my tasks (assigned to me)**
+**Get my tasks (assigned to me or delegated by me)**
 
 ```bash
 curl -H "X-User-Id: user-123" \
@@ -105,6 +105,9 @@ curl -H "X-User-Id: user-123" \
 
 ### 3️⃣ POST /api/tasks
 **Create a new task**
+
+The authenticated user from `X-User-Id` is recorded as the task manager, so
+delegated tasks remain visible in their My Tasks page.
 
 ```bash
 curl -X POST \
@@ -341,9 +344,9 @@ curl -H "X-User-Id: user-123" \
    → Status: "completed"
 
 5. Manager checks progress
-   GET /tasks/overdue/list
-   OR
-   GET /tasks/document/{docId}
+   GET /tasks
+   OR GET /tasks/overdue/list
+   OR GET /tasks/document/{docId}
    → Sees task completion status
 ```
 

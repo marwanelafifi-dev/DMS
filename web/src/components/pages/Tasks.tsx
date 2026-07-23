@@ -4,7 +4,7 @@ import { SkeletonTable } from '../ui/Skeleton';
 import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
-import type { Task } from '../../types';
+import type { Document, Task } from '../../types';
 
 const PAGE_SIZE = 10;
 
@@ -16,6 +16,13 @@ interface TaskForm {
   dueDate: string;
   assignedTo: string;
   documentId?: string;
+}
+
+interface PcarDraft {
+  rootCause: string;
+  correction: string;
+  preventiveAction: string;
+  targetDate: string;
 }
 
 const PRIORITY_COLORS = {
@@ -30,6 +37,7 @@ export function Tasks() {
   const { showSuccess, showError } = useToast();
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -55,6 +63,7 @@ export function Tasks() {
 
   const [statusChangeConfirm, setStatusChangeConfirm] = useState<{ taskId?: string; newStatus?: Task['status']; taskTitle?: string }>({});
   const [deleteConfirm, setDeleteConfirm] = useState<{ taskId?: string; taskTitle?: string }>({});
+  const [pcarDraft, setPcarDraft] = useState<PcarDraft>({ rootCause: '', correction: '', preventiveAction: '', targetDate: '' });
 
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -67,8 +76,9 @@ export function Tasks() {
       const res = await apiClient.getTasks({ page: targetPage, pageSize: PAGE_SIZE });
       const allTasks = res.data || [];
       setTasks(allTasks);
-      setTotalCount(res.totalCount ?? allTasks.length ?? 0);
-      setTotalPages(res.totalPages ?? 1);
+      const count = res.totalCount ?? res.count ?? allTasks.length ?? 0;
+      setTotalCount(count);
+      setTotalPages(res.totalPages ?? (Math.ceil(count / PAGE_SIZE) || 1));
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API');
     } finally {
@@ -85,9 +95,19 @@ export function Tasks() {
     }
   };
 
+  const loadDocuments = async () => {
+    try {
+      const res = await apiClient.getDocuments();
+      setDocuments(res.data || []);
+    } catch (err) {
+      showError('Failed to load documents for task creation');
+    }
+  };
+
   useEffect(() => {
     loadTasks(page);
     loadUsers();
+    loadDocuments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -110,6 +130,47 @@ export function Tasks() {
     }).length,
   };
 
+  const focusedPcar = filteredTasks.find((task) => task.priority === 'critical') || filteredTasks[0];
+
+  useEffect(() => {
+    if (!focusedPcar) return;
+    setPcarDraft({
+      rootCause: focusedPcar.taskType === 'rca' ? (focusedPcar.description || '') : '',
+      correction: '',
+      preventiveAction: '',
+      targetDate: focusedPcar.dueDate.slice(0, 10),
+    });
+  }, [focusedPcar?.taskId]);
+
+  const handlePcarSubmit = async () => {
+    if (!focusedPcar) return;
+    if (pcarDraft.rootCause.trim().length < 20) {
+      showError('Root cause analysis must contain at least 20 characters');
+      return;
+    }
+    if (!pcarDraft.correction.trim() || !pcarDraft.preventiveAction.trim() || !pcarDraft.targetDate) {
+      showError('Complete the corrective action, preventive action, and target date');
+      return;
+    }
+
+    try {
+      await apiClient.updateTask(focusedPcar.taskId, {
+        description: [
+          `Issue: ${focusedPcar.description || focusedPcar.title}`,
+          `Root cause: ${pcarDraft.rootCause.trim()}`,
+          `Immediate correction: ${pcarDraft.correction.trim()}`,
+          `Preventive action: ${pcarDraft.preventiveAction.trim()}`,
+        ].join('\n'),
+        dueDate: pcarDraft.targetDate,
+        status: 'in_progress',
+      });
+      showSuccess('PCAR submitted for approval');
+      loadTasks();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to submit PCAR');
+    }
+  };
+
   const handleCreateTask = async () => {
     if (!newTask.title.trim()) {
       showError('Task title is required');
@@ -119,12 +180,25 @@ export function Tasks() {
       showError('Due date is required');
       return;
     }
+    if (!newTask.documentId) {
+      showError('Document is required');
+      return;
+    }
+    if (!newTask.assignedTo) {
+      showError('Assignee is required');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       await apiClient.createTask({
-        ...newTask,
-        assignedBy: DEV_USER_ID,
+        title: newTask.title,
+        description: newTask.description,
+        taskType: newTask.taskType,
+        riskSeverity: newTask.priority,
+        documentId: newTask.documentId,
+        assignedToId: newTask.assignedTo,
+        dueDate: newTask.dueDate,
       });
       showSuccess('Task created successfully');
       setShowAddForm(false);
@@ -137,7 +211,8 @@ export function Tasks() {
         assignedTo: DEV_USER_ID,
         documentId: '',
       });
-      loadTasks();
+      setPage(1);
+      loadTasks(1);
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create task');
     } finally {
@@ -187,7 +262,7 @@ export function Tasks() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await apiClient.updateTask(taskId, { status: 'done' });
+      await apiClient.completeTask(taskId);
       showSuccess('Task marked as complete');
       setDeleteConfirm({});
       loadTasks();
@@ -219,18 +294,20 @@ export function Tasks() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">My Tasks</h1>
+    <div className="space-y-5">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="page-heading">PCAR / Corrective Action</h1>
+          <p className="page-subtitle">Corrective &amp; preventive action register · {taskStats.total} records</p>
+        </div>
         <Button variant="primary" size="md" onClick={() => setShowAddForm(true)}>
           <Plus className="w-4 h-4 mr-2 inline" />
-          New Task
+          New PCAR
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="hidden grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card className="bg-white dark:bg-navy-950 border-l-4 border-l-navy-700">
           <CardBody className="flex items-center justify-between">
             <div>
@@ -292,21 +369,79 @@ export function Tasks() {
         </Card>
       </div>
 
+      {focusedPcar && (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(290px,1fr)]">
+          <div className="space-y-4">
+            <Card>
+              <CardBody className="p-5">
+                <h2 className="section-heading">Issue Description</h2>
+                <p className="mt-3 text-sm leading-6 text-[#52627a]">{focusedPcar.description || focusedPcar.title}</p>
+              </CardBody>
+            </Card>
+            <Card>
+              <CardBody className="p-5">
+                <h2 className="section-heading">Root Cause Analysis <span className="text-[#e24c53]">*</span></h2>
+                <p className="mt-2 text-xs text-[#718198]">Mandatory. Minimum 20 characters. Use the 5-Whys method.</p>
+                <textarea className="field-control mt-3 min-h-[116px] w-full py-3" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
+                <div className="mt-2 text-xs text-[#94a3b8]">{pcarDraft.rootCause.trim().length} / 20 min</div>
+              </CardBody>
+            </Card>
+            <Card>
+              <CardBody className="space-y-4 p-5">
+                <h2 className="section-heading">Corrective &amp; Preventive Action</h2>
+                <label className="block text-sm text-[#52627a]">Immediate correction<input className="field-control mt-2 h-10 w-full" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a]">Preventive action<input className="field-control mt-2 h-10 w-full" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a]">Target closure date<input type="date" className="field-control mt-2 h-10 w-full" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
+              </CardBody>
+            </Card>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex justify-end"><span className={`rounded-[5px] px-3 py-2 text-sm font-semibold ${focusedPcar.priority === 'critical' ? 'bg-[#fde1e2] text-[#c73c44]' : 'bg-[#fff1c9] text-[#b96a08]'}`}>Severity: {focusedPcar.priority}</span></div>
+            <Card>
+              <CardBody className="p-5">
+                <h2 className="section-heading">Severity Matrix</h2>
+                <div className="mt-4 space-y-2 text-sm">
+                  {[
+                    ['Critical', '#e34d55'],
+                    ['Major', '#efb514'],
+                    ['Minor', '#58c993'],
+                  ].map(([label, color]) => (
+                    <div key={label} className={`flex items-center justify-between rounded-[4px] px-2 py-2 ${focusedPcar.priority === label.toLowerCase() ? 'bg-[#fff2f2]' : ''}`}><span className="text-[#52627a]">{label}</span><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} /></div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+            <Card>
+              <CardBody className="p-5">
+                <h2 className="section-heading">Approvers</h2>
+                <div className="mt-4 space-y-3 text-sm text-[#52627a]"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#efb514]" />QA Lead — pending</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#cbd5e3]" />Plant Manager — waiting</div></div>
+              </CardBody>
+            </Card>
+            <Button className="w-full" onClick={handlePcarSubmit}>Submit for approval</Button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-1"><h2 className="section-heading">PCAR Register</h2></div>
+
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
           <input
             type="text"
             placeholder="Search tasks..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="field-control h-10 w-full pl-10 pr-4"
+            aria-label="Search PCAR records"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
         <select
-          className="px-4 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+          className="field-control h-10 px-4"
+          aria-label="Filter PCAR records by status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
@@ -317,7 +452,8 @@ export function Tasks() {
         </select>
 
         <select
-          className="px-4 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+          className="field-control h-10 px-4"
+          aria-label="Filter PCAR records by priority"
           value={priorityFilter}
           onChange={(e) => setPriorityFilter(e.target.value)}
         >
@@ -553,6 +689,20 @@ export function Tasks() {
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document *</label>
+                <select
+                  value={newTask.documentId || ''}
+                  onChange={(e) => setNewTask({ ...newTask, documentId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                >
+                  <option value="">Select a document...</option>
+                  {documents.map(doc => (
+                    <option key={doc.documentId} value={doc.documentId}>{doc.title || doc.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

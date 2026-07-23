@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './components/pages/Dashboard';
 import { Documents } from './components/pages/Documents';
-import { DocumentViewer } from './components/pages/DocumentViewer';
 import { Settings } from './components/pages/Settings';
 import { Tasks } from './components/pages/Tasks';
 import { Approvals } from './components/pages/Approvals';
@@ -28,9 +27,7 @@ function App() {
           path="/tasks"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Tasks />
-              </div>
+              <Tasks />
             </MainLayout>
           }
         />
@@ -45,24 +42,12 @@ function App() {
           }
         />
 
-        {/* Document Viewer */}
-        <Route
-          path="/documents/:id"
-          element={
-            <MainLayout>
-              <DocumentViewer />
-            </MainLayout>
-          }
-        />
-
         {/* Approvals */}
         <Route
           path="/approvals"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Approvals />
-              </div>
+              <Approvals />
             </MainLayout>
           }
         />
@@ -72,9 +57,7 @@ function App() {
           path="/reminders"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Reminders />
-              </div>
+              <Reminders />
             </MainLayout>
           }
         />
@@ -84,9 +67,7 @@ function App() {
           path="/search"
           element={
             <MainLayout>
-              <div className="py-8">
-                <Search />
-              </div>
+              <Search />
             </MainLayout>
           }
         />

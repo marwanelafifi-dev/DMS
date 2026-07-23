@@ -4,24 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="description" content="Enterprise Document Management System - QMS & ISMS Compliance" />
-    <meta name="theme-color" content="#5b9bff" />
+    <meta name="theme-color" content="#2f3e83" />
 
     <title>DMS v7.4 - Document Management System</title>
 
     <!-- Preconnect to API -->
     <link rel="preconnect" href="http://localhost:8080" />
 
-    <!-- Apply saved theme before first paint to avoid a flash of the wrong theme -->
-    <script>
-      (function () {
-        var saved = localStorage.getItem('theme');
-        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var isDark = saved ? saved === 'dark' : prefersDark;
-        if (isDark) document.documentElement.classList.add('dark');
-      })();
-    </script>
   </head>
-  <body class="bg-white dark:bg-black text-navy-900 dark:text-navy-100 transition-colors duration-300">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -27,6 +27,10 @@ export interface Folder {
 export interface Document {
   documentId: string;
   folderId: string;
+  currentVersionId?: string;
+  trackingCode?: string;
+  ownerId?: string;
+  owner?: User;
   folder?: Folder;
   name: string;
   title?: string; // Alias for name
@@ -40,6 +44,7 @@ export interface Document {
   uploadedAt: string;
   createdAt?: string; // Alias for uploadedAt
   updatedAt: string;
+  modifiedAt?: string; // Display-friendly alias for updatedAt
   checkoutStatus?: 'checked_out' | 'checked_in';
   checkedOutBy?: string;
   checkedOutAt?: string;
@@ -47,6 +52,7 @@ export interface Document {
   approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
   department?: string;
   tags?: string[];
+  versions?: DocumentVersion[];
 }
 
 // Document Version
@@ -79,9 +85,11 @@ export interface Checkout {
 // Approval
 export interface Approval {
   approvalId: string;
+  versionId?: string;
+  versionNumber?: string;
   documentId: string;
   document?: Document;
-  submittedBy: string;
+  submittedBy?: string;
   submittedByUser?: User;
   submittedAt: string;
   approvalStatus: 'pending' | 'approved' | 'rejected';

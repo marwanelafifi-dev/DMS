@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Users, Lock, FileText } from 'lucide-react';
+import { Check, FileText, Lock, LockKeyhole, Users } from 'lucide-react';
 import { RolePermissions } from '../custom/RolePermissions';
 import { UserManagement } from '../custom/UserManagement';
 import { AuditTrail } from '../custom/AuditTrail';
+import { Card, CardBody } from '../ui';
+import { apiClient } from '../../utils/api';
+import type { Document } from '../../types';
 
 type SettingsTab = 'roles' | 'users' | 'audit';
 
@@ -12,11 +15,18 @@ interface SettingsProps {
 
 export function Settings({ defaultTab = 'users' }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
+  const [activeLocks, setActiveLocks] = useState<Document[]>([]);
 
   // Update activeTab when defaultTab prop changes (route change)
   useEffect(() => {
     setActiveTab(defaultTab);
   }, [defaultTab]);
+
+  useEffect(() => {
+    apiClient.getDocuments()
+      .then((response) => setActiveLocks((response.data || []).filter((document: Document) => document.checkoutStatus === 'checked_out')))
+      .catch(() => setActiveLocks([]));
+  }, []);
 
   const tabs = [
     {
@@ -40,20 +50,59 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-5">
       <div>
-        <div className="flex items-center gap-3 mb-2">
-          <SettingsIcon className="w-8 h-8 text-blue-500" />
-          <h1 className="text-4xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Admin Panel</h1>
-        </div>
-        <p className="text-gray-600 dark:text-gray-300 font-serif">
-          System configuration and management
-        </p>
+        <h1 className="page-heading">Admin Panel</h1>
+        <p className="page-subtitle">Role-Based Access Control · 5 roles × 4 permissions</p>
       </div>
 
+      <Card className="overflow-hidden">
+        <CardBody className="p-0">
+          <div className="border-b border-[#e2e8f0] px-5 py-4"><h2 className="section-heading">Permissions Matrix</h2></div>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[760px]">
+              <thead><tr><th>Role</th><th>View Only</th><th>Download (Read-Only)</th><th>Download for Editing</th><th>Admin / Force-Unlock</th></tr></thead>
+              <tbody>
+                {[
+                  ['Reader', true, true, false, false],
+                  ['Writer', true, true, true, false],
+                  ['QA', true, true, false, false],
+                  ['Manager', true, true, true, false],
+                  ['Admin', true, true, true, true],
+                ].map(([role, ...permissions]) => (
+                  <tr key={String(role)}>
+                    <td className="font-medium text-[#2e4083]">{role}</td>
+                    {permissions.map((allowed, index) => <td key={index}>{allowed ? <Check className="h-4 w-4 text-[#3b9b6b]" /> : <span className="text-[#cbd5e3]">—</span>}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <CardBody className="p-0">
+          <div className="flex items-center justify-between border-b border-[#e2e8f0] px-5 py-4">
+            <h2 className="section-heading flex items-center gap-2"><LockKeyhole className="h-4 w-4" />Active Locks</h2>
+            <span className="text-xs text-[#718198]">{activeLocks.length} documents checked out</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[680px]">
+              <thead><tr><th>Document</th><th>Locked By</th><th>Since</th><th>Status</th><th className="text-right">Action</th></tr></thead>
+              <tbody>
+                {activeLocks.length > 0 ? activeLocks.map((document) => (
+                  <tr key={document.documentId}><td className="font-medium text-[#2e4083]">{document.name}</td><td>{document.checkedOutBy || 'Unknown user'}</td><td>{document.checkedOutAt ? new Date(document.checkedOutAt).toLocaleString() : '—'}</td><td><span className="rounded bg-[#fff1c9] px-2 py-1 text-xs text-[#b96a08]">Checked out</span></td><td className="text-right text-xs text-[#718198]">Managed by checkout policy</td></tr>
+                )) : <tr><td colSpan={5} className="py-8 text-center text-sm text-[#94a3b8]">No active document locks</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </CardBody>
+      </Card>
+
       {/* Quick Navigation */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="pt-1"><h2 className="section-heading">Administration</h2></div>
+      <div className="flex flex-wrap gap-2 rounded-[5px] border border-[#dbe2ec] bg-white p-2 dark:border-white/10 dark:bg-slate-900">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -61,26 +110,21 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`p-4 rounded-xl border-2 transition-all text-left ${
+              className={`flex items-center gap-2 rounded-[4px] px-4 py-2.5 text-left text-sm transition-colors ${
                 isActive
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md ring-2 ring-blue-300 dark:ring-blue-600'
-                  : 'border-gray-200 dark:border-navy-700 bg-white dark:bg-navy-800 hover:border-blue-300 dark:hover:border-blue-700'
+                  ? 'bg-[#e8f0f8] font-semibold text-[#2f5f96] dark:bg-blue-900/30 dark:text-blue-300'
+                  : 'text-[#64748b] hover:bg-[#f4f7fa] dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
             >
-              <Icon className={`w-6 h-6 mb-2 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`} />
-              <h3 className={`font-semibold text-sm ${isActive ? 'text-navy-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                {tab.label}
-              </h3>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                {tab.description}
-              </p>
+              <Icon className="h-4 w-4" />
+              <span>{tab.label}</span>
             </button>
           );
         })}
       </div>
 
       {/* Content */}
-      <div className="mt-8">
+      <div>
         {activeTab === 'roles' && <RolePermissions />}
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'audit' && <AuditTrail />}

@@ -29,20 +29,33 @@ public class DocumentsController(
             if (folderId.HasValue)
                 query = query.Where(d => d.FolderId == folderId);
 
-            var documents = await query
-                .Select(d => new
+            var documents = await (
+                from document in query
+                join version in context.DocumentVersions
+                    on document.CurrentVersionId equals (Guid?)version.VersionId into currentVersions
+                from currentVersion in currentVersions.DefaultIfEmpty()
+                orderby document.Title
+                select new
                 {
-                    d.DocumentId,
-                    d.Title,
-                    d.Status,
-                    d.TrackingCode,
-                    d.OwnerId,
-                    d.FolderId,
-                    d.CurrentVersionId,
-                    d.CreatedAt,
-                    d.UpdatedAt
+                    document.DocumentId,
+                    Name = document.Title,
+                    document.Title,
+                    document.Status,
+                    document.TrackingCode,
+                    document.OwnerId,
+                    UploadedBy = document.OwnerId,
+                    document.FolderId,
+                    document.CurrentVersionId,
+                    FileName = currentVersion == null ? string.Empty : currentVersion.FileName,
+                    FileSize = currentVersion == null ? 0 : currentVersion.FileSizeBytes,
+                    ContentType = currentVersion == null ? null : currentVersion.MimeType,
+                    CheckoutStatus = currentVersion != null && currentVersion.IsCheckedOut ? "checked_out" : "checked_in",
+                    CheckedOutBy = currentVersion == null ? null : currentVersion.CheckedOutById,
+                    CheckedOutAt = currentVersion == null ? null : currentVersion.CheckedOutAt,
+                    UploadedAt = document.CreatedAt,
+                    document.CreatedAt,
+                    document.UpdatedAt
                 })
-                .OrderBy(d => d.Title)
                 .ToListAsync();
 
             logger.LogInformation("Retrieved {Count} documents", documents.Count);
@@ -76,10 +89,17 @@ public class DocumentsController(
                     v.Status,
                     v.FileName,
                     v.FileSizeBytes,
+                    v.MimeType,
+                    v.IsCheckedOut,
+                    v.CheckedOutById,
+                    v.CheckedOutAt,
                     v.CreatedAt
                 })
                 .OrderByDescending(v => v.CreatedAt)
                 .ToListAsync();
+
+            var currentVersion = versions.FirstOrDefault(v => v.VersionId == document.CurrentVersionId)
+                ?? versions.FirstOrDefault();
 
             logger.LogInformation("Retrieved document {DocumentId}", id);
 
@@ -89,12 +109,21 @@ public class DocumentsController(
                 data = new
                 {
                     document.DocumentId,
+                    Name = document.Title,
                     document.Title,
                     document.Status,
                     document.TrackingCode,
                     document.OwnerId,
+                    UploadedBy = document.OwnerId,
                     document.FolderId,
                     document.CurrentVersionId,
+                    FileName = currentVersion?.FileName ?? string.Empty,
+                    FileSize = currentVersion?.FileSizeBytes ?? 0,
+                    ContentType = currentVersion?.MimeType,
+                    CheckoutStatus = currentVersion?.IsCheckedOut == true ? "checked_out" : "checked_in",
+                    CheckedOutBy = currentVersion?.CheckedOutById,
+                    CheckedOutAt = currentVersion?.CheckedOutAt,
+                    UploadedAt = document.CreatedAt,
                     Versions = versions,
                     VersionCount = versions.Count,
                     document.CreatedAt,
@@ -637,13 +666,28 @@ public class DocumentsController(
 
     // GET /api/documents/pending-approvals — قائمة الانتظار
     [HttpGet("pending-approvals/list")]
-    public async Task<ActionResult<object>> GetPendingApprovals([FromQuery] Guid? folderId, [FromQuery] int limit = 100)
+    public async Task<ActionResult<object>> GetPendingApprovals(
+        [FromQuery] Guid? folderId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 100,
+        [FromQuery] int? limit = null)
     {
         try
         {
-            var pending = await approvalService.GetPendingApprovalsAsync(folderId, limit);
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(limit ?? pageSize, 1, 200);
+            var result = await approvalService.GetPendingApprovalsAsync(folderId, page, pageSize);
 
-            return Ok(new { success = true, data = pending, count = pending.Count });
+            return Ok(new
+            {
+                success = true,
+                data = result.Items,
+                count = result.TotalCount,
+                totalCount = result.TotalCount,
+                page,
+                pageSize,
+                totalPages = Math.Max(1, (int)Math.Ceiling(result.TotalCount / (double)pageSize))
+            });
         }
         catch (Exception ex)
         {

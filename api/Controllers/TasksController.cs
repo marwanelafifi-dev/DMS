@@ -12,16 +12,31 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
 {
     // GET /api/tasks — مهامي
     [HttpGet]
-    public async Task<ActionResult<object>> GetMyTasks([FromQuery] string? status, [FromQuery] int limit = 100)
+    public async Task<ActionResult<object>> GetMyTasks(
+        [FromQuery] string? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 100,
+        [FromQuery] int? limit = null)
     {
         try
         {
             var userId = GetCurrentUserId();
-            var tasks = await taskService.GetMyTasksAsync(userId, status, limit);
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(limit ?? pageSize, 1, 200);
+            var result = await taskService.GetMyTasksAsync(userId, status, page, pageSize);
 
-            logger.LogInformation("Retrieved {Count} tasks for user {UserId}", tasks.Count, userId);
+            logger.LogInformation("Retrieved {Count} tasks for user {UserId}", result.Items.Count, userId);
 
-            return Ok(new { success = true, data = tasks, count = tasks.Count });
+            return Ok(new
+            {
+                success = true,
+                data = result.Items,
+                count = result.TotalCount,
+                totalCount = result.TotalCount,
+                page,
+                pageSize,
+                totalPages = Math.Max(1, (int)Math.Ceiling(result.TotalCount / (double)pageSize))
+            });
         }
         catch (Exception ex)
         {
@@ -84,12 +99,15 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
             if (string.IsNullOrWhiteSpace(req.Title))
                 return BadRequest(new { success = false, error = "العنوان مطلوب" });
 
+            var managerId = GetCurrentUserId();
             var result = await taskService.CreateTaskAsync(
+                managerId,
                 req.DocumentId,
                 req.AssignedToId,
                 req.Title,
                 req.Description,
                 req.TaskType,
+                req.RiskSeverity,
                 req.DueDate);
 
             if (!result.Success)
@@ -101,7 +119,13 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
                 };
             }
 
-            return CreatedAtAction(nameof(GetTask), new { id = ((dynamic)result.Data!).taskId }, new { success = true, data = result.Data });
+            if (!result.ResourceId.HasValue)
+            {
+                logger.LogError("Task service returned success without a resource ID");
+                return StatusCode(500, new { success = false, error = "Task was created but its ID was not returned" });
+            }
+
+            return CreatedAtAction(nameof(GetTask), new { id = result.ResourceId.Value }, new { success = true, data = result.Data });
         }
         catch (Exception ex)
         {
@@ -150,6 +174,8 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
                 req.Title,
                 req.Description,
                 req.DueDate,
+                req.RiskSeverity,
+                req.Status,
                 req.RcaText,
                 req.PreventiveActions);
 
@@ -216,6 +242,7 @@ public record CreateTaskRequest(
     string Title,
     string? Description = null,
     string? TaskType = null,
+    string? RiskSeverity = null,
     DateTime? DueDate = null
 );
 
@@ -223,6 +250,8 @@ public record UpdateTaskRequest(
     string? Title = null,
     string? Description = null,
     DateTime? DueDate = null,
+    string? RiskSeverity = null,
+    string? Status = null,
     string? RcaText = null,
     string? PreventiveActions = null
 );

@@ -1,8 +1,8 @@
 export { FolderTree } from './FolderTree';
 export { DocumentList } from './DocumentList';
+export { DocumentPreview } from './DocumentPreview';
+export { ColumnVisibilityMenu, LibraryBulkActions } from './LibraryMenus';
 export { DocumentGrid } from './DocumentGrid';
 export { UploadZone } from './UploadZone';
 export { SearchFilter } from './SearchFilter';
-export { PDFViewer } from './PDFViewer';
-export { PDFToolbar } from './PDFToolbar';
 export { DocumentDetailsPanel } from './DocumentDetailsPanel';

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardBody, Button, Badge } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { CheckCircle2, XCircle, Clock, Search, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Eye, Search, X, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import type { Approval } from '../../types';
@@ -33,7 +33,7 @@ export function Approvals() {
       const res = await apiClient.getPendingApprovals({ page: targetPage, pageSize: PAGE_SIZE });
       const allApprovals = res.data || [];
       setApprovals(allApprovals);
-      setTotalCount(res.totalCount ?? allApprovals.length ?? 0);
+      setTotalCount(res.totalCount ?? res.count ?? allApprovals.length ?? 0);
       setTotalPages(res.totalPages ?? 1);
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API');
@@ -61,8 +61,14 @@ export function Approvals() {
     rejected: approvals.filter(a => a.approvalStatus === 'rejected').length,
   };
 
+  const activeApproval = filteredApprovals.find((approval) => approval.approvalStatus === 'pending');
+
   const handleApprovalAction = async () => {
     if (!actionModal.approval) return;
+    if (!actionModal.approval.versionId) {
+      showError('This approval is missing its document version');
+      return;
+    }
 
     if (actionModal.actionType === 'reject' && !actionText.trim()) {
       showError('Rejection reason is required');
@@ -76,9 +82,9 @@ export function Approvals() {
     setIsSubmittingAction(true);
     try {
       if (actionModal.actionType === 'approve') {
-        await apiClient.approveDocument(actionModal.approval.documentId, actionText);
+        await apiClient.approveDocument(actionModal.approval.documentId, actionModal.approval.versionId, actionText);
       } else {
-        await apiClient.rejectDocument(actionModal.approval.documentId, actionText);
+        await apiClient.rejectDocument(actionModal.approval.documentId, actionModal.approval.versionId, actionText);
       }
       showSuccess(`Document ${actionModal.actionType === 'approve' ? 'approved' : 'rejected'} successfully`);
       setActionModal({ isOpen: false });
@@ -110,14 +116,19 @@ export function Approvals() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Approvals</h1>
+    <div className="space-y-5">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="page-heading">C-Doc Workflow</h1>
+          <p className="page-subtitle">Controlled Document Lifecycle{activeApproval?.document?.name ? ` · ${activeApproval.document.name}` : ''}</p>
+        </div>
+        {activeApproval && (
+          <Button variant="danger" onClick={() => setActionModal({ isOpen: true, approval: activeApproval, actionType: 'reject' })}>Reject at this stage</Button>
+        )}
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="hidden grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-white dark:bg-navy-950 border-l-4 border-l-navy-700">
           <CardBody className="flex items-center justify-between">
             <div>
@@ -167,21 +178,73 @@ export function Approvals() {
         </Card>
       </div>
 
+      <Card>
+        <CardBody className="p-5">
+          <div className="grid gap-4 md:grid-cols-4">
+            {['Uploaded', 'QA Triage', 'Manager Approval', 'QA Final Release'].map((stage, index) => (
+              <div key={stage} className="relative flex items-center gap-3">
+                <span className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 ${index < 2 ? 'border-[#3c9c6c] bg-[#3c9c6c] text-white' : index === 2 ? 'border-[#3f8bca] bg-white text-[#3f8bca]' : 'border-[#cbd5e3] bg-white text-[#94a3b8]'}`}>
+                  {index < 2 ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-3 w-3 fill-current" />}
+                </span>
+                <span className={`text-xs font-medium ${index === 2 ? 'text-[#283a7a]' : 'text-[#64748b]'}`}>{stage}</span>
+                {index < 3 && <span className="absolute left-[29px] right-[-16px] top-3.5 hidden h-px bg-[#dbe2ec] md:block" />}
+              </div>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
+
+      {activeApproval && (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+          <Card>
+            <CardBody className="p-5">
+              <h2 className="section-heading">Stage: Manager Approval</h2>
+              <p className="mt-4 text-sm leading-6 text-[#52627a]">
+                Document <span className="font-semibold text-[#26334d]">{activeApproval.document?.name || 'Untitled document'}</span> was uploaded by {activeApproval.submittedByUser?.fullName || 'the document owner'} and now requires Manager approval before QA Final Release.
+              </p>
+              <p className="mt-3 text-sm text-[#52627a]">Reviewer notes: {activeApproval.comments ? `“${activeApproval.comments}”` : 'No reviewer notes were supplied.'}</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button className="bg-[#399a68] hover:bg-[#2f895b]" onClick={() => setActionModal({ isOpen: true, approval: activeApproval, actionType: 'approve' })}>Approve &amp; advance</Button>
+                <Button variant="danger" onClick={() => setActionModal({ isOpen: true, approval: activeApproval, actionType: 'reject' })}>Reject</Button>
+                <Button variant="secondary" onClick={() => setActionModal({ isOpen: true, approval: activeApproval, actionType: 'reject' })}>Return to triage</Button>
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody className="p-5">
+              <h2 className="section-heading">Audit Trail</h2>
+              <div className="mt-4 space-y-4 text-sm text-[#52627a]">
+                <div className="flex gap-3"><span className="mt-1.5 h-2.5 w-2.5 rounded-full bg-[#45b77c]" /><span>Uploaded by {activeApproval.submittedByUser?.fullName || 'Document owner'} · {formatDate(activeApproval.submittedAt)}</span></div>
+                <div className="flex gap-3"><span className="mt-1.5 h-2.5 w-2.5 rounded-full bg-[#3f8bca]" /><span>Submitted for controlled review</span></div>
+                <div className="flex gap-3"><span className="mt-1.5 h-2.5 w-2.5 rounded-full bg-[#f2b51d]" /><span>Status: {activeApproval.approvalStatus}</span></div>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-1">
+        <h2 className="section-heading">Approval Queue <span className="ml-1 text-sm font-normal text-[#718198]">({approvalStats.total})</span></h2>
+      </div>
+
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
           <input
             type="text"
             placeholder="Search by document name or submitter..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="field-control h-10 w-full pl-10 pr-4"
+            aria-label="Search approvals"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
         <select
-          className="px-4 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+          className="field-control h-10 px-4"
+          aria-label="Filter approvals by status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
@@ -335,14 +398,14 @@ export function Approvals() {
 
       {/* Approval Action Modal */}
       {actionModal.isOpen && actionModal.approval && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="approval-action-title">
           <Card className="w-full max-w-md">
             <div className={`flex items-center justify-between p-6 border-b ${
               actionModal.actionType === 'approve'
                 ? 'border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-900/20'
                 : 'border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20'
             }`}>
-              <h2 className={`text-lg font-serif font-bold ${
+              <h2 id="approval-action-title" className={`text-lg font-serif font-bold ${
                 actionModal.actionType === 'approve'
                   ? 'text-green-900 dark:text-green-300'
                   : 'text-red-900 dark:text-red-300'

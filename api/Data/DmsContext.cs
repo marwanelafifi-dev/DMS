@@ -52,6 +52,14 @@ public class DmsContext : DbContext
             .Property(at => at.Metadata)
             .HasColumnType("jsonb");
 
+        // The database stores task due dates as PostgreSQL `date` values. Without
+        // this explicit mapping, Npgsql treats DateTime as timestamptz, rejects
+        // date-only values from the web form (Kind=Unspecified), and generates
+        // invalid date/timestamp comparisons when listing tasks.
+        modelBuilder.Entity<DmsTask>()
+            .Property(t => t.DueDate)
+            .HasColumnType("date");
+
         // === PRIMARY KEYS & TABLE NAMES (explicit configuration) ===
         modelBuilder.Entity<DmsUser>().ToTable("dms_users").HasKey(u => u.UserId);
         modelBuilder.Entity<DmsFolder>().ToTable("dms_folders").HasKey(f => f.FolderId);

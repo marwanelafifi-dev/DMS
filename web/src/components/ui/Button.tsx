@@ -12,16 +12,16 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-gradient-primary hover:shadow-xl text-white shadow-lg',
-  secondary: 'border-2 border-gray-400 text-gray-700 dark:text-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-navy-700 shadow-sm',
-  danger: 'bg-navy-700 hover:bg-navy-800 text-white shadow-lg hover:shadow-xl',
-  ghost: 'text-navy-900 dark:text-cyan-400 hover:bg-gray-100 dark:hover:bg-navy-700/30',
+  primary: 'border border-[#3b86c4] bg-[#3f8bca] text-white hover:bg-[#317bb8]',
+  secondary: 'border border-[#cbd5e3] bg-white text-[#26334d] hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800',
+  danger: 'border border-[#efb7ba] bg-[#fff7f7] text-[#ce3f46] hover:bg-[#fff0f0] dark:border-red-900 dark:bg-red-950/30 dark:text-red-300',
+  ghost: 'border border-transparent text-[#334b73] hover:bg-[#edf2f8] dark:text-slate-200 dark:hover:bg-slate-800',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5 text-sm',
-  md: 'px-4 py-2 text-base',
-  lg: 'px-6 py-3 text-lg',
+  sm: 'h-8 px-3 text-xs',
+  md: 'h-10 px-4 text-sm',
+  lg: 'h-11 px-5 text-sm',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -41,9 +41,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={`
-          inline-flex items-center justify-center gap-2 font-semibold rounded-lg
-          transition-all duration-fast focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-navy-900
-          disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none
+          inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium rounded-[5px]
+          transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-[#3f8bca] focus-visible:ring-offset-2
+          disabled:opacity-50 disabled:cursor-not-allowed
           ${variantClasses[variant]}
           ${sizeClasses[size]}
           ${className}
