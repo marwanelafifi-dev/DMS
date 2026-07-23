@@ -3,9 +3,9 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-07-20  
-**Working Directory:** c:\Users\user\Desktop\DMS  
-**Status:** Phase 2.5 — End-to-End Testing & Critical Fixes (80% Production-Ready)
+**Current Date:** 2026-07-23  
+**Working Directory:** d:\Si ware\DMS  
+**Status:** Phase 2.5 — End-to-End Testing & Critical Fixes (80% Production-Ready); Session 13 added personalized dashboard + admin nav restructure on `ui-new`
 
 ---
 
@@ -1623,3 +1623,48 @@ Total: Real test data ready for E2E testing
 - ✅ All action buttons visible and properly sized
 
 **System Status: ✅ Document Library UI Fully Redesigned & Production-Ready**
+
+---
+
+## 🧭 Session 13 (2026-07-23) — Personalized Dashboard, Admin Nav Restructure, Dark-Mode Polish
+
+**Status:** ✅ Complete — frontend-only styling/UX session on `ui-new`, verified via `npm run type-check` (0 new errors) and live in the running Docker stack (`docker compose up -d --build web`).
+
+### 1. Document preview — full-screen, sidebar stays usable
+- `DocumentPreview.tsx`: the PDF/document preview overlay now stretches to fill the whole viewport height (`h-full` iframe instead of a fixed `h-[65vh]`) instead of leaving large unused margins above/below the rendered page.
+- The overlay stops at `lg:left-[286px]` (the sidebar's actual width) instead of covering the full screen — the sidebar remains visible and clickable while a document is open, rather than being dimmed/blocked by the modal backdrop.
+
+### 2. Dashboard — personalized to the signed-in user, not system-wide totals
+`Dashboard.tsx` previously showed org-wide mock counters ("Total Documents", "Pending Approvals" system-wide, etc.) with tasks hardcoded to a fake `'user-1'`. Rebuilt around the actual signed-in user (`useAuth()` → `currentUserId`):
+- Header now reads **"Welcome back, {user.fullName}"** instead of a generic "Dashboard" title (the header's Export / New Document buttons were later removed per feedback — the greeting + last-sync line is now the whole header).
+- Metric cards are personal: **My Open Tasks, My Overdue Tasks, Awaiting My Approval, My Submissions in Review, My Checked-Out Docs** — all computed by filtering mock tasks/documents against `currentUserId` instead of counting everything in the system.
+- Added a **"My Submissions in Review"** panel + metric so a member who uploaded a document can see it's sitting with a manager/QA reviewer (`reviewStageFor()` labels it "Awaiting QA review" vs "Awaiting manager review" based on department) — this was an explicit ask: "if I am a member and I uploaded documents, I need to see the documents if I am waiting my manager or QA Approval."
+- Added an **"Awaiting My Approval"** panel (documents submitted by others pending the current user's review).
+
+### 3. Approval-Cycle bar chart replaced with an ISO Audit Calendar
+New component `web/src/components/custom/AuditCalendarCard.tsx` replaces the old static bar-chart mock on the Dashboard:
+- Renders a vertical timeline of ISO certification journey phases (Internal Audit → Stage 1 → Stage 2 → Management Review → Surveillance/Recertification) with phase/standard tags, a "Next" marker on the soonest upcoming event, and a "Completed" badge for past ones.
+- **Admin/QA-only** "New Audit Event" form (gated on `user.role === 'Admin' || 'QA'`) lets them publish a new date/phase/notes to the list — visible read-only to every other role.
+- Each event has a real, working **"Add to Google Calendar"** link (`calendar.google.com/calendar/render?action=TEMPLATE&...`) — deliberately the lightweight link-based approach, not full OAuth two-way sync, per explicit user choice ("i need to see it first as a style") before committing to the larger OAuth integration.
+- All mock data lives in local component state this session (not persisted to a backend table) — real persistence is a follow-up once requirements are confirmed.
+
+### 4. Sidebar — logo, header, and Admin Panel restructure
+- Replaced the old placeholder circle-icon "logo" with the real Si-Ware asset. Iterated per feedback to the final state: white header box (`h-[68px]`, matching the top navbar's height/border exactly so both sit flush on one line), logo centered and enlarged, "Sovereign DMS" subtitle removed.
+- **Dark mode**: the header box and logo are theme-aware — light mode keeps the white box + `si-ware-logo.png` (navy text variant); dark mode swaps to `si-ware-logo-dark.png` (white/cyan variant) and the header background becomes `dark:bg-slate-950`, matching the dashboard's own dark background exactly (not pure black) so there's no visible seam. The sidebar body itself stays on the original navy gradient (`from-[#283777] via-[#1f2c5f] to-[#12193d]`) regardless of light/dark toggle — only the logo header reacts to the toggle.
+- **Admin Panel** converted from a flat nav link into a collapsible section (chevron, auto-opens on any `/admin/*` route) with seven sub-items: **Users, Roles, Settings, Notifications, Company Data, Audit Trail, Database**. Users/Roles/Audit Trail route to the existing real `Settings.tsx` tabs; the four new ones (Settings, Notifications, Company Data, Database) route to a `ComingSoonPanel` stub ("Requirements pending") added to `Settings.tsx` plus matching routes in `App.tsx` (`/admin/settings`, `/admin/notifications`, `/admin/company-data`, `/admin/database`) — placeholders only, real requirements to be supplied page-by-page.
+
+### 5. Dark mode — wired up + bug fix + formal polish pass
+- `useDarkMode.ts` already existed in the codebase (from a prior session) but wasn't used anywhere. Wired a Sun/Moon toggle button into `Navbar.tsx` right beside the notification bell.
+- **Real bug found and fixed**: the hover background on the Dashboard's "My Tasks" / "Awaiting My Approval" / "My Submissions in Review" list rows (`hover:bg-[#f8fafc]`) had no dark-mode variant — hovering turned the row solid white, making the white-on-dark title text invisible. Fixed by adding `dark:hover:bg-white/5` everywhere that pattern appeared.
+- General dark-mode formality pass: `Card.tsx` got a subtle inset highlight instead of a completely flat dark surface; Dashboard metric values/labels got explicit `dark:text-white` / `dark:text-slate-400` instead of relying on hardcoded light-mode navy with poor contrast; `AuditCalendarCard.tsx`'s phase badges switched from solid light-pastel chips to muted translucent chips in dark mode (`dark:bg-blue-500/15 dark:text-blue-300` style, matching the existing app convention already used in `Settings.tsx` tabs) plus dark variants for the timeline dots, "Completed" badge, form labels, and the "Add to Google Calendar" link's hover state.
+
+### Files created
+- `web/src/components/custom/AuditCalendarCard.tsx`
+
+### Files modified
+- `web/src/App.tsx`, `web/src/components/custom/DocumentPreview.tsx`, `web/src/components/layout/Navbar.tsx`, `web/src/components/layout/Sidebar.tsx`, `web/src/components/pages/Dashboard.tsx`, `web/src/components/pages/Settings.tsx`, `web/src/components/ui/Card.tsx`, `web/src/utils/formatters.ts` (12-hour `hh:mm a` timestamps instead of 24-hour `HH:mm`)
+
+### Known follow-ups
+- Google Calendar sync is currently link-based only (no OAuth, no real shared calendar) — pending a decision on whether full two-way sync is worth the backend/credentials work.
+- Settings / Notifications / Company Data / Database admin pages are stubs — need requirements per page before building.
+- Dashboard data (tasks, approvals, audit events) is still local mock state, same as it was before this session — not yet wired to the real `.NET` API endpoints that already exist from Phase 2 backend work.

@@ -96,7 +96,7 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
           <iframe
             src={document.preview.url}
             title={`PDF preview of ${document.fileName}`}
-            className="h-[65vh] min-h-[480px] w-full rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10"
+            className="h-full w-full rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10"
             onLoad={() => setIsLoading(false)}
             onError={() => { setIsLoading(false); setHasError(true); }}
           />
@@ -146,8 +146,8 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-950/50" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
-      <section ref={dialogRef} className="absolute inset-0 left-56 flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
+    <div className="fixed inset-y-0 left-0 right-0 z-[70] bg-slate-950/50 lg:left-[286px]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+      <section ref={dialogRef} className="absolute inset-0 flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
         <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -213,7 +213,7 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
           </div>
         </header>
 
-        <div className="relative flex-1 overflow-hidden p-6">
+        <div className={`relative flex-1 overflow-hidden ${document.preview.kind === 'pdf' ? '' : 'p-6'}`}>
           {isLoading && (
             <div className="absolute inset-6 z-10 flex items-center justify-center rounded-[4px] bg-white/95 dark:bg-slate-900/95" role="status">
               <div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#3f8bca]" /><p className="mt-3 text-sm text-[#718198]">Loading preview...</p></div>
