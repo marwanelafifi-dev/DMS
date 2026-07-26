@@ -3,11 +3,98 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-07-23  
-**Working Directory:** d:\Si ware\DMS  
-**Status:** Phase 2.5 — End-to-End Testing & Critical Fixes (80% Production-Ready); Session 13 added personalized dashboard + admin nav restructure on `ui-new`
+**Current Date:** 2026-07-26
+
+**Working Directory:** `C:\Users\user\Desktop\DMS`
+
+**Active Branch:** `ali-branch`
+
+**Status:** Session 14 — Local Docling parsing/OCR, persistent document workflows, responsive dark-mode UI, and production smoke verification complete
 
 ---
+
+## Session 14 — Current Authoritative State (2026-07-26)
+
+> This section supersedes older status, port, OCR-roadmap, and next-step notes retained later in this file as historical session context.
+
+### Local Docling Parsing/OCR Integration
+
+- `ocr-rag/main.py` runs a local FastAPI service on `http://127.0.0.1:8000`.
+- A single `DocumentConverter()` instance from `docling.document_converter` converts uploaded files locally and exports Markdown.
+- `POST /api/documents/upload` accepts multipart files, preserves the temporary file extension, converts the file, removes the temporary file, and stores the filename and Markdown content.
+- `GET /api/documents/search?q={query}` searches parsed document content with SQLite `LIKE`.
+- SQLite uses the `documents` table in `dms.db`. Docker persists it with the `ocrdata:/data` volume.
+- Wildcard CORS and the direct loopback URL are deliberate local-development requirements. A remote production deployment should proxy and authenticate these requests through the .NET API instead.
+- Existing DMS upload/version storage in the .NET API and MinIO remains intact. The frontend also sends the selected file to Docling for local Markdown extraction.
+
+### Frontend Integration
+
+- `web/src/services/doclingApi.ts` handles direct multipart upload and parsed-content search.
+- The document upload flow shows active conversion progress and reports parsing failures without discarding a successful DMS upload.
+- `web/src/components/custom/MarkdownViewer.tsx` renders returned Markdown in the main preview panel.
+- The main search bar combines Docling content matches with the existing DMS metadata filters and document results.
+- Uploaded documents and workflow state are server-backed, so navigation and refresh no longer discard them.
+- Dark-mode tables, search fields, and mobile layouts were corrected, including search-icon padding and row contrast.
+
+### Local Setup and Execution
+
+Install the Python dependencies:
+
+```powershell
+python -m pip install --no-cache-dir docling fastapi uvicorn python-multipart
+```
+
+Download Docling models for fully local/offline conversion:
+
+```powershell
+docling-tools models download
+```
+
+Run the parser service directly:
+
+```powershell
+cd ocr-rag
+uvicorn main:app --reload --port 8000
+```
+
+Run the complete Docker stack:
+
+```powershell
+docker compose up -d --wait
+```
+
+Verified local dependency versions:
+
+- Docling 2.115.0
+- FastAPI 0.140.0
+- Uvicorn 0.51.0
+- python-multipart 0.0.32
+- SQLite 3.49.1
+
+### Verification Baseline
+
+- Frontend tests: 50/50 passed.
+- Python parser tests: 4/4 passed.
+- TypeScript type-check passed.
+- Frontend production build passed.
+- Browser smoke tests passed for upload, preview, download, search, approval, rejection, and task completion.
+- A real PNG OCR smoke test extracted the text `Document Library`.
+- Parsed documents remained in SQLite after an OCR container restart.
+- Health routes returned HTTP 200, and the final service logs contained no HTTP 5xx responses, application errors, or tracebacks.
+- Local .NET tests could not be executed because the host does not have the .NET SDK. The Docker API image compiled successfully and its health check passed.
+
+### Current Architecture Notes
+
+- Parser SQLite IDs are independent of DMS document/version IDs. Add an explicit correlation ID if cross-service lifecycle tracking is needed.
+- Direct browser access to `127.0.0.1:8000` and wildcard CORS are local-only choices; do not carry them unchanged into a remote or Cloudflare deployment.
+- The Docling image is approximately 4.32 GB because it includes Torch and local model assets.
+- The Vite production build reports a large-bundle warning (approximately 681.78 KB), but completes successfully.
+- Parser tests currently emit an upstream `httpx`/Starlette `TestClient` deprecation warning.
+
+### Related Commits on `ali-branch`
+
+- `3b5d8c5` — `feat: add local Docling document parsing`
+- `da659f1` — `fix: persist document workflows and responsive UI`
 
 ## Phase Progress
 
@@ -16,8 +103,8 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 - Portable Docker Compose stack (validated, runs on Windows)
 - All 6 services healthy:
   - API (.NET 8): http://localhost:8080
-  - Web (React/Vite + nginx): http://localhost:5173
-  - OCR/RAG (Python FastAPI): http://localhost:8100
+  - Web (React/Vite + nginx): http://localhost:5174
+  - OCR/RAG (Python FastAPI): http://127.0.0.1:8000
   - Postgres 16: localhost:5432
   - MinIO: http://localhost:9001
   - Redis 7: localhost:6379
