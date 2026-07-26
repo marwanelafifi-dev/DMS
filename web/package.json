@@ -9,6 +9,7 @@
     "preview": "vite preview --host",
     "lint": "eslint src --ext ts,tsx",
     "test": "vitest run",
+    "test:e2e:critical": "node scripts/test-critical-workflows.mjs",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit"
   },

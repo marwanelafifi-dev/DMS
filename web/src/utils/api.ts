@@ -15,7 +15,6 @@ class APIClient {
     this.client = axios.create({
       baseURL: API_BASE,
       headers: {
-        'Content-Type': 'application/json',
         'X-User-Id': DEV_USER_ID,
       },
       timeout: 30000,
@@ -146,10 +145,7 @@ class APIClient {
 
     const { data } = await this.client.post<ApiResponse>(
       `/documents/${documentId}/upload`,
-      formData,
-      {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }
+      formData
     );
     return data;
   }
@@ -226,7 +222,7 @@ class APIClient {
   }
 
   async completeTask(taskId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`);
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`, {});
     return data;
   }
 
@@ -375,8 +371,8 @@ class APIClient {
 
   // Search & Filtering
   async searchDocuments(query: string, params?: any) {
-    const { data } = await this.client.get<ApiResponse>('/documents/search', {
-      params: { ...params, q: query },
+    const { data } = await this.client.get<ApiResponse>('/documents', {
+      params: { search: query, ...params },
     });
     return data;
   }

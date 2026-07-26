@@ -13,10 +13,9 @@ import { apiClient, DEV_USER_ID } from '../../utils/api';
 import {
   createUnavailableLibraryDocument,
   mockLibraryDocuments,
-  mockLibraryFolders,
   type MockLibraryDocument,
 } from '../../fixtures/documentLibrary';
-import type { Document } from '../../types';
+import type { Document, Folder } from '../../types';
 import {
   copyLibraryItems,
   deleteLibraryItems,
@@ -27,14 +26,12 @@ import {
 } from '../../services/documentLibraryOperations';
 import { doclingApi } from '../../services/doclingApi';
 
-const defaultFolder = mockLibraryFolders[0];
-
 export function Documents() {
   const { showSuccess, showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [folders, setFolders] = useState(() => mockLibraryFolders.map((folder) => ({ ...folder })));
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
-  const [selectedFolderId, setSelectedFolderId] = useState(defaultFolder.folderId);
+  const [selectedFolderId, setSelectedFolderId] = useState<string>('');
   const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -69,9 +66,65 @@ export function Documents() {
   const librarySelection = { folderIds: selectedFolderIds, documentIds: selectedDocumentIds };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoadingFolders(false), 80);
-    return () => window.clearTimeout(timer);
-  }, []);
+    let cancelled = false;
+    const loadLibrary = async () => {
+      let loadedFolders: Folder[] = [];
+      try {
+        const response = await apiClient.getFolders();
+        if (response.data && Array.isArray(response.data)) {
+          loadedFolders = response.data as Folder[];
+          if (!cancelled) {
+            setFolders(loadedFolders);
+            if (loadedFolders.length > 0) {
+              setSelectedFolderId(loadedFolders[0].folderId);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load folders:', error);
+        if (!cancelled) showError('Failed to load folders');
+      } finally {
+        if (!cancelled) setIsLoadingFolders(false);
+      }
+
+      if (cancelled) return;
+
+      try {
+        const response = await apiClient.getDocuments();
+        if (!cancelled && response.data && Array.isArray(response.data)) {
+          const liveDocuments = (response.data as Document[]).map((document) =>
+            createUnavailableLibraryDocument(
+              {
+                ...document,
+                folder: loadedFolders.find((folder) => folder.folderId === document.folderId),
+              },
+              'A browser preview is not available after reloading this document. Download the read-only source to view it locally.',
+            ),
+          );
+
+          setAllDocuments((current) => {
+            const merged = new Map(current.map((document) => [document.documentId, document]));
+            liveDocuments.forEach((document) => {
+              const existing = merged.get(document.documentId);
+              merged.set(document.documentId, existing ? {
+                ...existing,
+                ...document,
+                preview: existing.preview.kind === 'unavailable' ? document.preview : existing.preview,
+                sourceUrl: existing.sourceUrl,
+                fallbackDownload: existing.fallbackDownload,
+              } : document);
+            });
+            return [...merged.values()];
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load documents:', error);
+        if (!cancelled) showError('Failed to load documents');
+      }
+    };
+    void loadLibrary();
+    return () => { cancelled = true; };
+  }, [showError]);
 
   useEffect(() => {
     setIsLoadingDocs(true);
@@ -116,7 +169,7 @@ export function Documents() {
         if (cancelled) return;
         const placeholder: Document = {
           documentId: previewId,
-          folderId: defaultFolder.folderId,
+          folderId: selectedFolderId || folders[0]?.folderId || '',
           name: `Document ${previewId}`,
           fileName: `Document ${previewId}`,
           fileSize: 0,
@@ -291,8 +344,10 @@ export function Documents() {
             title: uploadFile.name.replace(/\.[^/.]+$/, ''),
             ownerId: DEV_USER_ID,
           });
-          if (!docRes.data?.documentId) throw new Error('The server did not return a document ID');
-          await apiClient.uploadDocument(docRes.data.documentId, uploadFile);
+          const createdDocument = docRes.data;
+          if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
+
+          const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile);
           setActiveUploadStage('parsing');
           let parsedContent: string | undefined;
           try {
@@ -308,20 +363,20 @@ export function Documents() {
           objectUrlsRef.current.add(sourceUrl);
           const timestamp = new Date().toISOString();
           const source: Document = {
-            documentId: docRes.data.documentId,
-            currentVersionId: docRes.data.currentVersionId,
+            documentId: createdDocument.documentId,
+            currentVersionId: uploadRes.data?.versionId,
             folderId: selectedFolderId,
             folder: selectedFolder,
             name: uploadFile.name.replace(/\.[^/.]+$/, ''),
             fileName: uploadFile.name,
             fileSize: uploadFile.size,
             contentType: uploadFile.type || 'application/octet-stream',
-            status: docRes.data.status ?? 'draft',
+            status: createdDocument.status ?? 'draft',
             department: 'General',
             tags: [],
             uploadedBy: DEV_USER_ID,
             uploadedAt: timestamp,
-            createdAt: timestamp,
+            createdAt: createdDocument.createdAt || timestamp,
             updatedAt: timestamp,
             modifiedAt: timestamp,
           };
@@ -343,7 +398,8 @@ export function Documents() {
           }
           uploaded.push(uploadedDocument);
         } catch (error: any) {
-          errors.push(error.response?.data?.error || `${uploadFile.name} could not be uploaded`);
+          const errorMsg = error?.response?.data?.error || error?.message || `${uploadFile.name} could not be uploaded`;
+          errors.push(errorMsg);
         } finally {
           setUploadProgress((current) => ({ ...current, complete: current.complete + 1 }));
         }
@@ -381,14 +437,14 @@ export function Documents() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-white dark:bg-slate-950">
+    <div className="flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-hidden bg-white dark:bg-slate-950 md:flex-row">
       {/* Folders Sidebar */}
       {isLoadingFolders ? (
-        <div className="w-56 space-y-2 border-r border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900" role="status" aria-label="Loading folders">
+        <div className="max-h-56 w-full flex-shrink-0 space-y-2 overflow-hidden border-b border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-56 md:border-b-0 md:border-r" role="status" aria-label="Loading folders">
           {[1, 2].map((item) => <div key={item} className="h-12 animate-skeleton rounded bg-slate-100 dark:bg-slate-800" />)}
         </div>
       ) : folders.length === 0 ? (
-        <div className="w-56 border-r border-[#dbe2ec] bg-white p-5 text-center dark:border-white/10 dark:bg-slate-900"><p className="text-sm">No folders available</p></div>
+        <div className="w-full flex-shrink-0 border-b border-[#dbe2ec] bg-white p-5 text-center dark:border-white/10 dark:bg-slate-900 md:w-56 md:border-b-0 md:border-r"><p className="text-sm">No folders available</p></div>
       ) : (
         <FolderTree
           folders={folders}
@@ -399,10 +455,10 @@ export function Documents() {
       )}
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header with Title and Upload Button */}
-        <div className="flex items-start justify-between border-b border-[#dbe2ec] bg-white px-6 py-5 dark:border-white/10 dark:bg-slate-900">
-          <div>
+        <div className="flex flex-col items-stretch gap-3 border-b border-[#dbe2ec] bg-white px-4 py-4 dark:border-white/10 dark:bg-slate-900 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:py-5">
+          <div className="min-w-0">
             <h1 className="page-heading">Document Library</h1>
             <p className="page-subtitle">Secure vault · Documents are view-only by default</p>
           </div>
@@ -423,7 +479,7 @@ export function Documents() {
             disabled={!selectedFolder}
             title={selectedFolder ? 'Upload files to the selected folder' : 'A folder is required before uploading'}
             onClick={() => fileInputRef.current?.click()}
-            className="ml-6 flex-shrink-0 inline-flex h-9 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-4 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+            className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:ml-6 sm:w-auto sm:px-4"
           >
             <UploadCloud className="h-4 w-4" /> Upload
           </button>
@@ -431,7 +487,7 @@ export function Documents() {
 
         {/* Documents Table and Filters */}
         <div className="flex-1 overflow-y-auto">
-          <Card className="m-4 overflow-hidden">
+          <Card className="m-3 min-w-0 overflow-hidden sm:m-4">
             <div className="flex flex-col gap-3 border-b border-[#e2e8f0] p-3 dark:border-white/10 sm:flex-row sm:items-center">
               <input type="text" placeholder="Search" className="field-control h-9 w-full sm:max-w-[230px]" aria-label="Search documents" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
               <select className="field-control h-9 w-full sm:w-[150px]" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter documents by status">
@@ -442,7 +498,7 @@ export function Documents() {
                 <option value="rejected">Rejected</option>
                 <option value="archived">Archived</option>
               </select>
-              <div className="ml-auto flex items-center gap-2">
+              <div className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
                 <LibraryBulkActions
                   selectedCount={selectedItemCount}
                   selectedNames={selectedNames}

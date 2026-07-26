@@ -117,7 +117,7 @@ public class DmsContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<DmsDocument>()
-            .HasOne<DmsUser>()
+            .HasOne(d => d.Owner)
             .WithMany()
             .HasForeignKey(d => d.OwnerId)
             .OnDelete(DeleteBehavior.Restrict);

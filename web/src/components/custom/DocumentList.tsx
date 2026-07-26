@@ -159,7 +159,7 @@ export function DocumentList({
           {visibleColumns.has('modifiedAt') && <col className="w-[132px]" />}
           {visibleColumns.has('tags') && <col className="w-[120px]" />}
           {visibleColumns.has('status') && <col className="w-[90px]" />}
-          <col className="w-[200px]" />
+          <col className="w-[96px]" />
         </colgroup>
         <thead className="sticky top-0 z-10">
           <tr>
@@ -180,7 +180,7 @@ export function DocumentList({
             {visibleColumns.has('modifiedAt') && <th>{header('Modified date', 'modifiedAt')}</th>}
             {visibleColumns.has('tags') && <th>{header('Tags', 'tags')}</th>}
             {visibleColumns.has('status') && <th>{header('Status', 'status')}</th>}
-            <th>Actions</th>
+            <th className="text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -212,13 +212,13 @@ export function DocumentList({
                 </td>
               )}
               {visibleColumns.has('status') && <td><span className={`rounded px-2 py-1 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></td>}
-              <td>
-                <div className="flex items-center gap-2">
+              <td className="text-right">
+                <div className="flex items-center justify-end gap-2">
                   <button type="button" title="Preview file" onClick={(event) => { event.stopPropagation(); onDocumentClick(document.documentId); }} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#2f3e83] text-white hover:bg-[#263472] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Preview ${document.fileName}`}>
                     <Eye className="h-5 w-5" />
                   </button>
-                  <button type="button" onClick={(event) => { event.stopPropagation(); onDownload?.(document.documentId); }} className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-[4px] bg-[#f1f4f8] px-3 text-xs font-medium text-[#52627a] hover:bg-[#e7ecf2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" aria-label={`Download ${document.fileName}`}>
-                    <Download className="h-4 w-4" /> Download
+                  <button type="button" title="Download file" onClick={(event) => { event.stopPropagation(); onDownload?.(document.documentId); }} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#f1f4f8] text-[#52627a] hover:bg-[#e7ecf2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" aria-label={`Download ${document.fileName}`}>
+                    <Download className="h-4 w-4" />
                   </button>
                 </div>
               </td>

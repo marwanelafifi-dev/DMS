@@ -20,7 +20,9 @@ public class DocumentsController(
 {
     // GET /api/documents — قائمة المستندات
     [HttpGet]
-    public async Task<ActionResult<object>> GetDocuments([FromQuery] Guid? folderId)
+    public async Task<ActionResult<object>> GetDocuments(
+        [FromQuery] Guid? folderId,
+        [FromQuery] string? search = null)
     {
         try
         {
@@ -28,6 +30,12 @@ public class DocumentsController(
 
             if (folderId.HasValue)
                 query = query.Where(d => d.FolderId == folderId);
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var searchTerm = search.Trim();
+                query = query.Where(d => EF.Functions.ILike(d.Title, $"%{searchTerm}%"));
+            }
 
             var documents = await (
                 from document in query
@@ -158,6 +166,19 @@ public class DocumentsController(
                 return BadRequest(new { success = false, error = "المجلد غير موجود" });
 
             // التحقق من وجود المالك
+            var folderPermission = await context.FolderPermissions
+                .FirstOrDefaultAsync(p => p.FolderId == req.FolderId && p.UserId == userId);
+
+            if (folderPermission == null ||
+                folderPermission.Role is not (FolderRoles.Writer or FolderRoles.Manager or FolderRoles.QA or FolderRoles.Admin))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    success = false,
+                    error = "Write permission is required to create documents in this folder"
+                });
+            }
+
             var ownerExists = await context.Users
                 .AnyAsync(u => u.UserId == req.OwnerId && u.IsActive);
 
@@ -437,6 +458,11 @@ public class DocumentsController(
             }
 
             // حذف النسخ من قاعدة البيانات
+            // Break the document/current-version cycle before deleting both
+            // sides of the required version-to-document relationship.
+            document.CurrentVersionId = null;
+            await context.SaveChangesAsync();
+
             context.DocumentVersions.RemoveRange(versions);
 
             // حذف المستند

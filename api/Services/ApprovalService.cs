@@ -242,47 +242,45 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
     {
         try
         {
-            var query = context.DocumentVersions
-                .Where(v => v.Status == "pending_approval");
+            var query = context.Documents
+                .Where(d => d.Status == "pending_approval");
 
             if (folderId.HasValue)
             {
-                query = query.Where(v => v.Document.FolderId == folderId);
+                query = query.Where(d => d.FolderId == folderId);
             }
 
             var totalCount = await query.CountAsync();
 
             var pending = await query
-                .OrderByDescending(v => v.SubmittedAt)
+                .OrderByDescending(d => d.UpdatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(v => new
+                .Select(d => new
                 {
-                    ApprovalId = v.VersionId,
-                    v.VersionId,
-                    v.DocumentId,
+                    ApprovalId = d.DocumentId,
+                    d.DocumentId,
+                    VersionId = d.CurrentVersionId,
                     Document = new
                     {
-                        v.Document.DocumentId,
-                        Name = v.Document.Title,
-                        v.Document.Title,
-                        v.Document.FolderId,
-                        v.Document.Status,
-                        CurrentVersionId = v.VersionId
+                        d.DocumentId,
+                        Name = d.Title,
+                        d.Title,
+                        d.FolderId,
+                        d.Status
                     },
-                    v.VersionNumber,
-                    v.Status,
+                    d.Status,
                     ApprovalStatus = "pending",
-                    SubmittedBy = v.SubmittedById,
-                    SubmittedByUser = v.SubmittedBy == null ? null : new
+                    SubmittedBy = d.OwnerId,
+                    SubmittedByUser = d.Owner == null ? null : new
                     {
-                        v.SubmittedBy.UserId,
-                        v.SubmittedBy.FullName,
-                        v.SubmittedBy.Email
+                        d.Owner.UserId,
+                        d.Owner.FullName,
+                        d.Owner.Email
                     },
-                    v.SubmittedAt,
-                    v.Document.FolderId,
-                    Comments = v.ApprovalComment
+                    SubmittedAt = d.UpdatedAt,
+                    d.FolderId,
+                    Comments = ""
                 })
                 .ToListAsync();
 

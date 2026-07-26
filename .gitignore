@@ -12,6 +12,9 @@ node_modules/
 web/dist/
 npm-debug.log*
 
+# Generated browser/test output
+artifacts/
+
 # Python
 __pycache__/
 *.pyc

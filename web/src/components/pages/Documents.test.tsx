@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Documents } from './Documents';
 import { apiClient } from '../../utils/api';
+import { mockLibraryFolders } from '../../fixtures/documentLibrary';
 import { doclingApi } from '../../services/doclingApi';
 
 function renderDocumentLibrary(initialEntry = '/documents') {
@@ -15,6 +16,22 @@ function renderDocumentLibrary(initialEntry = '/documents') {
 }
 
 describe('Document Library', () => {
+  beforeEach(() => {
+    vi.spyOn(apiClient, 'getFolders').mockResolvedValue({
+      success: true,
+      data: mockLibraryFolders,
+    });
+    vi.spyOn(apiClient, 'getDocuments').mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
+      id: file.name.length,
+      filename: file.name,
+      content: `# Parsed ${file.name}\n\nLocally extracted document content.`,
+    }));
+  });
+
   it('shows both mock folders', async () => {
     renderDocumentLibrary();
 
@@ -22,13 +39,13 @@ describe('Document Library', () => {
     expect(screen.getByRole('button', { name: 'Folder 2' })).toBeInTheDocument();
   });
 
-  it('places the folder section in a left sidebar next to the document table', async () => {
+  it('keeps the folder section responsive next to the document table', async () => {
     renderDocumentLibrary();
 
     const folderSection = await screen.findByTestId('folder-section');
     const table = await screen.findByRole('table', { name: 'Documents' });
 
-    expect(folderSection).toHaveClass('w-64');
+    expect(folderSection).toHaveClass('w-full', 'max-h-56', 'md:w-56', 'md:max-h-none');
     expect(folderSection).toBeInTheDocument();
     expect(table).toBeInTheDocument();
   });
@@ -68,7 +85,7 @@ describe('Document Library', () => {
     expect(screen.getAllByText(/\d{2} \w{3} 2026, \d{2}:\d{2}/).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keeps Actions as the final right-aligned table column without horizontal overflow', async () => {
+  it('keeps Actions as the final right-aligned column inside the table scroller', async () => {
     renderDocumentLibrary();
     const table = await screen.findByRole('table', { name: 'Documents' });
     const headers = within(table).getAllByRole('columnheader');
@@ -77,7 +94,7 @@ describe('Document Library', () => {
     expect(headers.at(-1)).toHaveTextContent('Actions');
     expect(headers.at(-1)).toHaveClass('text-right');
     expect(firstRowCells.at(-1)).toHaveClass('text-right');
-    expect(table.parentElement).toHaveClass('overflow-x-hidden');
+    expect(table.parentElement).toHaveClass('overflow-x-auto');
     expect(within(table).queryByRole('columnheader', { name: 'Size' })).not.toBeInTheDocument();
   });
 
@@ -90,7 +107,7 @@ describe('Document Library', () => {
     expect(previewButtons).toHaveLength(7);
     expect(downloadButtons).toHaveLength(7);
     previewButtons.forEach((button) => {
-      expect(button).toHaveAttribute('title', 'View file');
+      expect(button).toHaveAttribute('title', 'Preview file');
       expect(button).toHaveTextContent('');
     });
     downloadButtons.forEach((button) => {
@@ -173,12 +190,9 @@ describe('Document Library', () => {
     vi.spyOn(apiClient, 'createDocument')
       .mockResolvedValueOnce({ success: true, data: { documentId: 'uploaded-one', status: 'draft' } })
       .mockResolvedValueOnce({ success: true, data: { documentId: 'uploaded-two', status: 'draft' } });
-    const upload = vi.spyOn(apiClient, 'uploadDocument').mockResolvedValue({ success: true });
-    const parse = vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
-      id: file.name.length,
-      filename: file.name,
-      content: `# Parsed ${file.name}\n\nLocally extracted document content.`,
-    }));
+    const upload = vi.spyOn(apiClient, 'uploadDocument')
+      .mockResolvedValueOnce({ success: true, data: { versionId: 'version-one' } })
+      .mockResolvedValueOnce({ success: true, data: { versionId: 'version-two' } });
     renderDocumentLibrary();
 
     const files = [
@@ -191,9 +205,11 @@ describe('Document Library', () => {
     expect(await screen.findByText('Incoming Audit.pdf')).toBeInTheDocument();
     expect(screen.getByText('Training Pack.pdf')).toBeInTheDocument();
     expect(upload).toHaveBeenCalledTimes(2);
-    expect(parse).toHaveBeenCalledTimes(2);
-    expect(parse).toHaveBeenNthCalledWith(1, files[0]);
-    expect(parse).toHaveBeenNthCalledWith(2, files[1]);
+    expect(upload).toHaveBeenNthCalledWith(1, 'uploaded-one', files[0]);
+    expect(upload).toHaveBeenNthCalledWith(2, 'uploaded-two', files[1]);
+    expect(doclingApi.uploadDocument).toHaveBeenCalledTimes(2);
+    expect(doclingApi.uploadDocument).toHaveBeenNthCalledWith(1, files[0]);
+    expect(doclingApi.uploadDocument).toHaveBeenNthCalledWith(2, files[1]);
 
     await user.click(screen.getByRole('button', { name: 'Preview Incoming Audit.pdf' }));
     expect(screen.getByRole('heading', { name: 'Parsed Incoming Audit.pdf' })).toBeInTheDocument();
@@ -206,9 +222,12 @@ describe('Document Library', () => {
       success: true,
       data: { documentId: 'processing-document', status: 'draft' },
     });
-    vi.spyOn(apiClient, 'uploadDocument').mockResolvedValue({ success: true });
+    vi.spyOn(apiClient, 'uploadDocument').mockResolvedValue({
+      success: true,
+      data: { versionId: 'processing-version' },
+    });
     let finishParsing!: (document: { id: number; filename: string; content: string }) => void;
-    vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(
+    vi.mocked(doclingApi.uploadDocument).mockImplementation(
       () => new Promise((resolve) => {
         finishParsing = resolve;
       }),
@@ -231,6 +250,51 @@ describe('Document Library', () => {
       });
     });
     expect(await screen.findByText(file.name)).toBeInTheDocument();
+  });
+
+  it('restores an uploaded document from the API after the library remounts', async () => {
+    const user = userEvent.setup();
+    const uploadedAt = '2026-07-26T10:00:00.000Z';
+    const persistedDocument = {
+      documentId: 'persisted-upload',
+      currentVersionId: 'persisted-version',
+      folderId: 'folder-1',
+      name: 'Persistent Upload',
+      title: 'Persistent Upload',
+      fileName: 'Persistent Upload.txt',
+      fileSize: 18,
+      contentType: 'text/plain',
+      status: 'draft',
+      uploadedBy: '00000000-0000-0000-0000-000000000001',
+      uploadedAt,
+      createdAt: uploadedAt,
+      updatedAt: uploadedAt,
+    };
+    vi.mocked(apiClient.getDocuments)
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValue({ success: true, data: [persistedDocument] });
+    vi.spyOn(apiClient, 'createDocument').mockResolvedValue({
+      success: true,
+      data: { documentId: persistedDocument.documentId, status: 'draft', createdAt: uploadedAt },
+    });
+    vi.spyOn(apiClient, 'uploadDocument').mockResolvedValue({
+      success: true,
+      data: { versionId: persistedDocument.currentVersionId },
+    });
+
+    const firstRender = renderDocumentLibrary();
+    await user.upload(
+      await screen.findByLabelText('Select documents to upload'),
+      new File(['persistent upload'], persistedDocument.fileName, { type: persistedDocument.contentType }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Upload 1 file' }));
+    expect(await screen.findByText(persistedDocument.fileName)).toBeInTheDocument();
+
+    firstRender.unmount();
+    renderDocumentLibrary();
+
+    expect(await screen.findByText(persistedDocument.fileName)).toBeInTheDocument();
+    expect(apiClient.getDocuments).toHaveBeenCalledTimes(2);
   });
 
   it('copies selected documents to a destination with a safe name', async () => {
@@ -394,7 +458,7 @@ describe('Document Library', () => {
     expect(screen.queryByRole('button', { name: 'Actions for selected items' })).not.toBeInTheDocument();
   });
 
-  it('fills the viewport below the top navigation and gives the PDF viewer all remaining space', async () => {
+  it('fills the preview workspace and gives the PDF viewer all remaining space', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
     await user.click(await screen.findByRole('button', { name: 'Preview Calibration Procedure SOP-204.pdf' }));
@@ -403,15 +467,12 @@ describe('Document Library', () => {
     const body = screen.getByTestId('document-preview-body');
     const viewer = screen.getByTitle('PDF preview of Calibration Procedure SOP-204.pdf');
 
-    expect(overlay).toHaveClass('top-[68px]', 'h-[calc(100dvh-68px)]', 'overflow-hidden');
+    expect(overlay).toHaveClass('fixed', 'inset-y-0', 'overflow-hidden');
     expect(body).toHaveClass('min-h-0', 'flex-1', 'overflow-hidden');
     expect(viewer).toHaveClass('block', 'h-full', 'w-full');
     expect(viewer.className).not.toMatch(/65vh|min-h-\[/);
     expect(document.body.style.overflow).toBe('hidden');
 
-    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 720 });
-    fireEvent(window, new Event('resize'));
-    expect(overlay).toHaveClass('h-[calc(100dvh-68px)]');
   });
 
   it('keeps read-only document downloads working', async () => {
@@ -478,7 +539,7 @@ describe('Document Library', () => {
   });
 
   it('shows an inline fallback when a linked live preview cannot be loaded', async () => {
-    vi.spyOn(apiClient, 'getDocument').mockRejectedValueOnce(new Error('offline'));
+    vi.spyOn(apiClient, 'getDocument').mockRejectedValue(new Error('offline'));
     renderDocumentLibrary('/documents?preview=live-document-id');
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();

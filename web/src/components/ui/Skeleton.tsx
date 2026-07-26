@@ -28,12 +28,12 @@ export function SkeletonCard() {
 
 export function SkeletonTable() {
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2 overflow-hidden">
       {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="flex gap-4 p-4 bg-gray-100 dark:bg-navy-900 rounded-lg">
-          <div className="h-4 bg-gray-200 dark:bg-navy-800 rounded animate-skeleton flex-1" />
-          <div className="h-4 bg-gray-200 dark:bg-navy-800 rounded animate-skeleton flex-1" />
-          <div className="h-4 bg-gray-200 dark:bg-navy-800 rounded animate-skeleton flex-1" />
+        <div key={i} className="flex min-w-0 gap-4 rounded-lg bg-gray-100 p-4 dark:bg-navy-900">
+          <div className="h-4 min-w-0 flex-1 animate-skeleton rounded bg-gray-200 dark:bg-navy-800" />
+          <div className="h-4 min-w-0 flex-1 animate-skeleton rounded bg-gray-200 dark:bg-navy-800" />
+          <div className="h-4 min-w-0 flex-1 animate-skeleton rounded bg-gray-200 dark:bg-navy-800" />
         </div>
       ))}
     </div>
