@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Documents } from './Documents';
 import { apiClient } from '../../utils/api';
+import { doclingApi } from '../../services/doclingApi';
 
 function renderDocumentLibrary(initialEntry = '/documents') {
   return render(
@@ -173,6 +174,11 @@ describe('Document Library', () => {
       .mockResolvedValueOnce({ success: true, data: { documentId: 'uploaded-one', status: 'draft' } })
       .mockResolvedValueOnce({ success: true, data: { documentId: 'uploaded-two', status: 'draft' } });
     const upload = vi.spyOn(apiClient, 'uploadDocument').mockResolvedValue({ success: true });
+    const parse = vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
+      id: file.name.length,
+      filename: file.name,
+      content: `# Parsed ${file.name}\n\nLocally extracted document content.`,
+    }));
     renderDocumentLibrary();
 
     const files = [
@@ -185,6 +191,46 @@ describe('Document Library', () => {
     expect(await screen.findByText('Incoming Audit.pdf')).toBeInTheDocument();
     expect(screen.getByText('Training Pack.pdf')).toBeInTheDocument();
     expect(upload).toHaveBeenCalledTimes(2);
+    expect(parse).toHaveBeenCalledTimes(2);
+    expect(parse).toHaveBeenNthCalledWith(1, files[0]);
+    expect(parse).toHaveBeenNthCalledWith(2, files[1]);
+
+    await user.click(screen.getByRole('button', { name: 'Preview Incoming Audit.pdf' }));
+    expect(screen.getByRole('heading', { name: 'Parsed Incoming Audit.pdf' })).toBeInTheDocument();
+    expect(screen.getByText('Locally extracted document content.')).toBeInTheDocument();
+  });
+
+  it('shows active Docling conversion progress while a file is being parsed', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, 'createDocument').mockResolvedValue({
+      success: true,
+      data: { documentId: 'processing-document', status: 'draft' },
+    });
+    vi.spyOn(apiClient, 'uploadDocument').mockResolvedValue({ success: true });
+    let finishParsing!: (document: { id: number; filename: string; content: string }) => void;
+    vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(
+      () => new Promise((resolve) => {
+        finishParsing = resolve;
+      }),
+    );
+    renderDocumentLibrary();
+    const file = new File(['pending'], 'cpu-conversion.pdf', { type: 'application/pdf' });
+
+    await user.upload(screen.getByLabelText('Select documents to upload'), file);
+    await user.click(screen.getByRole('button', { name: 'Upload 1 file' }));
+
+    const status = await screen.findByRole('status', { name: 'Converting document with Docling' });
+    expect(status).toHaveTextContent('Converting cpu-conversion.pdf locally with Docling');
+    expect(screen.getByRole('button', { name: 'Converting...' })).toBeDisabled();
+
+    await act(async () => {
+      finishParsing({
+        id: 31,
+        filename: file.name,
+        content: '# CPU conversion complete',
+      });
+    });
+    expect(await screen.findByText(file.name)).toBeInTheDocument();
   });
 
   it('copies selected documents to a destination with a safe name', async () => {

@@ -3,6 +3,7 @@ import { AlertCircle, Download, FileText, Lock, Presentation, Sheet, X } from 'l
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
+import { MarkdownViewer } from './MarkdownViewer';
 
 interface DocumentPreviewProps {
   document: MockLibraryDocument;
@@ -83,6 +84,8 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
     if (hasError) return <PreviewFallback onDownload={() => onDownload(document)} />;
 
     switch (document.preview.kind) {
+      case 'markdown':
+        return <MarkdownViewer content={document.preview.content} />;
       case 'text':
         return <pre className="min-h-[420px] whitespace-pre-wrap rounded-[4px] border border-[#e2e8f0] bg-white p-6 font-mono text-sm leading-7 text-[#334155] shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">{document.preview.content}</pre>;
       case 'image':

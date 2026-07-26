@@ -6,6 +6,7 @@ export type RequiredLibraryFileExtension = (typeof requiredLibraryExtensions)[nu
 export type LibraryFileExtension = RequiredLibraryFileExtension | 'jpg' | 'jpeg' | 'file';
 
 type TextPreview = { kind: 'text'; content: string };
+type MarkdownPreview = { kind: 'markdown'; content: string };
 type WordPreview = { kind: 'word'; title: string; paragraphs: string[] };
 type SpreadsheetPreview = { kind: 'spreadsheet'; columns: string[]; rows: string[][] };
 type PresentationPreview = { kind: 'presentation'; slides: Array<{ title: string; bullets: string[] }> };
@@ -13,7 +14,7 @@ type PdfPreview = { kind: 'pdf'; url: string };
 type ImagePreview = { kind: 'image'; url: string; alt: string };
 type UnavailablePreview = { kind: 'unavailable'; message: string };
 
-export type LibraryPreview = TextPreview | WordPreview | SpreadsheetPreview | PresentationPreview | PdfPreview | ImagePreview | UnavailablePreview;
+export type LibraryPreview = TextPreview | MarkdownPreview | WordPreview | SpreadsheetPreview | PresentationPreview | PdfPreview | ImagePreview | UnavailablePreview;
 
 export interface MockLibraryDocument extends Document {
   extension: LibraryFileExtension;

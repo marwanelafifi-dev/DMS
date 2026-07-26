@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { UploadCloud, X } from 'lucide-react';
+import { LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
@@ -25,6 +25,7 @@ import {
   renameLibraryItem,
   selectionContainsNonEmptyFolder,
 } from '../../services/documentLibraryOperations';
+import { doclingApi } from '../../services/doclingApi';
 
 const defaultFolder = mockLibraryFolders[0];
 
@@ -37,6 +38,8 @@ export function Documents() {
   const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [activeUploadStage, setActiveUploadStage] = useState<'uploading' | 'parsing'>('uploading');
+  const [activeUploadFileName, setActiveUploadFileName] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
@@ -277,9 +280,12 @@ export function Documents() {
     setUploadProgress({ complete: 0, total: uploadFiles.length });
     const uploaded: MockLibraryDocument[] = [];
     const errors: string[] = [];
+    const parseErrors: string[] = [];
     try {
       for (const uploadFile of uploadFiles) {
         try {
+          setActiveUploadStage('uploading');
+          setActiveUploadFileName(uploadFile.name);
           const docRes = await apiClient.createDocument({
             folderId: selectedFolderId,
             title: uploadFile.name.replace(/\.[^/.]+$/, ''),
@@ -287,6 +293,15 @@ export function Documents() {
           });
           if (!docRes.data?.documentId) throw new Error('The server did not return a document ID');
           await apiClient.uploadDocument(docRes.data.documentId, uploadFile);
+          setActiveUploadStage('parsing');
+          let parsedContent: string | undefined;
+          try {
+            const parsedDocument = await doclingApi.uploadDocument(uploadFile);
+            parsedContent = parsedDocument.content;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Local parsing failed';
+            parseErrors.push(`${uploadFile.name}: ${message}`);
+          }
 
           const extension = uploadFile.name.toLowerCase().split('.').pop();
           const sourceUrl = URL.createObjectURL(uploadFile);
@@ -315,9 +330,17 @@ export function Documents() {
             'A browser preview is not available for this newly uploaded file. Download the read-only source to view it locally.',
           );
           uploadedDocument.sourceUrl = sourceUrl;
-          if (extension === 'txt') uploadedDocument.preview = { kind: 'text', content: await uploadFile.text() };
-          if (extension === 'pdf') uploadedDocument.preview = { kind: 'pdf', url: sourceUrl };
-          if (['png', 'jpg', 'jpeg'].includes(extension ?? '')) uploadedDocument.preview = { kind: 'image', url: sourceUrl, alt: uploadFile.name };
+          if (parsedContent) {
+            uploadedDocument.preview = { kind: 'markdown', content: parsedContent };
+            uploadedDocument.fallbackDownload = {
+              fileName: `${uploadFile.name.replace(/\.[^/.]+$/, '')}.md`,
+              content: parsedContent,
+            };
+          } else {
+            if (extension === 'txt') uploadedDocument.preview = { kind: 'text', content: await uploadFile.text() };
+            if (extension === 'pdf') uploadedDocument.preview = { kind: 'pdf', url: sourceUrl };
+            if (['png', 'jpg', 'jpeg'].includes(extension ?? '')) uploadedDocument.preview = { kind: 'image', url: sourceUrl, alt: uploadFile.name };
+          }
           uploaded.push(uploadedDocument);
         } catch (error: any) {
           errors.push(error.response?.data?.error || `${uploadFile.name} could not be uploaded`);
@@ -327,13 +350,16 @@ export function Documents() {
       }
       if (uploaded.length > 0) setAllDocuments((current) => [...current, ...uploaded]);
       if (errors.length > 0) showError(`${uploaded.length} uploaded; ${errors.length} failed`);
-      else showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} uploaded successfully`);
+      else if (parseErrors.length > 0) showError(`${uploaded.length} uploaded; ${parseErrors.length} could not be parsed locally`);
+      else showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} uploaded and parsed locally`);
       if (errors.length === 0) {
         setShowUploadModal(false);
         setUploadFiles([]);
       }
     } finally {
       setIsUploading(false);
+      setActiveUploadFileName('');
+      setActiveUploadStage('uploading');
     }
   };
 
@@ -480,14 +506,20 @@ export function Documents() {
               </div>
               <p className="text-xs text-[#718198]">{selectedFolder ? `Uploading to ${selectedFolder.name}. New documents remain view-only while entering review.` : 'A folder is required before uploading documents.'}</p>
               {isUploading && (
-                <div role="status" aria-label="Upload progress" className="space-y-1.5">
-                  <div className="flex justify-between text-xs text-[#52627a]"><span>Uploading</span><span>{uploadProgress.complete} / {uploadProgress.total}</span></div>
+                <div role="status" aria-label={activeUploadStage === 'parsing' ? 'Converting document with Docling' : 'Upload progress'} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 text-xs text-[#52627a]">
+                    <span className="flex min-w-0 items-center gap-2">
+                      {activeUploadStage === 'parsing' && <LoaderCircle className="h-6 w-6 flex-shrink-0 animate-spin text-[#3f8bca]" />}
+                      <span className="truncate">{activeUploadStage === 'parsing' ? `Converting ${activeUploadFileName} locally with Docling` : `Uploading ${activeUploadFileName}`}</span>
+                    </span>
+                    <span>{uploadProgress.complete} / {uploadProgress.total}</span>
+                  </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#3f8bca] transition-all" style={{ width: `${uploadProgress.total ? (uploadProgress.complete / uploadProgress.total) * 100 : 0}%` }} /></div>
                 </div>
               )}
               <div className="flex justify-end gap-2">
                 <Button variant="secondary" onClick={closeUploadModal} disabled={isUploading}>Cancel</Button>
-                <Button onClick={handleUploadDocument} disabled={uploadFiles.length === 0 || isUploading}>{isUploading ? 'Uploading...' : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'file' : 'files'}`}</Button>
+                <Button onClick={handleUploadDocument} disabled={uploadFiles.length === 0 || isUploading}>{isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'file' : 'files'}`}</Button>
               </div>
             </CardBody>
             </Card>
