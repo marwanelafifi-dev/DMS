@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
@@ -27,6 +27,10 @@ describe('Document Library', () => {
     });
     vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
       id: file.name.length,
+      filename: file.name,
+      content: `# Parsed ${file.name}\n\nLocally extracted document content.`,
+    }));
+    vi.spyOn(doclingApi, 'convertDocument').mockImplementation(async (file) => ({
       filename: file.name,
       content: `# Parsed ${file.name}\n\nLocally extracted document content.`,
     }));
@@ -59,6 +63,36 @@ describe('Document Library', () => {
 
     expect(inputClick).toHaveBeenCalledOnce();
     expect(screen.getByLabelText('Select documents to upload')).toHaveAttribute('multiple');
+  });
+
+  it('loads a complete sample-file pack into the upload dialog', async () => {
+    const user = userEvent.setup();
+    const sampleFileNames = [
+      'DMS-Sample-Text.txt',
+      'DMS-Sample-Document.docx',
+      'DMS-Sample-Spreadsheet.xlsx',
+      'DMS-Sample-Presentation.pptx',
+      'DMS-Sample-Report.pdf',
+      'DMS-Sample-Image.png',
+      'DMS-Sample-Photo.jpg',
+    ];
+    const fetchSample = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const fileName = decodeURIComponent(url.split('/').pop() ?? '');
+      return new Response(`sample:${fileName}`, {
+        status: 200,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      });
+    });
+    renderDocumentLibrary();
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample files' }));
+
+    expect(await screen.findByRole('button', { name: 'Upload 7 files' })).toBeInTheDocument();
+    sampleFileNames.forEach((fileName) => {
+      expect(screen.getByText(fileName)).toBeInTheDocument();
+    });
+    expect(fetchSample).toHaveBeenCalledTimes(sampleFileNames.length);
   });
 
   it('shows the requested searchable metadata columns without Size', async () => {
@@ -216,6 +250,32 @@ describe('Document Library', () => {
     expect(screen.getByText('Locally extracted document content.')).toBeInTheDocument();
   });
 
+  it('shows an uploaded image itself instead of Docling placeholder Markdown', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, 'createDocument').mockResolvedValue({
+      success: true,
+      data: { documentId: 'uploaded-image', status: 'draft' },
+    });
+    vi.spyOn(apiClient, 'uploadDocument').mockResolvedValue({
+      success: true,
+      data: { versionId: 'uploaded-image-version' },
+    });
+    vi.mocked(doclingApi.uploadDocument).mockResolvedValue({
+      id: 81,
+      filename: 'Si-Ware Logo.jpg',
+      content: '<!-- image -->',
+    });
+    renderDocumentLibrary();
+    const image = new File(['image-bytes'], 'Si-Ware Logo.jpg', { type: 'image/jpeg' });
+
+    await user.upload(screen.getByLabelText('Select documents to upload'), image);
+    await user.click(screen.getByRole('button', { name: 'Upload 1 file' }));
+    await user.click(await screen.findByRole('button', { name: 'Preview Si-Ware Logo.jpg' }));
+
+    expect(screen.getByRole('img', { name: 'Si-Ware Logo.jpg' })).toBeInTheDocument();
+    expect(screen.queryByText('<!-- image -->')).not.toBeInTheDocument();
+  });
+
   it('shows active Docling conversion progress while a file is being parsed', async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, 'createDocument').mockResolvedValue({
@@ -281,6 +341,10 @@ describe('Document Library', () => {
       success: true,
       data: { versionId: persistedDocument.currentVersionId },
     });
+    const fetchDocumentFile = vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['Persistent source restored after reload'], { type: persistedDocument.contentType }),
+      fileName: persistedDocument.fileName,
+    });
 
     const firstRender = renderDocumentLibrary();
     await user.upload(
@@ -295,6 +359,102 @@ describe('Document Library', () => {
 
     expect(await screen.findByText(persistedDocument.fileName)).toBeInTheDocument();
     expect(apiClient.getDocuments).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('button', { name: `Preview ${persistedDocument.fileName}` }));
+
+    expect(await screen.findByText('Persistent source restored after reload', { selector: 'pre' })).toBeInTheDocument();
+    expect(screen.queryByText('Preview unavailable')).not.toBeInTheDocument();
+    expect(fetchDocumentFile).toHaveBeenCalledWith(
+      persistedDocument.documentId,
+      persistedDocument.currentVersionId,
+      expect.any(AbortSignal),
+    );
+    expect(doclingApi.uploadDocument).toHaveBeenCalledOnce();
+  });
+
+  it('restores a persisted Office preview through Docling', async () => {
+    const user = userEvent.setup();
+    const persistedOfficeDocument = {
+      documentId: 'persisted-presentation',
+      currentVersionId: 'persisted-presentation-version',
+      folderId: 'folder-1',
+      name: 'Persisted Operations Review Q3',
+      title: 'Persisted Operations Review Q3',
+      fileName: 'Persisted Operations Review Q3.pptx',
+      fileSize: 24,
+      contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      status: 'draft',
+      uploadedBy: '00000000-0000-0000-0000-000000000001',
+      uploadedAt: '2026-07-27T08:00:00.000Z',
+      createdAt: '2026-07-27T08:00:00.000Z',
+      updatedAt: '2026-07-27T08:00:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [persistedOfficeDocument],
+    });
+    const fetchDocumentFile = vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['stored-presentation'], { type: persistedOfficeDocument.contentType }),
+      fileName: persistedOfficeDocument.fileName,
+    });
+
+    renderDocumentLibrary();
+    await user.click(await screen.findByRole('button', { name: `Preview ${persistedOfficeDocument.fileName}` }));
+
+    expect(await screen.findByRole('heading', { name: `Parsed ${persistedOfficeDocument.fileName}` })).toBeInTheDocument();
+    expect(screen.queryByText('Preview unavailable')).not.toBeInTheDocument();
+    expect(fetchDocumentFile).toHaveBeenCalledWith(
+      persistedOfficeDocument.documentId,
+      persistedOfficeDocument.currentVersionId,
+      expect.any(AbortSignal),
+    );
+    expect(doclingApi.convertDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ name: persistedOfficeDocument.fileName }),
+      expect.any(AbortSignal),
+    );
+    expect(doclingApi.uploadDocument).not.toHaveBeenCalled();
+  });
+
+  it('cancels a persisted Office conversion when the preview closes', async () => {
+    const user = userEvent.setup();
+    const persistedOfficeDocument = {
+      documentId: 'pending-presentation',
+      currentVersionId: 'pending-presentation-version',
+      folderId: 'folder-1',
+      name: 'Pending Operations Review',
+      title: 'Pending Operations Review',
+      fileName: 'Pending Operations Review.pptx',
+      fileSize: 24,
+      contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      status: 'draft',
+      uploadedBy: '00000000-0000-0000-0000-000000000001',
+      uploadedAt: '2026-07-27T08:00:00.000Z',
+      createdAt: '2026-07-27T08:00:00.000Z',
+      updatedAt: '2026-07-27T08:00:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [persistedOfficeDocument],
+    });
+    vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['stored-presentation'], { type: persistedOfficeDocument.contentType }),
+      fileName: persistedOfficeDocument.fileName,
+    });
+    let conversionSignal: AbortSignal | undefined;
+    vi.mocked(doclingApi.convertDocument).mockImplementation((_file, signal) => {
+      conversionSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+
+    renderDocumentLibrary();
+    await user.click(await screen.findByRole('button', { name: `Preview ${persistedOfficeDocument.fileName}` }));
+    await waitFor(() => expect(doclingApi.convertDocument).toHaveBeenCalledOnce());
+    await user.click(screen.getByRole('button', { name: 'Close document preview' }));
+
+    expect(conversionSignal?.aborted).toBe(true);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('copies selected documents to a destination with a safe name', async () => {

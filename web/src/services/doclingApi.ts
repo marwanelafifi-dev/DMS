@@ -5,6 +5,8 @@ export interface ParsedDocument {
   created_at?: string;
 }
 
+export type ConvertedDocument = Pick<ParsedDocument, 'filename' | 'content'>;
+
 const DOCLING_API_ORIGIN = 'http://127.0.0.1:8000';
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
@@ -33,6 +35,21 @@ export const doclingApi = {
       },
     );
     return readJsonResponse<ParsedDocument>(response);
+  },
+
+  async convertDocument(file: File, signal?: AbortSignal): Promise<ConvertedDocument> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(
+      `${DOCLING_API_ORIGIN}/api/documents/convert`,
+      {
+        method: 'POST',
+        body: formData,
+        signal,
+      },
+    );
+    return readJsonResponse<ConvertedDocument>(response);
   },
 
   async searchDocuments(query: string, signal?: AbortSignal): Promise<ParsedDocument[]> {

@@ -33,6 +33,32 @@ describe('local Docling API client', () => {
     expect(options.headers).toBeUndefined();
   });
 
+  it('converts a stored source for preview without indexing it again', async () => {
+    const convertedDocument = {
+      filename: 'operations review.pptx',
+      content: '# Operations review',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(convertedDocument), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const file = new File(['stored-content'], convertedDocument.filename, {
+      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    });
+    const controller = new AbortController();
+
+    await expect(doclingApi.convertDocument(file, controller.signal)).resolves.toEqual(convertedDocument);
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:8000/api/documents/convert');
+    expect(options.method).toBe('POST');
+    expect((options.body as FormData).get('file')).toBe(file);
+    expect(options.signal).toBe(controller.signal);
+  });
+
   it('searches parsed document content with an encoded query', async () => {
     const matches = [
       {

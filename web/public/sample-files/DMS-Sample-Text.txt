@@ -1,0 +1,7 @@
+DMS Local Parsing Sample
+
+Document type: Plain text
+Tracking code: TXT-SAMPLE-4729
+
+This file verifies upload, persistent storage, browser preview, download, OCR search,
+and document workflow actions in the local Document Management System.

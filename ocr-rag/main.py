@@ -45,13 +45,7 @@ def initialize_database() -> None:
 initialize_database()
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "healthy", "service": "dms-docling"}
-
-
-@app.post("/api/documents/upload")
-def upload_document(file: UploadFile = File(...)) -> dict[str, int | str]:
+def convert_uploaded_file(file: UploadFile) -> tuple[str, str]:
     filename = Path(file.filename or "document").name
     suffix = Path(filename).suffix
     temporary_path: Path | None = None
@@ -72,6 +66,23 @@ def upload_document(file: UploadFile = File(...)) -> dict[str, int | str]:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
 
+    return filename, markdown_content
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "healthy", "service": "dms-docling"}
+
+
+@app.post("/api/documents/convert")
+def convert_document(file: UploadFile = File(...)) -> dict[str, str]:
+    filename, markdown_content = convert_uploaded_file(file)
+    return {"filename": filename, "content": markdown_content}
+
+
+@app.post("/api/documents/upload")
+def upload_document(file: UploadFile = File(...)) -> dict[str, int | str]:
+    filename, markdown_content = convert_uploaded_file(file)
     with closing(sqlite3.connect(DATABASE_PATH)) as connection:
         cursor = connection.execute(
             "INSERT INTO documents (filename, content) VALUES (?, ?)",

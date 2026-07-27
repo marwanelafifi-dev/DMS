@@ -130,6 +130,37 @@ class DocumentParsingApiTests(unittest.TestCase):
             ],
         )
 
+    def test_convert_returns_markdown_without_adding_a_search_record(self) -> None:
+        self.main.converter = _RecordingConverter(
+            "# Preview only\n\nThis conversion must not be indexed."
+        )
+
+        response = self.client.post(
+            "/api/documents/convert",
+            files={
+                "file": (
+                    "preview-only.pptx",
+                    b"local-pptx",
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "filename": "preview-only.pptx",
+                "content": "# Preview only\n\nThis conversion must not be indexed.",
+            },
+        )
+        search_response = self.client.get(
+            "/api/documents/search",
+            params={"q": "must not be indexed"},
+        )
+        self.assertEqual(search_response.status_code, 200)
+        self.assertEqual(search_response.json(), [])
+
     def test_cors_allows_the_local_frontend_to_upload(self) -> None:
         response = self.client.options(
             "/api/documents/upload",

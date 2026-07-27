@@ -12,9 +12,10 @@ type SpreadsheetPreview = { kind: 'spreadsheet'; columns: string[]; rows: string
 type PresentationPreview = { kind: 'presentation'; slides: Array<{ title: string; bullets: string[] }> };
 type PdfPreview = { kind: 'pdf'; url: string };
 type ImagePreview = { kind: 'image'; url: string; alt: string };
+type LoadingPreview = { kind: 'loading'; message: string };
 type UnavailablePreview = { kind: 'unavailable'; message: string };
 
-export type LibraryPreview = TextPreview | MarkdownPreview | WordPreview | SpreadsheetPreview | PresentationPreview | PdfPreview | ImagePreview | UnavailablePreview;
+export type LibraryPreview = TextPreview | MarkdownPreview | WordPreview | SpreadsheetPreview | PresentationPreview | PdfPreview | ImagePreview | LoadingPreview | UnavailablePreview;
 
 export interface MockLibraryDocument extends Document {
   extension: LibraryFileExtension;

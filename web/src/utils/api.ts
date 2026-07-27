@@ -150,21 +150,27 @@ class APIClient {
     return data;
   }
 
-  async downloadDocument(documentId: string, versionId: string) {
+  async getDocumentFile(documentId: string, versionId: string, signal?: AbortSignal) {
     const response = await this.client.get(`/documents/${documentId}/versions/${versionId}/download`, {
       responseType: 'blob',
+      signal,
     });
     const disposition = response.headers['content-disposition'] as string | undefined;
     const encodedFileName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
     const quotedFileName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
     const fileName = encodedFileName ? decodeURIComponent(encodedFileName) : quotedFileName || `document-${versionId}`;
-    const objectUrl = URL.createObjectURL(response.data);
+    return { blob: response.data as Blob, fileName };
+  }
+
+  async downloadDocument(documentId: string, versionId: string) {
+    const { blob, fileName } = await this.getDocumentFile(documentId, versionId);
+    const objectUrl = URL.createObjectURL(blob);
     const link = window.document.createElement('a');
     link.href = objectUrl;
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(objectUrl);
-    return response.data;
+    return blob;
   }
 
   // Document Approval

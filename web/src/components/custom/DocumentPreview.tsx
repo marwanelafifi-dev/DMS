@@ -39,13 +39,17 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
 }
 
 export function DocumentPreview({ document, onClose, onDownload }: DocumentPreviewProps) {
-  const [isLoading, setIsLoading] = useState(document.preview.kind === 'image' || document.preview.kind === 'pdf');
+  const [isLoading, setIsLoading] = useState(
+    document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
+  );
   const [hasError, setHasError] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    setIsLoading(document.preview.kind === 'image' || document.preview.kind === 'pdf');
+    setIsLoading(
+      document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
+    );
     setHasError(false);
   }, [document]);
 
@@ -87,6 +91,8 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
     if (hasError) return <PreviewFallback onDownload={() => onDownload(document)} />;
 
     switch (document.preview.kind) {
+      case 'loading':
+        return null;
       case 'markdown':
         return <MarkdownViewer content={document.preview.content} />;
       case 'text':
@@ -223,7 +229,7 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
         <div data-testid="document-preview-body" className={`relative min-h-0 flex-1 overflow-hidden ${document.preview.kind === 'pdf' ? '' : 'p-6'}`}>
           {isLoading && (
             <div className="absolute inset-6 z-10 flex items-center justify-center rounded-[4px] bg-white/95 dark:bg-slate-900/95" role="status">
-              <div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#3f8bca]" /><p className="mt-3 text-sm text-[#718198]">Loading preview...</p></div>
+              <div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#3f8bca]" /><p className="mt-3 text-sm text-[#718198]">{document.preview.kind === 'loading' ? document.preview.message : 'Loading preview...'}</p></div>
             </div>
           )}
           <div className="h-full overflow-auto">

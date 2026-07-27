@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { LoaderCircle, UploadCloud, X } from 'lucide-react';
+import { Files, LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
@@ -13,6 +13,7 @@ import { apiClient, DEV_USER_ID } from '../../utils/api';
 import {
   createUnavailableLibraryDocument,
   mockLibraryDocuments,
+  type LibraryPreview,
   type MockLibraryDocument,
 } from '../../fixtures/documentLibrary';
 import type { Document, Folder } from '../../types';
@@ -25,6 +26,47 @@ import {
   selectionContainsNonEmptyFolder,
 } from '../../services/documentLibraryOperations';
 import { doclingApi } from '../../services/doclingApi';
+import { loadSampleDocumentFiles } from '../../fixtures/sampleFiles';
+
+function readBlobAsText(blob: Blob): Promise<string> {
+  if (typeof blob.text === 'function') return blob.text();
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('The document text could not be read'));
+    reader.readAsText(blob);
+  });
+}
+
+const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'csv', 'md', 'markdown', 'json', 'xml', 'log']);
+const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+
+function getFileExtension(fileName: string): string {
+  return fileName.toLowerCase().split('.').pop() ?? '';
+}
+
+async function createNativePreview(
+  source: Blob,
+  fileName: string,
+  contentType: string,
+  sourceUrl: string,
+): Promise<LibraryPreview | null> {
+  const extension = getFileExtension(fileName);
+  if (contentType.startsWith('text/') || TEXT_PREVIEW_EXTENSIONS.has(extension)) {
+    const content = await readBlobAsText(source);
+    return extension === 'md' || extension === 'markdown'
+      ? { kind: 'markdown', content }
+      : { kind: 'text', content };
+  }
+  if (contentType === 'application/pdf' || extension === 'pdf') {
+    return { kind: 'pdf', url: sourceUrl };
+  }
+  if (contentType.startsWith('image/') || IMAGE_PREVIEW_EXTENSIONS.has(extension)) {
+    return { kind: 'image', url: sourceUrl, alt: fileName };
+  }
+  return null;
+}
 
 export function Documents() {
   const { showSuccess, showError } = useToast();
@@ -35,6 +77,7 @@ export function Documents() {
   const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoadingSamples, setIsLoadingSamples] = useState(false);
   const [activeUploadStage, setActiveUploadStage] = useState<'uploading' | 'parsing'>('uploading');
   const [activeUploadFileName, setActiveUploadFileName] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -49,6 +92,8 @@ export function Documents() {
   const [visibleColumns, setVisibleColumns] = useState<Set<OptionalDocumentColumn>>(() => new Set(defaultVisibleDocumentColumns));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
+  const previewRequestRef = useRef(0);
+  const previewAbortControllerRef = useRef<AbortController | null>(null);
 
   const documents = useMemo(() => allDocuments.filter((document) => document.folderId === selectedFolderId), [allDocuments, selectedFolderId]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
@@ -133,6 +178,8 @@ export function Documents() {
   }, [selectedFolderId]);
 
   useEffect(() => () => {
+    previewRequestRef.current += 1;
+    previewAbortControllerRef.current?.abort();
     objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
@@ -140,6 +187,106 @@ export function Documents() {
     (documentId: string) => allDocuments.find((document) => document.documentId === documentId),
     [allDocuments],
   );
+
+  const loadPersistedPreview = useCallback(async (
+    libraryDocument: MockLibraryDocument,
+    requestId: number,
+    signal: AbortSignal,
+  ) => {
+    if (libraryDocument.preview.kind !== 'unavailable' || !libraryDocument.currentVersionId) return;
+
+    const showLoadingPreview = (message: string) => {
+      if (previewRequestRef.current !== requestId) return;
+      setPreviewDocument({
+        ...libraryDocument,
+        preview: { kind: 'loading', message },
+      });
+    };
+
+    showLoadingPreview(`Loading ${libraryDocument.fileName} from secure storage...`);
+
+    let sourceUrl: string | undefined;
+    try {
+      const { blob, fileName } = await apiClient.getDocumentFile(
+        libraryDocument.documentId,
+        libraryDocument.currentVersionId,
+        signal,
+      );
+      if (signal.aborted || previewRequestRef.current !== requestId) return;
+
+      const resolvedFileName = fileName || libraryDocument.fileName;
+      const contentType = blob.type || libraryDocument.contentType || 'application/octet-stream';
+
+      sourceUrl = URL.createObjectURL(blob);
+      objectUrlsRef.current.add(sourceUrl);
+
+      let preview = await createNativePreview(blob, resolvedFileName, contentType, sourceUrl);
+      let fallbackDownload = libraryDocument.fallbackDownload;
+
+      if (!preview) {
+        showLoadingPreview(`Converting ${resolvedFileName} locally with Docling...`);
+        const parsedDocument = await doclingApi.convertDocument(
+          new File([blob], resolvedFileName, { type: contentType }),
+          signal,
+        );
+        preview = { kind: 'markdown', content: parsedDocument.content };
+        fallbackDownload = {
+          fileName: `${resolvedFileName.replace(/\.[^/.]+$/, '')}.md`,
+          content: parsedDocument.content,
+        };
+      }
+
+      if (signal.aborted || previewRequestRef.current !== requestId) {
+        URL.revokeObjectURL(sourceUrl);
+        objectUrlsRef.current.delete(sourceUrl);
+        return;
+      }
+
+      const restoredDocument: MockLibraryDocument = {
+        ...libraryDocument,
+        fileName: resolvedFileName,
+        contentType,
+        sourceUrl,
+        fallbackDownload,
+        preview,
+      };
+      setAllDocuments((current) => current.map((document) =>
+        document.documentId === restoredDocument.documentId ? restoredDocument : document,
+      ));
+      setPreviewDocument(restoredDocument);
+    } catch (error) {
+      if (sourceUrl) {
+        URL.revokeObjectURL(sourceUrl);
+        objectUrlsRef.current.delete(sourceUrl);
+      }
+      if (previewRequestRef.current !== requestId) return;
+
+      const message = error instanceof Error ? error.message : 'The stored source could not be loaded';
+      console.error('Failed to restore document preview:', error);
+      setPreviewDocument({
+        ...libraryDocument,
+        preview: {
+          kind: 'unavailable',
+          message: `${message}. Download the read-only source to view it locally.`,
+        },
+      });
+      showError('Document preview could not be loaded');
+    }
+  }, [showError]);
+
+  const hydrateDocumentPreview = useCallback((libraryDocument: MockLibraryDocument) => {
+    previewAbortControllerRef.current?.abort();
+    const requestId = ++previewRequestRef.current;
+    setPreviewDocument(libraryDocument);
+
+    if (libraryDocument.preview.kind === 'unavailable' && libraryDocument.currentVersionId) {
+      const controller = new AbortController();
+      previewAbortControllerRef.current = controller;
+      void loadPersistedPreview(libraryDocument, requestId, controller.signal);
+    } else {
+      previewAbortControllerRef.current = null;
+    }
+  }, [loadPersistedPreview]);
 
   useEffect(() => {
     if (folders.some((folder) => folder.folderId === selectedFolderId)) return;
@@ -152,7 +299,7 @@ export function Documents() {
     const requestedDocument = findLibraryDocument(previewId);
     if (requestedDocument) {
       setSelectedFolderId(requestedDocument.folderId);
-      setPreviewDocument(requestedDocument);
+      hydrateDocumentPreview(requestedDocument);
       return;
     }
 
@@ -161,10 +308,11 @@ export function Documents() {
       try {
         const response = await apiClient.getDocument(previewId);
         if (cancelled || !response.data) throw new Error('Document metadata was not returned');
-        setPreviewDocument(createUnavailableLibraryDocument(
+        const requestedDocument = createUnavailableLibraryDocument(
           response.data,
           'This live document does not expose a browser-safe preview. Download the read-only source to view it locally.',
-        ));
+        );
+        hydrateDocumentPreview(requestedDocument);
       } catch {
         if (cancelled) return;
         const placeholder: Document = {
@@ -187,7 +335,7 @@ export function Documents() {
     };
     void loadApiDocument();
     return () => { cancelled = true; };
-  }, [findLibraryDocument, searchParams]);
+  }, [findLibraryDocument, hydrateDocumentPreview, searchParams]);
 
   const filteredDocuments = useMemo(() => documents.filter((document) => {
     const query = searchQuery.trim().toLowerCase();
@@ -210,11 +358,17 @@ export function Documents() {
   }, [setSearchParams]);
 
   const closePreview = useCallback(() => {
+    previewAbortControllerRef.current?.abort();
+    previewAbortControllerRef.current = null;
+    previewRequestRef.current += 1;
     setPreviewDocument(null);
     clearPreviewParam();
   }, [clearPreviewParam]);
 
   const handleFolderSelect = (folderId: string) => {
+    previewAbortControllerRef.current?.abort();
+    previewAbortControllerRef.current = null;
+    previewRequestRef.current += 1;
     setSelectedFolderId(folderId);
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set());
@@ -358,7 +512,6 @@ export function Documents() {
             parseErrors.push(`${uploadFile.name}: ${message}`);
           }
 
-          const extension = uploadFile.name.toLowerCase().split('.').pop();
           const sourceUrl = URL.createObjectURL(uploadFile);
           objectUrlsRef.current.add(sourceUrl);
           const timestamp = new Date().toISOString();
@@ -385,16 +538,28 @@ export function Documents() {
             'A browser preview is not available for this newly uploaded file. Download the read-only source to view it locally.',
           );
           uploadedDocument.sourceUrl = sourceUrl;
-          if (parsedContent) {
+          const nativePreview = await createNativePreview(
+            uploadFile,
+            uploadFile.name,
+            uploadFile.type || 'application/octet-stream',
+            sourceUrl,
+          );
+          if (nativePreview?.kind === 'image') {
+            uploadedDocument.preview = nativePreview;
+            if (parsedContent) {
+              uploadedDocument.fallbackDownload = {
+                fileName: `${uploadFile.name.replace(/\.[^/.]+$/, '')}.md`,
+                content: parsedContent,
+              };
+            }
+          } else if (parsedContent) {
             uploadedDocument.preview = { kind: 'markdown', content: parsedContent };
             uploadedDocument.fallbackDownload = {
               fileName: `${uploadFile.name.replace(/\.[^/.]+$/, '')}.md`,
               content: parsedContent,
             };
-          } else {
-            if (extension === 'txt') uploadedDocument.preview = { kind: 'text', content: await uploadFile.text() };
-            if (extension === 'pdf') uploadedDocument.preview = { kind: 'pdf', url: sourceUrl };
-            if (['png', 'jpg', 'jpeg'].includes(extension ?? '')) uploadedDocument.preview = { kind: 'image', url: sourceUrl, alt: uploadFile.name };
+          } else if (nativePreview) {
+            uploadedDocument.preview = nativePreview;
           }
           uploaded.push(uploadedDocument);
         } catch (error: any) {
@@ -428,6 +593,25 @@ export function Documents() {
     setUploadFiles(files);
     setUploadProgress({ complete: 0, total: files.length });
     setShowUploadModal(true);
+  };
+
+  const handleLoadSampleFiles = async () => {
+    if (!selectedFolder) {
+      showError('Create or restore a folder before loading sample files');
+      return;
+    }
+
+    setIsLoadingSamples(true);
+    try {
+      const files = await loadSampleDocumentFiles();
+      stageFiles(files);
+      showSuccess(`${files.length} sample files are ready to upload`);
+    } catch (error) {
+      console.error('Failed to load sample files:', error);
+      showError('Sample files could not be loaded');
+    } finally {
+      setIsLoadingSamples(false);
+    }
   };
 
   const closeUploadModal = () => {
@@ -473,16 +657,29 @@ export function Documents() {
               event.target.value = '';
             }}
           />
-          <button
-            type="button"
-            aria-label="Upload files"
-            disabled={!selectedFolder}
-            title={selectedFolder ? 'Upload files to the selected folder' : 'A folder is required before uploading'}
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:ml-6 sm:w-auto sm:px-4"
-          >
-            <UploadCloud className="h-4 w-4" /> Upload
-          </button>
+          <div className="flex w-full flex-col gap-2 sm:ml-6 sm:w-auto sm:flex-row">
+            <button
+              type="button"
+              aria-label="Load sample files"
+              disabled={!selectedFolder || isLoadingSamples}
+              title={selectedFolder ? 'Load TXT, Word, Excel, PowerPoint, PDF, and image samples' : 'A folder is required before loading samples'}
+              onClick={() => void handleLoadSampleFiles()}
+              className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] border border-[#b7c4d6] bg-white px-3 text-sm font-medium text-[#34425b] hover:bg-[#f0f4f8] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:border-white/15 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800 sm:w-auto"
+            >
+              {isLoadingSamples ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Files className="h-4 w-4" />}
+              {isLoadingSamples ? 'Loading samples...' : 'Sample files'}
+            </button>
+            <button
+              type="button"
+              aria-label="Upload files"
+              disabled={!selectedFolder}
+              title={selectedFolder ? 'Upload files to the selected folder' : 'A folder is required before uploading'}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:w-auto sm:px-4"
+            >
+              <UploadCloud className="h-4 w-4" /> Upload
+            </button>
+          </div>
         </div>
 
         {/* Documents Table and Filters */}

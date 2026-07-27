@@ -216,6 +216,30 @@ try {
     'Upload action did not become available',
   );
 
+  const samplesLoaded = await evaluate(`(() => {
+    const button = document.querySelector('button[aria-label="Load sample files"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!samplesLoaded) throw new Error('Sample-file action was not available');
+  await waitForPage(
+    `document.body.textContent.includes('7 files ready') && document.body.textContent.includes('DMS-Sample-Presentation.pptx')`,
+    'Multi-format sample pack did not load into the upload dialog',
+  );
+  const samplesClosed = await evaluate(`(() => {
+    const button = document.querySelector('button[aria-label="Close upload dialog"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!samplesClosed) throw new Error('Sample-file upload dialog could not be closed');
+  await waitForPage(
+    `!document.querySelector('button[aria-label="Close upload dialog"]')`,
+    'Sample-file upload dialog did not close',
+  );
+  console.log('PASS sample-file-pack');
+
   const documentTree = await send('DOM.getDocument', { depth: -1, pierce: true });
   const fileInput = await send('DOM.querySelector', {
     nodeId: documentTree.root.nodeId,
@@ -245,6 +269,13 @@ try {
   }
   uploadedDocumentId = persistedDocument.documentId;
   cleanupDocumentIds.push(uploadedDocumentId);
+
+  await send('Page.reload', { ignoreCache: true });
+  await waitForPage(
+    `Boolean(document.querySelector('button[aria-label=${JSON.stringify(`Preview ${uploadFileName}`)}]'))`,
+    'Persisted document did not reappear after reloading the library',
+    30_000,
+  );
 
   const previewOpened = await evaluate(`(() => {
     const button = document.querySelector('button[aria-label=${JSON.stringify(`Preview ${uploadFileName}`)}]');

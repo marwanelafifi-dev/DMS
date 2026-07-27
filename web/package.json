@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "setup:samples": "python -m pip install --no-cache-dir -r scripts/requirements-samples.txt",
+    "generate:samples": "python scripts/generate_sample_files.py",
     "preview": "vite preview --host",
     "lint": "eslint src --ext ts,tsx",
     "test": "vitest run",

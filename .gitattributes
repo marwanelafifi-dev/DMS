@@ -1,0 +1,6 @@
+web/public/sample-files/*.docx binary
+web/public/sample-files/*.xlsx binary
+web/public/sample-files/*.pptx binary
+web/public/sample-files/*.pdf binary
+web/public/sample-files/*.png binary
+web/public/sample-files/*.jpg binary
