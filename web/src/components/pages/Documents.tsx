@@ -41,6 +41,8 @@ function readBlobAsText(blob: Blob): Promise<string> {
 
 const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'csv', 'md', 'markdown', 'json', 'xml', 'log']);
 const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+const MOCK_FILES_FOLDER_NAME = 'Mock Files';
+const MOCK_FILES_FOLDER_DESCRIPTION = 'Local multi-format documents for upload, preview, OCR, and workflow testing';
 
 function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
@@ -584,27 +586,48 @@ export function Documents() {
     }
   };
 
-  const stageFiles = (files: File[]) => {
+  const stageFiles = (files: File[], targetFolder = selectedFolder) => {
     if (files.length === 0) return;
-    if (!selectedFolder) {
+    if (!targetFolder) {
       showError('Create or restore a folder before uploading documents');
       return;
     }
+    setSelectedFolderId(targetFolder.folderId);
     setUploadFiles(files);
     setUploadProgress({ complete: 0, total: files.length });
     setShowUploadModal(true);
   };
 
   const handleLoadSampleFiles = async () => {
-    if (!selectedFolder) {
-      showError('Create or restore a folder before loading sample files');
-      return;
-    }
-
     setIsLoadingSamples(true);
     try {
+      const response = await apiClient.createFolder({
+        name: MOCK_FILES_FOLDER_NAME,
+        description: MOCK_FILES_FOLDER_DESCRIPTION,
+        classification: 'standard',
+        ownerId: DEV_USER_ID,
+        reuseExisting: true,
+      });
+      if (!response.data?.folderId) throw new Error('The server did not return a folder ID');
+
+      const createdAt = response.data.createdAt || new Date().toISOString();
+      const mockFilesFolder: Folder = {
+        folderId: response.data.folderId,
+        name: response.data.name || MOCK_FILES_FOLDER_NAME,
+        description: response.data.description || MOCK_FILES_FOLDER_DESCRIPTION,
+        ownerId: response.data.ownerId || DEV_USER_ID,
+        createdAt,
+        updatedAt: response.data.updatedAt || createdAt,
+        isArchived: false,
+      };
+      setFolders((current) => {
+        const existingIndex = current.findIndex((folder) => folder.folderId === mockFilesFolder.folderId);
+        if (existingIndex === -1) return [...current, mockFilesFolder];
+        return current.map((folder, index) => index === existingIndex ? { ...folder, ...mockFilesFolder } : folder);
+      });
+
       const files = await loadSampleDocumentFiles();
-      stageFiles(files);
+      stageFiles(files, mockFilesFolder);
       showSuccess(`${files.length} sample files are ready to upload`);
     } catch (error) {
       console.error('Failed to load sample files:', error);
@@ -660,14 +683,15 @@ export function Documents() {
           <div className="flex w-full flex-col gap-2 sm:ml-6 sm:w-auto sm:flex-row">
             <button
               type="button"
-              aria-label="Load sample files"
-              disabled={!selectedFolder || isLoadingSamples}
-              title={selectedFolder ? 'Load TXT, Word, Excel, PowerPoint, PDF, and image samples' : 'A folder is required before loading samples'}
+              aria-label={isLoadingSamples ? 'Loading sample files' : 'Load sample files'}
+              aria-busy={isLoadingSamples}
+              disabled={isLoadingFolders || isLoadingSamples}
+              title="Create or reuse Mock Files and load TXT, Word, Excel, PowerPoint, PDF, and image samples"
               onClick={() => void handleLoadSampleFiles()}
               className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] border border-[#b7c4d6] bg-white px-3 text-sm font-medium text-[#34425b] hover:bg-[#f0f4f8] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:border-white/15 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800 sm:w-auto"
             >
               {isLoadingSamples ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Files className="h-4 w-4" />}
-              {isLoadingSamples ? 'Loading samples...' : 'Sample files'}
+              <span aria-live="polite">{isLoadingSamples ? 'Loading samples...' : 'Sample files'}</span>
             </button>
             <button
               type="button"

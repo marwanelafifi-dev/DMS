@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Documents } from './Documents';
-import { apiClient } from '../../utils/api';
+import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { mockLibraryFolders } from '../../fixtures/documentLibrary';
 import { doclingApi } from '../../services/doclingApi';
 
@@ -67,6 +67,18 @@ describe('Document Library', () => {
 
   it('loads a complete sample-file pack into the upload dialog', async () => {
     const user = userEvent.setup();
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    const createFolder = vi.spyOn(apiClient, 'createFolder').mockResolvedValue({
+      success: true,
+      data: {
+        folderId: 'mock-files-folder',
+        name: 'Mock Files',
+        createdAt: '2026-07-27T12:00:00.000Z',
+      },
+    });
     const sampleFileNames = [
       'DMS-Sample-Text.txt',
       'DMS-Sample-Document.docx',
@@ -89,10 +101,20 @@ describe('Document Library', () => {
     await user.click(await screen.findByRole('button', { name: 'Load sample files' }));
 
     expect(await screen.findByRole('button', { name: 'Upload 7 files' })).toBeInTheDocument();
+    expect(createFolder).toHaveBeenCalledWith({
+      name: 'Mock Files',
+      description: 'Local multi-format documents for upload, preview, OCR, and workflow testing',
+      classification: 'standard',
+      ownerId: DEV_USER_ID,
+      reuseExisting: true,
+    });
+    expect(screen.getByText(/Uploading to Mock Files/)).toBeInTheDocument();
     sampleFileNames.forEach((fileName) => {
       expect(screen.getByText(fileName)).toBeInTheDocument();
     });
     expect(fetchSample).toHaveBeenCalledTimes(sampleFileNames.length);
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Mock Files' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('shows the requested searchable metadata columns without Size', async () => {

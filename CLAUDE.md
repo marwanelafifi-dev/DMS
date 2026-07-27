@@ -37,7 +37,8 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 - Uploaded documents and workflow state are server-backed, so navigation and refresh no longer discard them.
 - Persisted source files are fetched from the .NET/MinIO version endpoint on demand after navigation or refresh. Text, PDF, and images render natively; Office formats are converted locally through Docling.
 - Uploaded JPG, PNG, GIF, and WebP files keep their native image preview while their Docling OCR content remains available for search.
-- The Document Library `Sample files` action loads real TXT, DOCX, XLSX, PPTX, PDF, PNG, and JPG files into the normal upload dialog for local testing.
+- The Document Library `Sample files` action creates or reuses a persistent `Mock Files` folder, selects it, and loads real TXT, DOCX, XLSX, PPTX, PDF, PNG, and JPG files into the normal upload dialog for local testing.
+- Creating a folder grants its owner the `Admin` folder permission immediately, so documents can be uploaded to newly created folders without a separate permission repair.
 - Dark-mode tables, search fields, and mobile layouts were corrected, including search-icon padding and row contrast.
 
 ### Local Setup and Execution
@@ -103,7 +104,7 @@ Verified local dependency versions:
 - Closing a preview aborts browser work and stale UI updates, but a Docling conversion already running in FastAPI's worker thread continues to completion. Use bounded, cancel-aware worker processes if high-concurrency cancellation becomes necessary.
 - Direct browser access to `127.0.0.1:8000` and wildcard CORS are local-only choices; do not carry them unchanged into a remote or Cloudflare deployment.
 - The Docling image is approximately 4.32 GB because it includes Torch and local model assets.
-- The Vite production build reports a large-bundle warning (approximately 687.23 KB), but completes successfully.
+- The Vite production build reports a large-bundle warning (approximately 687.89 KB), but completes successfully.
 - Parser tests currently emit an upstream `httpx`/Starlette `TestClient` deprecation warning.
 
 ### Related Commits on `ali-branch`

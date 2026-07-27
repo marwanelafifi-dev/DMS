@@ -10,6 +10,15 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class FoldersController(DmsContext context, AuditService auditService, ILogger<FoldersController> logger) : BaseController
 {
+    private static readonly Guid DevSystemAdminId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+    private static readonly string[] FolderWriteRoles =
+    [
+        FolderRoles.Writer,
+        FolderRoles.Manager,
+        FolderRoles.QA,
+        FolderRoles.Admin
+    ];
+
     // GET /api/folders — قائمة جميع المجلدات
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetFolders()
@@ -95,7 +104,6 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
         try
         {
             var userId = GetCurrentUserId();
-            var userRole = GetUserRole();
 
             // التحقق من المدخلات
             if (string.IsNullOrWhiteSpace(req.Name))
@@ -104,12 +112,19 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
             if (req.OwnerId == Guid.Empty)
                 return BadRequest(new { success = false, error = "المالك مطلوب" });
 
+            // Folder ownership is derived from the authenticated request. The API
+            // does not permit callers to grant Admin access to an arbitrary user.
+            if (req.OwnerId != userId)
+                return StatusCode(403, new { success = false, error = "Folder owner must match the authenticated user" });
+
             // التحقق من وجود المالك
             var ownerExists = await context.Users
-                .AnyAsync(u => u.UserId == req.OwnerId && u.IsActive);
+                .AnyAsync(u => u.UserId == userId && u.IsActive);
 
             if (!ownerExists)
                 return BadRequest(new { success = false, error = "المالك غير موجود أو معطل" });
+
+            var canCreateFolder = userId == DevSystemAdminId;
 
             // التحقق من المجلد الأب إن وجد
             if (req.ParentFolderId.HasValue)
@@ -119,6 +134,89 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
 
                 if (!parentExists)
                     return BadRequest(new { success = false, error = "المجلد الأب غير موجود" });
+
+                canCreateFolder = await context.FolderPermissions.AnyAsync(permission =>
+                    permission.FolderId == req.ParentFolderId &&
+                    permission.UserId == userId &&
+                    FolderWriteRoles.Contains(permission.Role));
+            }
+            else if (!canCreateFolder)
+            {
+                canCreateFolder = await context.FolderPermissions.AnyAsync(permission =>
+                    permission.UserId == userId &&
+                    FolderWriteRoles.Contains(permission.Role));
+            }
+
+            if (!canCreateFolder)
+                return StatusCode(403, new { success = false, error = "Writer permission is required to create a folder" });
+
+            await using var transaction = await context.Database.BeginTransactionAsync();
+
+            if (req.ReuseExisting)
+            {
+                var normalizedName = req.Name.Trim().ToLower();
+                var lockKey = $"{userId:N}:{req.ParentFolderId?.ToString("N") ?? "root"}:{normalizedName}";
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))");
+
+                var existingFolder = await context.Folders
+                    .FirstOrDefaultAsync(folder =>
+                        folder.OwnerId == userId &&
+                        folder.ParentFolderId == req.ParentFolderId &&
+                        folder.Name.ToLower() == normalizedName);
+
+                if (existingFolder != null)
+                {
+                    var existingOwnerPermission = await context.FolderPermissions
+                        .FirstOrDefaultAsync(permission =>
+                            permission.FolderId == existingFolder.FolderId &&
+                            permission.UserId == userId);
+                    var permissionChanged = false;
+
+                    if (existingOwnerPermission == null)
+                    {
+                        existingOwnerPermission = CreateOwnerPermission(existingFolder.FolderId, userId, userId);
+                        context.FolderPermissions.Add(existingOwnerPermission);
+                        permissionChanged = true;
+                    }
+                    else if (existingOwnerPermission.Role != FolderRoles.Admin)
+                    {
+                        existingOwnerPermission.Role = FolderRoles.Admin;
+                        existingOwnerPermission.GrantedAt = DateTime.UtcNow;
+                        existingOwnerPermission.GrantedById = userId;
+                        permissionChanged = true;
+                    }
+
+                    if (permissionChanged)
+                    {
+                        await context.SaveChangesAsync();
+                        await auditService.LogAsync(userId, AuditActions.PERMISSION_GRANTED, new
+                        {
+                            existingOwnerPermission.PermissionId,
+                            existingOwnerPermission.FolderId,
+                            existingOwnerPermission.UserId,
+                            existingOwnerPermission.Role,
+                            existingOwnerPermission.GrantedAt,
+                            AutomaticOwnerGrant = true
+                        });
+                    }
+
+                    await transaction.CommitAsync();
+                    return Ok(new
+                    {
+                        success = true,
+                        data = new
+                        {
+                            existingFolder.FolderId,
+                            existingFolder.Name,
+                            existingFolder.Description,
+                            existingFolder.OwnerId,
+                            existingFolder.CreatedAt,
+                            existingFolder.UpdatedAt,
+                            Reused = true
+                        }
+                    });
+                }
             }
 
             var folder = new DmsFolder
@@ -128,16 +226,17 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 Name = req.Name.Trim(),
                 Description = req.Description?.Trim(),
                 Classification = req.Classification ?? "standard",
-                OwnerId = req.OwnerId,
+                OwnerId = userId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
+            var ownerPermission = CreateOwnerPermission(folder.FolderId, userId, userId);
 
             context.Folders.Add(folder);
+            context.FolderPermissions.Add(ownerPermission);
             await context.SaveChangesAsync();
 
-            var currentUserId = GetCurrentUserId();
-            await auditService.LogAsync(currentUserId, AuditActions.FOLDER_CREATED, new
+            await auditService.LogAsync(userId, AuditActions.FOLDER_CREATED, new
             {
                 folder.FolderId,
                 folder.Name,
@@ -145,8 +244,18 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 folder.OwnerId,
                 folder.CreatedAt
             });
+            await auditService.LogAsync(userId, AuditActions.PERMISSION_GRANTED, new
+            {
+                ownerPermission.PermissionId,
+                ownerPermission.FolderId,
+                ownerPermission.UserId,
+                ownerPermission.Role,
+                ownerPermission.GrantedAt,
+                AutomaticOwnerGrant = true
+            });
+            await transaction.CommitAsync();
 
-            logger.LogInformation("Created folder {FolderId} by user {OwnerId}", folder.FolderId, req.OwnerId);
+            logger.LogInformation("Created folder {FolderId} by user {OwnerId}", folder.FolderId, userId);
 
             return CreatedAtAction(nameof(GetFolder), new { id = folder.FolderId }, new
             {
@@ -155,7 +264,11 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 {
                     folder.FolderId,
                     folder.Name,
-                    folder.CreatedAt
+                    folder.Description,
+                    folder.OwnerId,
+                    folder.CreatedAt,
+                    folder.UpdatedAt,
+                    Reused = false
                 }
             });
         }
@@ -164,6 +277,19 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
             logger.LogError(ex, "Error creating folder");
             return StatusCode(500, new { success = false, error = ex.Message });
         }
+    }
+
+    private static DmsFolderPermission CreateOwnerPermission(Guid folderId, Guid ownerId, Guid grantedById)
+    {
+        return new DmsFolderPermission
+        {
+            PermissionId = Guid.NewGuid(),
+            FolderId = folderId,
+            UserId = ownerId,
+            Role = FolderRoles.Admin,
+            GrantedAt = DateTime.UtcNow,
+            GrantedById = grantedById
+        };
     }
 
     // PUT /api/folders/{id} — تعديل مجلد
@@ -285,7 +411,8 @@ public record CreateFolderRequest(
     Guid OwnerId,
     Guid? ParentFolderId = null,
     string? Description = null,
-    string? Classification = null
+    string? Classification = null,
+    bool ReuseExisting = false
 );
 
 public record UpdateFolderRequest(

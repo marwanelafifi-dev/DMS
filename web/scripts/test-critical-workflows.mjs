@@ -25,6 +25,7 @@ const runId = Date.now().toString(36);
 const uploadFileName = `e2e-critical-${runId}.txt`;
 const uploadTitle = uploadFileName.replace(/\.txt$/, '');
 const uploadContents = `DMS critical workflow browser test ${runId}`;
+const permissionFolderName = `E2E Folder Permission ${runId}`;
 const profilePath = await mkdtemp(join(tmpdir(), 'dms-critical-e2e-'));
 const downloadPath = join(profilePath, 'downloads');
 const uploadPath = join(profilePath, uploadFileName);
@@ -85,6 +86,7 @@ const apiRequest = async (path, options = {}) => {
 let uploadedDocumentId;
 let cleanupError;
 const cleanupDocumentIds = [];
+const cleanupFolderIds = [];
 
 try {
   await waitFor(() => browserSocketUrl, 'Chrome did not expose a DevTools endpoint');
@@ -191,6 +193,21 @@ try {
     if (!clicked) throw new Error(`Enabled visible button not found: ${label}`);
   };
 
+  const selectMockFilesFolder = async (context) => {
+    await waitForPage(
+      `Boolean(document.querySelector('button[aria-label="Mock Files"]'))`,
+      `Mock Files folder did not appear ${context}`,
+      30_000,
+    );
+    const selected = await evaluate(`(() => {
+      const button = document.querySelector('button[aria-label="Mock Files"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!selected) throw new Error(`Mock Files folder could not be selected ${context}`);
+  };
+
   const captureScreenshot = async (name) => {
     const screenshot = await send('Page.captureScreenshot', {
       format: 'png',
@@ -209,6 +226,40 @@ try {
     eventsEnabled: true,
   });
 
+  const permissionFolderRequest = {
+    name: permissionFolderName,
+    description: 'Temporary folder used to verify owner permissions',
+    classification: 'standard',
+    ownerId: apiUserId,
+    reuseExisting: true,
+  };
+  const createdFolderResponse = await apiRequest('/folders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(permissionFolderRequest),
+  });
+  const permissionFolderId = createdFolderResponse.data?.folderId;
+  if (!permissionFolderId) throw new Error(`Folder creation returned no ID: ${JSON.stringify(createdFolderResponse)}`);
+  cleanupFolderIds.push(permissionFolderId);
+
+  const folderDetails = await apiRequest(`/folders/${permissionFolderId}`);
+  const ownerPermission = folderDetails.data?.permissions?.find(
+    (permission) => permission.userId === apiUserId,
+  );
+  if (ownerPermission?.role !== 'Admin') {
+    throw new Error(`Folder owner did not receive Admin permission: ${JSON.stringify(folderDetails.data)}`);
+  }
+
+  const reusedFolderResponse = await apiRequest('/folders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(permissionFolderRequest),
+  });
+  if (reusedFolderResponse.data?.folderId !== permissionFolderId || reusedFolderResponse.data?.reused !== true) {
+    throw new Error(`Folder reuse was not idempotent: ${JSON.stringify(reusedFolderResponse.data)}`);
+  }
+  console.log(`PASS folder-owner-admin-reuse (${permissionFolderId})`);
+
   console.log(`RUN upload-preview-download-search (${uploadFileName})`);
   await navigate('/documents', 'button[aria-label="Upload files"]');
   await waitForPage(
@@ -224,8 +275,10 @@ try {
   })()`);
   if (!samplesLoaded) throw new Error('Sample-file action was not available');
   await waitForPage(
-    `document.body.textContent.includes('7 files ready') && document.body.textContent.includes('DMS-Sample-Presentation.pptx')`,
-    'Multi-format sample pack did not load into the upload dialog',
+    `document.body.textContent.includes('7 files ready')
+      && document.body.textContent.includes('DMS-Sample-Presentation.pptx')
+      && document.body.textContent.includes('Uploading to Mock Files')`,
+    'Multi-format sample pack did not load into the Mock Files folder',
   );
   const samplesClosed = await evaluate(`(() => {
     const button = document.querySelector('button[aria-label="Close upload dialog"]');
@@ -235,8 +288,9 @@ try {
   })()`);
   if (!samplesClosed) throw new Error('Sample-file upload dialog could not be closed');
   await waitForPage(
-    `!document.querySelector('button[aria-label="Close upload dialog"]')`,
-    'Sample-file upload dialog did not close',
+    `!document.querySelector('button[aria-label="Close upload dialog"]')
+      && document.querySelector('button[aria-label="Mock Files"]')?.getAttribute('aria-current') === 'page'`,
+    'Sample-file upload dialog did not close with Mock Files selected',
   );
   console.log('PASS sample-file-pack');
 
@@ -271,9 +325,10 @@ try {
   cleanupDocumentIds.push(uploadedDocumentId);
 
   await send('Page.reload', { ignoreCache: true });
+  await selectMockFilesFolder('after reloading the library');
   await waitForPage(
     `Boolean(document.querySelector('button[aria-label=${JSON.stringify(`Preview ${uploadFileName}`)}]'))`,
-    'Persisted document did not reappear after reloading the library',
+    'Persisted document did not reappear in Mock Files after reloading the library',
     30_000,
   );
 
@@ -321,6 +376,7 @@ try {
       && Boolean(document.querySelector('input[aria-label="Search documents"]'))`,
     'Documents page did not finish reloading',
   );
+  await selectMockFilesFolder('after refreshing the Documents page');
   await waitForPage(
     `Boolean(document.querySelector('button[aria-label=${JSON.stringify(`Preview ${uploadFileName}`)}]'))`,
     'Uploaded document disappeared after refreshing the Documents page',
@@ -348,6 +404,7 @@ try {
   await captureScreenshot('e2e-critical-search-results.png');
 
   await navigate('/documents', 'input[aria-label="Search documents"]');
+  await selectMockFilesFolder('after navigating back to the Documents page');
   await waitForPage(
     `Boolean(document.querySelector('button[aria-label=${JSON.stringify(`Preview ${uploadFileName}`)}]'))`,
     'Uploaded document disappeared after navigating away from and back to the Documents page',
@@ -605,6 +662,13 @@ try {
       await apiRequest(`/documents/${documentId}`, { method: 'DELETE' });
     } catch (error) {
       cleanupError ??= new Error(`Could not remove E2E document ${documentId}: ${error.message}`);
+    }
+  }
+  for (const folderId of [...cleanupFolderIds].reverse()) {
+    try {
+      await apiRequest(`/folders/${folderId}`, { method: 'DELETE' });
+    } catch (error) {
+      cleanupError ??= new Error(`Could not remove E2E folder ${folderId}: ${error.message}`);
     }
   }
   if (chrome.exitCode === null) chrome.kill();
