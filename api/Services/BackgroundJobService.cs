@@ -46,6 +46,14 @@ public static class BackgroundJobExtensions
             service => service.RunAutoUnlockCheckoutsAsync(),
             Cron.MinuteInterval(5));
 
+        // Send due reminders every 15 minutes. Previously this only ran when a user
+        // manually hit "send-due" — nothing scheduled the sweep, so reminders whose
+        // due_date passed were never actually delivered.
+        recurringJobManager.AddOrUpdate<ReminderService>(
+            "send-due-reminders",
+            service => service.SendPendingRemindersAsync(),
+            Cron.MinuteInterval(15));
+
         // Add more jobs here as needed
         // recurringJobManager.AddOrUpdate("job-name", ...);
     }

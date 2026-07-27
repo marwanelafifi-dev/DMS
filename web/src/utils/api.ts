@@ -348,33 +348,6 @@ class APIClient {
     return data;
   }
 
-  // OCR
-  async triggerOcr(documentId: string, versionId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr`);
-    return data;
-  }
-
-  async getOcrStatus(documentId: string, versionId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr-status`);
-    return data;
-  }
-
-  async getOcrText(documentId: string, versionId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr-text`);
-    return data;
-  }
-
-  // E-Signatures
-  async signDocument(documentId: string, versionId: string, signatureData: any) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/sign`, signatureData);
-    return data;
-  }
-
-  async getSignatures(documentId: string, versionId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/signatures`);
-    return data;
-  }
-
   // Search & Filtering
   async searchDocuments(query: string, params?: any) {
     const { data } = await this.client.get<ApiResponse>('/documents', {
@@ -441,18 +414,20 @@ class APIClient {
   }
 
   // Reminders - Additional
-  async updateReminder(reminderId: string, reminderData: any) {
-    const { data } = await this.client.put<ApiResponse>(`/reminders/${reminderId}`, reminderData);
-    return data;
-  }
-
   async deleteReminder(reminderId: string) {
     const { data } = await this.client.delete<ApiResponse>(`/reminders/${reminderId}`);
     return data;
   }
 
-  async markReminderAsRead(reminderId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/reminders/${reminderId}/mark-read`);
+  // Marks one reminder as sent (RemindersController: POST /reminders/{id}/send).
+  async sendReminder(reminderId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/reminders/${reminderId}/send`);
+    return data;
+  }
+
+  // Queues the Hangfire sweep over every due reminder.
+  async sendDueReminders() {
+    const { data } = await this.client.post<ApiResponse>('/reminders/send-due');
     return data;
   }
 

@@ -106,6 +106,8 @@ public static class AuditActions
     public const string PERMISSION_REVOKED = "PERMISSION_REVOKED";
 
     public const string REMINDER_SENT = "REMINDER_SENT";
+    public const string REMINDER_CREATED = "REMINDER_CREATED";
+    public const string REMINDER_DELETED = "REMINDER_DELETED";
 
     public const string USER_CREATED = "USER_CREATED";
     public const string USER_UPDATED = "USER_UPDATED";

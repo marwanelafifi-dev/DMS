@@ -121,21 +121,21 @@ export interface Task {
 }
 
 // Reminder
+// Mirrors ReminderService.GetUserRemindersAsync — the API has no message/isRead
+// concept, only a delivery channel plus sent state.
+export type ReminderChannel = 'APP' | 'EMAIL' | 'BOTH';
+
 export interface Reminder {
   reminderId: string;
-  userId: string;
-  user?: User;
-  taskId?: string;
-  task?: Task;
-  message: string;
-  description?: string; // Alias for message
-  reminderType: 'task_due' | 'task_overdue' | 'approval_pending' | 'checkout_expiring';
-  isRead: boolean;
-  isSent?: boolean; // Alias for tracking if sent
-  sentAt: string;
-  dueDate?: string; // When the reminder should be sent
-  readAt?: string;
+  taskId: string;
+  task?: Pick<Task, 'taskId' | 'title' | 'status'>;
   recipientId?: string;
+  recipient?: Pick<User, 'userId' | 'fullName' | 'email'>;
+  reminderType: ReminderChannel;
+  dueDate: string;
+  isSent: boolean;
+  sentAt?: string | null;
+  createdAt: string;
 }
 
 // Folder Permission
