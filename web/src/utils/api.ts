@@ -437,6 +437,43 @@ class APIClient {
     return data;
   }
 
+  // Audit Calendar (ISO certification journey events shown on the Dashboard)
+  async getAuditCalendarEvents() {
+    const { data } = await this.client.get<ApiResponse>('/auditcalendar');
+    return data;
+  }
+
+  async createAuditCalendarEvent(eventData: { title: string; phase: string; standard: string; eventDate: string; notes?: string }) {
+    const { data } = await this.client.post<ApiResponse>('/auditcalendar', eventData);
+    return data;
+  }
+
+  async deleteAuditCalendarEvent(eventId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/auditcalendar/${eventId}`);
+    return data;
+  }
+
+  // Per-user Google Calendar sync
+  async getGoogleCalendarStatus() {
+    const { data } = await this.client.get<ApiResponse>('/googlecalendar/status');
+    return data;
+  }
+
+  async getGoogleCalendarAuthUrl() {
+    const { data } = await this.client.get<ApiResponse>('/googlecalendar/connect');
+    return data;
+  }
+
+  async disconnectGoogleCalendar() {
+    const { data } = await this.client.delete<ApiResponse>('/googlecalendar/disconnect');
+    return data;
+  }
+
+  async syncGoogleCalendarNow() {
+    const { data } = await this.client.post<ApiResponse>('/googlecalendar/sync');
+    return data;
+  }
+
   // Health
   async getHealth() {
     const { data } = await this.client.get<ApiResponse>('/health');

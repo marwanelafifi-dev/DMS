@@ -9,7 +9,7 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Active Branch:** `ali-branch`
 
-**Status:** Session 15 — Local Docling parsing/OCR, persistent previews, native image viewing, and a real multi-format sample-file pack are available
+**Status:** Session 16 — Dashboard/Search run on real API data, Reminders and Bulk Operations are fully functional end-to-end, the ISO Audit Calendar is persisted to the database, and per-user Google Calendar sync is architecturally complete pending Google OAuth credentials (see Session 16 below). Session 15's Docling parsing/OCR, persistent previews, and sample-file pack remain in place.
 
 ---
 
@@ -1771,3 +1771,83 @@ New component `web/src/components/custom/AuditCalendarCard.tsx` replaces the old
 - Google Calendar sync is currently link-based only (no OAuth, no real shared calendar) — pending a decision on whether full two-way sync is worth the backend/credentials work.
 - Settings / Notifications / Company Data / Database admin pages are stubs — need requirements per page before building.
 - Dashboard data (tasks, approvals, audit events) is still local mock state, same as it was before this session — not yet wired to the real `.NET` API endpoints that already exist from Phase 2 backend work.
+
+---
+
+## 🔄 Session 16 (2026-07-27) — Dashboard on Real Data, Reminders Fixed, Dead Components Resolved, Per-User Google Calendar Sync Scaffolded
+
+**Status:** ✅ Complete and live-verified against the running containers for every item below. Not yet committed/pushed as of the start of this session — see the commit at the end.
+
+### 1. Dashboard wired to the real API (closes Session 13's biggest follow-up)
+`Dashboard.tsx` no longer renders the ~130-line hardcoded mock dataset — it now calls `getTasks()`, `getDocuments()`, and `getPendingApprovals()` in parallel via `Promise.allSettled`, so one failing endpoint shows a banner ("Could not load X") instead of blanking the whole page. Three real bugs found while wiring:
+1. **Double-counting**: the pending-approvals list includes documents the current user submitted themselves, which were being counted in *both* "Awaiting My Approval" and "My Submissions in Review". Fixed by filtering `approval.submittedBy !== currentUserId` for the approval queue.
+2. **"Invalid Date"**: tasks with no `dueDate` (real seed data has some) rendered `new Date('').toLocaleDateString()` → "Invalid Date" on screen. Added a `shortDate()` guard.
+3. Hardcoded `"09:41"` last-sync timestamp replaced with a real one stamped after the fetch completes.
+
+**Search.tsx** OCR-result preview no longer builds a bespoke markdown viewer — clicking the eye icon now looks up the matching real DMS document by filename and navigates to `/documents?preview=<id>`, reusing the actual Document Library `DocumentPreview` component instead of a look-alike.
+
+**Files:** `web/src/components/pages/Dashboard.tsx`, `Dashboard.test.tsx` (new), `Search.tsx`, `Search.test.tsx`.
+
+### 2. Reminders — found completely non-functional, fixed end to end
+Clicking around the (already-routed but not linked-to, see #3) Reminders page surfaced a chain of real bugs:
+- **Root cause:** `dms_reminders` had the same WORM trigger as `dms_audit_trails`/`dms_esignatures`/`dms_ocr_indexes` (`002_core_schema.sql`), but its `is_sent`/`sent_at`/`due_date` columns exist *only* to be mutated. Every send or delete threw `WORM violation: UPDATE/DELETE on dms_reminders is not permitted`. This one table's WORM protection was almost certainly copy-pasted onto the wrong table — the actual audit-of-record (`dms_audit_trails`) stays WORM-protected.
+- **Migration `011_reminders_worm_fix.sql`** drops the trigger/function and widens `due_date` from `DATE` to `TIMESTAMPTZ` (the frontend's `datetime-local` input was having its time-of-day silently truncated).
+- **The Hangfire auto-send sweep had never been registered at all** — `POST /reminders/{id}/send` existed but nothing scheduled `SendPendingRemindersAsync` to run on its own. Registered as `send-due-reminders`, every 15 minutes.
+- Fixed a second, independent bug in that same sweep: `reminder.Recipient` was always `null` when logging the `REMINDER_SENT` audit entry (missing `.Include(r => r.Recipient)`), so the recipient's email was silently never recorded.
+- After widening `due_date` to a timestamp, `GetPendingRemindersAsync`'s `DueDate <= today` comparison (where `today` was midnight) started delaying same-day reminders by ~24h — fixed to compare against `DateTime.UtcNow`.
+- Added `DELETE /api/reminders/{id}` and `POST /api/reminders/{id}/send` (send-one, distinct from the sweep), plus `REMINDER_CREATED`/`REMINDER_DELETED` audit actions (creation had no audit trail entry at all before this).
+- **Frontend contract was fictional**: `Reminders.tsx` and the `Reminder` type had `description`/`isRead`/`message` fields the backend never had, and the create form asked the user to type a raw `taskId` string by hand. Rewrote both to match the real API (`taskId` is now a `<select>` of actual tasks, `reminderType` is `APP`/`EMAIL`/`BOTH`).
+
+**Files:** `infra/db/init/011_reminders_worm_fix.sql` (new), `api/Controllers/RemindersController.cs`, `api/Services/ReminderService.cs`, `api/Services/AuditService.cs`, `api/Services/BackgroundJobService.cs`, `web/src/components/pages/Reminders.tsx`, `web/src/types/index.ts`, `web/src/utils/api.ts`.
+
+### 3. Sidebar navigation gap
+`/reminders` and `/search` were both fully implemented, routed in `App.tsx`, and completely unreachable — nothing in `Sidebar.tsx`'s nav list linked to them. Added a "Reminders" entry (per explicit request, "Search" was tried and then removed again since it wasn't wanted in the sidebar).
+
+**File:** `web/src/components/layout/Sidebar.tsx`.
+
+### 4. Three dead frontend components resolved (written in Session 9, never mounted, backed by `.NET` endpoints that never existed)
+Decision made per-component rather than blanket-deleting:
+- **Bulk Operations — built for real.** Added `POST /documents/bulk-approve`, `bulk-reject`, `bulk-delete`, `bulk-download` to `DocumentsController`. Each returns a per-document `{succeeded, failed}` report instead of failing the whole batch on one bad ID; `bulk-delete` reuses the same internal delete path as the single-document endpoint (extracted into `DeleteDocumentInternalAsync`) so the two can't drift apart; `bulk-download` streams a ZIP and de-duplicates colliding file names (verified live: two documents both named `Ali_Mohamed_CV.pdf` came out as `Ali_Mohamed_CV.pdf` and `Ali_Mohamed_CV (2).pdf`). Mounted `BulkOperationsModal` in `Documents.tsx` behind a "Bulk Actions (N)" button that only appears when the current selection includes real, server-backed documents (a GUID regex check) — not the bundled sample-fixture rows, which have no backend record to act on.
+- **OCR Panel — rewired to the OCR system that already exists.** It previously called `.NET` endpoints (`/ocr-status`, `/ocr-text`) that were never built, with a `setTimeout`-faked "processing" state. Rewritten to fetch the stored file from the API and run it through the same local Docling service used at upload time (`doclingApi.convertDocument`). Mounted in `DocumentPreview`'s "preview unavailable" fallback — exactly the case where a page reload lost the in-browser cached Docling preview but the server still has the file. Verified live end-to-end: downloaded a real PDF from MinIO, sent it through Docling, got back 4030 characters of accurate markdown.
+- **E-Signatures — deleted.** No backend exists and there's no near-term plan to build one; kept as dead code would just be a trap for a future session.
+
+**Files:** `api/Controllers/DocumentsController.cs`, `web/src/components/custom/BulkOperationsModal.tsx`, `web/src/components/custom/OcrPanel.tsx` (rewritten), `web/src/components/custom/DocumentPreview.tsx`, `web/src/components/pages/Documents.tsx`; deleted `web/src/components/custom/ESignaturePanel.tsx` and its two dead `api.ts` methods.
+
+### 5. Audit Calendar persisted to the database
+The ISO Audit Calendar (Session 13) was pure `useState` — every published event vanished on refresh. Added `dms_audit_calendar_events` (migration `012`, with `CHECK` constraints on `phase`/`standard` matching the existing `folder_permissions` role-check pattern), `AuditCalendarService` (create/list/delete + full audit logging), `AuditCalendarController`, and rewired `AuditCalendarCard.tsx` to the real API. Verified live: create → 400 on invalid phase → list with poster name → delete → 404 on double-delete, with matching `AUDIT_EVENT_CREATED`/`AUDIT_EVENT_DELETED` audit trail entries.
+
+Per later explicit request, the per-event "Remove" button was removed from the card UI again (the `DELETE` endpoint and `deleteAuditCalendarEvent` API client method were left in place, just unused from the UI).
+
+**Files:** `infra/db/init/012_audit_calendar_events.sql` (new), `api/Models/DmsAuditCalendarEvent.cs` (new), `api/Services/AuditCalendarService.cs` (new), `api/Controllers/AuditCalendarController.cs` (new), `api/Data/DmsContext.cs`, `web/src/components/custom/AuditCalendarCard.tsx`, `web/src/components/pages/Dashboard.tsx`.
+
+### 6. Per-user Google Calendar sync — architecture built, Google API calls deliberately left as a seam
+User's requirement: every user connects their *own* Google Calendar, a manual "Sync Now" button, and an automatic sync at 6 AM daily — a different shape than Session 13's "shared calendar, link-only" idea, and different again from an initial one-way Service-Account design floated and then superseded within this same session (that first attempt's `IGoogleCalendarSyncService` + `dms_audit_calendar_events.google_event_id` column were built, then removed once the per-user requirement came in, since a single shared-calendar event ID can't represent "this event as it appears on N different users' calendars").
+
+Everything is built except the actual Google API calls, which the user asked to implement themselves once Google Cloud OAuth credentials are ready:
+- **Migration `013_user_google_calendar_sync.sql`**: drops the now-unused `google_event_id` column; adds `dms_user_calendar_connections` (per-user OAuth tokens, `is_active`, `last_synced_at`, `last_sync_error`) and `dms_user_calendar_event_syncs` (per-`(user, event)` mapping to a Google event ID, so re-syncing updates in place instead of duplicating).
+- **`IGoogleOAuthCalendarClient`** is the one interface that actually needs Google credentials: `BuildAuthorizationUrl`, `ExchangeCodeForTokensAsync`, `RefreshAccessTokenAsync`, `UpsertEventAsync`, `DeleteEventAsync`. A `NotConfiguredGoogleOAuthCalendarClient` is registered by default and throws a clear "not configured" error everywhere, which `UserGoogleCalendarService` catches and surfaces as HTTP 501 rather than a 500. The file has step-by-step instructions for standing up a real implementation with `Google.Apis.Calendar.v3`, and a flagged **security TODO**: the OAuth `state` parameter currently carries the raw user ID, which identifies the user on callback but is not CSRF-hardened — needs to become a signed/opaque nonce before production use.
+- **`UserGoogleCalendarService`**: status / connect / OAuth callback / disconnect / sync-one-user / sync-all-active-users, with automatic access-token refresh when a stored token is within 2 minutes of expiring.
+- **`GoogleCalendarController`**: `GET status`, `GET connect` (returns the consent URL), `GET callback` (Google redirects the browser here directly — added to `RBACMiddleware.ShouldSkipAuth` since there's no `X-User-Id` header on that request, identity comes from `state` instead), `DELETE disconnect`, `POST sync`. The callback redirects back to the frontend (`Google:FrontendRedirectUrl` in `appsettings.json`, defaulting to `http://localhost:5174/`) with `?calendarConnected=true` or `?calendarError=...`.
+- **Hangfire**: registered `daily-google-calendar-sync` at `Cron.Daily(6)`, explicit `TimeZoneInfo.Utc` — confirmed present in Hangfire's Postgres storage with `NextExecution` correctly set.
+- **Frontend**: `AuditCalendarCard.tsx` shows "Connect Google Calendar" (not connected) or "Sync Now" + "Disconnect" + last-synced timestamp (connected), visible to every user regardless of the Admin/QA-only "New Audit Event" gate. Reads `?calendarConnected`/`?calendarError` on mount to toast the OAuth redirect result, then strips those params.
+
+Verified live end-to-end against the no-op client: status → 501 on connect → 404 on sync-with-no-connection → callback redirect lands on the correct frontend origin → Hangfire job confirmed scheduled. Audit CRUD re-verified as a regression check after `AuditCalendarService` was simplified back down (removed the superseded one-way sync calls).
+
+**Files:** `infra/db/init/013_user_google_calendar_sync.sql` (new), `api/Models/DmsUserCalendarConnection.cs` (new), `api/Models/DmsUserCalendarEventSync.cs` (new), `api/Models/DmsAuditCalendarEvent.cs` (dropped `GoogleEventId`), `api/Services/IGoogleOAuthCalendarClient.cs` (new), `api/Services/UserGoogleCalendarService.cs` (new), `api/Services/AuditCalendarService.cs` (simplified), `api/Controllers/GoogleCalendarController.cs` (new), `api/Middleware/RBACMiddleware.cs`, `api/Services/BackgroundJobService.cs`, `api/Program.cs`, `api/appsettings.json`, `web/src/utils/api.ts`, `web/src/components/custom/AuditCalendarCard.tsx`; deleted the superseded `api/Services/IGoogleCalendarSyncService.cs`.
+
+### 7. Sample-file generator drift
+`DMS-Sample-Text.txt` had been hand-edited directly at some point, diverging from `generate_sample_files.py` — meaning `npm run generate:samples` would silently revert it to stale content and fail its own signature test. Made the generator produce the current (richer) content directly, so script and file agree again.
+
+**Files:** `web/scripts/generate_sample_files.py`, `web/public/sample-files/DMS-Sample-Text.txt`, `web/src/fixtures/sampleFiles.test.ts`.
+
+### Verification (this session)
+- `npm run type-check`: 0 errors after every change, checked incrementally.
+- `npx vitest run`: **67/67 passing** (started at 63, +1 new `Dashboard.test.tsx`, +3 net from `Search.test.tsx` rework).
+- Every new/changed backend endpoint (Reminders, Bulk Operations, Audit Calendar, Google Calendar) was curled against the actually-running containers, not just type-checked or unit-tested — including deliberately-wrong inputs (invalid phase, double-send, double-delete, sync with no connection) to confirm error paths, not just happy paths.
+- All 6 Docker services confirmed `healthy` after every rebuild.
+
+### Known follow-ups
+- Google Calendar sync needs real OAuth credentials + an `IGoogleOAuthCalendarClient` implementation before it does anything beyond returning 501 — the user is doing this part themselves.
+- The OAuth `state` CSRF hardening flagged above should happen before any production exposure of the Google Calendar feature.
+- `DmsUser` still has no global role column (per Session 5) — `AuditCalendarController.CreateEvent`/`GoogleCalendarController` endpoints only require an authenticated active user, same as other non-folder-scoped writes; the frontend's Admin/QA-only gating on "New Audit Event" is a UI convenience, not a server-enforced boundary.
+- Google Workspace SSO (removing `DEV_USER_ID`) and the four stub admin pages (Settings/Notifications/Company Data/Database) remain open from earlier sessions.

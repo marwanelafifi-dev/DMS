@@ -138,7 +138,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(330px,0.85fr)]">
-        <AuditCalendarCard canManage={canManageAuditCalendar} currentUserName={user?.fullName ?? 'Admin'} />
+        <AuditCalendarCard canManage={canManageAuditCalendar} />
 
         <div className="flex flex-col gap-5">
           <Card>

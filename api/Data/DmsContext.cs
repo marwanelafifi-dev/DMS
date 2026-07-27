@@ -22,6 +22,9 @@ public class DmsContext : DbContext
     public DbSet<DmsWorkflow> Workflows => Set<DmsWorkflow>();
     public DbSet<DmsWorkflowStep> WorkflowSteps => Set<DmsWorkflowStep>();
     public DbSet<DmsReminder> Reminders => Set<DmsReminder>();
+    public DbSet<DmsAuditCalendarEvent> AuditCalendarEvents => Set<DmsAuditCalendarEvent>();
+    public DbSet<DmsUserCalendarConnection> UserCalendarConnections => Set<DmsUserCalendarConnection>();
+    public DbSet<DmsUserCalendarEventSync> UserCalendarEventSyncs => Set<DmsUserCalendarEventSync>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,6 +75,9 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsWorkflowStep>().ToTable("dms_workflow_steps").HasKey(ws => ws.StepId);
         modelBuilder.Entity<DmsTask>().ToTable("dms_tasks").HasKey(t => t.TaskId);
         modelBuilder.Entity<DmsReminder>().ToTable("dms_reminders").HasKey(r => r.ReminderId);
+        modelBuilder.Entity<DmsAuditCalendarEvent>().ToTable("dms_audit_calendar_events").HasKey(e => e.EventId);
+        modelBuilder.Entity<DmsUserCalendarConnection>().ToTable("dms_user_calendar_connections").HasKey(c => c.ConnectionId);
+        modelBuilder.Entity<DmsUserCalendarEventSync>().ToTable("dms_user_calendar_event_syncs").HasKey(s => s.SyncId);
         modelBuilder.Entity<DmsAuditTrail>().ToTable("dms_audit_trails").HasKey(a => a.LogId);
         modelBuilder.Entity<DmsOcrIndex>().ToTable("dms_ocr_indexes").HasKey(o => o.OcrId);
         modelBuilder.Entity<DmsEsignature>().ToTable("dms_esignatures").HasKey(e => e.SignatureId);
@@ -270,6 +276,30 @@ public class DmsContext : DbContext
             .HasForeignKey(r => r.RecipientId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<DmsAuditCalendarEvent>()
+            .HasOne(e => e.PostedByUser)
+            .WithMany()
+            .HasForeignKey(e => e.PostedBy)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DmsUserCalendarConnection>()
+            .HasOne(c => c.User)
+            .WithMany()
+            .HasForeignKey(c => c.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsUserCalendarEventSync>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsUserCalendarEventSync>()
+            .HasOne(s => s.Event)
+            .WithMany()
+            .HasForeignKey(s => s.EventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // === INDEXES ===
         modelBuilder.Entity<DmsUser>(e => e.HasIndex(u => u.Email).IsUnique());
         modelBuilder.Entity<DmsUser>(e => e.HasIndex(u => u.SsoSubject));
@@ -292,6 +322,12 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsReminder>(e => e.HasIndex(r => r.RecipientId));
         modelBuilder.Entity<DmsReminder>(e => e.HasIndex(r => r.DueDate));
         modelBuilder.Entity<DmsReminder>(e => e.HasIndex(r => r.IsSent));
+
+        modelBuilder.Entity<DmsAuditCalendarEvent>(e => e.HasIndex(a => a.EventDate));
+
+        modelBuilder.Entity<DmsUserCalendarConnection>(e => e.HasIndex(c => c.UserId).IsUnique());
+        modelBuilder.Entity<DmsUserCalendarConnection>(e => e.HasIndex(c => c.IsActive));
+        modelBuilder.Entity<DmsUserCalendarEventSync>(e => e.HasIndex(s => new { s.UserId, s.EventId }).IsUnique());
     }
 
     private static string ToSnakeCase(string input)
