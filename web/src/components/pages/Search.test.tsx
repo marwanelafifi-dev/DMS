@@ -11,10 +11,26 @@ function renderSearch(initialEntry = '/search') {
     <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/search" element={<Search />} />
+        <Route path="/documents" element={<div>document library preview</div>} />
       </Routes>
     </MemoryRouter>,
   );
 }
+
+const libraryDocument = {
+  documentId: 'dms-document-7',
+  folderId: 'folder-1',
+  currentVersionId: 'version-7',
+  name: 'calibration-record',
+  title: 'calibration-record',
+  fileName: 'calibration-record.docx',
+  fileSize: 4096,
+  contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  status: 'released' as const,
+  uploadedBy: 'owner-1',
+  uploadedAt: '2026-07-20T10:00:00.000Z',
+  updatedAt: '2026-07-20T10:00:00.000Z',
+};
 
 describe('parsed document search', () => {
   beforeEach(() => {
@@ -26,10 +42,10 @@ describe('parsed document search', () => {
         created_at: '2026-07-26 12:00:00',
       },
     ]);
+    vi.spyOn(apiClient, 'getDocuments').mockResolvedValue({ success: true, data: [libraryDocument] });
   });
 
   it('loads the navbar query from the URL and displays matching parsed files', async () => {
-    const user = userEvent.setup();
     renderSearch('/search?q=torque%20verification');
 
     expect(await screen.findByText('calibration-record.docx')).toBeInTheDocument();
@@ -37,11 +53,18 @@ describe('parsed document search', () => {
       'torque verification',
       expect.any(AbortSignal),
     );
+  });
 
-    await user.click(screen.getByRole('button', { name: 'View parsed calibration-record.docx' }));
+  it('opens a matching parsed file in the Document Library preview', async () => {
+    const user = userEvent.setup();
+    renderSearch('/search?q=torque%20verification');
 
-    expect(screen.getByRole('heading', { name: 'Calibration record' })).toBeInTheDocument();
-    expect(screen.getByText('Torque verification evidence.')).toBeInTheDocument();
+    await screen.findByText('calibration-record.docx');
+    await user.click(
+      await screen.findByRole('button', { name: 'Open calibration-record.docx in Document Library' }),
+    );
+
+    expect(await screen.findByText('document library preview')).toBeInTheDocument();
   });
 
   it('keeps the existing filtered DMS metadata search available', async () => {

@@ -6,7 +6,6 @@ import type { Document } from '../../types';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { Badge, Button, Card, CardBody } from '../ui';
-import { MarkdownViewer } from '../custom/MarkdownViewer';
 import { SkeletonTable } from '../ui/Skeleton';
 
 export function Search() {
@@ -15,12 +14,12 @@ export function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
   const [results, setResults] = useState<ParsedDocument[]>([]);
-  const [selectedDocument, setSelectedDocument] = useState<ParsedDocument | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [libraryResults, setLibraryResults] = useState<Document[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [hasLibrarySearched, setHasLibrarySearched] = useState(false);
+  const [allDmsDocuments, setAllDmsDocuments] = useState<Document[]>([]);
   const [filters, setFilters] = useState({
     status: '',
     owner: '',
@@ -31,10 +30,45 @@ export function Search() {
     maxSize: '',
   });
 
+  // Load all DMS documents once so we can match parsed OCR filenames to real
+  // library documents and open the exact same DocumentPreview used in the library.
+  useEffect(() => {
+    let cancelled = false;
+    const loadAllDocuments = async () => {
+      try {
+        const response = await apiClient.getDocuments();
+        if (!cancelled && Array.isArray(response.data)) {
+          setAllDmsDocuments(response.data as Document[]);
+        }
+      } catch {
+        // Non-fatal: matching to Document Library preview is a convenience feature.
+      }
+    };
+    void loadAllDocuments();
+    return () => { cancelled = true; };
+  }, []);
+
+  const findDmsDocument = useCallback((filename: string) => {
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+    return allDmsDocuments.find((d) =>
+      d.fileName?.toLowerCase() === filename.toLowerCase()
+      || (d.name ?? d.title)?.toLowerCase() === nameWithoutExt.toLowerCase()
+      || d.fileName?.toLowerCase().includes(filename.toLowerCase()),
+    );
+  }, [allDmsDocuments]);
+
+  const openInLibrary = useCallback((document: ParsedDocument) => {
+    const dmsDoc = findDmsDocument(document.filename);
+    if (dmsDoc) {
+      navigate(`/documents?preview=${encodeURIComponent(dmsDoc.documentId)}`);
+    } else {
+      showError('This file is not linked to a Document Library entry yet');
+    }
+  }, [findDmsDocument, navigate, showError]);
+
   const runSearch = useCallback(async (query: string, signal?: AbortSignal) => {
     setIsLoading(true);
     setHasSearched(true);
-    setSelectedDocument(null);
     try {
       const matches = await doclingApi.searchDocuments(query, signal);
       setResults(matches);
@@ -258,7 +292,7 @@ export function Search() {
           </CardBody>
         </Card>
       ) : (
-        <div className={`grid min-w-0 gap-5 ${selectedDocument ? 'xl:grid-cols-[minmax(280px,0.7fr)_minmax(0,1.3fr)]' : ''}`}>
+        <div className="space-y-5">
           <Card className="min-w-0 overflow-hidden dark:bg-navy-950">
             <div className="border-b border-[#dbe2ec] px-5 py-4 dark:border-white/10">
               <h2 className="section-heading">{results.length} matching {results.length === 1 ? 'file' : 'files'}</h2>
@@ -271,30 +305,21 @@ export function Search() {
                     <p className="truncate text-sm font-semibold text-[#26334d] dark:text-white">{document.filename}</p>
                     {document.created_at && <p className="mt-1 text-xs text-[#718198]">Parsed {document.created_at}</p>}
                   </div>
-                  <button
-                    type="button"
-                    aria-label={`View parsed ${document.filename}`}
-                    onClick={() => setSelectedDocument(document)}
-                    className="rounded p-2 text-[#3f8bca] hover:bg-blue-50 dark:hover:bg-slate-800"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </button>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      title="Open in Document Library"
+                      aria-label={`Open ${document.filename} in Document Library`}
+                      onClick={() => openInLibrary(document)}
+                      className="rounded p-2 text-[#3f8bca] hover:bg-blue-50 dark:hover:bg-slate-800"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
           </Card>
-
-          {selectedDocument && (
-            <section className="min-w-0" aria-label={`Parsed content for ${selectedDocument.filename}`}>
-              <div className="mb-3 flex items-center justify-between">
-                <div className="min-w-0">
-                  <h2 className="truncate text-base font-semibold text-[#26334d] dark:text-white">{selectedDocument.filename}</h2>
-                  <p className="text-xs text-[#718198]">Read-only Markdown generated locally by Docling</p>
-                </div>
-              </div>
-              <MarkdownViewer content={selectedDocument.content} />
-            </section>
-          )}
         </div>
       )}
 
