@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
+  BellRing,
   Building2,
   Check,
   ChevronDown,
@@ -27,6 +28,7 @@ const navItems = [
   { label: 'Document Library', path: '/documents', icon: Folder },
   { label: 'C-Doc Workflow', path: '/approvals', icon: ClipboardCheck },
   { label: 'PCAR / Corrective Action', path: '/tasks', icon: FileWarning },
+  { label: 'Reminders', path: '/reminders', icon: BellRing },
 ];
 
 const adminItems = [
