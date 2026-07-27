@@ -32,13 +32,33 @@ def normalize_office_archive(path: Path) -> None:
 
 
 def create_text_sample() -> None:
-    content = """DMS Local Parsing Sample
+    content = """DMS - Enterprise Document Management System
+============================================
 
-Document type: Plain text
-Tracking code: TXT-SAMPLE-4729
+Sample Text File for Testing
 
-This file verifies upload, persistent storage, browser preview, download, OCR search,
-and document workflow actions in the local Document Management System.
+This is a sample text document used to test the preview functionality
+of the Enterprise Document Management System (DMS).
+
+The system supports the following file types:
+- Text Files (.txt)
+- Word Documents (.docx, .doc)
+- Excel Spreadsheets (.xlsx, .xls)
+- PowerPoint Presentations (.pptx, .ppt)
+- PDF Documents (.pdf)
+- Images (.png, .jpg, .jpeg, .gif)
+
+Quality Management System (QMS)
+- ISO 9001:2015 Compliance
+- Document Control
+- Change Management
+- Version History
+
+Information Security Management (ISMS)
+- ISO 27001:2022 Compliance
+- Access Control
+- Audit Logging
+- Risk Assessment
 """
     (OUTPUT_DIR / "DMS-Sample-Text.txt").write_text(content, encoding="utf-8")
 

@@ -19,7 +19,7 @@ describe('sample document pack', () => {
   });
 
   it.each([
-    ['DMS-Sample-Text.txt', Buffer.from('DMS Local Parsing Sample')],
+    ['DMS-Sample-Text.txt', Buffer.from('DMS - Enterprise Document Management System')],
     ['DMS-Sample-Document.docx', Buffer.from('PK')],
     ['DMS-Sample-Spreadsheet.xlsx', Buffer.from('PK')],
     ['DMS-Sample-Presentation.pptx', Buffer.from('PK')],
