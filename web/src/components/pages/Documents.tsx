@@ -6,6 +6,7 @@ import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
 import { DocumentPreview } from '../custom/DocumentPreview';
+import { BulkOperationsModal } from '../custom/BulkOperationsModal';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
@@ -92,6 +93,7 @@ export function Documents() {
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const [requestedFolderAction, setRequestedFolderAction] = useState<LibraryBulkAction | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<OptionalDocumentColumn>>(() => new Set(defaultVisibleDocumentColumns));
+  const [showBulkOperationsModal, setShowBulkOperationsModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const previewRequestRef = useRef(0);
@@ -111,6 +113,58 @@ export function Documents() {
     ? folders.find((folder) => selectedFolderIds.has(folder.folderId))
     : undefined;
   const librarySelection = { folderIds: selectedFolderIds, documentIds: selectedDocumentIds };
+  // Approve/Reject/Delete/Download hit the real .NET API, so only documents with a
+  // real GUID (not a bundled sample-fixture id like "folder-1-txt") are eligible —
+  // sending a fixture id to the server would just come back as a per-item failure.
+  const isServerDocumentId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  const selectedServerDocuments = allDocuments.filter(
+    (document) => selectedDocumentIds.has(document.documentId) && isServerDocumentId(document.documentId),
+  );
+
+  // Re-fetches server-backed documents and reconciles them into allDocuments —
+  // used on mount and again after bulk approve/reject/delete so status changes
+  // and deletions from the server are reflected without a full page reload.
+  const refreshServerDocuments = useCallback(async (knownFolders: Folder[]) => {
+    try {
+      const response = await apiClient.getDocuments();
+      if (!response.data || !Array.isArray(response.data)) return;
+
+      const liveDocuments = (response.data as Document[]).map((document) =>
+        createUnavailableLibraryDocument(
+          {
+            ...document,
+            folder: knownFolders.find((folder) => folder.folderId === document.folderId),
+          },
+          'A browser preview is not available after reloading this document. Download the read-only source to view it locally.',
+        ),
+      );
+      const liveIds = new Set(liveDocuments.map((document) => document.documentId));
+
+      setAllDocuments((current) => {
+        const merged = new Map(
+          current
+            // Drop server documents the server no longer has (e.g. bulk-deleted)
+            // while leaving fixture/sample documents alone — they aren't server-backed.
+            .filter((document) => liveIds.has(document.documentId) || !isServerDocumentId(document.documentId))
+            .map((document) => [document.documentId, document] as const),
+        );
+        liveDocuments.forEach((document) => {
+          const existing = merged.get(document.documentId);
+          merged.set(document.documentId, existing ? {
+            ...existing,
+            ...document,
+            preview: existing.preview.kind === 'unavailable' ? document.preview : existing.preview,
+            sourceUrl: existing.sourceUrl,
+            fallbackDownload: existing.fallbackDownload,
+          } : document);
+        });
+        return [...merged.values()];
+      });
+    } catch (error) {
+      console.error('Failed to load documents:', error);
+      showError('Failed to load documents');
+    }
+  }, [showError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,43 +188,11 @@ export function Documents() {
         if (!cancelled) setIsLoadingFolders(false);
       }
 
-      if (cancelled) return;
-
-      try {
-        const response = await apiClient.getDocuments();
-        if (!cancelled && response.data && Array.isArray(response.data)) {
-          const liveDocuments = (response.data as Document[]).map((document) =>
-            createUnavailableLibraryDocument(
-              {
-                ...document,
-                folder: loadedFolders.find((folder) => folder.folderId === document.folderId),
-              },
-              'A browser preview is not available after reloading this document. Download the read-only source to view it locally.',
-            ),
-          );
-
-          setAllDocuments((current) => {
-            const merged = new Map(current.map((document) => [document.documentId, document]));
-            liveDocuments.forEach((document) => {
-              const existing = merged.get(document.documentId);
-              merged.set(document.documentId, existing ? {
-                ...existing,
-                ...document,
-                preview: existing.preview.kind === 'unavailable' ? document.preview : existing.preview,
-                sourceUrl: existing.sourceUrl,
-                fallbackDownload: existing.fallbackDownload,
-              } : document);
-            });
-            return [...merged.values()];
-          });
-        }
-      } catch (error) {
-        console.error('Failed to load documents:', error);
-        if (!cancelled) showError('Failed to load documents');
-      }
+      if (!cancelled) await refreshServerDocuments(loadedFolders);
     };
     void loadLibrary();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showError]);
 
   useEffect(() => {
@@ -389,7 +411,7 @@ export function Documents() {
       const next = new URLSearchParams(current);
       next.set('preview', libraryDocument.documentId);
       return next;
-    }, { replace: true });
+    }); // Don't use replace:true so browser back button works correctly
   };
 
   const downloadMockDocument = async (libraryDocument: MockLibraryDocument) => {
@@ -734,6 +756,11 @@ export function Documents() {
                   onRequestedActionDismissed={() => setSelectedFolderIds(new Set())}
                   onConfirm={handleBulkAction}
                 />
+                {selectedServerDocuments.length > 0 && (
+                  <Button variant="secondary" onClick={() => setShowBulkOperationsModal(true)}>
+                    Bulk Actions ({selectedServerDocuments.length})
+                  </Button>
+                )}
                 <ColumnVisibilityMenu visibleColumns={visibleColumns} onChange={setVisibleColumns} />
               </div>
             </div>
@@ -757,6 +784,17 @@ export function Documents() {
       </div>
 
       {previewDocument && <DocumentPreview document={previewDocument} onClose={closePreview} onDownload={downloadMockDocument} />}
+
+      {showBulkOperationsModal && (
+        <BulkOperationsModal
+          selectedDocuments={selectedServerDocuments}
+          onClose={() => setShowBulkOperationsModal(false)}
+          onSuccess={() => {
+            setSelectedDocumentIds(new Set());
+            void refreshServerDocuments(folders);
+          }}
+        />
+      )}
 
       <Dialog.Root open={showUploadModal} onOpenChange={(open) => open ? setShowUploadModal(true) : closeUploadModal()}>
         <Dialog.Portal>

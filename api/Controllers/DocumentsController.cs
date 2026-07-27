@@ -431,55 +431,9 @@ public class DocumentsController(
     {
         try
         {
-            var document = await context.Documents
-                .FirstOrDefaultAsync(d => d.DocumentId == id);
-
-            if (document == null)
-                return NotFound(new { success = false, error = "المستند غير موجود" });
-
-            // حذف جميع النسخ من MinIO
-            var versions = await context.DocumentVersions
-                .Where(v => v.DocumentId == id)
-                .ToListAsync();
-
-            foreach (var version in versions)
-            {
-                if (!string.IsNullOrEmpty(version.S3ObjectKey))
-                {
-                    try
-                    {
-                        await minioService.DeleteAsync(version.S3ObjectKey);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", version.S3ObjectKey);
-                    }
-                }
-            }
-
-            // حذف النسخ من قاعدة البيانات
-            // Break the document/current-version cycle before deleting both
-            // sides of the required version-to-document relationship.
-            document.CurrentVersionId = null;
-            await context.SaveChangesAsync();
-
-            context.DocumentVersions.RemoveRange(versions);
-
-            // حذف المستند
-            context.Documents.Remove(document);
-            await context.SaveChangesAsync();
-
-            var currentUserId = GetCurrentUserId();
-            await auditService.LogAsync(currentUserId, DOCUMENT_DELETED, new
-            {
-                document.DocumentId,
-                document.Title,
-                document.FolderId,
-                VersionsDeleted = versions.Count,
-                DeletedAt = DateTime.UtcNow
-            });
-
-            logger.LogInformation("Deleted document {DocumentId}", id);
+            var (success, error) = await DeleteDocumentInternalAsync(id, GetCurrentUserId());
+            if (!success)
+                return NotFound(new { success = false, error });
 
             return Ok(new { success = true, message = "تم حذف المستند بنجاح" });
         }
@@ -488,6 +442,55 @@ public class DocumentsController(
             logger.LogError(ex, "Error deleting document {DocumentId}", id);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
+    }
+
+    // Shared by the single-document delete endpoint and BulkDeleteDocuments so the
+    // two paths can't silently drift (e.g. one forgetting the MinIO/version cleanup).
+    private async Task<(bool Success, string? Error)> DeleteDocumentInternalAsync(Guid id, Guid actorUserId)
+    {
+        var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
+        if (document == null)
+            return (false, "المستند غير موجود");
+
+        var versions = await context.DocumentVersions
+            .Where(v => v.DocumentId == id)
+            .ToListAsync();
+
+        foreach (var version in versions)
+        {
+            if (!string.IsNullOrEmpty(version.S3ObjectKey))
+            {
+                try
+                {
+                    await minioService.DeleteAsync(version.S3ObjectKey);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", version.S3ObjectKey);
+                }
+            }
+        }
+
+        // Break the document/current-version cycle before deleting both
+        // sides of the required version-to-document relationship.
+        document.CurrentVersionId = null;
+        await context.SaveChangesAsync();
+
+        context.DocumentVersions.RemoveRange(versions);
+        context.Documents.Remove(document);
+        await context.SaveChangesAsync();
+
+        await auditService.LogAsync(actorUserId, DOCUMENT_DELETED, new
+        {
+            document.DocumentId,
+            document.Title,
+            document.FolderId,
+            VersionsDeleted = versions.Count,
+            DeletedAt = DateTime.UtcNow
+        });
+
+        logger.LogInformation("Deleted document {DocumentId}", id);
+        return (true, null);
     }
 
     // POST /api/documents/{id}/versions/{versionId}/checkout — تأمين النسخة للتعديل
@@ -721,6 +724,145 @@ public class DocumentsController(
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
+
+    // POST /api/documents/bulk-approve — موافقة على عدة مستندات دفعة واحدة
+    [HttpPost("bulk-approve")]
+    public async Task<ActionResult<object>> BulkApproveDocuments([FromBody] BulkApproveRequest req)
+    {
+        if (req.DocumentIds is not { Count: > 0 })
+            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+
+        var userId = GetCurrentUserId();
+        var succeeded = new List<Guid>();
+        var failed = new List<object>();
+
+        foreach (var documentId in req.DocumentIds.Distinct())
+        {
+            var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.DocumentId == documentId);
+            if (document?.CurrentVersionId == null)
+            {
+                failed.Add(new { documentId, error = "Document has no uploaded version" });
+                continue;
+            }
+
+            var result = await approvalService.ApproveAsync(documentId, document.CurrentVersionId.Value, userId, req.Comments);
+            if (result.Success) succeeded.Add(documentId);
+            else failed.Add(new { documentId, error = result.Message });
+        }
+
+        logger.LogInformation("Bulk approve: {Succeeded} succeeded, {Failed} failed", succeeded.Count, failed.Count);
+        return Ok(new { success = true, data = new { succeeded, failed } });
+    }
+
+    // POST /api/documents/bulk-reject — رفض عدة مستندات دفعة واحدة
+    [HttpPost("bulk-reject")]
+    public async Task<ActionResult<object>> BulkRejectDocuments([FromBody] BulkRejectRequest req)
+    {
+        if (req.DocumentIds is not { Count: > 0 })
+            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+        if (string.IsNullOrWhiteSpace(req.Reason))
+            return BadRequest(new { success = false, error = "سبب الرفض مطلوب" });
+
+        var userId = GetCurrentUserId();
+        var succeeded = new List<Guid>();
+        var failed = new List<object>();
+
+        foreach (var documentId in req.DocumentIds.Distinct())
+        {
+            var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.DocumentId == documentId);
+            if (document?.CurrentVersionId == null)
+            {
+                failed.Add(new { documentId, error = "Document has no uploaded version" });
+                continue;
+            }
+
+            var result = await approvalService.RejectAsync(documentId, document.CurrentVersionId.Value, userId, req.Reason);
+            if (result.Success) succeeded.Add(documentId);
+            else failed.Add(new { documentId, error = result.Message });
+        }
+
+        logger.LogInformation("Bulk reject: {Succeeded} succeeded, {Failed} failed", succeeded.Count, failed.Count);
+        return Ok(new { success = true, data = new { succeeded, failed } });
+    }
+
+    // POST /api/documents/bulk-delete — حذف عدة مستندات دفعة واحدة
+    [HttpPost("bulk-delete")]
+    public async Task<ActionResult<object>> BulkDeleteDocuments([FromBody] BulkDeleteRequest req)
+    {
+        if (req.DocumentIds is not { Count: > 0 })
+            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+
+        var userId = GetCurrentUserId();
+        var succeeded = new List<Guid>();
+        var failed = new List<object>();
+
+        foreach (var documentId in req.DocumentIds.Distinct())
+        {
+            var (success, error) = await DeleteDocumentInternalAsync(documentId, userId);
+            if (success) succeeded.Add(documentId);
+            else failed.Add(new { documentId, error });
+        }
+
+        logger.LogInformation("Bulk delete: {Succeeded} succeeded, {Failed} failed", succeeded.Count, failed.Count);
+        return Ok(new { success = true, data = new { succeeded, failed } });
+    }
+
+    // POST /api/documents/bulk-download — تحميل عدة مستندات كملف مضغوط واحد
+    [HttpPost("bulk-download")]
+    public async Task<ActionResult> BulkDownloadDocuments([FromBody] BulkDownloadRequest req)
+    {
+        if (req.DocumentIds is not { Count: > 0 })
+            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+
+        var userId = GetCurrentUserId();
+        var documents = await context.Documents
+            .Where(d => req.DocumentIds.Contains(d.DocumentId) && d.CurrentVersionId != null)
+            .ToListAsync();
+
+        var versionIds = documents.Select(d => d.CurrentVersionId!.Value).ToList();
+        var versions = await context.DocumentVersions
+            .Where(v => versionIds.Contains(v.VersionId))
+            .ToDictionaryAsync(v => v.VersionId);
+
+        var memoryStream = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var usedNames = new HashSet<string>();
+            foreach (var document in documents)
+            {
+                if (!versions.TryGetValue(document.CurrentVersionId!.Value, out var version) || string.IsNullOrEmpty(version.S3ObjectKey))
+                    continue;
+
+                // Guards against two documents sharing the same file name colliding inside the zip.
+                var entryName = version.FileName;
+                var suffix = 1;
+                while (!usedNames.Add(entryName))
+                    entryName = $"{Path.GetFileNameWithoutExtension(version.FileName)} ({++suffix}){Path.GetExtension(version.FileName)}";
+
+                var entry = archive.CreateEntry(entryName, System.IO.Compression.CompressionLevel.Fastest);
+                await using var entryStream = entry.Open();
+                try
+                {
+                    await using var sourceStream = await minioService.DownloadAsync(version.S3ObjectKey);
+                    await sourceStream.CopyToAsync(entryStream);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Skipping {ObjectKey} in bulk download — could not read from storage", version.S3ObjectKey);
+                }
+            }
+        }
+
+        await auditService.LogAsync(userId, DOCUMENT_DOWNLOADED, new
+        {
+            DocumentIds = documents.Select(d => d.DocumentId),
+            Count = documents.Count,
+            DownloadedAt = DateTime.UtcNow
+        });
+
+        memoryStream.Position = 0;
+        return File(memoryStream, "application/zip", $"documents-{DateTime.UtcNow:yyyyMMdd-HHmmss}.zip");
+    }
 }
 
 public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId);
@@ -729,3 +871,7 @@ public record CheckoutRequest(string? Reason = null);
 public record SubmitRequest(Guid VersionId, string? Comment = null);
 public record ApproveRequest(Guid VersionId, string? Comment = null);
 public record RejectRequest(Guid VersionId, string Reason);
+public record BulkApproveRequest(List<Guid> DocumentIds, string? Comments = null);
+public record BulkRejectRequest(List<Guid> DocumentIds, string Reason);
+public record BulkDeleteRequest(List<Guid> DocumentIds);
+public record BulkDownloadRequest(List<Guid> DocumentIds);

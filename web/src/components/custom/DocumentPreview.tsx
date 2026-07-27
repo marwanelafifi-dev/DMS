@@ -4,6 +4,7 @@ import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
 import { MarkdownViewer } from './MarkdownViewer';
+import { OcrPanel } from './OcrPanel';
 
 interface DocumentPreviewProps {
   document: MockLibraryDocument;
@@ -151,7 +152,19 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
           </div>
         );
       case 'unavailable':
-        return <PreviewFallback message={document.preview.message} onDownload={() => onDownload(document)} />;
+        return (
+          <div className="space-y-6">
+            <PreviewFallback message={document.preview.message} onDownload={() => onDownload(document)} />
+            {/* A cached in-browser Docling preview only lives for the session it was
+                uploaded in; after a reload there is no local content to show, but the
+                server still has the file, so offer to re-run extraction on demand. */}
+            {document.currentVersionId && (
+              <div className="border-t border-[#e2e8f0] pt-6 dark:border-white/10">
+                <OcrPanel documentId={document.documentId} versionId={document.currentVersionId} fileName={document.fileName} />
+              </div>
+            )}
+          </div>
+        );
       default:
         return <PreviewFallback onDownload={() => onDownload(document)} />;
     }
