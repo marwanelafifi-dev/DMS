@@ -76,6 +76,14 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors();
 
+// Health endpoints (before RBAC middleware — skip auth)
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    service = "dms-api",
+    timestamp = DateTime.UtcNow
+}));
+
 // Hangfire Dashboard (readonly for now)
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {
@@ -93,9 +101,6 @@ using (var scope = app.Services.CreateScope())
     var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
     app.ConfigureBackgroundJobs(recurringJobManager);
 }
-
-// Health endpoints
-app.MapHealthChecks("/health");
 
 app.MapGet("/", () => Results.Ok(new
 {
