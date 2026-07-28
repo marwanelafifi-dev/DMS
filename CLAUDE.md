@@ -3,13 +3,48 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-07-27
+**Current Date:** 2026-07-28
 
 **Working Directory:** `C:\Users\user\Desktop\DMS`
 
 **Active Branch:** `ali-branch`
 
-**Status:** Session 16 — Dashboard/Search run on real API data, Reminders and Bulk Operations are fully functional end-to-end, the ISO Audit Calendar is persisted to the database, and per-user Google Calendar sync is architecturally complete pending Google OAuth credentials (see Session 16 below). Session 15's Docling parsing/OCR, persistent previews, and sample-file pack remain in place.
+**Status:** Session 17 (continuation) — Verified Session 16 completion: Dashboard/Search run on real API data, Reminders and Bulk Operations are fully functional end-to-end, the ISO Audit Calendar is persisted to the database, and per-user Google Calendar sync is architecturally complete pending Google OAuth credentials. All code committed and pushed to origin/ali-branch. Session 15's Docling parsing/OCR, persistent previews, and sample-file pack remain in place.
+
+---
+
+## Session 17 (2026-07-28) — Continuation & Verification
+
+**Status:** ✅ Complete — All Session 16 work verified, committed, and pushed to origin/ali-branch.
+
+**Work completed:**
+- Verified git status: working tree clean, all changes from Session 16 committed
+- Confirmed Session 16 deliverables on remote:
+  - Dashboard wired to real API (`getTasks`, `getDocuments`, `getPendingApprovals` in parallel)
+  - Reminders WORM fix + full API integration (migration `011_reminders_worm_fix.sql`)
+  - Bulk Operations backend endpoints (`bulk-approve`, `bulk-reject`, `bulk-delete`, `bulk-download`)
+  - OCR Panel rewired to local Docling stateless conversion
+  - E-Signatures dead code deleted
+  - Audit Calendar persisted to database (migration `012_audit_calendar_events.sql`)
+  - Per-user Google Calendar sync architecture complete:
+    - Per-user OAuth token storage + per-event sync mapping (migration `013_user_google_calendar_sync.sql`)
+    - Seam interface `IGoogleOAuthCalendarClient` with 4-step implementation guide
+    - Hangfire daily 6 AM UTC sync job registered
+    - Frontend: "Connect Google Calendar" / "Sync Now" / "Disconnect" buttons + last-sync timestamp
+    - Awaiting Google OAuth credentials for real implementation
+
+**Last commits on ali-branch:**
+1. `375c27c` — feat: persist ISO audit calendar, scaffold per-user Google Calendar sync
+2. `c1938d0` — docs: add E2E testing checklist, results, and upload-fix notes from this session
+3. `28a7c7d` — feat: implement Bulk Operations backend, wire OCR panel to real Docling, drop E-Signatures
+
+**Branch status:** `origin/ali-branch` fully in sync with local `ali-branch`
+
+**Next priorities (from Session 16 follow-ups):**
+1. **Google Workspace SSO** — Remove `DEV_USER_ID` constant once real authentication is in place (highest priority security)
+2. **Google OAuth credentials** — When available, implement `IGoogleOAuthCalendarClient` (4-step guide in code comments)
+3. **4 stub admin pages** — Settings, Notifications, Company Data, Database (UI placeholders created, requirements pending)
+4. **Production deployment** — Ubuntu + Cloudflare Tunnel (code ready, credentials/infra setup needed)
 
 ---
 
