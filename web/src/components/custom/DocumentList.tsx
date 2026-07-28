@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Eye, FileText } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import { formatDateTime } from '../../utils/formatters';
+import { statusLabels } from '../../utils/documentStatus';
 
 export type OptionalDocumentColumn = 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
 
@@ -32,14 +33,6 @@ const statusStyles: Record<MockLibraryDocument['status'], string> = {
   released: 'bg-[#d8f5e4] text-[#27885a]',
   rejected: 'bg-[#fde1e2] text-[#c73c44]',
   archived: 'bg-slate-100 text-slate-500',
-};
-
-const statusLabels: Record<MockLibraryDocument['status'], string> = {
-  draft: 'Draft',
-  pending_approval: 'In Review',
-  released: 'Released',
-  rejected: 'Rejected',
-  archived: 'Archived',
 };
 
 const extensionStyles: Record<MockLibraryDocument['extension'], string> = {

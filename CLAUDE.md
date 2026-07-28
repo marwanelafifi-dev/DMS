@@ -5,11 +5,57 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Current Date:** 2026-07-28
 
-**Working Directory:** `C:\Users\user\Desktop\DMS`
+**Working Directory:** `C:\Users\Omar.Sultan\Documents\DMS`
 
-**Active Branch:** `ali-branch`
+**Active Branch:** `Main`
 
-**Status:** Session 17 (continuation) — Verified Session 16 completion: Dashboard/Search run on real API data, Reminders and Bulk Operations are fully functional end-to-end, the ISO Audit Calendar is persisted to the database, and per-user Google Calendar sync is architecturally complete pending Google OAuth credentials. All code committed and pushed to origin/ali-branch. Session 15's Docling parsing/OCR, persistent previews, and sample-file pack remain in place.
+**Status:** Session 18 — OCR search now uses real Tesseract text extraction instead of mock content, uploads are indexed into the searchable list immediately, full-metadata search (owner/extension/department/tags/description/status) works across the Document Library, OCR search page, and top navbar autocomplete, Word/PowerPoint previews gained zoom + page navigation, Excel previews support multiple sheets, and several real bugs were found and fixed along the way (default-folder 403s, stuck preview overlay, hardcoded owner name, missing DB migrations). All verified with real browser automation (Playwright) plus the full Vitest suite (67/67 passing). See Session 18 section below for details.
+
+---
+
+## Session 18 (2026-07-28) — Real OCR, Full-Metadata Search, Preview Navigation Fixes
+
+**Status:** ✅ Complete — verified with real browser automation (Playwright) and the full Vitest suite (67/67 passing).
+
+**Context:** This session was a long, iterative debugging pass — the user repeatedly reported "OCR isn't working" without initial specifics, so most fixes were found by actually reproducing the issue myself (headless Chromium via Playwright, driving the real UI end-to-end) rather than guessing from code inspection alone.
+
+**Work completed:**
+
+1. **Real OCR extraction** — `docling-mock-server.js` previously ignored uploaded file bytes entirely and returned hardcoded placeholder text for every upload, and never indexed uploads for search. Fixed:
+   - Added a minimal multipart/form-data parser so the mock server actually reads the uploaded filename and bytes
+   - Wired in `tesseract.js` to run real OCR on uploaded images (PNG/JPG/GIF/BMP/WebP)
+   - Uploads (and re-running "Extract Text" on existing documents) now index into the mock server's searchable list immediately
+
+2. **Full-metadata search** — Document Library search, the OCR Document Search page, and the top navbar's live autocomplete previously only matched file name (and, for OCR, parsed content). Extended all three to match owner name, extension (with/without leading dot), department, tags, description, tracking code, and status — with whitespace/punctuation-tolerant comparison. Shared the logic via `web/src/utils/dmsMetadataSearch.ts` and `web/src/hooks/useAllDmsDocuments.ts` instead of three separate implementations.
+
+3. **Search autocomplete** — Added a debounced live-suggestions dropdown (`useSearchSuggestions` + `SearchSuggestionsDropdown`) to both the navbar search and the OCR search page, with keyboard nav (↑/↓/Enter/Escape) and highlighted match snippets.
+
+4. **Document preview navigation bug** — The full-screen preview overlay only closed via its explicit ✕ button. Browser Back and the "Document Library" sidebar link (both of which drop the `?preview=` URL param) left it stuck on screen since nothing reacted to the param's removal. Fixed by closing the preview whenever `?preview=` is absent from the URL; this doesn't touch folder selection, so it correctly returns to whatever folder was being browsed.
+
+5. **Word/PowerPoint preview: zoom + pagination** — Added a zoom control (50–200%) and Up/Down-arrow page/slide navigation. Word is paginated 3 paragraphs per page; PowerPoint shows one slide at a time.
+
+6. **Excel multi-sheet support** — `officeParser.ts` previously only parsed the first sheet of an uploaded workbook. Now parses all sheets; the preview shows an Excel-style sheet-tab bar when there's more than one.
+
+7. **Upload flow fixes:**
+   - Description is now a required field on upload and is persisted (migration `014_document_description.sql`, backend `Description` column on `DmsDocument` + `DocumentsController`)
+   - Single-file uploads can be renamed before upload (extension stays fixed)
+   - Fixed the Document Library defaulting to the alphabetically-first folder regardless of write permission — this caused uploads to silently 403 unless the user manually clicked into a writable folder (e.g. "Mock Files") first
+
+8. **Root-cause infrastructure bug found via testing:** two DB migrations (`012_audit_calendar_events.sql`, `013_user_google_calendar_sync.sql`) never ran against the already-existing Postgres volume in this environment (init scripts only execute on a fresh volume), so every page load's Google Calendar status check threw an unhandled 500. Applied both migrations directly; fresh environments are unaffected.
+
+9. **Fixed a real, unrelated owner-name bug found while testing metadata search:** the Document Library was showing a hardcoded fixture name ("A. Khaled") as the owner of every real uploaded document, since the API only returns an owner ID and nothing resolved it to an actual name. Now resolved via `/api/users`.
+
+**Regressions caught and fixed before considering the work done** (via running the full test suite, not just manual spot checks):
+- A duplicate fixture document (`DMS-Sample-Image.png`, added earlier in this session for OCR testing) collided with a pre-existing "Sample Files" feature fixture of the same name — removed the duplicate
+- A duplicate "Description" line in the document preview header (one from a request earlier in this session, one pre-existing) — removed the redundant one
+- Required-description upload tests needed updating to fill the new field before clicking Upload
+- A subtle race: merging DMS-metadata matches into OCR search results at the moment of the initial search (before the background documents list finishes loading) missed everything on a fresh page load — fixed by re-merging once the data arrives, without re-running or aborting the in-flight OCR search
+
+**Key files changed:** `docling-mock-server.js`, `web/src/components/pages/{Documents,Search}.tsx`, `web/src/components/layout/Navbar.tsx`, `web/src/components/custom/DocumentPreview.tsx`, `web/src/fixtures/documentLibrary.ts`, `web/src/utils/{dmsMetadataSearch,documentStatus,officeParser}.ts`, `web/src/hooks/{useAllDmsDocuments,useSearchSuggestions}.ts`, `api/Controllers/DocumentsController.cs`, `api/Models/DmsDocument.cs`, `infra/db/init/014_document_description.sql`.
+
+**Verification:** TypeScript strict mode clean throughout; full Vitest suite 67/67 passing; every fix additionally verified against the real running app via Playwright (not just unit tests) — upload→OCR→search round-trips, autocomplete behavior, preview navigation, zoom/pagination, and multi-sheet switching were all driven through an actual headless browser and screenshotted.
+
+**Known follow-up (not done this session):** Google Calendar auto-sync on audit-event creation is still not wired up — the frontend service and DB schema exist, but nothing calls them yet. See `ISSUES.md` and `GOOGLE_CALENDAR_AUTO_SYNC.md`.
 
 ---
 

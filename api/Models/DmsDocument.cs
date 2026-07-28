@@ -8,6 +8,7 @@ public class DmsDocument
     public Guid? CurrentVersionId { get; set; }
     public string? TrackingCode { get; set; }
     public string Status { get; set; } = "draft";
+    public string? Description { get; set; }
     public Guid OwnerId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

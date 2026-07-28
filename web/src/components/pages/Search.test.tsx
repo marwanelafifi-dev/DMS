@@ -43,6 +43,8 @@ describe('parsed document search', () => {
       },
     ]);
     vi.spyOn(apiClient, 'getDocuments').mockResolvedValue({ success: true, data: [libraryDocument] });
+    vi.spyOn(apiClient, 'getFolders').mockResolvedValue({ success: true, data: [] });
+    vi.spyOn(apiClient, 'getUsers').mockResolvedValue({ success: true, data: [] });
   });
 
   it('loads the navbar query from the URL and displays matching parsed files', async () => {

@@ -25,6 +25,14 @@ describe('Document Library', () => {
       success: true,
       data: [],
     });
+    vi.spyOn(apiClient, 'getUserPermissions').mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    vi.spyOn(apiClient, 'getUsers').mockResolvedValue({
+      success: true,
+      data: [],
+    });
     vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
       id: file.name.length,
       filename: file.name,
@@ -135,7 +143,7 @@ describe('Document Library', () => {
       'Status',
       'Actions',
     ]);
-    expect(screen.getByRole('textbox', { name: 'Search documents' })).toHaveAttribute('placeholder', 'Search');
+    expect(screen.getByRole('textbox', { name: 'Search documents' })).toHaveAttribute('placeholder', 'Search name, extension, owner, tags...');
     expect(screen.getAllByText('Operations').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Production', { selector: 'span' }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\d{2} \w{3} 2026, \d{2}:\d{2}/).length).toBeGreaterThanOrEqual(2);
@@ -256,6 +264,7 @@ describe('Document Library', () => {
       new File(['second'], 'Training Pack.pdf', { type: 'application/pdf' }),
     ];
     await user.upload(screen.getByLabelText('Select documents to upload'), files);
+    await user.type(screen.getByLabelText(/Description/), 'Test upload batch');
     await user.click(screen.getByRole('button', { name: 'Upload 2 files' }));
 
     expect(await screen.findByText('Incoming Audit.pdf')).toBeInTheDocument();
@@ -291,6 +300,7 @@ describe('Document Library', () => {
     const image = new File(['image-bytes'], 'Si-Ware Logo.jpg', { type: 'image/jpeg' });
 
     await user.upload(screen.getByLabelText('Select documents to upload'), image);
+    await user.type(screen.getByLabelText(/Description/), 'Logo image upload');
     await user.click(screen.getByRole('button', { name: 'Upload 1 file' }));
     await user.click(await screen.findByRole('button', { name: 'Preview Si-Ware Logo.jpg' }));
 
@@ -318,6 +328,7 @@ describe('Document Library', () => {
     const file = new File(['pending'], 'cpu-conversion.pdf', { type: 'application/pdf' });
 
     await user.upload(screen.getByLabelText('Select documents to upload'), file);
+    await user.type(screen.getByLabelText(/Description/), 'Pending conversion test');
     await user.click(screen.getByRole('button', { name: 'Upload 1 file' }));
 
     const status = await screen.findByRole('status', { name: 'Converting document with Docling' });
@@ -373,6 +384,7 @@ describe('Document Library', () => {
       await screen.findByLabelText('Select documents to upload'),
       new File(['persistent upload'], persistedDocument.fileName, { type: persistedDocument.contentType }),
     );
+    await user.type(screen.getByLabelText(/Description/), 'Persistent upload test');
     await user.click(screen.getByRole('button', { name: 'Upload 1 file' }));
     expect(await screen.findByText(persistedDocument.fileName)).toBeInTheDocument();
 

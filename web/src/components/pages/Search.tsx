@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ChevronRight, Eye, FileSearch, Search as SearchIcon } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { ChevronRight, Eye, FileSearch, Search as SearchIcon, Download, FileText, FileCode, Image, Film } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { doclingApi, type ParsedDocument } from '../../services/doclingApi';
 import type { Document } from '../../types';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+import { useSearchSuggestions } from '../../hooks/useSearchSuggestions';
+import { useAllDmsDocuments } from '../../hooks/useAllDmsDocuments';
 import { Badge, Button, Card, CardBody } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
+import { SearchSuggestionsDropdown } from '../custom/SearchSuggestionsDropdown';
+import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 
 export function Search() {
   const navigate = useNavigate();
@@ -19,7 +23,19 @@ export function Search() {
   const [libraryResults, setLibraryResults] = useState<Document[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [hasLibrarySearched, setHasLibrarySearched] = useState(false);
-  const [allDmsDocuments, setAllDmsDocuments] = useState<Document[]>([]);
+  const { documents: allDmsDocuments } = useAllDmsDocuments();
+  // Read via a ref inside runSearch instead of depending on allDmsDocuments
+  // directly — otherwise the background DMS-documents load finishing would
+  // change runSearch's identity mid-flight, which re-triggers the "run search
+  // on URL change" effect and aborts/restarts the in-flight search.
+  const allDmsDocumentsRef = useRef<Document[]>([]);
+  useEffect(() => {
+    allDmsDocumentsRef.current = allDmsDocuments;
+  }, [allDmsDocuments]);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const { suggestions, isLoading: isSuggestLoading } = useSearchSuggestions(isSuggestionsOpen ? searchQuery : '', allDmsDocuments);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState({
     status: '',
     owner: '',
@@ -30,31 +46,26 @@ export function Search() {
     maxSize: '',
   });
 
-  // Load all DMS documents once so we can match parsed OCR filenames to real
-  // library documents and open the exact same DocumentPreview used in the library.
-  useEffect(() => {
-    let cancelled = false;
-    const loadAllDocuments = async () => {
-      try {
-        const response = await apiClient.getDocuments();
-        if (!cancelled && Array.isArray(response.data)) {
-          setAllDmsDocuments(response.data as Document[]);
-        }
-      } catch {
-        // Non-fatal: matching to Document Library preview is a convenience feature.
-      }
-    };
-    void loadAllDocuments();
-    return () => { cancelled = true; };
-  }, []);
-
   const findDmsDocument = useCallback((filename: string) => {
-    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
-    return allDmsDocuments.find((d) =>
-      d.fileName?.toLowerCase() === filename.toLowerCase()
-      || (d.name ?? d.title)?.toLowerCase() === nameWithoutExt.toLowerCase()
-      || d.fileName?.toLowerCase().includes(filename.toLowerCase()),
+    if (!filename || !allDmsDocuments.length) return undefined;
+
+    const filenameLower = filename.toLowerCase().trim();
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '').toLowerCase().trim();
+
+    // Step 1: Try exact filename match (most reliable)
+    const exactMatch = allDmsDocuments.find(
+      (d) => d.fileName?.toLowerCase().trim() === filenameLower
     );
+    if (exactMatch) return exactMatch;
+
+    // Step 2: Try name without extension match
+    const nameMatch = allDmsDocuments.find(
+      (d) => (d.name ?? d.title ?? '').toLowerCase().trim() === nameWithoutExt
+    );
+    if (nameMatch) return nameMatch;
+
+    // Step 3: Return undefined if no match (not a partial match fallback)
+    return undefined;
   }, [allDmsDocuments]);
 
   const openInLibrary = useCallback((document: ParsedDocument) => {
@@ -66,15 +77,45 @@ export function Search() {
     }
   }, [findDmsDocument, navigate, showError]);
 
+  // Content search alone misses anything findable only by metadata (owner
+  // name, extension, department, tags, description, status...). This finds
+  // DMS documents that match on metadata but weren't already found by OCR
+  // content. Some DMS records (e.g. metadata-only entries with no uploaded
+  // file version yet) have an empty fileName — fall back to their
+  // title/name instead of excluding them entirely.
+  const findMetadataMatches = useCallback((dmsDocuments: Document[], contentMatches: ParsedDocument[], query: string): ParsedDocument[] => {
+    const matchedFileNames = new Set(contentMatches.map((doc) => doc.filename.toLowerCase()));
+    return dmsDocuments
+      .map((doc: any) => ({ doc, displayName: doc.fileName || doc.name || doc.title }))
+      .filter(({ doc, displayName }) => displayName && !matchedFileNames.has(displayName.toLowerCase()) && matchesDmsMetadata(doc, query))
+      .map(({ doc, displayName }, index): ParsedDocument => ({
+        id: -(index + 1),
+        filename: displayName,
+        content: doc.description || '',
+        created_at: (doc as any).createdAt,
+      }));
+  }, []);
+
+  // The last OCR content-only matches, kept separately from `results` so the
+  // DMS-metadata re-merge effect below can recombine them without needing to
+  // re-run the OCR search itself.
+  const contentMatchesRef = useRef<ParsedDocument[]>([]);
+
   const runSearch = useCallback(async (query: string, signal?: AbortSignal) => {
     setIsLoading(true);
     setHasSearched(true);
     try {
-      const matches = await doclingApi.searchDocuments(query, signal);
-      setResults(matches);
-      if (matches.length === 0) {
-        showSuccess(`No parsed documents found matching "${query}"`);
-      }
+      const contentMatches = await doclingApi.searchDocuments(query, signal);
+      if (signal?.aborted) return;
+      contentMatchesRef.current = contentMatches;
+
+      const metadataMatches = findMetadataMatches(allDmsDocumentsRef.current, contentMatches, query);
+      // No "no results" toast here — the DMS documents list (used for the
+      // metadata half of this search) may still be loading at this point, so
+      // whether there are truly zero results isn't known yet. The empty-state
+      // card below the search box already reacts to `results` once the
+      // metadata re-merge effect settles, without a toast that could go stale.
+      setResults([...contentMatches, ...metadataMatches]);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       setResults([]);
@@ -82,7 +123,20 @@ export function Search() {
     } finally {
       if (!signal?.aborted) setIsLoading(false);
     }
-  }, [showError, showSuccess]);
+  }, [showError, showSuccess, findMetadataMatches]);
+
+  // Fresh navigation straight to /search?q=... starts the OCR content search
+  // and the DMS-documents load at the same time — the content search usually
+  // wins the race, so the very first render's metadata merge sees an empty
+  // document list. Once the DMS documents actually finish loading, re-merge
+  // against the content matches we already have (no new network calls, no
+  // re-running/aborting the OCR search).
+  useEffect(() => {
+    if (!hasSearched || !searchQuery) return;
+    const metadataMatches = findMetadataMatches(allDmsDocuments, contentMatchesRef.current, searchQuery);
+    setResults([...contentMatchesRef.current, ...metadataMatches]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDmsDocuments]);
 
   useEffect(() => {
     const query = (searchParams.get('q') ?? '').trim();
@@ -101,7 +155,53 @@ export function Search() {
       return;
     }
     setSearchParams({ q: query });
+    setIsSuggestionsOpen(false);
   };
+
+  const selectSuggestion = (doc: ParsedDocument) => {
+    setSearchQuery(doc.filename);
+    setSearchParams({ q: doc.filename });
+    setIsSuggestionsOpen(false);
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isSuggestionsOpen && suggestions.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveSuggestionIndex((current) => (current + 1) % suggestions.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveSuggestionIndex((current) => (current - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (event.key === 'Enter' && activeSuggestionIndex >= 0) {
+        event.preventDefault();
+        selectSuggestion(suggestions[activeSuggestionIndex]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        setIsSuggestionsOpen(false);
+        return;
+      }
+    }
+    if (event.key === 'Enter') handleSearch();
+  };
+
+  useEffect(() => {
+    setActiveSuggestionIndex(-1);
+  }, [suggestions]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
+        setIsSuggestionsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLibrarySearch = async () => {
     const query = searchQuery.trim();
@@ -155,6 +255,16 @@ export function Search() {
       year: 'numeric',
     });
 
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    if (['pdf'].includes(ext)) return <FileText className="h-5 w-5 text-red-600" />;
+    if (['doc', 'docx'].includes(ext)) return <FileText className="h-5 w-5 text-blue-600" />;
+    if (['xls', 'xlsx'].includes(ext)) return <FileCode className="h-5 w-5 text-green-600" />;
+    if (['ppt', 'pptx'].includes(ext)) return <Film className="h-5 w-5 text-orange-600" />;
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return <Image className="h-5 w-5 text-purple-600" />;
+    return <FileText className="h-5 w-5 text-gray-400" />;
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -168,19 +278,37 @@ export function Search() {
             Search parsed document contents
           </label>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="relative min-w-0 flex-1">
+            <div ref={searchBoxRef} className="relative min-w-0 flex-1">
               <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#8ea0ba]" />
               <input
                 id="parsed-document-search"
                 type="search"
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') handleSearch();
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setIsSuggestionsOpen(true);
                 }}
+                onFocus={() => setIsSuggestionsOpen(true)}
+                onKeyDown={handleSearchKeyDown}
                 placeholder="Search extracted text, tables, and headings..."
+                role="combobox"
+                aria-expanded={isSuggestionsOpen && searchQuery.trim().length >= 2}
+                aria-controls="ocr-search-suggestions"
+                aria-autocomplete="list"
+                autoComplete="off"
                 className="field-control h-10 w-full pl-11 pr-4"
               />
+              {isSuggestionsOpen && searchQuery.trim().length >= 2 && (
+                <SearchSuggestionsDropdown
+                  id="ocr-search-suggestions"
+                  query={searchQuery}
+                  suggestions={suggestions}
+                  activeIndex={activeSuggestionIndex}
+                  isLoading={isSuggestLoading}
+                  onSelect={selectSuggestion}
+                  onHoverIndex={setActiveSuggestionIndex}
+                />
+              )}
             </div>
             <Button onClick={handleSearch} disabled={isLoading}>
               {isLoading ? 'Searching...' : 'Search'}
@@ -292,35 +420,120 @@ export function Search() {
           </CardBody>
         </Card>
       ) : (
-        <div className="space-y-5">
-          <Card className="min-w-0 overflow-hidden dark:bg-navy-950">
-            <div className="border-b border-[#dbe2ec] px-5 py-4 dark:border-white/10">
-              <h2 className="section-heading">{results.length} matching {results.length === 1 ? 'file' : 'files'}</h2>
-            </div>
-            <ul className="divide-y divide-[#e2e8f0] dark:divide-white/10">
-              {results.map((document) => (
-                <li key={document.id} className="flex min-w-0 items-center gap-3 px-5 py-4">
-                  <FileSearch className="h-5 w-5 flex-shrink-0 text-[#3f8bca]" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-[#26334d] dark:text-white">{document.filename}</p>
-                    {document.created_at && <p className="mt-1 text-xs text-[#718198]">Parsed {document.created_at}</p>}
-                  </div>
-                  <div className="flex gap-1 flex-shrink-0">
-                    <button
-                      type="button"
-                      title="Open in Document Library"
-                      aria-label={`Open ${document.filename} in Document Library`}
-                      onClick={() => openInLibrary(document)}
-                      className="rounded p-2 text-[#3f8bca] hover:bg-blue-50 dark:hover:bg-slate-800"
+        <Card className="overflow-hidden dark:bg-navy-950">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-[#dbe2ec] bg-slate-50 dark:border-white/10 dark:bg-slate-900">
+                <tr>
+                  <th className="w-12 px-4 py-3">
+                    <input type="checkbox" className="rounded" />
+                  </th>
+                  {['File name', 'Type', 'Folder', 'Department', 'Owner', 'Creation date', 'Modified date', 'Tags', 'Status', 'ACTIONS'].map((heading) => (
+                    <th key={heading} className="px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:text-white">
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((ocrDoc, index) => {
+                  const dmsDoc = findDmsDocument(ocrDoc.filename);
+                  return (
+                    <tr
+                      key={ocrDoc.id}
+                      className={`border-b border-[#dbe2ec] dark:border-white/10 ${
+                        index % 2 === 0 ? 'bg-white dark:bg-navy-950' : 'bg-slate-50 dark:bg-slate-900'
+                      }`}
                     >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
+                      <td className="w-12 px-4 py-4">
+                        <input type="checkbox" className="rounded" />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {getFileIcon(ocrDoc.filename)}
+                          <p className="font-medium text-[#26334d] dark:text-white">{ocrDoc.filename}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                        {(dmsDoc as any)?.extension?.toUpperCase() || '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                        {(dmsDoc as any)?.folderName || '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                        {dmsDoc?.department || '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                        {dmsDoc?.owner?.fullName || '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                        {dmsDoc && dmsDoc.createdAt
+                          ? new Date(dmsDoc.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+                            ', ' +
+                            new Date(dmsDoc.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                          : ocrDoc.created_at
+                            ? formatDate(ocrDoc.created_at)
+                            : '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                        {dmsDoc && dmsDoc.modifiedAt
+                          ? new Date(dmsDoc.modifiedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+                            ', ' +
+                            new Date(dmsDoc.modifiedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                          : '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                        {(dmsDoc as any)?.tags?.length ? (dmsDoc as any).tags.slice(0, 2).join(', ') + ((dmsDoc as any).tags.length > 2 ? `+${(dmsDoc as any).tags.length - 2}` : '') : '—'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge
+                          status={
+                            dmsDoc?.status === 'released'
+                              ? 'success'
+                              : dmsDoc?.status === 'pending_approval'
+                                ? 'warning'
+                                : 'info'
+                          }
+                          variant="outline"
+                        >
+                          {dmsDoc?.status?.replace('_', ' ') || 'Unknown'}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            title="Open in Document Library"
+                            aria-label={`Open ${ocrDoc.filename} in Document Library`}
+                            onClick={() => openInLibrary(ocrDoc)}
+                            className="rounded p-2 text-[#3f8bca] hover:bg-blue-50 dark:hover:bg-slate-800"
+                          >
+                            <Eye className="h-5 w-5" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Download"
+                            aria-label={`Download ${ocrDoc.filename}`}
+                            onClick={() => {
+                              if (dmsDoc) {
+                                void handleDownload(dmsDoc);
+                              } else {
+                                showError('This file is not linked to a Document Library entry yet');
+                              }
+                            }}
+                            className="rounded p-2 text-[#52627a] hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            <Download className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       {hasLibrarySearched && (

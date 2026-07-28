@@ -5,11 +5,13 @@ import { Files, LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
+import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 import { DocumentPreview } from '../custom/DocumentPreview';
 import { BulkOperationsModal } from '../custom/BulkOperationsModal';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
+import { useAuth } from '../../hooks/useAuth';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import {
   createUnavailableLibraryDocument,
@@ -17,7 +19,7 @@ import {
   type LibraryPreview,
   type MockLibraryDocument,
 } from '../../fixtures/documentLibrary';
-import type { Document, Folder } from '../../types';
+import type { Document, Folder, User } from '../../types';
 import {
   copyLibraryItems,
   deleteLibraryItems,
@@ -28,6 +30,8 @@ import {
 } from '../../services/documentLibraryOperations';
 import { doclingApi } from '../../services/doclingApi';
 import { loadSampleDocumentFiles } from '../../fixtures/sampleFiles';
+import { downloadFolderAsZip } from '../../utils/folderDownload';
+import { parseWordDocument, parseExcelDocument, parsePowerPointDocument } from '../../utils/officeParser';
 
 function readBlobAsText(blob: Blob): Promise<string> {
   if (typeof blob.text === 'function') return blob.text();
@@ -49,6 +53,12 @@ function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
 }
 
+function splitFileName(fileName: string): { base: string; ext: string } {
+  const dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex <= 0) return { base: fileName, ext: '' };
+  return { base: fileName.slice(0, dotIndex), ext: fileName.slice(dotIndex) };
+}
+
 async function createNativePreview(
   source: Blob,
   fileName: string,
@@ -68,11 +78,21 @@ async function createNativePreview(
   if (contentType.startsWith('image/') || IMAGE_PREVIEW_EXTENSIONS.has(extension)) {
     return { kind: 'image', url: sourceUrl, alt: fileName };
   }
+  if (extension === 'docx' || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    return parseWordDocument(source, sourceUrl);
+  }
+  if (extension === 'xlsx' || contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+    return parseExcelDocument(source, sourceUrl);
+  }
+  if (extension === 'pptx' || contentType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+    return parsePowerPointDocument(source, sourceUrl);
+  }
   return null;
 }
 
 export function Documents() {
   const { showSuccess, showError } = useToast();
+  const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
@@ -85,6 +105,8 @@ export function Documents() {
   const [activeUploadFileName, setActiveUploadFileName] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadDescription, setUploadDescription] = useState('');
+  const [uploadFileName, setUploadFileName] = useState('');
   const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -126,13 +148,25 @@ export function Documents() {
   // and deletions from the server are reflected without a full page reload.
   const refreshServerDocuments = useCallback(async (knownFolders: Folder[]) => {
     try {
-      const response = await apiClient.getDocuments();
+      const [response, usersResponse] = await Promise.all([
+        apiClient.getDocuments(),
+        apiClient.getUsers().catch(() => ({ data: [] as User[] })),
+      ]);
       if (!response.data || !Array.isArray(response.data)) return;
+
+      // The API only returns ownerId (a GUID) on documents, not a nested owner
+      // object — without resolving it here, createUnavailableLibraryDocument's
+      // fallback kicks in and every single document shows the same placeholder
+      // owner regardless of who actually uploaded it.
+      const userById = new Map<string, User>(
+        (usersResponse.data || []).map((user: User) => [user.userId, user]),
+      );
 
       const liveDocuments = (response.data as Document[]).map((document) =>
         createUnavailableLibraryDocument(
           {
             ...document,
+            owner: (document.ownerId ? userById.get(document.ownerId) : undefined) ?? document.owner,
             folder: knownFolders.find((folder) => folder.folderId === document.folderId),
           },
           'A browser preview is not available after reloading this document. Download the read-only source to view it locally.',
@@ -177,7 +211,26 @@ export function Documents() {
           if (!cancelled) {
             setFolders(loadedFolders);
             if (loadedFolders.length > 0) {
-              setSelectedFolderId(loadedFolders[0].folderId);
+              // Picking loadedFolders[0] unconditionally would often default to a
+              // folder the current user only has read (or no) access to, which
+              // makes uploads fail with a silent 403 the moment you hit Upload
+              // without first clicking a different folder. Prefer the first
+              // folder the user can actually write to.
+              const writableRoles = new Set(['Writer', 'Manager', 'QA', 'Admin']);
+              let defaultFolderId = loadedFolders[0].folderId;
+              try {
+                const permsRes = await apiClient.getUserPermissions(DEV_USER_ID);
+                const writableFolderIds = new Set(
+                  (permsRes.data || [])
+                    .filter((permission: any) => writableRoles.has(permission.role))
+                    .map((permission: any) => permission.folderId),
+                );
+                const writableFolder = loadedFolders.find((folder) => writableFolderIds.has(folder.folderId));
+                if (writableFolder) defaultFolderId = writableFolder.folderId;
+              } catch (error) {
+                console.error('Failed to load folder permissions:', error);
+              }
+              if (!cancelled) setSelectedFolderId(defaultFolderId);
             }
           }
         }
@@ -319,7 +372,19 @@ export function Documents() {
 
   useEffect(() => {
     const previewId = searchParams.get('preview');
-    if (!previewId) return;
+    if (!previewId) {
+      // The `preview` param is gone from the URL — via the browser Back/Forward
+      // buttons, or clicking a nav link (e.g. "Document Library" in the sidebar)
+      // that navigates to a plain /documents URL. Without this, the full-screen
+      // preview overlay stayed open and just kept covering the library, since
+      // only the explicit X button used to close it. Closing here does NOT touch
+      // selectedFolderId, so you land back on the same folder you were browsing.
+      previewAbortControllerRef.current?.abort();
+      previewAbortControllerRef.current = null;
+      previewRequestRef.current += 1;
+      setPreviewDocument(null);
+      return;
+    }
     const requestedDocument = findLibraryDocument(previewId);
     if (requestedDocument) {
       setSelectedFolderId(requestedDocument.folderId);
@@ -362,13 +427,8 @@ export function Documents() {
   }, [findLibraryDocument, hydrateDocumentPreview, searchParams]);
 
   const filteredDocuments = useMemo(() => documents.filter((document) => {
-    const query = searchQuery.trim().toLowerCase();
-    const matchesSearch = !query
-      || document.fileName.toLowerCase().includes(query)
-      || document.department.toLowerCase().includes(query)
-      || document.owner.fullName.toLowerCase().includes(query)
-      || document.tags.some((tag) => tag.toLowerCase().includes(query))
-      || document.folderName.toLowerCase().includes(query);
+    const query = searchQuery.trim();
+    const matchesSearch = !query || matchesDmsMetadata(document, query);
     const matchesStatus = !statusFilter || document.status === statusFilter;
     return matchesSearch && matchesStatus;
   }), [documents, searchQuery, statusFilter]);
@@ -429,9 +489,14 @@ export function Documents() {
         fileName = libraryDocument.fallbackDownload.fileName;
         shouldRevoke = true;
       } else if (libraryDocument.preview.kind === 'spreadsheet') {
-        const csv = [libraryDocument.preview.columns, ...libraryDocument.preview.rows]
-          .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
-          .join('\n');
+        const csv = libraryDocument.preview.sheets
+          .map((sheet) => [
+            `# Sheet: ${sheet.name}`,
+            [sheet.columns, ...sheet.rows]
+              .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
+              .join('\n'),
+          ].join('\n'))
+          .join('\n\n');
         href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
         fileName = `${libraryDocument.fileName}-preview.csv`;
         shouldRevoke = true;
@@ -465,9 +530,24 @@ export function Documents() {
     setSelectedFolderIds(new Set());
   };
 
-  const requestFolderAction = (action: 'rename' | 'copy' | 'cut' | 'delete', folderId: string) => {
+  const requestFolderAction = (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download', folderId: string) => {
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set([folderId]));
+
+    if (action === 'download') {
+      const folder = folders.find((f) => f.folderId === folderId);
+      if (folder) {
+        downloadFolderAsZip(folder, allDocuments, folder.name)
+          .then(() => {
+            showSuccess(`Folder "${folder.name}" downloaded successfully`);
+          })
+          .catch((error) => {
+            showError(error instanceof Error ? error.message : 'Failed to download folder');
+          });
+      }
+      return;
+    }
+
     setRequestedFolderAction(action === 'cut' ? 'move' : action);
   };
 
@@ -512,8 +592,18 @@ export function Documents() {
     const uploaded: MockLibraryDocument[] = [];
     const errors: string[] = [];
     const parseErrors: string[] = [];
+    // Renaming only applies when uploading a single file — the field is hidden
+    // for multi-file uploads since there's no unambiguous target for a single name.
+    const trimmedRename = uploadFileName.trim();
+    const filesToUpload = uploadFiles.length === 1 && trimmedRename
+      ? [(() => {
+          const original = uploadFiles[0];
+          const finalName = `${trimmedRename}${splitFileName(original.name).ext}`;
+          return finalName === original.name ? original : new File([original], finalName, { type: original.type });
+        })()]
+      : uploadFiles;
     try {
-      for (const uploadFile of uploadFiles) {
+      for (const uploadFile of filesToUpload) {
         try {
           setActiveUploadStage('uploading');
           setActiveUploadFileName(uploadFile.name);
@@ -521,6 +611,7 @@ export function Documents() {
             folderId: selectedFolderId,
             title: uploadFile.name.replace(/\.[^/.]+$/, ''),
             ownerId: DEV_USER_ID,
+            description: uploadDescription.trim(),
           });
           const createdDocument = docRes.data;
           if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
@@ -550,7 +641,9 @@ export function Documents() {
             contentType: uploadFile.type || 'application/octet-stream',
             status: createdDocument.status ?? 'draft',
             department: 'General',
+            description: uploadDescription.trim(),
             tags: [],
+            owner: currentUser ?? undefined,
             uploadedBy: DEV_USER_ID,
             uploadedAt: timestamp,
             createdAt: createdDocument.createdAt || timestamp,
@@ -594,7 +687,7 @@ export function Documents() {
         }
       }
       if (uploaded.length > 0) setAllDocuments((current) => [...current, ...uploaded]);
-      if (errors.length > 0) showError(`${uploaded.length} uploaded; ${errors.length} failed`);
+      if (errors.length > 0) showError(`${uploaded.length} uploaded; ${errors.length} failed — ${errors[0]}`);
       else if (parseErrors.length > 0) showError(`${uploaded.length} uploaded; ${parseErrors.length} could not be parsed locally`);
       else showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} uploaded and parsed locally`);
       if (errors.length === 0) {
@@ -616,6 +709,7 @@ export function Documents() {
     }
     setSelectedFolderId(targetFolder.folderId);
     setUploadFiles(files);
+    setUploadFileName(files.length === 1 ? splitFileName(files[0].name).base : '');
     setUploadProgress({ complete: 0, total: files.length });
     setShowUploadModal(true);
   };
@@ -663,6 +757,8 @@ export function Documents() {
     if (isUploading) return;
     setShowUploadModal(false);
     setUploadFiles([]);
+    setUploadDescription('');
+    setUploadFileName('');
   };
 
   return (
@@ -732,7 +828,7 @@ export function Documents() {
         <div className="flex-1 overflow-y-auto">
           <Card className="m-3 min-w-0 overflow-hidden sm:m-4">
             <div className="flex flex-col gap-3 border-b border-[#e2e8f0] p-3 dark:border-white/10 sm:flex-row sm:items-center">
-              <input type="text" placeholder="Search" className="field-control h-9 w-full sm:max-w-[230px]" aria-label="Search documents" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+              <input type="text" placeholder="Search name, extension, owner, tags..." title="Searches file name, extension, folder, department, owner, tags, description, tracking code, and status" className="field-control h-9 w-full sm:max-w-[230px]" aria-label="Search documents" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
               <select className="field-control h-9 w-full sm:w-[150px]" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter documents by status">
                 <option value="">All statuses</option>
                 <option value="draft">Draft</option>
@@ -819,6 +915,40 @@ export function Documents() {
                   {uploadFiles.map((file) => <li key={`${file.name}-${file.size}`} className="truncate">{file.name}</li>)}
                 </ul>
               </div>
+              {uploadFiles.length === 1 && (
+                <div className="space-y-2">
+                  <label htmlFor="upload-file-name" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                    File name
+                  </label>
+                  <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-white focus-within:border-[#3f8bca] focus-within:ring-2 focus-within:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900">
+                    <input
+                      id="upload-file-name"
+                      type="text"
+                      value={uploadFileName}
+                      onChange={(e) => setUploadFileName(e.target.value)}
+                      disabled={isUploading}
+                      placeholder={splitFileName(uploadFiles[0].name).base}
+                      className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-[#26334d] outline-none placeholder-[#8ea0ba] dark:text-white dark:placeholder-slate-500"
+                    />
+                    {splitFileName(uploadFiles[0].name).ext && (
+                      <span className="flex-shrink-0 whitespace-nowrap pr-3 text-sm text-[#718198] dark:text-slate-400">{splitFileName(uploadFiles[0].name).ext}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label htmlFor="upload-description" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="upload-description"
+                  value={uploadDescription}
+                  onChange={(e) => setUploadDescription(e.target.value)}
+                  placeholder="Describe the purpose and content of these documents..."
+                  disabled={isUploading}
+                  className="field-control min-h-[80px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                />
+              </div>
               <p className="text-xs text-[#718198]">{selectedFolder ? `Uploading to ${selectedFolder.name}. New documents remain view-only while entering review.` : 'A folder is required before uploading documents.'}</p>
               {isUploading && (
                 <div role="status" aria-label={activeUploadStage === 'parsing' ? 'Converting document with Docling' : 'Upload progress'} className="space-y-1.5">
@@ -834,7 +964,7 @@ export function Documents() {
               )}
               <div className="flex justify-end gap-2">
                 <Button variant="secondary" onClick={closeUploadModal} disabled={isUploading}>Cancel</Button>
-                <Button onClick={handleUploadDocument} disabled={uploadFiles.length === 0 || isUploading}>{isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'file' : 'files'}`}</Button>
+                <Button onClick={handleUploadDocument} disabled={uploadFiles.length === 0 || !uploadDescription.trim() || isUploading} title={!uploadDescription.trim() ? 'Please add a description' : ''}>{isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'file' : 'files'}`}</Button>
               </div>
             </CardBody>
             </Card>

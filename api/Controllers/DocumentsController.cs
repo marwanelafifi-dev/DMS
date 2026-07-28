@@ -49,6 +49,7 @@ public class DocumentsController(
                     Name = document.Title,
                     document.Title,
                     document.Status,
+                    document.Description,
                     document.TrackingCode,
                     document.OwnerId,
                     UploadedBy = document.OwnerId,
@@ -120,6 +121,7 @@ public class DocumentsController(
                     Name = document.Title,
                     document.Title,
                     document.Status,
+                    document.Description,
                     document.TrackingCode,
                     document.OwnerId,
                     UploadedBy = document.OwnerId,
@@ -191,6 +193,7 @@ public class DocumentsController(
                 FolderId = req.FolderId,
                 Title = req.Title.Trim(),
                 Status = "draft",
+                Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
                 OwnerId = req.OwnerId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -220,6 +223,7 @@ public class DocumentsController(
                     document.DocumentId,
                     document.Title,
                     document.Status,
+                    document.Description,
                     document.CreatedAt
                 }
             });
@@ -388,6 +392,9 @@ public class DocumentsController(
 
             if (!string.IsNullOrWhiteSpace(req.Status))
                 document.Status = req.Status;
+
+            if (req.Description != null)
+                document.Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim();
 
             document.UpdatedAt = DateTime.UtcNow;
 
@@ -865,8 +872,8 @@ public class DocumentsController(
     }
 }
 
-public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId);
-public record UpdateDocumentRequest(string? Title = null, string? Status = null);
+public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null);
+public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null);
 public record CheckoutRequest(string? Reason = null);
 public record SubmitRequest(Guid VersionId, string? Comment = null);
 public record ApproveRequest(Guid VersionId, string? Comment = null);

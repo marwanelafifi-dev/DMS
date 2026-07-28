@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Folder, MoreVertical, Copy, FolderInput, Trash2, Pencil } from 'lucide-react';
+import { Folder, MoreVertical, Copy, FolderInput, Trash2, Pencil, Download } from 'lucide-react';
 import type { Folder as FolderType } from '../../types';
 
 interface FolderTreeProps {
   folders: FolderType[];
   selectedFolderId?: string;
   onSelectFolder: (folderId: string) => void;
-  onFolderAction?: (action: 'rename' | 'copy' | 'cut' | 'delete', folderId: string) => void;
+  onFolderAction?: (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download', folderId: string) => void;
 }
 
 const menuContentClass = 'z-[95] min-w-[150px] rounded-[5px] border border-[#dbe2ec] bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900';
@@ -75,6 +75,10 @@ export function FolderTree({
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content className={menuContentClass} sideOffset={6} align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
+                      <DropdownMenu.Item className={menuItemClass} onSelect={() => { onFolderAction?.('download', folder.folderId); handleMenuClose(); }}>
+                        <Download className="h-4 w-4" /> Download as ZIP
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Separator className="my-1 h-px bg-[#dbe2ec] dark:bg-slate-700" />
                       <DropdownMenu.Item className={menuItemClass} onSelect={() => { onFolderAction?.('rename', folder.folderId); handleMenuClose(); }}>
                         <Pencil className="h-4 w-4" /> Rename
                       </DropdownMenu.Item>

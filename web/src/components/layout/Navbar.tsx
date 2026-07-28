@@ -1,8 +1,12 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useDarkMode } from '../../hooks/useDarkMode';
+import { useSearchSuggestions } from '../../hooks/useSearchSuggestions';
+import { useAllDmsDocuments } from '../../hooks/useAllDmsDocuments';
+import { SearchSuggestionsDropdown } from '../custom/SearchSuggestionsDropdown';
+import type { ParsedDocument } from '../../services/doclingApi';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -13,11 +17,55 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
   const { user, logout } = useAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const { documents: allDmsDocuments } = useAllDmsDocuments();
+  const { suggestions, isLoading } = useSearchSuggestions(isSuggestionsOpen ? searchQuery : '', allDmsDocuments);
+  const searchContainerRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [suggestions]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSuggestionsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const goToSearch = (query: string) => {
+    navigate(query ? `/search?q=${encodeURIComponent(query)}` : '/search');
+    setIsSuggestionsOpen(false);
+  };
+
+  const selectSuggestion = (doc: ParsedDocument) => {
+    setSearchQuery(doc.filename);
+    goToSearch(doc.filename);
+  };
 
   const handleSearch = (event: FormEvent) => {
     event.preventDefault();
-    const query = searchQuery.trim();
-    navigate(query ? `/search?q=${encodeURIComponent(query)}` : '/search');
+    goToSearch(searchQuery.trim());
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!isSuggestionsOpen || suggestions.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveIndex((current) => (current + 1) % suggestions.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveIndex((current) => (current - 1 + suggestions.length) % suggestions.length);
+    } else if (event.key === 'Enter' && activeIndex >= 0) {
+      event.preventDefault();
+      selectSuggestion(suggestions[activeIndex]);
+    } else if (event.key === 'Escape') {
+      setIsSuggestionsOpen(false);
+    }
   };
 
   const initials = (user?.fullName || 'System Admin')
@@ -37,15 +85,36 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
         <Menu className="h-5 w-5" />
       </button>
 
-      <form onSubmit={handleSearch} className="relative w-full max-w-[540px]">
+      <form ref={searchContainerRef} onSubmit={handleSearch} className="relative w-full max-w-[540px]">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-[#8ea0ba]" />
         <input
           value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          onChange={(event) => {
+            setSearchQuery(event.target.value);
+            setIsSuggestionsOpen(true);
+          }}
+          onFocus={() => setIsSuggestionsOpen(true)}
+          onKeyDown={handleKeyDown}
           placeholder="OCR search across document contents..."
           aria-label="Search document contents"
+          role="combobox"
+          aria-expanded={isSuggestionsOpen && searchQuery.trim().length >= 2}
+          aria-controls="navbar-search-suggestions"
+          aria-autocomplete="list"
+          autoComplete="off"
           className="h-10 w-full rounded-[5px] border border-[#cbd5e3] bg-white pl-11 pr-4 text-sm text-slate-800 outline-none placeholder:text-[#9aa7ba] focus:border-[#3c89c9] focus:ring-2 focus:ring-[#3c89c9]/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
         />
+        {isSuggestionsOpen && searchQuery.trim().length >= 2 && (
+          <SearchSuggestionsDropdown
+            id="navbar-search-suggestions"
+            query={searchQuery}
+            suggestions={suggestions}
+            activeIndex={activeIndex}
+            isLoading={isLoading}
+            onSelect={selectSuggestion}
+            onHoverIndex={setActiveIndex}
+          />
+        )}
       </form>
 
       <div className="ml-auto flex items-center gap-3 sm:gap-4">

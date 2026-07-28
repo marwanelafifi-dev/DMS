@@ -8,14 +8,16 @@ export type LibraryFileExtension = RequiredLibraryFileExtension | 'jpg' | 'jpeg'
 type TextPreview = { kind: 'text'; content: string };
 type MarkdownPreview = { kind: 'markdown'; content: string };
 type WordPreview = { kind: 'word'; title: string; paragraphs: string[] };
-type SpreadsheetPreview = { kind: 'spreadsheet'; columns: string[]; rows: string[][] };
+export type SpreadsheetSheet = { name: string; columns: string[]; rows: string[][] };
+type SpreadsheetPreview = { kind: 'spreadsheet'; sheets: SpreadsheetSheet[] };
 type PresentationPreview = { kind: 'presentation'; slides: Array<{ title: string; bullets: string[] }> };
 type PdfPreview = { kind: 'pdf'; url: string };
 type ImagePreview = { kind: 'image'; url: string; alt: string };
+type OfficeEmbedPreview = { kind: 'office-embed'; url: string };
 type LoadingPreview = { kind: 'loading'; message: string };
 type UnavailablePreview = { kind: 'unavailable'; message: string };
 
-export type LibraryPreview = TextPreview | MarkdownPreview | WordPreview | SpreadsheetPreview | PresentationPreview | PdfPreview | ImagePreview | LoadingPreview | UnavailablePreview;
+export type LibraryPreview = TextPreview | MarkdownPreview | WordPreview | SpreadsheetPreview | PresentationPreview | PdfPreview | ImagePreview | OfficeEmbedPreview | LoadingPreview | UnavailablePreview;
 
 export interface MockLibraryDocument extends Document {
   extension: LibraryFileExtension;
@@ -190,19 +192,22 @@ const folder1Seeds: DocumentSeed[] = [
     id: 'folder-1-docx', folderId: 'folder-1', fileName: 'Quality Management Manual.docx', extension: 'docx', fileSize: 426240,
     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', status: 'released', department: 'Quality Assurance', owner: libraryOwners.quality,
     createdAt: '2026-01-12T08:45:00.000Z', modifiedAt: '2026-07-18T14:22:00.000Z', tags: ['Controlled', 'Quality'], description: 'Controlled quality management manual',
-    preview: { kind: 'word', title: 'Quality Management Manual', paragraphs: ['Purpose: define the quality management system used across production and laboratories.', 'Scope: applies to controlled processes, records, suppliers, and internal audits.', 'All printed copies are uncontrolled unless explicitly stamped.'] },
+    preview: { kind: 'word', title: 'Quality Management Manual', paragraphs: ['Purpose: define the quality management system used across production and laboratories.', 'Scope: applies to controlled processes, records, suppliers, and internal audits.', 'All printed copies are uncontrolled unless explicitly stamped.', 'Document control: version tracking and change management required.', 'Review frequency: annual or upon regulatory change.'] },
   },
   {
     id: 'folder-1-xlsx', folderId: 'folder-1', fileName: 'Production Metrics Q2.xlsx', extension: 'xlsx', fileSize: 96256,
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', status: 'released', department: 'Operations', owner: libraryOwners.operations,
     createdAt: '2026-07-01T09:00:00.000Z', modifiedAt: '2026-07-17T11:05:00.000Z', tags: ['Production', 'Quality'], description: 'Quarterly production performance metrics',
-    preview: { kind: 'spreadsheet', columns: ['Metric', 'April', 'May', 'June'], rows: [['First pass yield', '98.1%', '98.6%', '98.9%'], ['Downtime', '4.2 h', '3.8 h', '3.1 h'], ['Units inspected', '12,440', '13,090', '13,520']] },
+    preview: { kind: 'spreadsheet', sheets: [
+      { name: 'Q2 Metrics', columns: ['Metric', 'April', 'May', 'June'], rows: [['First pass yield', '98.1%', '98.6%', '98.9%'], ['Downtime', '4.2 h', '3.8 h', '3.1 h'], ['Units inspected', '12,440', '13,090', '13,520'], ['Equipment availability', '96.5%', '97.2%', '97.8%']] },
+      { name: 'Targets', columns: ['Metric', 'Target', 'Status'], rows: [['First pass yield', '98.5%', 'On track'], ['Downtime', '< 4.0 h', 'On track'], ['Equipment availability', '97.5%', 'Watch']] },
+    ] },
   },
   {
     id: 'folder-1-pptx', folderId: 'folder-1', fileName: 'Operations Review Q2.pptx', extension: 'pptx', fileSize: 2846720,
     contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', status: 'draft', department: 'Operations', owner: libraryOwners.operations,
     createdAt: '2026-07-08T13:20:00.000Z', modifiedAt: '2026-07-16T08:30:00.000Z', tags: ['Production', 'Internal'], description: 'Quarterly operations review deck',
-    preview: { kind: 'presentation', slides: [{ title: 'Q2 Operations Review', bullets: ['Production targets achieved', 'Calibration backlog reduced by 18%'] }, { title: 'Next Quarter Priorities', bullets: ['Automate line clearance records', 'Complete supplier requalification'] }] },
+    preview: { kind: 'presentation', slides: [{ title: 'Q2 Operations Review', bullets: ['Production targets achieved at 99.2%', 'Calibration backlog reduced by 18%', 'Safety record: zero incidents'] }, { title: 'Performance Metrics', bullets: ['First pass yield: 98.9%', 'Equipment availability: 97.8%', 'On-time delivery: 99.5%'] }, { title: 'Next Quarter Priorities', bullets: ['Automate line clearance records', 'Complete supplier requalification', 'Implement predictive maintenance'] }] },
   },
   {
     id: 'folder-1-pdf', folderId: 'folder-1', fileName: 'Calibration Procedure SOP-204.pdf', extension: 'pdf', fileSize: 421888,
@@ -235,19 +240,22 @@ const folder2Seeds: DocumentSeed[] = [
     id: 'folder-2-docx', folderId: 'folder-2', fileName: 'Records Retention Schedule.docx', extension: 'docx', fileSize: 312320,
     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', status: 'released', department: 'Finance', owner: libraryOwners.audit,
     createdAt: '2026-02-02T10:40:00.000Z', modifiedAt: '2026-07-18T09:20:00.000Z', tags: ['Controlled', 'Internal'], description: 'Corporate retention schedule',
-    preview: { kind: 'word', title: 'Records Retention Schedule', paragraphs: ['Quality records: retain for seven years after supersession.', 'Training records: retain for the duration of employment plus three years.', 'Security logs: retain for twelve months unless placed on legal hold.'] },
+    preview: { kind: 'word', title: 'Records Retention Schedule', paragraphs: ['Quality records: retain for seven years after supersession.', 'Training records: retain for the duration of employment plus three years.', 'Security logs: retain for twelve months unless placed on legal hold.', 'Financial records: retain per regulatory requirement (10 years).', 'Audit reports: retain indefinitely for historical reference.'] },
   },
   {
     id: 'folder-2-xlsx', folderId: 'folder-2', fileName: 'Quality KPI Tracker.xlsx', extension: 'xlsx', fileSize: 118784,
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', status: 'pending_approval', department: 'Quality Assurance', owner: libraryOwners.quality,
     createdAt: '2026-07-01T08:10:00.000Z', modifiedAt: '2026-07-17T15:30:00.000Z', tags: ['Quality', 'Audit'], description: 'Monthly quality KPI tracker',
-    preview: { kind: 'spreadsheet', columns: ['KPI', 'Target', 'Actual', 'Trend'], rows: [['CAPA closure', '30 days', '27 days', 'Improving'], ['Audit actions overdue', '0', '2', 'Watch'], ['Training compliance', '100%', '99.2%', 'Stable']] },
+    preview: { kind: 'spreadsheet', sheets: [
+      { name: 'KPIs', columns: ['KPI', 'Target', 'Actual', 'Trend', 'Owner'], rows: [['CAPA closure', '30 days', '27 days', 'Improving', 'Quality'], ['Audit actions overdue', '0', '2', 'Watch', 'Audit'], ['Training compliance', '100%', '99.2%', 'Stable', 'HR'], ['Supplier audits completed', '12', '10', 'On track', 'Quality']] },
+      { name: 'Notes', columns: ['Date', 'Note'], rows: [['Jul 1', 'Two overdue audit actions escalated to department heads'], ['Jul 10', 'Training compliance dipped due to new hires pending onboarding']] },
+    ] },
   },
   {
     id: 'folder-2-pptx', folderId: 'folder-2', fileName: 'Security Awareness Briefing.pptx', extension: 'pptx', fileSize: 1974272,
     contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', status: 'released', department: 'IT', owner: libraryOwners.it,
     createdAt: '2026-06-22T11:25:00.000Z', modifiedAt: '2026-07-16T14:00:00.000Z', tags: ['Training', 'Internal'], description: 'Staff security awareness briefing',
-    preview: { kind: 'presentation', slides: [{ title: 'Protect Company Information', bullets: ['Use approved storage locations', 'Report suspicious requests immediately'] }, { title: 'Access Hygiene', bullets: ['Use unique credentials', 'Lock unattended workstations'] }] },
+    preview: { kind: 'presentation', slides: [{ title: 'Protect Company Information', bullets: ['Use approved storage locations', 'Report suspicious requests immediately', 'Do not share credentials'] }, { title: 'Access Hygiene', bullets: ['Use unique credentials', 'Lock unattended workstations', 'Enable multi-factor authentication'] }, { title: 'Incident Response', bullets: ['Know who to contact', 'Document incident details', 'Preserve evidence and logs'] }] },
   },
   {
     id: 'folder-2-pdf', folderId: 'folder-2', fileName: 'Emergency Response Plan.pdf', extension: 'pdf', fileSize: 638976,

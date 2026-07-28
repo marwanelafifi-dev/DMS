@@ -97,11 +97,11 @@ export function Dashboard() {
   const canManageAuditCalendar = user?.role === 'Admin' || user?.role === 'QA';
 
   const metrics = [
-    { label: 'My Open Tasks', value: taskStats.open + taskStats.inProgress, valueClass: 'text-[#2d3d80] dark:text-white', detail: `${myTasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]' },
-    { label: 'My Overdue Tasks', value: taskStats.overdue, valueClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#2d3d80] dark:text-white', detail: taskStats.overdue > 0 ? 'Needs attention' : 'All on track', detailClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#319d68]' },
-    { label: 'Awaiting My Approval', value: approvalsForMe.length, valueClass: 'text-[#d27a08]', detail: approvalsForMe.length > 0 ? 'Review needed' : 'Nothing pending', detailClass: 'text-[#d27a08]' },
-    { label: 'My Submissions in Review', value: mySubmissionsInReview.length, valueClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', detail: mySubmissionsInReview.length > 0 ? 'With manager/QA' : 'Nothing submitted', detailClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]' },
-    { label: 'My Checked-Out Docs', value: myCheckedOutDocs.length, valueClass: 'text-[#2d3d80] dark:text-white', detail: myCheckedOutDocs.length > 0 ? '60-min lock window' : 'None checked out', detailClass: 'text-[#64748b] dark:text-slate-400' },
+    { label: 'My Open Tasks', value: taskStats.open + taskStats.inProgress, valueClass: 'text-[#2d3d80] dark:text-white', detail: `${myTasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]', action: () => navigate('/tasks') },
+    { label: 'My Overdue Tasks', value: taskStats.overdue, valueClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#2d3d80] dark:text-white', detail: taskStats.overdue > 0 ? 'Needs attention' : 'All on track', detailClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#319d68]', action: () => navigate('/tasks') },
+    { label: 'Awaiting My Approval', value: approvalsForMe.length, valueClass: 'text-[#d27a08]', detail: approvalsForMe.length > 0 ? 'Review needed' : 'Nothing pending', detailClass: 'text-[#d27a08]', action: () => navigate('/approvals') },
+    { label: 'My Submissions in Review', value: mySubmissionsInReview.length, valueClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', detail: mySubmissionsInReview.length > 0 ? 'With manager/QA' : 'Nothing submitted', detailClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', action: () => navigate('/documents') },
+    { label: 'My Checked-Out Docs', value: myCheckedOutDocs.length, valueClass: 'text-[#2d3d80] dark:text-white', detail: myCheckedOutDocs.length > 0 ? '60-min lock window' : 'None checked out', detailClass: 'text-[#64748b] dark:text-slate-400', action: () => navigate('/documents') },
   ];
 
   const taskIcons = [Clock3, CheckCircle2, TriangleAlert, ClipboardCheck];
@@ -127,13 +127,20 @@ export function Dashboard() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => (
-          <Card key={metric.label}>
-            <CardBody className="p-4">
-              <div className="text-xs font-medium uppercase tracking-wide text-[#687a95] dark:text-slate-400">{metric.label}</div>
-              <div data-testid={`metric-${metric.label}`} className={`mt-2 text-[29px] font-semibold leading-none ${metric.valueClass}`}>{metric.value.toLocaleString()}</div>
-              <div className={`mt-3 text-xs ${metric.detailClass}`}>{metric.detail}</div>
-            </CardBody>
-          </Card>
+          <button
+            key={metric.label}
+            onClick={metric.action}
+            className="text-left transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] rounded-[4px]"
+            aria-label={`Navigate to ${metric.label}`}
+          >
+            <Card>
+              <CardBody className="p-4">
+                <div className="text-xs font-medium uppercase tracking-wide text-[#687a95] dark:text-slate-400">{metric.label}</div>
+                <div data-testid={`metric-${metric.label}`} className={`mt-2 text-[29px] font-semibold leading-none ${metric.valueClass}`}>{metric.value.toLocaleString()}</div>
+                <div className={`mt-3 text-xs ${metric.detailClass}`}>{metric.detail}</div>
+              </CardBody>
+            </Card>
+          </button>
         ))}
       </div>
 

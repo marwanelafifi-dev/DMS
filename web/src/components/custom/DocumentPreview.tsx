@@ -1,10 +1,71 @@
-import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Download, FileText, Lock, Presentation, Sheet, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AlertCircle, ChevronDown, ChevronUp, Download, FileText, Lock, Presentation, Sheet, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
 import { MarkdownViewer } from './MarkdownViewer';
 import { OcrPanel } from './OcrPanel';
+
+const ZOOM_STEP = 10;
+const MIN_ZOOM = 50;
+const MAX_ZOOM = 200;
+const PARAGRAPHS_PER_PAGE = 3;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (items.length === 0) return [[]];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+interface PreviewToolbarProps {
+  icon: ReactNode;
+  label: string;
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
+  pageLabel: string;
+  onPrev: () => void;
+  onNext: () => void;
+  canPrev: boolean;
+  canNext: boolean;
+}
+
+function PreviewToolbar({ icon, label, zoom, onZoomIn, onZoomOut, onZoomReset, pageLabel, onPrev, onNext, canPrev, canNext }: PreviewToolbarProps) {
+  return (
+    <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#e2e8f0] bg-[#f7fafc] px-4 py-2.5 dark:border-white/10 dark:bg-slate-800">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#3f8bca]">
+        {icon}
+        {label}
+      </div>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
+          <button type="button" onClick={onZoomOut} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={onZoomReset} aria-label="Reset zoom" title="Reset zoom" className="min-w-[3.25rem] border-x border-[#dbe2ec] px-1 py-1.5 text-xs font-medium text-[#34425b] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800">
+            {zoom}%
+          </button>
+          <button type="button" onClick={onZoomIn} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
+            <ZoomIn className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="whitespace-nowrap text-xs font-medium text-[#52627a] dark:text-slate-300">{pageLabel}</span>
+          <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
+            <button type="button" onClick={onPrev} disabled={!canPrev} aria-label="Previous page" title="Previous (Up arrow)" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
+              <ChevronUp className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={onNext} disabled={!canNext} aria-label="Next page" title="Next (Down arrow)" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800">
+              <ChevronDown className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface DocumentPreviewProps {
   document: MockLibraryDocument;
@@ -44,6 +105,8 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
     document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
   );
   const [hasError, setHasError] = useState(false);
+  const [zoom, setZoom] = useState(100);
+  const [pageIndex, setPageIndex] = useState(0);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -52,7 +115,36 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
       document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
     );
     setHasError(false);
+    setZoom(100);
+    setPageIndex(0);
   }, [document]);
+
+  const totalPages = document.preview.kind === 'word'
+    ? chunkArray(document.preview.paragraphs, PARAGRAPHS_PER_PAGE).length
+    : document.preview.kind === 'presentation'
+      ? document.preview.slides.length
+      : 0;
+
+  // Separate from the Escape/Tab handler below since it needs to react to
+  // document/totalPages changes directly instead of stale closures.
+  useEffect(() => {
+    const canPaginate = document.preview.kind === 'word' || document.preview.kind === 'presentation';
+    if (!canPaginate) return;
+
+    const handleArrowKeys = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setPageIndex((current) => Math.min(current + 1, totalPages - 1));
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setPageIndex((current) => Math.max(current - 1, 0));
+      }
+    };
+    window.addEventListener('keydown', handleArrowKeys);
+    return () => window.removeEventListener('keydown', handleArrowKeys);
+  }, [document, totalPages]);
 
   useEffect(() => {
     const previouslyFocused = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
@@ -114,42 +206,124 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
             onError={() => { setIsLoading(false); setHasError(true); }}
           />
         );
-      case 'word':
+      case 'word': {
+        const pages = chunkArray(document.preview.paragraphs, PARAGRAPHS_PER_PAGE);
+        const safePageIndex = Math.min(pageIndex, pages.length - 1);
+        const currentParagraphs = pages[safePageIndex] ?? [];
         return (
-          <div className="mx-auto min-h-[520px] max-w-[760px] rounded-[3px] bg-white px-8 py-10 shadow-sm dark:bg-slate-900 sm:px-14">
-            <div className="mb-8 flex items-center gap-2 border-b border-[#e2e8f0] pb-4 text-xs font-semibold uppercase tracking-[0.12em] text-[#3f8bca]"><FileText className="h-4 w-4" />Read-only Word fallback</div>
-            <h3 className="text-center text-2xl font-semibold text-[#2f3e83] dark:text-white">{document.preview.title}</h3>
-            <div className="mt-8 space-y-5 text-[15px] leading-7 text-[#3f4d65] dark:text-slate-300">
-              {document.preview.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+          <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
+            <PreviewToolbar
+              icon={<FileText className="h-4 w-4" />}
+              label="Read-only Word fallback"
+              zoom={zoom}
+              onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
+              onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
+              onZoomReset={() => setZoom(100)}
+              pageLabel={`Page ${safePageIndex + 1} of ${pages.length}`}
+              onPrev={() => setPageIndex((i) => Math.max(i - 1, 0))}
+              onNext={() => setPageIndex((i) => Math.min(i + 1, pages.length - 1))}
+              canPrev={safePageIndex > 0}
+              canNext={safePageIndex < pages.length - 1}
+            />
+            <div className="flex-1 overflow-auto p-6">
+              <div className="mx-auto origin-top transition-transform" style={{ transform: `scale(${zoom / 100})`, maxWidth: '760px' }}>
+                <div className="px-8 py-10 sm:px-14">
+                  {safePageIndex === 0 && <h3 className="text-2xl font-semibold text-[#2f3e83] dark:text-white">{document.preview.title}</h3>}
+                  <div className="mt-8 space-y-5 text-[15px] leading-7 text-[#3f4d65] dark:text-slate-300">
+                    {currentParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+                  </div>
+                  {safePageIndex === pages.length - 1 && (
+                    <Button className="mt-10" variant="secondary" onClick={() => onDownload(document)} leftIcon={<Download className="h-4 w-4" />}>Download extracted text</Button>
+                  )}
+                </div>
+              </div>
             </div>
-            <Button className="mt-10" variant="secondary" onClick={() => onDownload(document)} leftIcon={<Download className="h-4 w-4" />}>Download extracted text</Button>
           </div>
         );
-      case 'spreadsheet':
+      }
+      case 'spreadsheet': {
+        const sheets = document.preview.sheets;
+        const safeSheetIndex = Math.min(pageIndex, sheets.length - 1);
+        const activeSheet = sheets[safeSheetIndex];
         return (
-          <div className="overflow-x-auto rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
-            <div className="flex items-center gap-2 border-b border-[#dbe2ec] bg-[#f7fafc] px-4 py-3 text-sm font-semibold text-[#2f3e83] dark:border-white/10 dark:bg-slate-800 dark:text-white"><Sheet className="h-4 w-4 text-emerald-600" />Read-only spreadsheet preview</div>
-            <table className="w-full min-w-[620px] text-left text-sm">
-              <thead className="bg-[#eff6f1] text-[#3f5e49] dark:bg-emerald-950/40 dark:text-emerald-100">
-                <tr>{document.preview.columns.map((column) => <th key={column} className="border-b border-r border-[#dbe2ec] px-4 py-3 font-semibold last:border-r-0 dark:border-white/10">{column}</th>)}</tr>
-              </thead>
-              <tbody>{document.preview.rows.map((row, rowIndex) => <tr key={row.join('-')} className={rowIndex % 2 ? 'bg-[#fbfcfe] dark:bg-slate-800/50' : ''}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`} className="border-b border-r border-[#edf1f5] px-4 py-3 text-[#52627a] last:border-r-0 dark:border-white/10 dark:text-slate-200">{cell}</td>)}</tr>)}</tbody>
-            </table>
+          <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
+            <div className="flex flex-shrink-0 items-center gap-2 border-b border-[#dbe2ec] bg-[#f7fafc] px-4 py-3 text-sm font-semibold text-[#2f3e83] dark:border-white/10 dark:bg-slate-800 dark:text-white">
+              <Sheet className="h-4 w-4 text-emerald-600" />Read-only spreadsheet preview
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-[#eff6f1] text-[#3f5e49] dark:bg-emerald-950/40 dark:text-emerald-100">
+                  <tr>{activeSheet.columns.map((column) => <th key={column} className="border-b border-r border-[#dbe2ec] px-4 py-3 font-semibold last:border-r-0 dark:border-white/10">{column}</th>)}</tr>
+                </thead>
+                <tbody>{activeSheet.rows.map((row, rowIndex) => <tr key={row.join('-')} className={rowIndex % 2 ? 'bg-[#fbfcfe] dark:bg-slate-800/50' : ''}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`} className="border-b border-r border-[#edf1f5] px-4 py-3 text-[#52627a] last:border-r-0 dark:border-white/10 dark:text-slate-200">{cell}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+            {sheets.length > 1 && (
+              <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto border-t border-[#dbe2ec] bg-[#f1f5f9] px-2 py-1.5 dark:border-white/10 dark:bg-slate-800" role="tablist" aria-label="Spreadsheet sheets">
+                {sheets.map((sheet, index) => (
+                  <button
+                    key={sheet.name}
+                    type="button"
+                    role="tab"
+                    aria-selected={index === safeSheetIndex}
+                    onClick={() => setPageIndex(index)}
+                    className={`flex-shrink-0 whitespace-nowrap rounded-t-[4px] border-x border-t px-3 py-1.5 text-xs font-medium transition-colors ${
+                      index === safeSheetIndex
+                        ? 'border-[#dbe2ec] bg-white text-[#27885a] dark:border-white/10 dark:bg-slate-900 dark:text-emerald-300'
+                        : 'border-transparent text-[#718198] hover:bg-white/60 dark:text-slate-400 dark:hover:bg-slate-900/40'
+                    }`}
+                  >
+                    {sheet.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         );
-      case 'presentation':
+      }
+      case 'presentation': {
+        const slides = document.preview.slides;
+        const safeSlideIndex = Math.min(pageIndex, slides.length - 1);
+        const slide = slides[safeSlideIndex];
         return (
-          <div className="space-y-5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#2f3e83] dark:text-white"><Presentation className="h-4 w-4 text-orange-600" />Read-only slide fallback</div>
-            {document.preview.slides.map((slide, index) => (
-              <section key={slide.title} className="aspect-video rounded-[5px] border border-[#dbe2ec] bg-white p-8 shadow-sm dark:border-white/10 dark:bg-slate-900 sm:p-12">
-                <span className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">Slide {index + 1}</span>
-                <h3 className="mt-4 text-2xl font-semibold text-[#2f3e83] dark:text-white">{slide.title}</h3>
-                <ul className="mt-7 space-y-3 text-base text-[#52627a] dark:text-slate-300">{slide.bullets.map((bullet) => <li key={bullet} className="flex gap-3"><span className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-[#3f8bca]" />{bullet}</li>)}</ul>
-              </section>
-            ))}
-            <Button variant="secondary" onClick={() => onDownload(document)} leftIcon={<Download className="h-4 w-4" />}>Download slide outline</Button>
+          <div className="flex h-full w-full flex-col">
+            <PreviewToolbar
+              icon={<Presentation className="h-4 w-4 text-orange-600" />}
+              label="Read-only slide fallback"
+              zoom={zoom}
+              onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
+              onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
+              onZoomReset={() => setZoom(100)}
+              pageLabel={`Slide ${safeSlideIndex + 1} of ${slides.length}`}
+              onPrev={() => setPageIndex((i) => Math.max(i - 1, 0))}
+              onNext={() => setPageIndex((i) => Math.min(i + 1, slides.length - 1))}
+              canPrev={safeSlideIndex > 0}
+              canNext={safeSlideIndex < slides.length - 1}
+            />
+            <div className="flex-1 overflow-auto p-6">
+              <div className="mx-auto origin-top transition-transform" style={{ transform: `scale(${zoom / 100})` }}>
+                <section className="aspect-video w-[720px] max-w-full rounded-[5px] border border-[#dbe2ec] bg-white p-8 shadow-sm dark:border-white/10 dark:bg-slate-900 sm:p-12">
+                  <span className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">Slide {safeSlideIndex + 1}</span>
+                  <h3 className="mt-4 text-2xl font-semibold text-[#2f3e83] dark:text-white">{slide.title}</h3>
+                  <ul className="mt-7 space-y-3 text-base text-[#52627a] dark:text-slate-300">{slide.bullets.map((bullet) => <li key={bullet} className="flex gap-3"><span className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-[#3f8bca]" />{bullet}</li>)}</ul>
+                </section>
+              </div>
+            </div>
+            <div className="flex flex-shrink-0 justify-center border-t border-[#e2e8f0] py-3 dark:border-white/10">
+              <Button variant="secondary" onClick={() => onDownload(document)} leftIcon={<Download className="h-4 w-4" />}>Download slide outline</Button>
+            </div>
           </div>
+        );
+      }
+      case 'office-embed':
+        return (
+          <iframe
+            src={document.preview.url}
+            title={`Preview of ${document.fileName}`}
+            className="block h-full w-full rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10"
+            onLoad={() => setIsLoading(false)}
+            onError={() => { setIsLoading(false); setHasError(true); }}
+          />
         );
       case 'unavailable':
         return (
@@ -171,16 +345,14 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
   };
 
   return (
-    <div data-testid="document-preview-overlay" className="fixed inset-y-0 left-0 right-0 z-[70] overflow-hidden bg-slate-950/50 lg:left-[286px]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
-      <section ref={dialogRef} className="absolute inset-0 flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
+    <div data-testid="document-preview-overlay" className="fixed inset-y-0 right-0 left-0 top-0 z-[70] overflow-hidden lg:left-[286px]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+      <section ref={dialogRef} className="h-screen flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
         <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h2 id="document-preview-title" className="text-base font-semibold text-[#283a7a] dark:text-white truncate">{document.fileName}</h2>
               <span className="inline-flex items-center gap-1 rounded bg-[#d8f5e4] px-2 py-0.5 text-xs font-medium text-[#27885a]"><Lock className="h-3 w-3" />View Only</span>
             </div>
-            <p className="mt-1 truncate text-xs text-[#718198] dark:text-slate-400">{document.description}</p>
-
             <div className="mt-2 flex flex-wrap gap-4 text-xs text-[#52627a] dark:text-slate-300">
               <div className="flex gap-3">
                 <div>
@@ -217,6 +389,10 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
                   <p className="font-medium text-[#34425b] dark:text-slate-200">Modified</p>
                   <p className="whitespace-nowrap">{formatDateTime(document.modifiedAt)}</p>
                 </div>
+                <div>
+                  <p className="font-medium text-[#34425b] dark:text-slate-200">Description</p>
+                  <p className="truncate text-[#52627a] dark:text-slate-400">{document.description || '—'}</p>
+                </div>
                 {document.tags && document.tags.length > 0 && (
                   <div>
                     <p className="font-medium text-[#34425b] dark:text-slate-200">Tags</p>
@@ -239,13 +415,13 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
           </div>
         </header>
 
-        <div data-testid="document-preview-body" className={`relative min-h-0 flex-1 overflow-hidden ${document.preview.kind === 'pdf' ? '' : 'p-6'}`}>
+        <div data-testid="document-preview-body" className={`relative min-h-0 flex-1 overflow-hidden ${['pdf', 'word', 'presentation', 'spreadsheet'].includes(document.preview.kind) ? '' : 'p-6'}`}>
           {isLoading && (
             <div className="absolute inset-6 z-10 flex items-center justify-center rounded-[4px] bg-white/95 dark:bg-slate-900/95" role="status">
               <div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#3f8bca]" /><p className="mt-3 text-sm text-[#718198]">{document.preview.kind === 'loading' ? document.preview.message : 'Loading preview...'}</p></div>
             </div>
           )}
-          <div className="h-full overflow-auto">
+          <div className={`h-full ${['word', 'presentation', 'spreadsheet'].includes(document.preview.kind) ? '' : 'overflow-auto'}`}>
             {renderPreview()}
           </div>
         </div>

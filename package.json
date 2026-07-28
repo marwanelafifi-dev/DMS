@@ -1,0 +1,16 @@
+{
+  "name": "dms-ocr-mock-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local mock Docling/OCR server for the DMS dev environment",
+  "main": "docling-mock-server.js",
+  "scripts": {
+    "start": "node docling-mock-server.js"
+  },
+  "dependencies": {
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}

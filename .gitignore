@@ -12,6 +12,9 @@ node_modules/
 web/dist/
 npm-debug.log*
 
+# Tesseract.js OCR language data (downloaded on demand by docling-mock-server.js)
+*.traineddata
+
 # Generated browser/test output
 artifacts/
 

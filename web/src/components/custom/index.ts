@@ -6,3 +6,4 @@ export { DocumentGrid } from './DocumentGrid';
 export { UploadZone } from './UploadZone';
 export { SearchFilter } from './SearchFilter';
 export { DocumentDetailsPanel } from './DocumentDetailsPanel';
+export { SearchSuggestionsDropdown } from './SearchSuggestionsDropdown';

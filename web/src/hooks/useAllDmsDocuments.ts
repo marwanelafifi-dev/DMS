@@ -1,0 +1,62 @@
+import { useEffect, useState } from 'react';
+import { apiClient } from '../utils/api';
+import { mockLibraryDocuments } from '../fixtures/documentLibrary';
+import type { Document } from '../types';
+
+// Loads every DMS document (both the fixture library docs used for demo
+// previews AND real documents from the .NET backend) so features like OCR
+// search and its autocomplete can match on full metadata — owner, extension,
+// department, tags, description, status — not just parsed OCR content.
+//
+// Folders/users are used only to enrich real documents with a friendly folder
+// name and owner; if either of those calls fails independently, real
+// documents still show up (just with whatever raw data they already carry)
+// instead of the whole feature silently degrading to fixture-only data.
+export function useAllDmsDocuments() {
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      const [documentsResult, foldersResult, usersResult] = await Promise.allSettled([
+        apiClient.getDocuments(),
+        apiClient.getFolders(),
+        apiClient.getUsers(),
+      ]);
+      if (cancelled) return;
+
+      if (documentsResult.status === 'rejected') {
+        console.error('Failed to load DMS documents:', documentsResult.reason);
+        setDocuments(mockLibraryDocuments as Document[]);
+        setIsLoading(false);
+        return;
+      }
+
+      const folderNameById = new Map(
+        (foldersResult.status === 'fulfilled' ? foldersResult.value.data || [] : [])
+          .map((folder: any) => [folder.folderId, folder.name]),
+      );
+      const userById = new Map(
+        (usersResult.status === 'fulfilled' ? usersResult.value.data || [] : [])
+          .map((user: any) => [user.userId, user]),
+      );
+
+      const enrichedRealDocuments = (documentsResult.value.data || []).map((doc: any) => ({
+        ...doc,
+        folderName: folderNameById.get(doc.folderId) || doc.folderName,
+        extension: doc.fileName?.split('.').pop()?.toLowerCase() || doc.extension,
+        owner: userById.get(doc.ownerId) || doc.owner,
+        modifiedAt: doc.modifiedAt || doc.updatedAt,
+      }));
+
+      setDocuments([...(mockLibraryDocuments as Document[]), ...enrichedRealDocuments]);
+      setIsLoading(false);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { documents, isLoading };
+}
