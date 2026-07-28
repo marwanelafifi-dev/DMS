@@ -27,8 +27,13 @@ var app = builder.Build();
 app.UseCors();
 app.MapControllers();
 
-// Health endpoints
-app.MapHealthChecks("/health");
+// Health endpoints (JSON format for frontend)
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    service = "dms-api",
+    timestamp = DateTime.UtcNow
+}));
 
 app.MapGet("/", () => Results.Ok(new
 {

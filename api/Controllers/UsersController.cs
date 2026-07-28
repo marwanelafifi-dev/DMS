@@ -30,7 +30,6 @@ public class UsersController(DmsContext context) : ControllerBase
     public async Task<ActionResult<object>> GetUser(Guid id)
     {
         var user = await context.Users
-            .Include(u => u.Permissions)
             .FirstOrDefaultAsync(u => u.UserId == id);
 
         if (user == null)
@@ -42,7 +41,6 @@ public class UsersController(DmsContext context) : ControllerBase
             user.Email,
             user.FullName,
             user.IsActive,
-            Permissions = user.Permissions.Select(p => new { p.FolderId, p.Role }),
             user.CreatedAt,
             user.LastLoginAt
         });
