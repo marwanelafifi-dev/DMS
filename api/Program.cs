@@ -40,6 +40,11 @@ builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<ApprovalService>();
 builder.Services.AddScoped<TaskService>();
 builder.Services.AddScoped<ReminderService>();
+builder.Services.AddScoped<AuditCalendarService>();
+builder.Services.AddScoped<UserGoogleCalendarService>();
+// Swap for a real implementation once Google OAuth is configured — see
+// IGoogleOAuthCalendarClient.cs for what that involves.
+builder.Services.AddSingleton<IGoogleOAuthCalendarClient, NotConfiguredGoogleOAuthCalendarClient>();
 builder.Services.AddBackgroundJobs();
 
 // Hangfire — Background job processing

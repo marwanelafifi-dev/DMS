@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "setup:samples": "python -m pip install --no-cache-dir -r scripts/requirements-samples.txt",
+    "generate:samples": "python scripts/generate_sample_files.py",
     "preview": "vite preview --host",
     "lint": "eslint src --ext ts,tsx",
     "test": "vitest run",
+    "test:e2e:critical": "node scripts/test-critical-workflows.mjs",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit"
   },
@@ -30,6 +33,7 @@
     "react": "^18.3.1",
     "react-beautiful-dnd": "^13.1.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.20.0",
     "sonner": "^1.2.0",
     "tailwind-merge": "^2.2.0",

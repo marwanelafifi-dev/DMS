@@ -1,2 +1,4 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
+docling==2.115.0
+fastapi==0.140.0
+uvicorn[standard]==0.51.0
+python-multipart==0.0.32

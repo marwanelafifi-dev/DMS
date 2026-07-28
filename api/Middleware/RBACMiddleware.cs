@@ -87,7 +87,13 @@ public class RBACMiddleware
             "/health",
             "/api/test",
             "/api/miniotest",
-            "/api/databasetest"
+            "/api/databasetest",
+            // Google redirects the user's browser here directly after OAuth
+            // consent — there is no X-User-Id header on that request. The user
+            // is instead identified via the `state` query parameter, which
+            // GoogleCalendarController validates itself (see the security note
+            // in IGoogleOAuthCalendarClient.cs about hardening it).
+            "/api/googlecalendar/callback",
         };
 
         return skipEndpoints.Any(endpoint => path.StartsWith(endpoint, StringComparison.OrdinalIgnoreCase));

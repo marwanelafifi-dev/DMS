@@ -22,12 +22,26 @@ export function BulkOperationsModal({
   const [comments, setComments] = useState('');
   const [reason, setReason] = useState('');
 
+  // The bulk endpoints return 200 with a per-document {succeeded, failed} breakdown
+  // rather than failing the whole request — a report card, not a single toast.
+  const reportOutcome = (verb: string, res: { data?: { succeeded?: string[]; failed?: { documentId: string; error: string }[] } }) => {
+    const succeeded = res.data?.succeeded?.length ?? 0;
+    const failed = res.data?.failed ?? [];
+    if (failed.length === 0) {
+      showSuccess(`${succeeded} document${succeeded !== 1 ? 's' : ''} ${verb}`);
+    } else if (succeeded === 0) {
+      showError(`Failed to ${verb.replace(/ed$/, '')} all ${failed.length} document${failed.length !== 1 ? 's' : ''}: ${failed[0].error}`);
+    } else {
+      showError(`${succeeded} ${verb}, ${failed.length} failed: ${failed[0].error}`);
+    }
+  };
+
   const handleBulkApprove = async () => {
     setIsProcessing(true);
     try {
       const docIds = selectedDocuments.map(d => d.documentId);
-      await apiClient.bulkApprove(docIds, comments);
-      showSuccess(`${docIds.length} documents approved`);
+      const res = await apiClient.bulkApprove(docIds, comments);
+      reportOutcome('approved', res);
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -45,8 +59,8 @@ export function BulkOperationsModal({
     setIsProcessing(true);
     try {
       const docIds = selectedDocuments.map(d => d.documentId);
-      await apiClient.bulkReject(docIds, reason);
-      showSuccess(`${docIds.length} documents rejected`);
+      const res = await apiClient.bulkReject(docIds, reason);
+      reportOutcome('rejected', res);
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -60,8 +74,8 @@ export function BulkOperationsModal({
     setIsProcessing(true);
     try {
       const docIds = selectedDocuments.map(d => d.documentId);
-      await apiClient.bulkDelete(docIds);
-      showSuccess(`${docIds.length} documents deleted`);
+      const res = await apiClient.bulkDelete(docIds);
+      reportOutcome('deleted', res);
       onSuccess();
       onClose();
     } catch (err: any) {

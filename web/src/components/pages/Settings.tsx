@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, FileText, Lock, LockKeyhole, Users } from 'lucide-react';
+import { Bell, Building2, Check, Database, FileText, Lock, LockKeyhole, Settings as SettingsIcon, Users } from 'lucide-react';
 import { RolePermissions } from '../custom/RolePermissions';
 import { UserManagement } from '../custom/UserManagement';
 import { AuditTrail } from '../custom/AuditTrail';
@@ -7,7 +7,18 @@ import { Card, CardBody } from '../ui';
 import { apiClient } from '../../utils/api';
 import type { Document } from '../../types';
 
-type SettingsTab = 'roles' | 'users' | 'audit';
+type SettingsTab = 'roles' | 'users' | 'audit' | 'settings' | 'notifications' | 'company-data' | 'database';
+
+function ComingSoonPanel({ title }: { title: string }) {
+  return (
+    <Card>
+      <CardBody className="p-8 text-center">
+        <h3 className="text-base font-semibold text-[#26334d] dark:text-white">{title}</h3>
+        <p className="mt-2 text-sm text-[#718198]">Requirements pending — let us know what this page should do.</p>
+      </CardBody>
+    </Card>
+  );
+}
 
 interface SettingsProps {
   defaultTab?: SettingsTab;
@@ -46,6 +57,30 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
       label: 'Audit Trail',
       icon: FileText,
       description: 'View system activity and logging',
+    },
+    {
+      id: 'settings' as SettingsTab,
+      label: 'Settings',
+      icon: SettingsIcon,
+      description: 'General system settings',
+    },
+    {
+      id: 'notifications' as SettingsTab,
+      label: 'Notifications',
+      icon: Bell,
+      description: 'Notification preferences and delivery',
+    },
+    {
+      id: 'company-data' as SettingsTab,
+      label: 'Company Data',
+      icon: Building2,
+      description: 'Organization profile and company information',
+    },
+    {
+      id: 'database' as SettingsTab,
+      label: 'Database',
+      icon: Database,
+      description: 'Database status and maintenance',
     },
   ];
 
@@ -128,6 +163,10 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
         {activeTab === 'roles' && <RolePermissions />}
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'audit' && <AuditTrail />}
+        {activeTab === 'settings' && <ComingSoonPanel title="Settings" />}
+        {activeTab === 'notifications' && <ComingSoonPanel title="Notifications" />}
+        {activeTab === 'company-data' && <ComingSoonPanel title="Company Data" />}
+        {activeTab === 'database' && <ComingSoonPanel title="Database" />}
       </div>
     </div>
   );

@@ -100,6 +100,42 @@ function App() {
           }
         />
 
+        <Route
+          path="/admin/settings"
+          element={
+            <MainLayout>
+              <Settings defaultTab="settings" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/notifications"
+          element={
+            <MainLayout>
+              <Settings defaultTab="notifications" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/company-data"
+          element={
+            <MainLayout>
+              <Settings defaultTab="company-data" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/database"
+          element={
+            <MainLayout>
+              <Settings defaultTab="database" />
+            </MainLayout>
+          }
+        />
+
         {/* Legacy settings routes */}
         <Route
           path="/settings/*"

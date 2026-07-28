@@ -22,7 +22,7 @@ DMS/
 | :-------- | :-------------------------- | :--------------------------- |
 | web       | Frontend (nginx)            | http://localhost:5173        |
 | api       | .NET 8 API                  | http://localhost:8080/health |
-| ocr-rag   | OCR/RAG sidecar             | http://localhost:8100/health |
+| ocr-rag   | OCR/RAG sidecar             | http://localhost:8000/health |
 | postgres  | Database                    | localhost:5432               |
 | minio     | Object storage + console    | http://localhost:9001        |
 | redis     | Cache / job state           | localhost:6379               |
@@ -40,6 +40,34 @@ docker compose up --build
 ```
 
 Open http://localhost:5173 — the page shows the API health as a connectivity check.
+
+### Run the local Docling parser directly
+
+SQLite is included with Python. Check every parser dependency from the repository
+root:
+
+```bash
+python -c "import sqlite3; from importlib.util import find_spec; print({name: bool(find_spec(name)) for name in ('docling', 'fastapi', 'uvicorn', 'multipart')}); print('sqlite3', sqlite3.sqlite_version)"
+```
+
+Install any missing Python packages:
+
+```bash
+python -m pip install --no-cache-dir docling fastapi uvicorn python-multipart
+```
+
+Docling downloads model artifacts on first use. To prepare the machine for
+fully offline parsing, download them once while connected:
+
+```bash
+docling-tools models download
+```
+
+Then start the service from `ocr-rag/`:
+
+```bash
+uvicorn main:app --reload --port 8000
+```
 
 ## Expose (Stage 2 — Ubuntu + Cloudflare Tunnel)
 

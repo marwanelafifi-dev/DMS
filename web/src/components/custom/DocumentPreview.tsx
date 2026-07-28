@@ -3,6 +3,8 @@ import { AlertCircle, Download, FileText, Lock, Presentation, Sheet, X } from 'l
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
+import { MarkdownViewer } from './MarkdownViewer';
+import { OcrPanel } from './OcrPanel';
 
 interface DocumentPreviewProps {
   document: MockLibraryDocument;
@@ -38,18 +40,24 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
 }
 
 export function DocumentPreview({ document, onClose, onDownload }: DocumentPreviewProps) {
-  const [isLoading, setIsLoading] = useState(document.preview.kind === 'image' || document.preview.kind === 'pdf');
+  const [isLoading, setIsLoading] = useState(
+    document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
+  );
   const [hasError, setHasError] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    setIsLoading(document.preview.kind === 'image' || document.preview.kind === 'pdf');
+    setIsLoading(
+      document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
+    );
     setHasError(false);
   }, [document]);
 
   useEffect(() => {
     const previouslyFocused = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+    const previousBodyOverflow = window.document.body.style.overflow;
+    window.document.body.style.overflow = 'hidden';
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -75,6 +83,7 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.document.body.style.overflow = previousBodyOverflow;
       previouslyFocused?.focus();
     };
   }, [onClose]);
@@ -83,6 +92,10 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
     if (hasError) return <PreviewFallback onDownload={() => onDownload(document)} />;
 
     switch (document.preview.kind) {
+      case 'loading':
+        return null;
+      case 'markdown':
+        return <MarkdownViewer content={document.preview.content} />;
       case 'text':
         return <pre className="min-h-[420px] whitespace-pre-wrap rounded-[4px] border border-[#e2e8f0] bg-white p-6 font-mono text-sm leading-7 text-[#334155] shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">{document.preview.content}</pre>;
       case 'image':
@@ -96,7 +109,7 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
           <iframe
             src={document.preview.url}
             title={`PDF preview of ${document.fileName}`}
-            className="h-[65vh] min-h-[480px] w-full rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10"
+            className="block h-full w-full rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10"
             onLoad={() => setIsLoading(false)}
             onError={() => { setIsLoading(false); setHasError(true); }}
           />
@@ -139,21 +152,34 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
           </div>
         );
       case 'unavailable':
-        return <PreviewFallback message={document.preview.message} onDownload={() => onDownload(document)} />;
+        return (
+          <div className="space-y-6">
+            <PreviewFallback message={document.preview.message} onDownload={() => onDownload(document)} />
+            {/* A cached in-browser Docling preview only lives for the session it was
+                uploaded in; after a reload there is no local content to show, but the
+                server still has the file, so offer to re-run extraction on demand. */}
+            {document.currentVersionId && (
+              <div className="border-t border-[#e2e8f0] pt-6 dark:border-white/10">
+                <OcrPanel documentId={document.documentId} versionId={document.currentVersionId} fileName={document.fileName} />
+              </div>
+            )}
+          </div>
+        );
       default:
         return <PreviewFallback onDownload={() => onDownload(document)} />;
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-950/50" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
-      <section ref={dialogRef} className="absolute inset-0 left-56 flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
+    <div data-testid="document-preview-overlay" className="fixed inset-y-0 left-0 right-0 z-[70] overflow-hidden bg-slate-950/50 lg:left-[286px]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+      <section ref={dialogRef} className="absolute inset-0 flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
         <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h2 id="document-preview-title" className="text-base font-semibold text-[#283a7a] dark:text-white truncate">{document.fileName}</h2>
               <span className="inline-flex items-center gap-1 rounded bg-[#d8f5e4] px-2 py-0.5 text-xs font-medium text-[#27885a]"><Lock className="h-3 w-3" />View Only</span>
             </div>
+            <p className="mt-1 truncate text-xs text-[#718198] dark:text-slate-400">{document.description}</p>
 
             <div className="mt-2 flex flex-wrap gap-4 text-xs text-[#52627a] dark:text-slate-300">
               <div className="flex gap-3">
@@ -213,10 +239,10 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
           </div>
         </header>
 
-        <div className="relative flex-1 overflow-hidden p-6">
+        <div data-testid="document-preview-body" className={`relative min-h-0 flex-1 overflow-hidden ${document.preview.kind === 'pdf' ? '' : 'p-6'}`}>
           {isLoading && (
             <div className="absolute inset-6 z-10 flex items-center justify-center rounded-[4px] bg-white/95 dark:bg-slate-900/95" role="status">
-              <div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#3f8bca]" /><p className="mt-3 text-sm text-[#718198]">Loading preview...</p></div>
+              <div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#3f8bca]" /><p className="mt-3 text-sm text-[#718198]">{document.preview.kind === 'loading' ? document.preview.message : 'Loading preview...'}</p></div>
             </div>
           )}
           <div className="h-full overflow-auto">

@@ -47,26 +47,74 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
         }
     }
 
-    // POST /api/reminders/{id}/send — إرسال يدوي
+    // POST /api/reminders/{id}/send — إرسال تذكير محدد
     [HttpPost("{id}/send")]
-    public async Task<ActionResult<object>> SendReminderManually(Guid id, [FromServices] Hangfire.IBackgroundJobClient jobClient)
+    public async Task<ActionResult<object>> SendReminderManually(Guid id)
     {
         try
         {
-            // Queue the reminder send job
+            var result = await reminderService.MarkReminderSentAsync(id, GetCurrentUserId());
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "Invalid" => BadRequest(new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending reminder {ReminderId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/reminders/send-due — تشغيل مسح Hangfire لكل التذكيرات المستحقة
+    [HttpPost("send-due")]
+    public ActionResult<object> SendDueReminders([FromServices] IBackgroundJobClient jobClient)
+    {
+        try
+        {
             jobClient.Enqueue<ReminderService>(service => service.SendPendingRemindersAsync());
 
-            logger.LogInformation("Queued reminder send job");
+            logger.LogInformation("Queued reminder send job for all due reminders");
 
-            return Ok(new
-            {
-                success = true,
-                message = "Reminder send job queued for immediate execution"
-            });
+            return Ok(new { success = true, message = "Reminder send job queued for immediate execution" });
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error queueing reminder send");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // DELETE /api/reminders/{id} — حذف تذكير
+    [HttpDelete("{id}")]
+    public async Task<ActionResult<object>> DeleteReminder(Guid id)
+    {
+        try
+        {
+            var result = await reminderService.DeleteReminderAsync(id, GetCurrentUserId());
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error deleting reminder {ReminderId}", id);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
@@ -81,7 +129,8 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
                 req.TaskId,
                 req.RecipientId,
                 req.ReminderType,
-                req.DueDate);
+                req.DueDate,
+                GetCurrentUserId());
 
             if (!result.Success)
             {

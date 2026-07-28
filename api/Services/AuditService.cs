@@ -106,6 +106,13 @@ public static class AuditActions
     public const string PERMISSION_REVOKED = "PERMISSION_REVOKED";
 
     public const string REMINDER_SENT = "REMINDER_SENT";
+    public const string REMINDER_CREATED = "REMINDER_CREATED";
+    public const string REMINDER_DELETED = "REMINDER_DELETED";
+    public const string AUDIT_EVENT_CREATED = "AUDIT_EVENT_CREATED";
+    public const string AUDIT_EVENT_DELETED = "AUDIT_EVENT_DELETED";
+    public const string GOOGLE_CALENDAR_CONNECTED = "GOOGLE_CALENDAR_CONNECTED";
+    public const string GOOGLE_CALENDAR_DISCONNECTED = "GOOGLE_CALENDAR_DISCONNECTED";
+    public const string GOOGLE_CALENDAR_SYNCED = "GOOGLE_CALENDAR_SYNCED";
 
     public const string USER_CREATED = "USER_CREATED";
     public const string USER_UPDATED = "USER_UPDATED";

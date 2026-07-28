@@ -6,7 +6,7 @@ namespace DMS.Api.Services;
 
 public class ReminderService(DmsContext context, AuditService auditService, ILogger<ReminderService> logger)
 {
-    public async Task<ReminderResult> CreateReminderAsync(Guid taskId, Guid recipientId, string reminderType, DateTime dueDate)
+    public async Task<ReminderResult> CreateReminderAsync(Guid taskId, Guid recipientId, string reminderType, DateTime dueDate, Guid? actorUserId = null)
     {
         try
         {
@@ -35,6 +35,17 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
             context.Reminders.Add(reminder);
             await context.SaveChangesAsync();
 
+            await auditService.LogAsync(actorUserId ?? recipientId, AuditActions.REMINDER_CREATED, new
+            {
+                reminder.ReminderId,
+                reminder.TaskId,
+                TaskTitle = task.Title,
+                reminder.RecipientId,
+                RecipientEmail = recipient.Email,
+                reminder.ReminderType,
+                reminder.DueDate
+            });
+
             logger.LogInformation("Created reminder {ReminderId} for task {TaskId}", reminder.ReminderId, taskId);
 
             return ReminderResult.Ok(new
@@ -58,10 +69,12 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
     {
         try
         {
-            var today = DateTime.Now.Date;
+            // DueDate now carries a real time-of-day (see migration 011); comparing
+            // against the start of today would delay same-day reminders by ~24h.
+            var now = DateTime.UtcNow;
 
             var pending = await context.Reminders
-                .Where(r => !r.IsSent && r.DueDate <= today)
+                .Where(r => !r.IsSent && r.DueDate <= now)
                 .OrderBy(r => r.DueDate)
                 .Take(limit)
                 .Select(r => new
@@ -101,7 +114,10 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
                 .Cast<Guid>()
                 .ToList();
 
+            // Recipient must be eagerly loaded — without it the navigation is always null
+            // here and the REMINDER_SENT audit entry below would silently never be written.
             var reminders = await context.Reminders
+                .Include(r => r.Recipient)
                 .Where(r => reminderIds.Contains(r.ReminderId))
                 .ToListAsync();
 
@@ -111,19 +127,15 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
                 reminder.SentAt = DateTime.UtcNow;
                 context.Reminders.Update(reminder);
 
-                // Log that reminder was sent
-                if (reminder.Recipient != null)
+                await auditService.LogAsync(reminder.RecipientId, AuditActions.REMINDER_SENT, new
                 {
-                    await auditService.LogAsync(reminder.RecipientId, AuditActions.REMINDER_SENT, new
-                    {
-                        reminder.ReminderId,
-                        reminder.TaskId,
-                        reminder.ReminderType,
-                        reminder.DueDate,
-                        reminder.SentAt,
-                        RecipientEmail = reminder.Recipient.Email
-                    });
-                }
+                    reminder.ReminderId,
+                    reminder.TaskId,
+                    reminder.ReminderType,
+                    reminder.DueDate,
+                    reminder.SentAt,
+                    RecipientEmail = reminder.Recipient?.Email
+                });
             }
 
             await context.SaveChangesAsync();
@@ -164,6 +176,93 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
         {
             logger.LogError(ex, "Error getting reminders for user {UserId}", userId);
             return new List<object>();
+        }
+    }
+
+    // Marks a single reminder as sent. Distinct from SendPendingRemindersAsync, which is the
+    // Hangfire sweep over every due reminder — this backs the per-row "send now" action.
+    public async Task<ReminderResult> MarkReminderSentAsync(Guid reminderId, Guid actorUserId)
+    {
+        try
+        {
+            var reminder = await context.Reminders
+                .Include(r => r.Recipient)
+                .FirstOrDefaultAsync(r => r.ReminderId == reminderId);
+
+            if (reminder == null)
+                return ReminderResult.NotFound("Reminder not found");
+
+            if (reminder.IsSent)
+                return ReminderResult.Invalid("Reminder has already been sent");
+
+            reminder.IsSent = true;
+            reminder.SentAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(actorUserId, AuditActions.REMINDER_SENT, new
+            {
+                reminder.ReminderId,
+                reminder.TaskId,
+                reminder.ReminderType,
+                reminder.DueDate,
+                reminder.SentAt,
+                RecipientId = reminder.RecipientId,
+                RecipientEmail = reminder.Recipient?.Email,
+                Trigger = "manual"
+            });
+
+            logger.LogInformation("Marked reminder {ReminderId} as sent", reminderId);
+
+            return ReminderResult.Ok(new
+            {
+                reminder.ReminderId,
+                reminder.TaskId,
+                reminder.ReminderType,
+                reminder.DueDate,
+                reminder.IsSent,
+                reminder.SentAt
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error marking reminder {ReminderId} as sent", reminderId);
+            return ReminderResult.Fail(ex.Message);
+        }
+    }
+
+    public async Task<ReminderResult> DeleteReminderAsync(Guid reminderId, Guid actorUserId)
+    {
+        try
+        {
+            var reminder = await context.Reminders.FirstOrDefaultAsync(r => r.ReminderId == reminderId);
+            if (reminder == null)
+                return ReminderResult.NotFound("Reminder not found");
+
+            // Captured before removal so the audit entry survives the delete.
+            var snapshot = new
+            {
+                reminder.ReminderId,
+                reminder.TaskId,
+                reminder.RecipientId,
+                reminder.ReminderType,
+                reminder.DueDate,
+                reminder.IsSent,
+                reminder.SentAt
+            };
+
+            context.Reminders.Remove(reminder);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(actorUserId, AuditActions.REMINDER_DELETED, snapshot);
+
+            logger.LogInformation("Deleted reminder {ReminderId}", reminderId);
+
+            return ReminderResult.Ok(snapshot);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error deleting reminder {ReminderId}", reminderId);
+            return ReminderResult.Fail(ex.Message);
         }
     }
 }

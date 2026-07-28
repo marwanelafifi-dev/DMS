@@ -26,7 +26,7 @@ export function FolderTree({
 
   return (
     <aside
-      className="flex w-56 flex-col gap-2 border-r border-[#dbe2ec] bg-white py-4 dark:border-white/10 dark:bg-slate-900"
+      className="flex max-h-56 w-full flex-shrink-0 flex-col gap-2 overflow-y-auto border-b border-[#dbe2ec] bg-white py-3 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-56 md:border-b-0 md:border-r md:py-4"
       data-testid="folder-section"
       aria-labelledby="folder-section-title"
     >

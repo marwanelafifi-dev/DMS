@@ -15,7 +15,6 @@ class APIClient {
     this.client = axios.create({
       baseURL: API_BASE,
       headers: {
-        'Content-Type': 'application/json',
         'X-User-Id': DEV_USER_ID,
       },
       timeout: 30000,
@@ -146,29 +145,32 @@ class APIClient {
 
     const { data } = await this.client.post<ApiResponse>(
       `/documents/${documentId}/upload`,
-      formData,
-      {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }
+      formData
     );
     return data;
   }
 
-  async downloadDocument(documentId: string, versionId: string) {
+  async getDocumentFile(documentId: string, versionId: string, signal?: AbortSignal) {
     const response = await this.client.get(`/documents/${documentId}/versions/${versionId}/download`, {
       responseType: 'blob',
+      signal,
     });
     const disposition = response.headers['content-disposition'] as string | undefined;
     const encodedFileName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
     const quotedFileName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
     const fileName = encodedFileName ? decodeURIComponent(encodedFileName) : quotedFileName || `document-${versionId}`;
-    const objectUrl = URL.createObjectURL(response.data);
+    return { blob: response.data as Blob, fileName };
+  }
+
+  async downloadDocument(documentId: string, versionId: string) {
+    const { blob, fileName } = await this.getDocumentFile(documentId, versionId);
+    const objectUrl = URL.createObjectURL(blob);
     const link = window.document.createElement('a');
     link.href = objectUrl;
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(objectUrl);
-    return response.data;
+    return blob;
   }
 
   // Document Approval
@@ -226,7 +228,7 @@ class APIClient {
   }
 
   async completeTask(taskId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`);
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`, {});
     return data;
   }
 
@@ -346,37 +348,10 @@ class APIClient {
     return data;
   }
 
-  // OCR
-  async triggerOcr(documentId: string, versionId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr`);
-    return data;
-  }
-
-  async getOcrStatus(documentId: string, versionId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr-status`);
-    return data;
-  }
-
-  async getOcrText(documentId: string, versionId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/ocr-text`);
-    return data;
-  }
-
-  // E-Signatures
-  async signDocument(documentId: string, versionId: string, signatureData: any) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/sign`, signatureData);
-    return data;
-  }
-
-  async getSignatures(documentId: string, versionId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/signatures`);
-    return data;
-  }
-
   // Search & Filtering
   async searchDocuments(query: string, params?: any) {
-    const { data } = await this.client.get<ApiResponse>('/documents/search', {
-      params: { ...params, q: query },
+    const { data } = await this.client.get<ApiResponse>('/documents', {
+      params: { search: query, ...params },
     });
     return data;
   }
@@ -439,24 +414,63 @@ class APIClient {
   }
 
   // Reminders - Additional
-  async updateReminder(reminderId: string, reminderData: any) {
-    const { data } = await this.client.put<ApiResponse>(`/reminders/${reminderId}`, reminderData);
-    return data;
-  }
-
   async deleteReminder(reminderId: string) {
     const { data } = await this.client.delete<ApiResponse>(`/reminders/${reminderId}`);
     return data;
   }
 
-  async markReminderAsRead(reminderId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/reminders/${reminderId}/mark-read`);
+  // Marks one reminder as sent (RemindersController: POST /reminders/{id}/send).
+  async sendReminder(reminderId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/reminders/${reminderId}/send`);
+    return data;
+  }
+
+  // Queues the Hangfire sweep over every due reminder.
+  async sendDueReminders() {
+    const { data } = await this.client.post<ApiResponse>('/reminders/send-due');
     return data;
   }
 
   // Audit
   async getAuditTrail(params?: any) {
     const { data } = await this.client.get<ApiResponse>('/audittrails', { params });
+    return data;
+  }
+
+  // Audit Calendar (ISO certification journey events shown on the Dashboard)
+  async getAuditCalendarEvents() {
+    const { data } = await this.client.get<ApiResponse>('/auditcalendar');
+    return data;
+  }
+
+  async createAuditCalendarEvent(eventData: { title: string; phase: string; standard: string; eventDate: string; notes?: string }) {
+    const { data } = await this.client.post<ApiResponse>('/auditcalendar', eventData);
+    return data;
+  }
+
+  async deleteAuditCalendarEvent(eventId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/auditcalendar/${eventId}`);
+    return data;
+  }
+
+  // Per-user Google Calendar sync
+  async getGoogleCalendarStatus() {
+    const { data } = await this.client.get<ApiResponse>('/googlecalendar/status');
+    return data;
+  }
+
+  async getGoogleCalendarAuthUrl() {
+    const { data } = await this.client.get<ApiResponse>('/googlecalendar/connect');
+    return data;
+  }
+
+  async disconnectGoogleCalendar() {
+    const { data } = await this.client.delete<ApiResponse>('/googlecalendar/disconnect');
+    return data;
+  }
+
+  async syncGoogleCalendarNow() {
+    const { data } = await this.client.post<ApiResponse>('/googlecalendar/sync');
     return data;
   }
 

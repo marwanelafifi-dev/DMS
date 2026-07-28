@@ -1,22 +1,25 @@
-import { useState } from 'react';
-import { Card, CardBody, Button, Badge } from '../ui';
-import { SkeletonTable } from '../ui/Skeleton';
-import { Search as SearchIcon, Eye, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { ChevronRight, Eye, FileSearch, Search as SearchIcon } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { doclingApi, type ParsedDocument } from '../../services/doclingApi';
+import type { Document } from '../../types';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
-import { useNavigate } from 'react-router-dom';
-import type { Document } from '../../types';
+import { Badge, Button, Card, CardBody } from '../ui';
+import { SkeletonTable } from '../ui/Skeleton';
 
 export function Search() {
   const navigate = useNavigate();
-  const { showSuccess, showError } = useToast();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<Document[]>([]);
+  const { showError, showSuccess } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const [results, setResults] = useState<ParsedDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-
-  // Advanced filters
+  const [libraryResults, setLibraryResults] = useState<Document[]>([]);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(false);
+  const [hasLibrarySearched, setHasLibrarySearched] = useState(false);
+  const [allDmsDocuments, setAllDmsDocuments] = useState<Document[]>([]);
   const [filters, setFilters] = useState({
     status: '',
     owner: '',
@@ -27,41 +30,107 @@ export function Search() {
     maxSize: '',
   });
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
+  // Load all DMS documents once so we can match parsed OCR filenames to real
+  // library documents and open the exact same DocumentPreview used in the library.
+  useEffect(() => {
+    let cancelled = false;
+    const loadAllDocuments = async () => {
+      try {
+        const response = await apiClient.getDocuments();
+        if (!cancelled && Array.isArray(response.data)) {
+          setAllDmsDocuments(response.data as Document[]);
+        }
+      } catch {
+        // Non-fatal: matching to Document Library preview is a convenience feature.
+      }
+    };
+    void loadAllDocuments();
+    return () => { cancelled = true; };
+  }, []);
+
+  const findDmsDocument = useCallback((filename: string) => {
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+    return allDmsDocuments.find((d) =>
+      d.fileName?.toLowerCase() === filename.toLowerCase()
+      || (d.name ?? d.title)?.toLowerCase() === nameWithoutExt.toLowerCase()
+      || d.fileName?.toLowerCase().includes(filename.toLowerCase()),
+    );
+  }, [allDmsDocuments]);
+
+  const openInLibrary = useCallback((document: ParsedDocument) => {
+    const dmsDoc = findDmsDocument(document.filename);
+    if (dmsDoc) {
+      navigate(`/documents?preview=${encodeURIComponent(dmsDoc.documentId)}`);
+    } else {
+      showError('This file is not linked to a Document Library entry yet');
+    }
+  }, [findDmsDocument, navigate, showError]);
+
+  const runSearch = useCallback(async (query: string, signal?: AbortSignal) => {
+    setIsLoading(true);
+    setHasSearched(true);
+    try {
+      const matches = await doclingApi.searchDocuments(query, signal);
+      setResults(matches);
+      if (matches.length === 0) {
+        showSuccess(`No parsed documents found matching "${query}"`);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setResults([]);
+      showError(error instanceof Error ? error.message : 'Local document search failed');
+    } finally {
+      if (!signal?.aborted) setIsLoading(false);
+    }
+  }, [showError, showSuccess]);
+
+  useEffect(() => {
+    const query = (searchParams.get('q') ?? '').trim();
+    setSearchQuery(query);
+    if (!query) return;
+
+    const controller = new AbortController();
+    void runSearch(query, controller.signal);
+    return () => controller.abort();
+  }, [runSearch, searchParams]);
+
+  const handleSearch = () => {
+    const query = searchQuery.trim();
+    if (!query) {
+      showError('Please enter a search query');
+      return;
+    }
+    setSearchParams({ q: query });
+  };
+
+  const handleLibrarySearch = async () => {
+    const query = searchQuery.trim();
+    if (!query) {
       showError('Please enter a search query');
       return;
     }
 
-    setIsLoading(true);
-    setHasSearched(true);
+    setIsLibraryLoading(true);
+    setHasLibrarySearched(true);
     try {
-      // Use simple search for now, advanced search can use advancedSearch endpoint once implemented
-      const res = await apiClient.searchDocuments(searchQuery, filters);
-      setResults(res.data || []);
-      if (res.data?.length === 0) {
-        showSuccess(`No documents found matching "${searchQuery}"`);
-      } else {
-        showSuccess(`Found ${res.data?.length} document(s)`);
-      }
-    } catch (err: any) {
-      // Fallback to getDocuments if search endpoint isn't available
+      const response = await apiClient.searchDocuments(query, filters);
+      setLibraryResults(response.data || []);
+    } catch {
       try {
-        const res = await apiClient.getDocuments();
-        const filtered = (res.data || []).filter((doc: Document) =>
-          (doc.title ?? doc.name ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+        const response = await apiClient.getDocuments();
+        setLibraryResults(
+          (response.data || []).filter((document: Document) =>
+            (document.title ?? document.name ?? '')
+              .toLowerCase()
+              .includes(query.toLowerCase()),
+          ),
         );
-        setResults(filtered);
-        if (filtered.length === 0) {
-          showSuccess(`No documents found matching "${searchQuery}"`);
-        } else {
-          showSuccess(`Found ${filtered.length} document(s)`);
-        }
       } catch {
-        showError('Search failed');
+        setLibraryResults([]);
+        showError('DMS metadata search failed');
       }
     } finally {
-      setIsLoading(false);
+      setIsLibraryLoading(false);
     }
   };
 
@@ -79,96 +148,78 @@ export function Search() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
-  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h1 className="text-3xl font-serif font-bold tracking-tight text-navy-900 dark:text-white mb-2">
-          Advanced Search
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Search and filter documents across your entire vault
-        </p>
+        <h1 className="page-heading">OCR Document Search</h1>
+        <p className="page-subtitle">Search Markdown content extracted locally by Docling</p>
       </div>
 
-      {/* Search Bar */}
-      <Card className="bg-white dark:bg-navy-950">
-        <CardBody className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">
-              Search Documents
-            </label>
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <SearchIcon className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="e.g., Quality Management Policy, ISO 9001..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <Button variant="primary" onClick={handleSearch} disabled={isLoading}>
-                {isLoading ? 'Searching...' : 'Search'}
-              </Button>
+      <Card className="dark:bg-navy-950">
+        <CardBody>
+          <label className="mb-2 block text-sm font-medium text-[#26334d] dark:text-white" htmlFor="parsed-document-search">
+            Search parsed document contents
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative min-w-0 flex-1">
+              <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#8ea0ba]" />
+              <input
+                id="parsed-document-search"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') handleSearch();
+                }}
+                placeholder="Search extracted text, tables, and headings..."
+                className="field-control h-10 w-full pl-11 pr-4"
+              />
             </div>
+            <Button onClick={handleSearch} disabled={isLoading}>
+              {isLoading ? 'Searching...' : 'Search'}
+            </Button>
           </div>
 
-          {/* Advanced Filters */}
-          <details className="border-t border-gray-200 dark:border-navy-700 pt-4">
-            <summary className="cursor-pointer text-sm font-medium text-navy-900 dark:text-white hover:text-blue-600">
-              Advanced Filters
+          <details className="mt-4 border-t border-[#dbe2ec] pt-4 dark:border-white/10">
+            <summary className="cursor-pointer text-sm font-medium text-[#26334d] hover:text-[#2f78b7] dark:text-white">
+              Advanced DMS metadata filters
             </summary>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Status
-                </label>
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <label className="text-xs font-medium text-[#52627a] dark:text-slate-300">
+                Status
                 <select
                   value={filters.status}
-                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded text-sm bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                  onChange={(event) => setFilters({ ...filters, status: event.target.value })}
+                  className="field-control mt-1 w-full"
                 >
                   <option value="">Any Status</option>
                   <option value="draft">Draft</option>
                   <option value="pending_approval">Pending Approval</option>
                   <option value="released">Released</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Owner
-                </label>
+              </label>
+              <label className="text-xs font-medium text-[#52627a] dark:text-slate-300">
+                Owner
                 <input
-                  type="text"
-                  placeholder="e.g., John Doe"
                   value={filters.owner}
-                  onChange={(e) => setFilters({ ...filters, owner: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded text-sm bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                  onChange={(event) => setFilters({ ...filters, owner: event.target.value })}
+                  placeholder="e.g., John Doe"
+                  className="field-control mt-1 w-full"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  File Type
-                </label>
+              </label>
+              <label className="text-xs font-medium text-[#52627a] dark:text-slate-300">
+                File Type
                 <select
                   value={filters.fileType}
-                  onChange={(e) => setFilters({ ...filters, fileType: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded text-sm bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                  onChange={(event) => setFilters({ ...filters, fileType: event.target.value })}
+                  className="field-control mt-1 w-full"
                 >
                   <option value="">Any Type</option>
                   <option value="pdf">PDF</option>
@@ -177,39 +228,28 @@ export function Search() {
                   <option value="pptx">PowerPoint</option>
                   <option value="image">Image</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  From Date
-                </label>
+              </label>
+              <label className="text-xs font-medium text-[#52627a] dark:text-slate-300">
+                From Date
                 <input
                   type="date"
                   value={filters.dateFrom}
-                  onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded text-sm bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                  onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })}
+                  className="field-control mt-1 w-full"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  To Date
-                </label>
+              </label>
+              <label className="text-xs font-medium text-[#52627a] dark:text-slate-300">
+                To Date
                 <input
                   type="date"
                   value={filters.dateTo}
-                  onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded text-sm bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                  onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })}
+                  className="field-control mt-1 w-full"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Clear Filters
-                </label>
+              </label>
+              <div className="flex items-end gap-2">
                 <Button
                   variant="secondary"
-                  size="sm"
                   onClick={() =>
                     setFilters({
                       status: '',
@@ -221,9 +261,11 @@ export function Search() {
                       maxSize: '',
                     })
                   }
-                  className="w-full"
                 >
                   Reset
+                </Button>
+                <Button onClick={handleLibrarySearch} disabled={isLibraryLoading}>
+                  {isLibraryLoading ? 'Searching DMS...' : 'Search DMS metadata'}
                 </Button>
               </div>
             </div>
@@ -231,107 +273,143 @@ export function Search() {
         </CardBody>
       </Card>
 
-      {/* Results */}
       {!hasSearched ? (
-        <Card className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900">
-          <CardBody>
-            <div className="text-center">
-              <SearchIcon className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-              <p className="text-blue-700 dark:text-blue-300">
-                Enter a search term and filters to find documents
-              </p>
-            </div>
+        <Card className="border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-900/20">
+          <CardBody className="py-12 text-center">
+            <FileSearch className="mx-auto mb-4 h-12 w-12 text-blue-400" />
+            <p className="text-blue-700 dark:text-blue-300">
+              Enter a phrase to search documents already parsed by Docling.
+            </p>
           </CardBody>
         </Card>
       ) : isLoading ? (
         <SkeletonTable />
       ) : results.length === 0 ? (
-        <Card className="bg-gray-50 dark:bg-navy-950">
-          <CardBody className="text-center py-12">
-            <SearchIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 dark:text-gray-400">
-              No documents found matching your search
-            </p>
+        <Card>
+          <CardBody className="py-12 text-center">
+            <SearchIcon className="mx-auto mb-4 h-12 w-12 text-slate-400" />
+            <p className="text-[#718198]">No parsed documents found matching your search.</p>
           </CardBody>
         </Card>
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 dark:bg-navy-900 border-b border-gray-200 dark:border-navy-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">
-                    Document
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">
-                    Owner
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-navy-900 dark:text-white">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((doc, idx) => (
-                  <tr
-                    key={doc.documentId}
-                    className={`border-b border-gray-200 dark:border-navy-700 ${
-                      idx % 2 === 1 ? 'bg-gray-50 dark:bg-navy-850' : 'bg-white dark:bg-navy-950'
-                    }`}
-                  >
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-navy-900 dark:text-white truncate">
-                        {doc.title ?? doc.name}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Badge status={doc.status === 'released' ? 'success' : doc.status === 'pending_approval' ? 'warning' : 'info'} variant="outline">
-                        {doc.status.replace('_', ' ')}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                      {doc.uploadedByUser?.fullName || '-'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                      {formatDate(doc.createdAt ?? doc.uploadedAt)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => navigate(`/documents?preview=${encodeURIComponent(doc.documentId)}`)}
-                          className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors"
-                          title="View"
-                        >
-                          <Eye className="w-4 h-4 text-blue-600" />
-                        </button>
-                        <button
-                          onClick={() => handleDownload(doc)}
-                          className="p-2 hover:bg-gray-200 dark:hover:bg-navy-700 rounded transition-colors"
-                          title="Download"
-                        >
-                          <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="space-y-5">
+          <Card className="min-w-0 overflow-hidden dark:bg-navy-950">
+            <div className="border-b border-[#dbe2ec] px-5 py-4 dark:border-white/10">
+              <h2 className="section-heading">{results.length} matching {results.length === 1 ? 'file' : 'files'}</h2>
+            </div>
+            <ul className="divide-y divide-[#e2e8f0] dark:divide-white/10">
+              {results.map((document) => (
+                <li key={document.id} className="flex min-w-0 items-center gap-3 px-5 py-4">
+                  <FileSearch className="h-5 w-5 flex-shrink-0 text-[#3f8bca]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[#26334d] dark:text-white">{document.filename}</p>
+                    {document.created_at && <p className="mt-1 text-xs text-[#718198]">Parsed {document.created_at}</p>}
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      title="Open in Document Library"
+                      aria-label={`Open ${document.filename} in Document Library`}
+                      onClick={() => openInLibrary(document)}
+                      className="rounded p-2 text-[#3f8bca] hover:bg-blue-50 dark:hover:bg-slate-800"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      )}
 
-          {/* Results Summary */}
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-navy-700 bg-gray-50 dark:bg-navy-900">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Showing {results.length} result{results.length !== 1 ? 's' : ''} for "{searchQuery}"
-            </p>
-          </div>
-        </Card>
+      {hasLibrarySearched && (
+        <section aria-labelledby="dms-metadata-results">
+          <h2 id="dms-metadata-results" className="section-heading mb-3">
+            DMS metadata results
+          </h2>
+          {isLibraryLoading ? (
+            <SkeletonTable />
+          ) : libraryResults.length === 0 ? (
+            <Card>
+              <CardBody className="py-8 text-center text-[#718198]">
+                No DMS documents found matching your metadata search.
+              </CardBody>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden dark:bg-navy-950">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="border-b border-[#dbe2ec] bg-slate-100 dark:border-white/10 dark:bg-slate-900">
+                    <tr>
+                      {['Document', 'Status', 'Owner', 'Date', 'Actions'].map((heading) => (
+                        <th key={heading} className="px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:text-white">
+                          {heading}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {libraryResults.map((document, index) => (
+                      <tr
+                        key={document.documentId}
+                        className={`border-b border-[#dbe2ec] dark:border-white/10 ${
+                          index % 2 === 0 ? 'bg-white dark:bg-navy-950' : 'bg-slate-50 dark:bg-slate-900'
+                        }`}
+                      >
+                        <td className="px-6 py-4">
+                          <p className="font-medium text-[#26334d] dark:text-white">
+                            {document.title ?? document.name}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge
+                            status={
+                              document.status === 'released'
+                                ? 'success'
+                                : document.status === 'pending_approval'
+                                  ? 'warning'
+                                  : 'info'
+                            }
+                            variant="outline"
+                          >
+                            {document.status.replace('_', ' ')}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                          {document.uploadedByUser?.fullName || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                          {formatDate(document.createdAt ?? document.uploadedAt)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              aria-label={`Open ${document.title ?? document.name}`}
+                              onClick={() => navigate(`/documents?preview=${encodeURIComponent(document.documentId)}`)}
+                              className="rounded p-2 text-[#3f8bca] hover:bg-blue-50 dark:hover:bg-slate-800"
+                            >
+                              <Eye className="h-5 w-5" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Download ${document.title ?? document.name}`}
+                              onClick={() => void handleDownload(document)}
+                              className="rounded p-2 text-[#52627a] hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                              <ChevronRight className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </section>
       )}
     </div>
   );

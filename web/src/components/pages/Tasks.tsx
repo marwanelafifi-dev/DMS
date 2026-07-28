@@ -294,7 +294,7 @@ export function Tasks() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5 overflow-hidden">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="page-heading">PCAR / Corrective Action</h1>
@@ -375,29 +375,29 @@ export function Tasks() {
             <Card>
               <CardBody className="p-5">
                 <h2 className="section-heading">Issue Description</h2>
-                <p className="mt-3 text-sm leading-6 text-[#52627a]">{focusedPcar.description || focusedPcar.title}</p>
+                <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="p-5">
                 <h2 className="section-heading">Root Cause Analysis <span className="text-[#e24c53]">*</span></h2>
-                <p className="mt-2 text-xs text-[#718198]">Mandatory. Minimum 20 characters. Use the 5-Whys method.</p>
+                <p className="mt-2 text-xs text-[#718198] dark:text-slate-400">Mandatory. Minimum 20 characters. Use the 5-Whys method.</p>
                 <textarea className="field-control mt-3 min-h-[116px] w-full py-3" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
-                <div className="mt-2 text-xs text-[#94a3b8]">{pcarDraft.rootCause.trim().length} / 20 min</div>
+                <div className="mt-2 text-xs text-[#94a3b8] dark:text-slate-400">{pcarDraft.rootCause.trim().length} / 20 min</div>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="space-y-4 p-5">
                 <h2 className="section-heading">Corrective &amp; Preventive Action</h2>
-                <label className="block text-sm text-[#52627a]">Immediate correction<input className="field-control mt-2 h-10 w-full" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a]">Preventive action<input className="field-control mt-2 h-10 w-full" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a]">Target closure date<input type="date" className="field-control mt-2 h-10 w-full" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction<input className="field-control mt-2 h-10 w-full" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action<input className="field-control mt-2 h-10 w-full" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date<input type="date" className="field-control mt-2 h-10 w-full" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
               </CardBody>
             </Card>
           </div>
 
           <div className="space-y-4">
-            <div className="flex justify-end"><span className={`rounded-[5px] px-3 py-2 text-sm font-semibold ${focusedPcar.priority === 'critical' ? 'bg-[#fde1e2] text-[#c73c44]' : 'bg-[#fff1c9] text-[#b96a08]'}`}>Severity: {focusedPcar.priority}</span></div>
+            <div className="flex justify-end"><span className={`rounded-[5px] px-3 py-2 text-sm font-semibold ${focusedPcar.priority === 'critical' ? 'bg-[#fde1e2] text-[#c73c44] dark:bg-red-500/15 dark:text-red-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>Severity: {focusedPcar.priority}</span></div>
             <Card>
               <CardBody className="p-5">
                 <h2 className="section-heading">Severity Matrix</h2>
@@ -407,7 +407,7 @@ export function Tasks() {
                     ['Major', '#efb514'],
                     ['Minor', '#58c993'],
                   ].map(([label, color]) => (
-                    <div key={label} className={`flex items-center justify-between rounded-[4px] px-2 py-2 ${focusedPcar.priority === label.toLowerCase() ? 'bg-[#fff2f2]' : ''}`}><span className="text-[#52627a]">{label}</span><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} /></div>
+                    <div key={label} className={`flex items-center justify-between rounded-[4px] px-2 py-2 ${focusedPcar.priority === label.toLowerCase() ? 'bg-[#fff2f2] dark:bg-red-500/15' : ''}`}><span className="text-[#52627a] dark:text-slate-300">{label}</span><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} /></div>
                   ))}
                 </div>
               </CardBody>
@@ -415,7 +415,7 @@ export function Tasks() {
             <Card>
               <CardBody className="p-5">
                 <h2 className="section-heading">Approvers</h2>
-                <div className="mt-4 space-y-3 text-sm text-[#52627a]"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#efb514]" />QA Lead — pending</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#cbd5e3]" />Plant Manager — waiting</div></div>
+                <div className="mt-4 space-y-3 text-sm text-[#52627a] dark:text-slate-300"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#efb514]" />QA Lead — pending</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#cbd5e3]" />Plant Manager — waiting</div></div>
               </CardBody>
             </Card>
             <Button className="w-full" onClick={handlePcarSubmit}>Submit for approval</Button>
@@ -426,8 +426,8 @@ export function Tasks() {
       <div className="flex items-center justify-between pt-1"><h2 className="section-heading">PCAR Register</h2></div>
 
       {/* Filters */}
-      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
-        <div className="flex-1 relative">
+      <div className="flex flex-col items-stretch gap-3 md:flex-row md:items-center">
+        <div className="relative w-full flex-1">
           <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
           <input
             type="text"
@@ -440,7 +440,7 @@ export function Tasks() {
         </div>
 
         <select
-          className="field-control h-10 px-4"
+          className="field-control h-10 w-full px-4 md:w-auto"
           aria-label="Filter PCAR records by status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -452,7 +452,7 @@ export function Tasks() {
         </select>
 
         <select
-          className="field-control h-10 px-4"
+          className="field-control h-10 w-full px-4 md:w-auto"
           aria-label="Filter PCAR records by priority"
           value={priorityFilter}
           onChange={(e) => setPriorityFilter(e.target.value)}
@@ -503,8 +503,8 @@ export function Tasks() {
                     <tr
                       key={task.taskId}
                       className={`border-b border-gray-200 dark:border-navy-700 ${
-                        idx % 2 === 1 ? 'bg-gray-50 dark:bg-navy-850' : 'bg-white dark:bg-navy-950'
-                      } hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
+                        idx % 2 === 1 ? 'bg-gray-50 dark:bg-slate-900/50' : 'bg-white dark:bg-slate-950'
+                      } hover:bg-gray-100 dark:hover:bg-slate-800/60 transition-colors`}
                     >
                       <td className="px-6 py-4">
                         {editingId === task.taskId ? (
@@ -627,11 +627,11 @@ export function Tasks() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-navy-700 bg-gray-50 dark:bg-navy-900">
+            <div className="flex flex-col items-stretch gap-3 border-t border-gray-200 bg-gray-50 px-4 py-4 dark:border-navy-700 dark:bg-navy-900 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Page {page} of {totalPages} ({totalCount} total tasks)
               </p>
-              <div className="flex gap-2">
+              <div className="flex justify-end gap-2">
                 <Button
                   variant="secondary"
                   size="sm"

@@ -116,7 +116,7 @@ export function Approvals() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5 overflow-hidden">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="page-heading">C-Doc Workflow</h1>
@@ -183,11 +183,11 @@ export function Approvals() {
           <div className="grid gap-4 md:grid-cols-4">
             {['Uploaded', 'QA Triage', 'Manager Approval', 'QA Final Release'].map((stage, index) => (
               <div key={stage} className="relative flex items-center gap-3">
-                <span className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 ${index < 2 ? 'border-[#3c9c6c] bg-[#3c9c6c] text-white' : index === 2 ? 'border-[#3f8bca] bg-white text-[#3f8bca]' : 'border-[#cbd5e3] bg-white text-[#94a3b8]'}`}>
+                <span className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 ${index < 2 ? 'border-[#3c9c6c] bg-[#3c9c6c] text-white' : index === 2 ? 'border-[#3f8bca] bg-white text-[#3f8bca] dark:bg-slate-900' : 'border-[#cbd5e3] bg-white text-[#94a3b8] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400'}`}>
                   {index < 2 ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-3 w-3 fill-current" />}
                 </span>
-                <span className={`text-xs font-medium ${index === 2 ? 'text-[#283a7a]' : 'text-[#64748b]'}`}>{stage}</span>
-                {index < 3 && <span className="absolute left-[29px] right-[-16px] top-3.5 hidden h-px bg-[#dbe2ec] md:block" />}
+                <span className={`text-xs font-medium ${index === 2 ? 'text-[#283a7a] dark:text-sky-300' : 'text-[#64748b] dark:text-slate-300'}`}>{stage}</span>
+                {index < 3 && <span className="absolute left-[29px] right-[-16px] top-3.5 hidden h-px bg-[#dbe2ec] dark:bg-slate-700 md:block" />}
               </div>
             ))}
           </div>
@@ -199,10 +199,10 @@ export function Approvals() {
           <Card>
             <CardBody className="p-5">
               <h2 className="section-heading">Stage: Manager Approval</h2>
-              <p className="mt-4 text-sm leading-6 text-[#52627a]">
-                Document <span className="font-semibold text-[#26334d]">{activeApproval.document?.name || 'Untitled document'}</span> was uploaded by {activeApproval.submittedByUser?.fullName || 'the document owner'} and now requires Manager approval before QA Final Release.
+              <p className="mt-4 text-sm leading-6 text-[#52627a] dark:text-slate-300">
+                Document <span className="font-semibold text-[#26334d] dark:text-white">{activeApproval.document?.name || 'Untitled document'}</span> was uploaded by {activeApproval.submittedByUser?.fullName || 'the document owner'} and now requires Manager approval before QA Final Release.
               </p>
-              <p className="mt-3 text-sm text-[#52627a]">Reviewer notes: {activeApproval.comments ? `“${activeApproval.comments}”` : 'No reviewer notes were supplied.'}</p>
+              <p className="mt-3 text-sm text-[#52627a] dark:text-slate-300">Reviewer notes: {activeApproval.comments ? `“${activeApproval.comments}”` : 'No reviewer notes were supplied.'}</p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button className="bg-[#399a68] hover:bg-[#2f895b]" onClick={() => setActionModal({ isOpen: true, approval: activeApproval, actionType: 'approve' })}>Approve &amp; advance</Button>
                 <Button variant="danger" onClick={() => setActionModal({ isOpen: true, approval: activeApproval, actionType: 'reject' })}>Reject</Button>
@@ -214,7 +214,7 @@ export function Approvals() {
           <Card>
             <CardBody className="p-5">
               <h2 className="section-heading">Audit Trail</h2>
-              <div className="mt-4 space-y-4 text-sm text-[#52627a]">
+              <div className="mt-4 space-y-4 text-sm text-[#52627a] dark:text-slate-300">
                 <div className="flex gap-3"><span className="mt-1.5 h-2.5 w-2.5 rounded-full bg-[#45b77c]" /><span>Uploaded by {activeApproval.submittedByUser?.fullName || 'Document owner'} · {formatDate(activeApproval.submittedAt)}</span></div>
                 <div className="flex gap-3"><span className="mt-1.5 h-2.5 w-2.5 rounded-full bg-[#3f8bca]" /><span>Submitted for controlled review</span></div>
                 <div className="flex gap-3"><span className="mt-1.5 h-2.5 w-2.5 rounded-full bg-[#f2b51d]" /><span>Status: {activeApproval.approvalStatus}</span></div>
@@ -225,12 +225,12 @@ export function Approvals() {
       )}
 
       <div className="flex items-center justify-between pt-1">
-        <h2 className="section-heading">Approval Queue <span className="ml-1 text-sm font-normal text-[#718198]">({approvalStats.total})</span></h2>
+        <h2 className="section-heading">Approval Queue <span className="ml-1 text-sm font-normal text-[#718198] dark:text-slate-400">({approvalStats.total})</span></h2>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
-        <div className="flex-1 relative">
+      <div className="flex flex-col items-stretch gap-3 md:flex-row md:items-center">
+        <div className="relative w-full flex-1">
           <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
           <input
             type="text"
@@ -243,7 +243,7 @@ export function Approvals() {
         </div>
 
         <select
-          className="field-control h-10 px-4"
+          className="field-control h-10 w-full px-4 md:w-auto"
           aria-label="Filter approvals by status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -293,8 +293,8 @@ export function Approvals() {
                     <tr
                       key={approval.approvalId}
                       className={`border-b border-gray-200 dark:border-navy-700 ${
-                        idx % 2 === 1 ? 'bg-gray-50 dark:bg-navy-850' : 'bg-white dark:bg-navy-950'
-                      } hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
+                        idx % 2 === 1 ? 'bg-gray-50 dark:bg-slate-900/50' : 'bg-white dark:bg-slate-950'
+                      } hover:bg-gray-100 dark:hover:bg-slate-800/60 transition-colors`}
                     >
                       <td className="px-6 py-4">
                         <div>
@@ -367,11 +367,11 @@ export function Approvals() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-navy-700 bg-gray-50 dark:bg-navy-900">
+            <div className="flex flex-col items-stretch gap-3 border-t border-gray-200 bg-gray-50 px-4 py-4 dark:border-navy-700 dark:bg-navy-900 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Page {page} of {totalPages} ({totalCount} total approvals)
               </p>
-              <div className="flex gap-2">
+              <div className="flex justify-end gap-2">
                 <Button
                   variant="secondary"
                   size="sm"

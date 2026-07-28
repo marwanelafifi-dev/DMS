@@ -4,40 +4,52 @@ import { SkeletonTable } from '../ui/Skeleton';
 import { Bell, CheckCircle2, Clock, Trash2, Plus, X, Search } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
-import type { Reminder } from '../../types';
+import type { Reminder, ReminderChannel, Task } from '../../types';
 
-const PAGE_SIZE = 10;
+const CHANNELS: ReminderChannel[] = ['APP', 'EMAIL', 'BOTH'];
 
 export function Reminders() {
   const { showSuccess, showError } = useToast();
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'sent'>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [newReminder, setNewReminder] = useState({
+  const [newReminder, setNewReminder] = useState<{ taskId: string; reminderType: ReminderChannel; dueDate: string }>({
     taskId: '',
-    recipientId: DEV_USER_ID,
+    reminderType: 'APP',
     dueDate: '',
-    description: '',
   });
 
   useEffect(() => {
-    loadReminders();
+    void loadReminders();
+    void loadTasks();
   }, []);
 
   const loadReminders = async () => {
     setIsLoading(true);
     try {
-      const res = await apiClient.getReminders({ pageSize: PAGE_SIZE });
-      setReminders(res.data || []);
-    } catch (err: any) {
+      const res = await apiClient.getReminders();
+      setReminders(Array.isArray(res.data) ? res.data : []);
+    } catch {
       showError('Failed to load reminders');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // The API keys reminders to a real task GUID, so the form offers actual tasks
+  // instead of asking the user to type an ID that would be rejected.
+  const loadTasks = async () => {
+    try {
+      const res = await apiClient.getTasks();
+      setTasks(Array.isArray(res.data) ? (res.data as Task[]) : []);
+    } catch {
+      showError('Failed to load tasks for the reminder form');
     }
   };
 
@@ -50,18 +62,15 @@ export function Reminders() {
     setIsSubmitting(true);
     try {
       await apiClient.createReminder({
-        ...newReminder,
-        recipientId: newReminder.recipientId || DEV_USER_ID,
+        taskId: newReminder.taskId,
+        recipientId: DEV_USER_ID,
+        reminderType: newReminder.reminderType,
+        dueDate: new Date(newReminder.dueDate).toISOString(),
       });
       showSuccess('Reminder created');
       setShowAddForm(false);
-      setNewReminder({
-        taskId: '',
-        recipientId: DEV_USER_ID,
-        dueDate: '',
-        description: '',
-      });
-      loadReminders();
+      setNewReminder({ taskId: '', reminderType: 'APP', dueDate: '' });
+      await loadReminders();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create reminder');
     } finally {
@@ -69,13 +78,13 @@ export function Reminders() {
     }
   };
 
-  const handleMarkAsRead = async (reminderId: string) => {
+  const handleSendReminder = async (reminderId: string) => {
     try {
-      await apiClient.markReminderAsRead(reminderId);
-      showSuccess('Reminder marked as read');
-      loadReminders();
+      await apiClient.sendReminder(reminderId);
+      showSuccess('Reminder marked as sent');
+      await loadReminders();
     } catch (err: any) {
-      showError('Failed to update reminder');
+      showError(err.response?.data?.error || 'Failed to send reminder');
     }
   };
 
@@ -83,14 +92,18 @@ export function Reminders() {
     try {
       await apiClient.deleteReminder(reminderId);
       showSuccess('Reminder deleted');
-      loadReminders();
+      await loadReminders();
     } catch (err: any) {
-      showError('Failed to delete reminder');
+      showError(err.response?.data?.error || 'Failed to delete reminder');
     }
   };
 
+  const reminderLabel = (reminder: Reminder) =>
+    reminder.task?.title ?? `Task ${reminder.taskId?.slice(0, 8) ?? 'unknown'}`;
+
   const filteredReminders = reminders.filter((reminder) => {
-    const matchesSearch = reminder.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false;
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = query === '' || reminderLabel(reminder).toLowerCase().includes(query);
     const matchesStatus =
       filterStatus === 'all' ||
       (filterStatus === 'pending' && !reminder.isSent) ||
@@ -104,9 +117,10 @@ export function Reminders() {
     sent: reminders.filter(r => r.isSent).length,
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+  const formatDate = (dateString?: string | null) => {
+    const time = dateString ? new Date(dateString).getTime() : Number.NaN;
+    if (Number.isNaN(time)) return 'No date';
+    return new Date(time).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -206,9 +220,9 @@ export function Reminders() {
               <CardBody>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <p className="font-medium text-navy-900 dark:text-white truncate">
-                        {reminder.description || 'No description'}
+                        {reminderLabel(reminder)}
                       </p>
                       <Badge
                         status={reminder.isSent ? 'success' : 'warning'}
@@ -216,18 +230,21 @@ export function Reminders() {
                       >
                         {reminder.isSent ? 'Sent' : 'Pending'}
                       </Badge>
+                      <Badge status="default" variant="outline">{reminder.reminderType}</Badge>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Due: {reminder.dueDate ? formatDate(reminder.dueDate) : formatDate(reminder.sentAt)}
+                      Due: {formatDate(reminder.dueDate)}
+                      {reminder.isSent && reminder.sentAt && ` · Sent ${formatDate(reminder.sentAt)}`}
                     </p>
                   </div>
 
                   <div className="flex gap-2 flex-shrink-0">
                     {!reminder.isSent && (
                       <button
-                        onClick={() => handleMarkAsRead(reminder.reminderId)}
+                        onClick={() => handleSendReminder(reminder.reminderId)}
                         className="p-2 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
                         title="Mark as sent"
+                        aria-label={`Mark ${reminderLabel(reminder)} as sent`}
                       >
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
                       </button>
@@ -236,6 +253,7 @@ export function Reminders() {
                       onClick={() => handleDeleteReminder(reminder.reminderId)}
                       className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
                       title="Delete"
+                      aria-label={`Delete reminder for ${reminderLabel(reminder)}`}
                     >
                       <Trash2 className="w-5 h-5 text-red-600" />
                     </button>
@@ -262,33 +280,47 @@ export function Reminders() {
             </div>
             <CardBody className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Task ID *</label>
-                <input
-                  type="text"
-                  placeholder="e.g., task-123"
+                <label htmlFor="reminder-task" className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Task *</label>
+                <select
+                  id="reminder-task"
                   value={newReminder.taskId}
                   onChange={(e) => setNewReminder({ ...newReminder, taskId: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                >
+                  <option value="">Select a task…</option>
+                  {tasks.map((task) => (
+                    <option key={task.taskId} value={task.taskId}>{task.title}</option>
+                  ))}
+                </select>
+                {tasks.length === 0 && (
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    No tasks available yet — create a task first.
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Due Date *</label>
+                <label htmlFor="reminder-channel" className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Delivery *</label>
+                <select
+                  id="reminder-channel"
+                  value={newReminder.reminderType}
+                  onChange={(e) => setNewReminder({ ...newReminder, reminderType: e.target.value as ReminderChannel })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {CHANNELS.map((channel) => (
+                    <option key={channel} value={channel}>{channel}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="reminder-due" className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Due Date *</label>
                 <input
+                  id="reminder-due"
                   type="datetime-local"
                   value={newReminder.dueDate}
                   onChange={(e) => setNewReminder({ ...newReminder, dueDate: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Description</label>
-                <textarea
-                  placeholder="Reminder notes..."
-                  value={newReminder.description}
-                  onChange={(e) => setNewReminder({ ...newReminder, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent h-20"
                 />
               </div>
 

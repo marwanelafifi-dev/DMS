@@ -74,7 +74,9 @@ button, input, select, textarea { font: inherit; }
 .page-heading { @apply text-[22px] leading-7 text-[#283a7a] dark:text-white; }
 .page-subtitle { @apply mt-0.5 text-sm text-[#697b97] dark:text-slate-400; }
 .section-heading { @apply text-[16px] font-semibold text-[#283a7a] dark:text-white; }
-.field-control { @apply rounded-[5px] border border-[#cbd5e3] bg-white px-3 text-sm text-[#17213a] outline-none placeholder:text-[#9aa7ba] focus:border-[#3f8bca] focus:ring-2 focus:ring-[#3f8bca]/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white; }
+@layer components {
+  .field-control { @apply rounded-[5px] border border-[#cbd5e3] bg-white px-3 text-sm text-[#17213a] outline-none placeholder:text-[#9aa7ba] focus:border-[#3f8bca] focus:ring-2 focus:ring-[#3f8bca]/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white; }
+}
 .data-table { @apply w-full text-left text-sm; }
 .data-table thead { @apply border-y border-[#e2e8f0] bg-[#f7f9fc] text-[12px] uppercase text-[#64748b] dark:border-white/10 dark:bg-slate-950 dark:text-slate-400; }
 .data-table th { @apply px-4 py-3 font-semibold; }

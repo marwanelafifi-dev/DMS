@@ -3,11 +3,114 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-07-20  
-**Working Directory:** c:\Users\user\Desktop\DMS  
-**Status:** Phase 2.5 — End-to-End Testing & Critical Fixes (80% Production-Ready)
+**Current Date:** 2026-07-27
+
+**Working Directory:** `C:\Users\user\Desktop\DMS`
+
+**Active Branch:** `ali-branch`
+
+**Status:** Session 16 — Dashboard/Search run on real API data, Reminders and Bulk Operations are fully functional end-to-end, the ISO Audit Calendar is persisted to the database, and per-user Google Calendar sync is architecturally complete pending Google OAuth credentials (see Session 16 below). Session 15's Docling parsing/OCR, persistent previews, and sample-file pack remain in place.
 
 ---
+
+## Session 15 — Current Authoritative State (2026-07-27)
+
+> This section supersedes older status, port, OCR-roadmap, and next-step notes retained later in this file as historical session context.
+
+### Local Docling Parsing/OCR Integration
+
+- `ocr-rag/main.py` runs a local FastAPI service on `http://127.0.0.1:8000`.
+- A single `DocumentConverter()` instance from `docling.document_converter` converts uploaded files locally and exports Markdown.
+- `POST /api/documents/upload` accepts multipart files, preserves the temporary file extension, converts the file, removes the temporary file, and stores the filename and Markdown content.
+- `POST /api/documents/convert` performs stateless preview conversion without inserting a duplicate SQLite search record.
+- `GET /api/documents/search?q={query}` searches parsed document content with SQLite `LIKE`.
+- SQLite uses the `documents` table in `dms.db`. Docker persists it with the `ocrdata:/data` volume.
+- Wildcard CORS and the direct loopback URL are deliberate local-development requirements. A remote production deployment should proxy and authenticate these requests through the .NET API instead.
+- Existing DMS upload/version storage in the .NET API and MinIO remains intact. The frontend also sends the selected file to Docling for local Markdown extraction.
+
+### Frontend Integration
+
+- `web/src/services/doclingApi.ts` handles indexed multipart upload, stateless preview conversion, and parsed-content search.
+- The document upload flow shows active conversion progress and reports parsing failures without discarding a successful DMS upload.
+- `web/src/components/custom/MarkdownViewer.tsx` renders returned Markdown in the main preview panel.
+- The main search bar combines Docling content matches with the existing DMS metadata filters and document results.
+- Uploaded documents and workflow state are server-backed, so navigation and refresh no longer discard them.
+- Persisted source files are fetched from the .NET/MinIO version endpoint on demand after navigation or refresh. Text, PDF, and images render natively; Office formats are converted locally through Docling.
+- Uploaded JPG, PNG, GIF, and WebP files keep their native image preview while their Docling OCR content remains available for search.
+- The Document Library `Sample files` action creates or reuses a persistent `Mock Files` folder, selects it, and loads real TXT, DOCX, XLSX, PPTX, PDF, PNG, and JPG files into the normal upload dialog for local testing.
+- Creating a folder grants its owner the `Admin` folder permission immediately, so documents can be uploaded to newly created folders without a separate permission repair.
+- Dark-mode tables, search fields, and mobile layouts were corrected, including search-icon padding and row contrast.
+
+### Local Setup and Execution
+
+Install the Python dependencies:
+
+```powershell
+python -m pip install --no-cache-dir docling fastapi uvicorn python-multipart
+```
+
+Download Docling models for fully local/offline conversion:
+
+```powershell
+docling-tools models download
+```
+
+Run the parser service directly:
+
+```powershell
+cd ocr-rag
+uvicorn main:app --reload --port 8000
+```
+
+Run the complete Docker stack:
+
+```powershell
+docker compose up -d --wait
+```
+
+Regenerate the multi-format sample pack:
+
+```powershell
+cd web
+npm run setup:samples
+npm run generate:samples
+```
+
+The generated files are served from `web/public/sample-files/` and can be loaded from the Document Library with the `Sample files` button.
+
+Verified local dependency versions:
+
+- Docling 2.115.0
+- FastAPI 0.140.0
+- Uvicorn 0.51.0
+- python-multipart 0.0.32
+- SQLite 3.49.1
+
+### Verification Baseline
+
+- Frontend tests: 63/63 passed.
+- Python parser tests: 5/5 passed.
+- TypeScript type-check passed.
+- Frontend production build passed.
+- Browser smoke tests passed for upload, preview, download, search, approval, rejection, and task completion.
+- A real PNG OCR smoke test extracted the text `Document Library`.
+- Parsed documents remained in SQLite after an OCR container restart.
+- Health routes returned HTTP 200, and the final service logs contained no HTTP 5xx responses, application errors, or tracebacks.
+- Local .NET tests could not be executed because the host does not have the .NET SDK. The Docker API image compiled successfully and its health check passed.
+
+### Current Architecture Notes
+
+- Parser SQLite IDs are independent of DMS document/version IDs. Add an explicit correlation ID if cross-service lifecycle tracking is needed.
+- Closing a preview aborts browser work and stale UI updates, but a Docling conversion already running in FastAPI's worker thread continues to completion. Use bounded, cancel-aware worker processes if high-concurrency cancellation becomes necessary.
+- Direct browser access to `127.0.0.1:8000` and wildcard CORS are local-only choices; do not carry them unchanged into a remote or Cloudflare deployment.
+- The Docling image is approximately 4.32 GB because it includes Torch and local model assets.
+- The Vite production build reports a large-bundle warning (approximately 687.89 KB), but completes successfully.
+- Parser tests currently emit an upstream `httpx`/Starlette `TestClient` deprecation warning.
+
+### Related Commits on `ali-branch`
+
+- `3b5d8c5` — `feat: add local Docling document parsing`
+- `da659f1` — `fix: persist document workflows and responsive UI`
 
 ## Phase Progress
 
@@ -16,8 +119,8 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 - Portable Docker Compose stack (validated, runs on Windows)
 - All 6 services healthy:
   - API (.NET 8): http://localhost:8080
-  - Web (React/Vite + nginx): http://localhost:5173
-  - OCR/RAG (Python FastAPI): http://localhost:8100
+  - Web (React/Vite + nginx): http://localhost:5174
+  - OCR/RAG (Python FastAPI): http://127.0.0.1:8000
   - Postgres 16: localhost:5432
   - MinIO: http://localhost:9001
   - Redis 7: localhost:6379
@@ -1623,3 +1726,128 @@ Total: Real test data ready for E2E testing
 - ✅ All action buttons visible and properly sized
 
 **System Status: ✅ Document Library UI Fully Redesigned & Production-Ready**
+
+---
+
+## 🧭 Session 13 (2026-07-23) — Personalized Dashboard, Admin Nav Restructure, Dark-Mode Polish
+
+**Status:** ✅ Complete — frontend-only styling/UX session on `ui-new`, verified via `npm run type-check` (0 new errors) and live in the running Docker stack (`docker compose up -d --build web`).
+
+### 1. Document preview — full-screen, sidebar stays usable
+- `DocumentPreview.tsx`: the PDF/document preview overlay now stretches to fill the whole viewport height (`h-full` iframe instead of a fixed `h-[65vh]`) instead of leaving large unused margins above/below the rendered page.
+- The overlay stops at `lg:left-[286px]` (the sidebar's actual width) instead of covering the full screen — the sidebar remains visible and clickable while a document is open, rather than being dimmed/blocked by the modal backdrop.
+
+### 2. Dashboard — personalized to the signed-in user, not system-wide totals
+`Dashboard.tsx` previously showed org-wide mock counters ("Total Documents", "Pending Approvals" system-wide, etc.) with tasks hardcoded to a fake `'user-1'`. Rebuilt around the actual signed-in user (`useAuth()` → `currentUserId`):
+- Header now reads **"Welcome back, {user.fullName}"** instead of a generic "Dashboard" title (the header's Export / New Document buttons were later removed per feedback — the greeting + last-sync line is now the whole header).
+- Metric cards are personal: **My Open Tasks, My Overdue Tasks, Awaiting My Approval, My Submissions in Review, My Checked-Out Docs** — all computed by filtering mock tasks/documents against `currentUserId` instead of counting everything in the system.
+- Added a **"My Submissions in Review"** panel + metric so a member who uploaded a document can see it's sitting with a manager/QA reviewer (`reviewStageFor()` labels it "Awaiting QA review" vs "Awaiting manager review" based on department) — this was an explicit ask: "if I am a member and I uploaded documents, I need to see the documents if I am waiting my manager or QA Approval."
+- Added an **"Awaiting My Approval"** panel (documents submitted by others pending the current user's review).
+
+### 3. Approval-Cycle bar chart replaced with an ISO Audit Calendar
+New component `web/src/components/custom/AuditCalendarCard.tsx` replaces the old static bar-chart mock on the Dashboard:
+- Renders a vertical timeline of ISO certification journey phases (Internal Audit → Stage 1 → Stage 2 → Management Review → Surveillance/Recertification) with phase/standard tags, a "Next" marker on the soonest upcoming event, and a "Completed" badge for past ones.
+- **Admin/QA-only** "New Audit Event" form (gated on `user.role === 'Admin' || 'QA'`) lets them publish a new date/phase/notes to the list — visible read-only to every other role.
+- Each event has a real, working **"Add to Google Calendar"** link (`calendar.google.com/calendar/render?action=TEMPLATE&...`) — deliberately the lightweight link-based approach, not full OAuth two-way sync, per explicit user choice ("i need to see it first as a style") before committing to the larger OAuth integration.
+- All mock data lives in local component state this session (not persisted to a backend table) — real persistence is a follow-up once requirements are confirmed.
+
+### 4. Sidebar — logo, header, and Admin Panel restructure
+- Replaced the old placeholder circle-icon "logo" with the real Si-Ware asset. Iterated per feedback to the final state: white header box (`h-[68px]`, matching the top navbar's height/border exactly so both sit flush on one line), logo centered and enlarged, "Sovereign DMS" subtitle removed.
+- **Dark mode**: the header box and logo are theme-aware — light mode keeps the white box + `si-ware-logo.png` (navy text variant); dark mode swaps to `si-ware-logo-dark.png` (white/cyan variant) and the header background becomes `dark:bg-slate-950`, matching the dashboard's own dark background exactly (not pure black) so there's no visible seam. The sidebar body itself stays on the original navy gradient (`from-[#283777] via-[#1f2c5f] to-[#12193d]`) regardless of light/dark toggle — only the logo header reacts to the toggle.
+- **Admin Panel** converted from a flat nav link into a collapsible section (chevron, auto-opens on any `/admin/*` route) with seven sub-items: **Users, Roles, Settings, Notifications, Company Data, Audit Trail, Database**. Users/Roles/Audit Trail route to the existing real `Settings.tsx` tabs; the four new ones (Settings, Notifications, Company Data, Database) route to a `ComingSoonPanel` stub ("Requirements pending") added to `Settings.tsx` plus matching routes in `App.tsx` (`/admin/settings`, `/admin/notifications`, `/admin/company-data`, `/admin/database`) — placeholders only, real requirements to be supplied page-by-page.
+
+### 5. Dark mode — wired up + bug fix + formal polish pass
+- `useDarkMode.ts` already existed in the codebase (from a prior session) but wasn't used anywhere. Wired a Sun/Moon toggle button into `Navbar.tsx` right beside the notification bell.
+- **Real bug found and fixed**: the hover background on the Dashboard's "My Tasks" / "Awaiting My Approval" / "My Submissions in Review" list rows (`hover:bg-[#f8fafc]`) had no dark-mode variant — hovering turned the row solid white, making the white-on-dark title text invisible. Fixed by adding `dark:hover:bg-white/5` everywhere that pattern appeared.
+- General dark-mode formality pass: `Card.tsx` got a subtle inset highlight instead of a completely flat dark surface; Dashboard metric values/labels got explicit `dark:text-white` / `dark:text-slate-400` instead of relying on hardcoded light-mode navy with poor contrast; `AuditCalendarCard.tsx`'s phase badges switched from solid light-pastel chips to muted translucent chips in dark mode (`dark:bg-blue-500/15 dark:text-blue-300` style, matching the existing app convention already used in `Settings.tsx` tabs) plus dark variants for the timeline dots, "Completed" badge, form labels, and the "Add to Google Calendar" link's hover state.
+
+### Files created
+- `web/src/components/custom/AuditCalendarCard.tsx`
+
+### Files modified
+- `web/src/App.tsx`, `web/src/components/custom/DocumentPreview.tsx`, `web/src/components/layout/Navbar.tsx`, `web/src/components/layout/Sidebar.tsx`, `web/src/components/pages/Dashboard.tsx`, `web/src/components/pages/Settings.tsx`, `web/src/components/ui/Card.tsx`, `web/src/utils/formatters.ts` (12-hour `hh:mm a` timestamps instead of 24-hour `HH:mm`)
+
+### Known follow-ups
+- Google Calendar sync is currently link-based only (no OAuth, no real shared calendar) — pending a decision on whether full two-way sync is worth the backend/credentials work.
+- Settings / Notifications / Company Data / Database admin pages are stubs — need requirements per page before building.
+- Dashboard data (tasks, approvals, audit events) is still local mock state, same as it was before this session — not yet wired to the real `.NET` API endpoints that already exist from Phase 2 backend work.
+
+---
+
+## 🔄 Session 16 (2026-07-27) — Dashboard on Real Data, Reminders Fixed, Dead Components Resolved, Per-User Google Calendar Sync Scaffolded
+
+**Status:** ✅ Complete and live-verified against the running containers for every item below. Not yet committed/pushed as of the start of this session — see the commit at the end.
+
+### 1. Dashboard wired to the real API (closes Session 13's biggest follow-up)
+`Dashboard.tsx` no longer renders the ~130-line hardcoded mock dataset — it now calls `getTasks()`, `getDocuments()`, and `getPendingApprovals()` in parallel via `Promise.allSettled`, so one failing endpoint shows a banner ("Could not load X") instead of blanking the whole page. Three real bugs found while wiring:
+1. **Double-counting**: the pending-approvals list includes documents the current user submitted themselves, which were being counted in *both* "Awaiting My Approval" and "My Submissions in Review". Fixed by filtering `approval.submittedBy !== currentUserId` for the approval queue.
+2. **"Invalid Date"**: tasks with no `dueDate` (real seed data has some) rendered `new Date('').toLocaleDateString()` → "Invalid Date" on screen. Added a `shortDate()` guard.
+3. Hardcoded `"09:41"` last-sync timestamp replaced with a real one stamped after the fetch completes.
+
+**Search.tsx** OCR-result preview no longer builds a bespoke markdown viewer — clicking the eye icon now looks up the matching real DMS document by filename and navigates to `/documents?preview=<id>`, reusing the actual Document Library `DocumentPreview` component instead of a look-alike.
+
+**Files:** `web/src/components/pages/Dashboard.tsx`, `Dashboard.test.tsx` (new), `Search.tsx`, `Search.test.tsx`.
+
+### 2. Reminders — found completely non-functional, fixed end to end
+Clicking around the (already-routed but not linked-to, see #3) Reminders page surfaced a chain of real bugs:
+- **Root cause:** `dms_reminders` had the same WORM trigger as `dms_audit_trails`/`dms_esignatures`/`dms_ocr_indexes` (`002_core_schema.sql`), but its `is_sent`/`sent_at`/`due_date` columns exist *only* to be mutated. Every send or delete threw `WORM violation: UPDATE/DELETE on dms_reminders is not permitted`. This one table's WORM protection was almost certainly copy-pasted onto the wrong table — the actual audit-of-record (`dms_audit_trails`) stays WORM-protected.
+- **Migration `011_reminders_worm_fix.sql`** drops the trigger/function and widens `due_date` from `DATE` to `TIMESTAMPTZ` (the frontend's `datetime-local` input was having its time-of-day silently truncated).
+- **The Hangfire auto-send sweep had never been registered at all** — `POST /reminders/{id}/send` existed but nothing scheduled `SendPendingRemindersAsync` to run on its own. Registered as `send-due-reminders`, every 15 minutes.
+- Fixed a second, independent bug in that same sweep: `reminder.Recipient` was always `null` when logging the `REMINDER_SENT` audit entry (missing `.Include(r => r.Recipient)`), so the recipient's email was silently never recorded.
+- After widening `due_date` to a timestamp, `GetPendingRemindersAsync`'s `DueDate <= today` comparison (where `today` was midnight) started delaying same-day reminders by ~24h — fixed to compare against `DateTime.UtcNow`.
+- Added `DELETE /api/reminders/{id}` and `POST /api/reminders/{id}/send` (send-one, distinct from the sweep), plus `REMINDER_CREATED`/`REMINDER_DELETED` audit actions (creation had no audit trail entry at all before this).
+- **Frontend contract was fictional**: `Reminders.tsx` and the `Reminder` type had `description`/`isRead`/`message` fields the backend never had, and the create form asked the user to type a raw `taskId` string by hand. Rewrote both to match the real API (`taskId` is now a `<select>` of actual tasks, `reminderType` is `APP`/`EMAIL`/`BOTH`).
+
+**Files:** `infra/db/init/011_reminders_worm_fix.sql` (new), `api/Controllers/RemindersController.cs`, `api/Services/ReminderService.cs`, `api/Services/AuditService.cs`, `api/Services/BackgroundJobService.cs`, `web/src/components/pages/Reminders.tsx`, `web/src/types/index.ts`, `web/src/utils/api.ts`.
+
+### 3. Sidebar navigation gap
+`/reminders` and `/search` were both fully implemented, routed in `App.tsx`, and completely unreachable — nothing in `Sidebar.tsx`'s nav list linked to them. Added a "Reminders" entry (per explicit request, "Search" was tried and then removed again since it wasn't wanted in the sidebar).
+
+**File:** `web/src/components/layout/Sidebar.tsx`.
+
+### 4. Three dead frontend components resolved (written in Session 9, never mounted, backed by `.NET` endpoints that never existed)
+Decision made per-component rather than blanket-deleting:
+- **Bulk Operations — built for real.** Added `POST /documents/bulk-approve`, `bulk-reject`, `bulk-delete`, `bulk-download` to `DocumentsController`. Each returns a per-document `{succeeded, failed}` report instead of failing the whole batch on one bad ID; `bulk-delete` reuses the same internal delete path as the single-document endpoint (extracted into `DeleteDocumentInternalAsync`) so the two can't drift apart; `bulk-download` streams a ZIP and de-duplicates colliding file names (verified live: two documents both named `Ali_Mohamed_CV.pdf` came out as `Ali_Mohamed_CV.pdf` and `Ali_Mohamed_CV (2).pdf`). Mounted `BulkOperationsModal` in `Documents.tsx` behind a "Bulk Actions (N)" button that only appears when the current selection includes real, server-backed documents (a GUID regex check) — not the bundled sample-fixture rows, which have no backend record to act on.
+- **OCR Panel — rewired to the OCR system that already exists.** It previously called `.NET` endpoints (`/ocr-status`, `/ocr-text`) that were never built, with a `setTimeout`-faked "processing" state. Rewritten to fetch the stored file from the API and run it through the same local Docling service used at upload time (`doclingApi.convertDocument`). Mounted in `DocumentPreview`'s "preview unavailable" fallback — exactly the case where a page reload lost the in-browser cached Docling preview but the server still has the file. Verified live end-to-end: downloaded a real PDF from MinIO, sent it through Docling, got back 4030 characters of accurate markdown.
+- **E-Signatures — deleted.** No backend exists and there's no near-term plan to build one; kept as dead code would just be a trap for a future session.
+
+**Files:** `api/Controllers/DocumentsController.cs`, `web/src/components/custom/BulkOperationsModal.tsx`, `web/src/components/custom/OcrPanel.tsx` (rewritten), `web/src/components/custom/DocumentPreview.tsx`, `web/src/components/pages/Documents.tsx`; deleted `web/src/components/custom/ESignaturePanel.tsx` and its two dead `api.ts` methods.
+
+### 5. Audit Calendar persisted to the database
+The ISO Audit Calendar (Session 13) was pure `useState` — every published event vanished on refresh. Added `dms_audit_calendar_events` (migration `012`, with `CHECK` constraints on `phase`/`standard` matching the existing `folder_permissions` role-check pattern), `AuditCalendarService` (create/list/delete + full audit logging), `AuditCalendarController`, and rewired `AuditCalendarCard.tsx` to the real API. Verified live: create → 400 on invalid phase → list with poster name → delete → 404 on double-delete, with matching `AUDIT_EVENT_CREATED`/`AUDIT_EVENT_DELETED` audit trail entries.
+
+Per later explicit request, the per-event "Remove" button was removed from the card UI again (the `DELETE` endpoint and `deleteAuditCalendarEvent` API client method were left in place, just unused from the UI).
+
+**Files:** `infra/db/init/012_audit_calendar_events.sql` (new), `api/Models/DmsAuditCalendarEvent.cs` (new), `api/Services/AuditCalendarService.cs` (new), `api/Controllers/AuditCalendarController.cs` (new), `api/Data/DmsContext.cs`, `web/src/components/custom/AuditCalendarCard.tsx`, `web/src/components/pages/Dashboard.tsx`.
+
+### 6. Per-user Google Calendar sync — architecture built, Google API calls deliberately left as a seam
+User's requirement: every user connects their *own* Google Calendar, a manual "Sync Now" button, and an automatic sync at 6 AM daily — a different shape than Session 13's "shared calendar, link-only" idea, and different again from an initial one-way Service-Account design floated and then superseded within this same session (that first attempt's `IGoogleCalendarSyncService` + `dms_audit_calendar_events.google_event_id` column were built, then removed once the per-user requirement came in, since a single shared-calendar event ID can't represent "this event as it appears on N different users' calendars").
+
+Everything is built except the actual Google API calls, which the user asked to implement themselves once Google Cloud OAuth credentials are ready:
+- **Migration `013_user_google_calendar_sync.sql`**: drops the now-unused `google_event_id` column; adds `dms_user_calendar_connections` (per-user OAuth tokens, `is_active`, `last_synced_at`, `last_sync_error`) and `dms_user_calendar_event_syncs` (per-`(user, event)` mapping to a Google event ID, so re-syncing updates in place instead of duplicating).
+- **`IGoogleOAuthCalendarClient`** is the one interface that actually needs Google credentials: `BuildAuthorizationUrl`, `ExchangeCodeForTokensAsync`, `RefreshAccessTokenAsync`, `UpsertEventAsync`, `DeleteEventAsync`. A `NotConfiguredGoogleOAuthCalendarClient` is registered by default and throws a clear "not configured" error everywhere, which `UserGoogleCalendarService` catches and surfaces as HTTP 501 rather than a 500. The file has step-by-step instructions for standing up a real implementation with `Google.Apis.Calendar.v3`, and a flagged **security TODO**: the OAuth `state` parameter currently carries the raw user ID, which identifies the user on callback but is not CSRF-hardened — needs to become a signed/opaque nonce before production use.
+- **`UserGoogleCalendarService`**: status / connect / OAuth callback / disconnect / sync-one-user / sync-all-active-users, with automatic access-token refresh when a stored token is within 2 minutes of expiring.
+- **`GoogleCalendarController`**: `GET status`, `GET connect` (returns the consent URL), `GET callback` (Google redirects the browser here directly — added to `RBACMiddleware.ShouldSkipAuth` since there's no `X-User-Id` header on that request, identity comes from `state` instead), `DELETE disconnect`, `POST sync`. The callback redirects back to the frontend (`Google:FrontendRedirectUrl` in `appsettings.json`, defaulting to `http://localhost:5174/`) with `?calendarConnected=true` or `?calendarError=...`.
+- **Hangfire**: registered `daily-google-calendar-sync` at `Cron.Daily(6)`, explicit `TimeZoneInfo.Utc` — confirmed present in Hangfire's Postgres storage with `NextExecution` correctly set.
+- **Frontend**: `AuditCalendarCard.tsx` shows "Connect Google Calendar" (not connected) or "Sync Now" + "Disconnect" + last-synced timestamp (connected), visible to every user regardless of the Admin/QA-only "New Audit Event" gate. Reads `?calendarConnected`/`?calendarError` on mount to toast the OAuth redirect result, then strips those params.
+
+Verified live end-to-end against the no-op client: status → 501 on connect → 404 on sync-with-no-connection → callback redirect lands on the correct frontend origin → Hangfire job confirmed scheduled. Audit CRUD re-verified as a regression check after `AuditCalendarService` was simplified back down (removed the superseded one-way sync calls).
+
+**Files:** `infra/db/init/013_user_google_calendar_sync.sql` (new), `api/Models/DmsUserCalendarConnection.cs` (new), `api/Models/DmsUserCalendarEventSync.cs` (new), `api/Models/DmsAuditCalendarEvent.cs` (dropped `GoogleEventId`), `api/Services/IGoogleOAuthCalendarClient.cs` (new), `api/Services/UserGoogleCalendarService.cs` (new), `api/Services/AuditCalendarService.cs` (simplified), `api/Controllers/GoogleCalendarController.cs` (new), `api/Middleware/RBACMiddleware.cs`, `api/Services/BackgroundJobService.cs`, `api/Program.cs`, `api/appsettings.json`, `web/src/utils/api.ts`, `web/src/components/custom/AuditCalendarCard.tsx`; deleted the superseded `api/Services/IGoogleCalendarSyncService.cs`.
+
+### 7. Sample-file generator drift
+`DMS-Sample-Text.txt` had been hand-edited directly at some point, diverging from `generate_sample_files.py` — meaning `npm run generate:samples` would silently revert it to stale content and fail its own signature test. Made the generator produce the current (richer) content directly, so script and file agree again.
+
+**Files:** `web/scripts/generate_sample_files.py`, `web/public/sample-files/DMS-Sample-Text.txt`, `web/src/fixtures/sampleFiles.test.ts`.
+
+### Verification (this session)
+- `npm run type-check`: 0 errors after every change, checked incrementally.
+- `npx vitest run`: **67/67 passing** (started at 63, +1 new `Dashboard.test.tsx`, +3 net from `Search.test.tsx` rework).
+- Every new/changed backend endpoint (Reminders, Bulk Operations, Audit Calendar, Google Calendar) was curled against the actually-running containers, not just type-checked or unit-tested — including deliberately-wrong inputs (invalid phase, double-send, double-delete, sync with no connection) to confirm error paths, not just happy paths.
+- All 6 Docker services confirmed `healthy` after every rebuild.
+
+### Known follow-ups
+- Google Calendar sync needs real OAuth credentials + an `IGoogleOAuthCalendarClient` implementation before it does anything beyond returning 501 — the user is doing this part themselves.
+- The OAuth `state` CSRF hardening flagged above should happen before any production exposure of the Google Calendar feature.
+- `DmsUser` still has no global role column (per Session 5) — `AuditCalendarController.CreateEvent`/`GoogleCalendarController` endpoints only require an authenticated active user, same as other non-folder-scoped writes; the frontend's Admin/QA-only gating on "New Audit Event" is a UI convenience, not a server-enforced boundary.
+- Google Workspace SSO (removing `DEV_USER_ID`) and the four stub admin pages (Settings/Notifications/Company Data/Database) remain open from earlier sessions.

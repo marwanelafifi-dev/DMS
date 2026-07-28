@@ -46,6 +46,23 @@ public static class BackgroundJobExtensions
             service => service.RunAutoUnlockCheckoutsAsync(),
             Cron.MinuteInterval(5));
 
+        // Send due reminders every 15 minutes. Previously this only ran when a user
+        // manually hit "send-due" — nothing scheduled the sweep, so reminders whose
+        // due_date passed were never actually delivered.
+        recurringJobManager.AddOrUpdate<ReminderService>(
+            "send-due-reminders",
+            service => service.SendPendingRemindersAsync(),
+            Cron.MinuteInterval(15));
+
+        // Push upcoming audit calendar events to every connected user's personal
+        // Google Calendar once a day. Runs at 6 AM UTC — adjust the TimeZoneInfo
+        // below if the business wants 6 AM in a specific local timezone instead.
+        recurringJobManager.AddOrUpdate<UserGoogleCalendarService>(
+            "daily-google-calendar-sync",
+            service => service.SyncAllActiveUsersAsync(),
+            Cron.Daily(6),
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // Add more jobs here as needed
         // recurringJobManager.AddOrUpdate("job-name", ...);
     }

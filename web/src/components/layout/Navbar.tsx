@@ -1,7 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, LogOut, Menu, Search } from 'lucide-react';
+import { Bell, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useDarkMode } from '../../hooks/useDarkMode';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -10,6 +11,7 @@ interface NavbarProps {
 export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { isDark, toggleDarkMode } = useDarkMode();
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleSearch = (event: FormEvent) => {
@@ -57,6 +59,15 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
         <div className="h-8 w-px bg-[#e2e8f0]" />
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleDarkMode}
+            className="rounded-md p-2 text-[#52627a] hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+
           <button
             className="relative rounded-md p-2 text-[#52627a] hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             aria-label="Notifications"
