@@ -1,0 +1,35 @@
+# Enterprise DMS v7.4 — Code Ownership & Review Policy
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything
+* @marwanelafifi-dev @Mohammed-Anwar1
+
+# .NET API — Core vault, RBAC, workflows
+/api/ @marwanelafifi-dev @Mohammed-Anwar1
+/api/Controllers/ @marwanelafifi-dev @Mohammed-Anwar1
+/api/Models/ @marwanelafifi-dev @Mohammed-Anwar1
+/api/Data/ @marwanelafifi-dev @Mohammed-Anwar1
+
+# React/TypeScript Frontend — UI, vault canvas, dashboards
+/web/ @marwanelafifi-dev @Mohammed-Anwar1
+/web/src/ @marwanelafifi-dev @Mohammed-Anwar1
+
+# Python OCR/RAG Sidecar — Text extraction, local LLM
+/ocr-rag/ @marwanelafifi-dev @Mohammed-Anwar1
+/ocr-rag/app/ @marwanelafifi-dev @Mohammed-Anwar1
+
+# Infrastructure — Docker, database, deployment
+/infra/ @marwanelafifi-dev @Mohammed-Anwar1
+/infra/db/ @marwanelafifi-dev @Mohammed-Anwar1
+/docker-compose.yml @marwanelafifi-dev @Mohammed-Anwar1
+/Dockerfile @marwanelafifi-dev @Mohammed-Anwar1
+
+# Documentation — Requirements, architecture, roadmap
+/docs/ @marwanelafifi-dev @Mohammed-Anwar1
+/CLAUDE.md @marwanelafifi-dev @Mohammed-Anwar1
+/README.md @marwanelafifi-dev @Mohammed-Anwar1
+
+# Configuration — Environment, Git, Build
+/.env.example @marwanelafifi-dev @Mohammed-Anwar1
+/.gitignore @marwanelafifi-dev @Mohammed-Anwar1
+/.github/ @marwanelafifi-dev @Mohammed-Anwar1

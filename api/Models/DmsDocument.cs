@@ -11,4 +11,7 @@ public class DmsDocument
     public Guid OwnerId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    // Navigation properties
+    public DmsUser? Owner { get; set; }
 }

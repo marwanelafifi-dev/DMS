@@ -1,31 +1,159 @@
-import { useEffect, useState } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { MainLayout } from './components/layout/MainLayout';
+import { Dashboard } from './components/pages/Dashboard';
+import { Documents } from './components/pages/Documents';
+import { Settings } from './components/pages/Settings';
+import { Tasks } from './components/pages/Tasks';
+import { Approvals } from './components/pages/Approvals';
+import { Reminders } from './components/pages/Reminders';
+import { Search } from './components/pages/Search';
+import { Toaster } from 'sonner';
 
-type Health = { status: string; service: string; phase: number }
-
-// nginx proxies /api -> api:8080 in the built image (see web/nginx.conf).
-const API_BASE = '/api'
-
-export default function App() {
-  const [api, setApi] = useState<Health | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch(`${API_BASE}/health`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setApi)
-      .catch((e) => setError(String(e)))
-  }, [])
-
+function App() {
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 640, margin: '4rem auto', padding: '0 1rem' }}>
-      <h1>Enterprise DMS v7.4</h1>
-      <p style={{ color: '#666' }}>Phase 0 scaffold — the vault, workflows, and RBAC land in later phases.</p>
-      <section style={{ marginTop: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: 8 }}>
-        <h2 style={{ fontSize: '1rem', margin: 0 }}>API health</h2>
-        {api && <pre style={{ color: 'green' }}>{JSON.stringify(api, null, 2)}</pre>}
-        {error && <pre style={{ color: 'crimson' }}>API unreachable: {error}</pre>}
-        {!api && !error && <p>Checking…</p>}
-      </section>
-    </main>
-  )
+    <Router>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <MainLayout>
+              <Dashboard />
+            </MainLayout>
+          }
+        />
+
+        {/* Tasks */}
+        <Route
+          path="/tasks"
+          element={
+            <MainLayout>
+              <Tasks />
+            </MainLayout>
+          }
+        />
+
+        {/* Documents */}
+        <Route
+          path="/documents"
+          element={
+            <MainLayout>
+              <Documents />
+            </MainLayout>
+          }
+        />
+
+        {/* Approvals */}
+        <Route
+          path="/approvals"
+          element={
+            <MainLayout>
+              <Approvals />
+            </MainLayout>
+          }
+        />
+
+        {/* Reminders */}
+        <Route
+          path="/reminders"
+          element={
+            <MainLayout>
+              <Reminders />
+            </MainLayout>
+          }
+        />
+
+        {/* Search */}
+        <Route
+          path="/search"
+          element={
+            <MainLayout>
+              <Search />
+            </MainLayout>
+          }
+        />
+
+        {/* Admin Panel */}
+        <Route
+          path="/admin/users"
+          element={
+            <MainLayout>
+              <Settings defaultTab="users" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/roles"
+          element={
+            <MainLayout>
+              <Settings defaultTab="roles" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/audit"
+          element={
+            <MainLayout>
+              <Settings defaultTab="audit" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/settings"
+          element={
+            <MainLayout>
+              <Settings defaultTab="settings" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/notifications"
+          element={
+            <MainLayout>
+              <Settings defaultTab="notifications" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/company-data"
+          element={
+            <MainLayout>
+              <Settings defaultTab="company-data" />
+            </MainLayout>
+          }
+        />
+
+        <Route
+          path="/admin/database"
+          element={
+            <MainLayout>
+              <Settings defaultTab="database" />
+            </MainLayout>
+          }
+        />
+
+        {/* Legacy settings routes */}
+        <Route
+          path="/settings/*"
+          element={
+            <MainLayout>
+              <Settings />
+            </MainLayout>
+          }
+        />
+
+        {/* 404 */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* Toast notifications */}
+      <Toaster position="bottom-right" />
+    </Router>
+  );
 }
+
+export default App;

@@ -1,4 +1,5 @@
 using DMS.Api.Data;
+using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,64 +7,122 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuditTrailsController(DmsContext context) : ControllerBase
+public class AuditTrailsController(DmsContext context, AuditService auditService, ILogger<AuditTrailsController> logger) : BaseController
 {
+    // GET /api/audittrails — قائمة جميع السجلات (paginated)
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetAuditTrails(
+    public async Task<ActionResult<object>> GetAuditTrails(
         [FromQuery] Guid? userId,
         [FromQuery] string? action,
-        [FromQuery] DateTime? fromDate,
-        [FromQuery] int limit = 100)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        [FromQuery] int? limit = null)
     {
-        var query = context.AuditTrails.AsQueryable();
+        try
+        {
+            // `limit` kept for backward compatibility with existing callers — maps to a single-page request.
+            if (limit.HasValue)
+                pageSize = limit.Value;
 
-        if (userId.HasValue)
-            query = query.Where(a => a.UserId == userId);
+            var (trails, totalCount) = await auditService.GetAuditTrailPageAsync(userId, action, page, pageSize);
 
-        if (!string.IsNullOrEmpty(action))
-            query = query.Where(a => a.Action == action);
+            logger.LogInformation("Retrieved {Count}/{Total} audit trails (page {Page})", trails.Count, totalCount, page);
 
-        if (fromDate.HasValue)
-            query = query.Where(a => a.CreatedAt >= fromDate);
-
-        var trails = await query
-            .OrderByDescending(a => a.CreatedAt)
-            .Take(limit)
-            .Select(a => new
+            return Ok(new
             {
-                a.LogId,
-                a.UserId,
-                a.Action,
-                a.Metadata,
-                a.CreatedAt
-            })
-            .ToListAsync();
-
-        return Ok(trails);
+                success = true,
+                data = trails,
+                count = trails.Count,
+                page,
+                pageSize,
+                totalCount,
+                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving audit trails");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
     }
 
-    [HttpPost]
-    public async Task<ActionResult<object>> LogAction(LogActionRequest req)
+    // GET /api/audittrails/{logId} — تفاصيل سجل واحد
+    [HttpGet("{logId}")]
+    public async Task<ActionResult<object>> GetAuditTrail(Guid logId)
     {
-        var trail = new DMS.Api.Models.DmsAuditTrail
+        try
         {
-            LogId = Guid.NewGuid(),
-            UserId = req.UserId,
-            Action = req.Action,
-            Metadata = req.Metadata,
-            CreatedAt = DateTime.UtcNow
-        };
+            var trail = await context.AuditTrails
+                .FirstOrDefaultAsync(a => a.LogId == logId);
 
-        context.AuditTrails.Add(trail);
-        await context.SaveChangesAsync();
+            if (trail == null)
+                return NotFound(new { success = false, error = "السجل غير موجود" });
 
-        return CreatedAtAction(nameof(GetAuditTrails), new { }, new
+            logger.LogInformation("Retrieved audit trail {LogId}", logId);
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    trail.LogId,
+                    trail.UserId,
+                    trail.Action,
+                    trail.Metadata,
+                    trail.CreatedAt
+                }
+            });
+        }
+        catch (Exception ex)
         {
-            trail.LogId,
-            trail.Action,
-            trail.CreatedAt
-        });
+            logger.LogError(ex, "Error retrieving audit trail {LogId}", logId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/audittrails/user/{userId} — سجلات مستخدم معين
+    [HttpGet("user/{userId}")]
+    public async Task<ActionResult<object>> GetUserAuditTrails(Guid userId, [FromQuery] int limit = 100)
+    {
+        try
+        {
+            // التحقق من وجود المستخدم
+            var userExists = await context.Users.AnyAsync(u => u.UserId == userId);
+            if (!userExists)
+                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+
+            var trails = await auditService.GetAuditTrailAsync(userId, null, limit);
+
+            logger.LogInformation("Retrieved {Count} audit trails for user {UserId}", trails.Count, userId);
+
+            return Ok(new { success = true, data = trails, count = trails.Count, userId });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving audit trails for user {UserId}", userId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/audittrails/action/{action} — سجلات فعل معين
+    [HttpGet("action/{action}")]
+    public async Task<ActionResult<object>> GetActionAuditTrails(string action, [FromQuery] int limit = 100)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(action))
+                return BadRequest(new { success = false, error = "اسم الفعل مطلوب" });
+
+            var trails = await auditService.GetAuditTrailAsync(null, action, limit);
+
+            logger.LogInformation("Retrieved {Count} audit trails for action {Action}", trails.Count, action);
+
+            return Ok(new { success = true, data = trails, count = trails.Count, action });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving audit trails for action {Action}", action);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
     }
 }
-
-public record LogActionRequest(Guid UserId, string Action, string? Metadata = null);
