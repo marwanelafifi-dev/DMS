@@ -2,6 +2,7 @@ import { ArrowDownFromLine, Trash2, Lock, FileText } from 'lucide-react';
 import { Card, CardBody, Badge } from '../ui';
 import type { Document } from '../../types';
 import { formatFileSize, formatDate } from '../../utils/formatters';
+import { statusLabels } from '../../utils/documentStatus';
 
 interface DocumentGridProps {
   documents: Document[];
@@ -22,6 +23,10 @@ export function DocumentGrid({
     const map: Record<Document['status'], any> = {
       draft: 'warning',
       pending_approval: 'info',
+      qa_review: 'info',
+      manager_review: 'info',
+      correction_in_progress: 'error',
+      qa_final_review: 'info',
       released: 'success',
       rejected: 'error',
       archived: 'default',
@@ -86,7 +91,7 @@ export function DocumentGrid({
             {/* Status Badge */}
             <div className="flex items-center gap-2">
               <Badge status={getStatusColor(doc.status)} size="sm" variant="outline">
-                {doc.status.replace('_', ' ').toUpperCase()}
+                {statusLabels[doc.status]?.toUpperCase() ?? doc.status.replace(/_/g, ' ').toUpperCase()}
               </Badge>
             </div>
 

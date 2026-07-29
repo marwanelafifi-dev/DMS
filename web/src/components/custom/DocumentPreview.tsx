@@ -71,11 +71,16 @@ interface DocumentPreviewProps {
   document: MockLibraryDocument;
   onClose: () => void;
   onDownload: (document: MockLibraryDocument) => void;
+  onSubmitForApproval?: (document: MockLibraryDocument) => void;
 }
 
 const statusStyles: Record<string, string> = {
   draft: 'bg-[#edf1f5] text-[#62718a]',
   pending_approval: 'bg-[#fff1c9] text-[#b96a08]',
+  qa_review: 'bg-[#fff1c9] text-[#b96a08]',
+  manager_review: 'bg-[#fde9c8] text-[#a15c1f]',
+  correction_in_progress: 'bg-[#fde1e2] text-[#c73c44]',
+  qa_final_review: 'bg-[#dbe9fb] text-[#2f6f9f]',
   released: 'bg-[#d8f5e4] text-[#27885a]',
   rejected: 'bg-[#fde1e2] text-[#c73c44]',
   archived: 'bg-slate-100 text-slate-500',
@@ -84,6 +89,10 @@ const statusStyles: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   draft: 'Draft',
   pending_approval: 'In Review',
+  qa_review: 'In Review — QA',
+  manager_review: 'In Review — Manager',
+  correction_in_progress: 'Correction Needed',
+  qa_final_review: 'In Review — Final Release',
   released: 'Released',
   rejected: 'Rejected',
   archived: 'Archived',
@@ -100,7 +109,7 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, onClose, onDownload }: DocumentPreviewProps) {
+export function DocumentPreview({ document, onClose, onDownload, onSubmitForApproval }: DocumentPreviewProps) {
   const [isLoading, setIsLoading] = useState(
     document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
   );
@@ -408,6 +417,11 @@ export function DocumentPreview({ document, onClose, onDownload }: DocumentPrevi
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
+            {document.status === 'draft' && onSubmitForApproval && (
+              <button onClick={() => onSubmitForApproval(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#399a68] px-3 text-xs font-medium text-white hover:bg-[#2f895b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#399a68]" aria-label={`Submit ${document.fileName} for approval`}>
+                Submit for Approval
+              </button>
+            )}
             <button onClick={() => onDownload(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-xs font-medium text-white hover:bg-[#2f6f9f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download ${document.fileName}`}>
               <Download className="h-4 w-4" /> Download
             </button>

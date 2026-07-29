@@ -117,6 +117,21 @@ class APIClient {
     return data;
   }
 
+  async extractDocId(documentId: string, text: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/extract-doc-id`, { text });
+    return data;
+  }
+
+  async setDocId(documentId: string, originalDocumentId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/set-doc-id`, { originalDocumentId });
+    return data;
+  }
+
+  async generateDocId(documentId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/generate-doc-id`, {});
+    return data;
+  }
+
   async deleteDocument(documentId: string) {
     const { data } = await this.client.delete<ApiResponse>(`/documents/${documentId}`);
     return data;
@@ -200,6 +215,105 @@ class APIClient {
 
   async getPendingApprovals(params?: any) {
     const { data } = await this.client.get<ApiResponse>('/documents/pending-approvals/list', { params });
+    return data;
+  }
+
+  // Approval Workflow (C-Doc)
+  async submitDocumentsForApproval(documentIds: string[], category: string, notes?: string) {
+    const { data } = await this.client.post<ApiResponse>('/approvals/submit-batch', {
+      documentIds,
+      category,
+      approvalNotes: notes,
+    });
+    return data;
+  }
+
+  async getQaReviewQueue(params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/approvals/qa-review-queue', { params });
+    return data;
+  }
+
+  async getManagerReviewQueue(params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/approvals/manager-review-queue', { params });
+    return data;
+  }
+
+  async getFinalReleaseQueue(params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/approvals/final-release-queue', { params });
+    return data;
+  }
+
+  async getApproval(approvalId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/approvals/${approvalId}`);
+    return data;
+  }
+
+  async getApprovalAuditTrail(approvalId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/approvals/${approvalId}/audit-trail`);
+    return data;
+  }
+
+  async qaAcceptApproval(approvalId: string, notes?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-accept`, {
+      notes,
+    });
+    return data;
+  }
+
+  async qaRequestCorrection(approvalId: string, qaNotesComments: string, taskDescription: string, assignToUserId: string, dueDate: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-request-correction`, {
+      qaNotesComments,
+      taskDescription,
+      assignToUserId,
+      dueDate,
+    });
+    return data;
+  }
+
+  async managerApprove(approvalId: string, notes?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-approve`, {
+      notes,
+    });
+    return data;
+  }
+
+  async managerRejectWithCorrection(approvalId: string, rejectionReason: string, taskDescription: string, assignToUserId: string, dueDate: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-reject-correction-task`, {
+      rejectionReason,
+      taskDescription,
+      assignToUserId,
+      dueDate,
+    });
+    return data;
+  }
+
+  async managerSelfCorrect(approvalId: string, file: File, rejectionReason: string) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('rejectionReason', rejectionReason);
+
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-self-correct`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  }
+
+  async generateTrackingCode(approvalId: string, deptCode?: string, category?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/generate-tracking-code`, {
+      deptCode,
+      category,
+    });
+    return data;
+  }
+
+  async qaFinalRelease(approvalId: string, deptCode?: string, category?: string, releaseNotes?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-final-release`, {
+      deptCode,
+      category,
+      releaseNotes,
+    });
     return data;
   }
 

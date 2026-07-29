@@ -8,6 +8,7 @@ import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColum
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 import { DocumentPreview } from '../custom/DocumentPreview';
 import { BulkOperationsModal } from '../custom/BulkOperationsModal';
+import { UploadApprovalModal } from '../custom/UploadApprovalModal';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
@@ -64,6 +65,7 @@ async function createNativePreview(
   fileName: string,
   contentType: string,
   sourceUrl: string,
+  registerObjectUrl?: (url: string) => void,
 ): Promise<LibraryPreview | null> {
   const extension = getFileExtension(fileName);
   if (contentType.startsWith('text/') || TEXT_PREVIEW_EXTENSIONS.has(extension)) {
@@ -78,14 +80,24 @@ async function createNativePreview(
   if (contentType.startsWith('image/') || IMAGE_PREVIEW_EXTENSIONS.has(extension)) {
     return { kind: 'image', url: sourceUrl, alt: fileName };
   }
-  if (extension === 'docx' || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    return parseWordDocument(source, sourceUrl);
+  const isWord = extension === 'docx' || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const isPowerPoint = extension === 'pptx' || contentType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  if (isWord || isPowerPoint) {
+    // Real Word/PowerPoint rendering: convert to PDF locally (LibreOffice, via the
+    // OCR sidecar) and reuse the same pdf.js viewer already used for real PDFs —
+    // true layout/fonts/images/tables instead of a plain-text reconstruction.
+    try {
+      const pdfBlob = await doclingApi.convertToPdf(source, fileName);
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      registerObjectUrl?.(pdfUrl);
+      return { kind: 'pdf', url: pdfUrl };
+    } catch (error) {
+      console.error(`Failed to render ${fileName} as PDF, falling back to text extraction:`, error);
+      return isWord ? parseWordDocument(source, sourceUrl) : parsePowerPointDocument(source, sourceUrl);
+    }
   }
   if (extension === 'xlsx' || contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
     return parseExcelDocument(source, sourceUrl);
-  }
-  if (extension === 'pptx' || contentType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
-    return parsePowerPointDocument(source, sourceUrl);
   }
   return null;
 }
@@ -107,6 +119,16 @@ export function Documents() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadTags, setUploadTags] = useState('');
+  const [uploadCategory, setUploadCategory] = useState('');
+  const [uploadCustomCategory, setUploadCustomCategory] = useState('');
+  const [uploadOwnerId, setUploadOwnerId] = useState(DEV_USER_ID);
+  const [uploadDepartment, setUploadDepartment] = useState('');
+  const [uploadCustomDepartment, setUploadCustomDepartment] = useState('');
+  const [uploadApprovalNotes, setUploadApprovalNotes] = useState('');
+  const [uploadOriginalDocumentId, setUploadOriginalDocumentId] = useState('');
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [canSetDocIdOnUpload, setCanSetDocIdOnUpload] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -116,6 +138,10 @@ export function Documents() {
   const [requestedFolderAction, setRequestedFolderAction] = useState<LibraryBulkAction | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<OptionalDocumentColumn>>(() => new Set(defaultVisibleDocumentColumns));
   const [showBulkOperationsModal, setShowBulkOperationsModal] = useState(false);
+  const [pendingApprovalFiles, setPendingApprovalFiles] = useState<
+    Array<{ documentId: string; filename: string; filesize: number; uploadedAt: string }>
+  >([]);
+  const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const previewRequestRef = useRef(0);
@@ -199,6 +225,29 @@ export function Documents() {
       showError('Failed to load documents');
     }
   }, [showError]);
+
+  useEffect(() => {
+    apiClient.getUsers()
+      .then((res) => setAllUsers(res.data || []))
+      .catch(() => setAllUsers([]));
+  }, []);
+
+  // Document ID at upload time is System Admin only (QA only gets access to it
+  // later, at First Review). This app has no global user role — roles are
+  // granted per folder — so check the current user's role on whichever folder
+  // the upload dialog is currently targeting.
+  useEffect(() => {
+    if (!selectedFolderId) {
+      setCanSetDocIdOnUpload(false);
+      return;
+    }
+    apiClient.getFolderPermissions(selectedFolderId)
+      .then((res) => {
+        const mine = (res.data || []).find((p: any) => p.userId === DEV_USER_ID);
+        setCanSetDocIdOnUpload(mine?.role === 'Admin');
+      })
+      .catch(() => setCanSetDocIdOnUpload(false));
+  }, [selectedFolderId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -297,7 +346,7 @@ export function Documents() {
       sourceUrl = URL.createObjectURL(blob);
       objectUrlsRef.current.add(sourceUrl);
 
-      let preview = await createNativePreview(blob, resolvedFileName, contentType, sourceUrl);
+      let preview = await createNativePreview(blob, resolvedFileName, contentType, sourceUrl, (url) => objectUrlsRef.current.add(url));
       let fallbackDownload = libraryDocument.fallbackDownload;
 
       if (!preview) {
@@ -577,7 +626,40 @@ export function Documents() {
     }
   };
 
-  const handleUploadDocument = async () => {
+  const uploadCategoryOptions = [
+    { value: 'POLICY', label: 'Policy' },
+    { value: 'PROCESS', label: 'Process' },
+    { value: 'STANDARD', label: 'Standard' },
+    { value: 'TEMPLATE', label: 'Template' },
+    { value: 'WORKING_DOCUMENT', label: 'Working Document' },
+    { value: 'OTHER', label: 'Other' },
+  ];
+  const uploadDepartmentOptions = [
+    'Quality Assurance',
+    'Information Security',
+    'Operations',
+    'Human Resources',
+    'IT',
+    'Finance',
+    'Management',
+    'Other',
+  ];
+  const uploadIsOtherCategory = uploadCategory === 'OTHER';
+  const effectiveUploadCategory = uploadIsOtherCategory ? uploadCustomCategory.trim() : uploadCategory;
+  const uploadIsOtherDepartment = uploadDepartment === 'Other';
+  const effectiveUploadDepartment = uploadIsOtherDepartment ? uploadCustomDepartment.trim() : uploadDepartment;
+  const uploadTagList = uploadTags.split(',').map((t) => t.trim()).filter(Boolean);
+  const isUploadFormValid = Boolean(
+    uploadDescription.trim()
+    && uploadTagList.length > 0
+    && uploadCategory
+    && (!uploadIsOtherCategory || uploadCustomCategory.trim())
+    && uploadOwnerId
+    && uploadDepartment
+    && (!uploadIsOtherDepartment || uploadCustomDepartment.trim())
+  );
+
+  const handleUploadDocument = async (action: 'draft' | 'submit') => {
     if (!selectedFolder) {
       showError('Create or restore a folder before uploading documents');
       return;
@@ -586,12 +668,17 @@ export function Documents() {
       showError('Please select at least one file');
       return;
     }
+    if (!isUploadFormValid) {
+      showError('Please fill in description, tags, category, owner, and department');
+      return;
+    }
 
     setIsUploading(true);
     setUploadProgress({ complete: 0, total: uploadFiles.length });
     const uploaded: MockLibraryDocument[] = [];
     const errors: string[] = [];
     const parseErrors: string[] = [];
+    const submittedForApproval: Array<{ documentId: string; filename: string; filesize: number; uploadedAt: string }> = [];
     // Renaming only applies when uploading a single file — the field is hidden
     // for multi-file uploads since there's no unambiguous target for a single name.
     const trimmedRename = uploadFileName.trim();
@@ -610,8 +697,11 @@ export function Documents() {
           const docRes = await apiClient.createDocument({
             folderId: selectedFolderId,
             title: uploadFile.name.replace(/\.[^/.]+$/, ''),
-            ownerId: DEV_USER_ID,
+            ownerId: uploadOwnerId,
             description: uploadDescription.trim(),
+            tags: uploadTagList,
+            department: effectiveUploadDepartment,
+            originalDocumentId: canSetDocIdOnUpload && uploadOriginalDocumentId.trim() ? uploadOriginalDocumentId.trim() : undefined,
           });
           const createdDocument = docRes.data;
           if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
@@ -627,6 +717,13 @@ export function Documents() {
             parseErrors.push(`${uploadFile.name}: ${message}`);
           }
 
+          // Auto-extraction (Requirement 2): scan the file's own parsed text for a
+          // "Doc ID"/"Doc No" label. Only attempted when QA/Admin didn't already set
+          // one directly in the upload form above.
+          if (parsedContent && (!canSetDocIdOnUpload || !uploadOriginalDocumentId.trim())) {
+            void apiClient.extractDocId(createdDocument.documentId, parsedContent).catch(() => {});
+          }
+
           const sourceUrl = URL.createObjectURL(uploadFile);
           objectUrlsRef.current.add(sourceUrl);
           const timestamp = new Date().toISOString();
@@ -640,11 +737,11 @@ export function Documents() {
             fileSize: uploadFile.size,
             contentType: uploadFile.type || 'application/octet-stream',
             status: createdDocument.status ?? 'draft',
-            department: 'General',
+            department: effectiveUploadDepartment,
             description: uploadDescription.trim(),
-            tags: [],
-            owner: currentUser ?? undefined,
-            uploadedBy: DEV_USER_ID,
+            tags: uploadTagList,
+            owner: allUsers.find((u) => u.userId === uploadOwnerId) ?? currentUser ?? undefined,
+            uploadedBy: uploadOwnerId,
             uploadedAt: timestamp,
             createdAt: createdDocument.createdAt || timestamp,
             updatedAt: timestamp,
@@ -660,6 +757,7 @@ export function Documents() {
             uploadFile.name,
             uploadFile.type || 'application/octet-stream',
             sourceUrl,
+            (url) => objectUrlsRef.current.add(url),
           );
           if (nativePreview?.kind === 'image') {
             uploadedDocument.preview = nativePreview;
@@ -679,6 +777,12 @@ export function Documents() {
             uploadedDocument.preview = nativePreview;
           }
           uploaded.push(uploadedDocument);
+          submittedForApproval.push({
+            documentId: createdDocument.documentId,
+            filename: uploadFile.name,
+            filesize: uploadFile.size,
+            uploadedAt: createdDocument.createdAt || timestamp,
+          });
         } catch (error: any) {
           const errorMsg = error?.response?.data?.error || error?.message || `${uploadFile.name} could not be uploaded`;
           errors.push(errorMsg);
@@ -687,12 +791,37 @@ export function Documents() {
         }
       }
       if (uploaded.length > 0) setAllDocuments((current) => [...current, ...uploaded]);
-      if (errors.length > 0) showError(`${uploaded.length} uploaded; ${errors.length} failed — ${errors[0]}`);
-      else if (parseErrors.length > 0) showError(`${uploaded.length} uploaded; ${parseErrors.length} could not be parsed locally`);
-      else showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} uploaded and parsed locally`);
+
+      if (errors.length === 0 && action === 'submit' && submittedForApproval.length > 0) {
+        try {
+          await apiClient.submitDocumentsForApproval(
+            submittedForApproval.map((f) => f.documentId),
+            effectiveUploadCategory,
+            uploadApprovalNotes.trim() || undefined,
+          );
+          showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} uploaded and submitted for approval`);
+        } catch (err: any) {
+          showError(err.response?.data?.error || 'Uploaded, but failed to submit for approval');
+        }
+      } else if (errors.length > 0) {
+        showError(`${uploaded.length} uploaded; ${errors.length} failed — ${errors[0]}`);
+      } else if (parseErrors.length > 0) {
+        showError(`${uploaded.length} uploaded; ${parseErrors.length} could not be parsed locally`);
+      } else {
+        showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} saved as draft`);
+      }
+
       if (errors.length === 0) {
         setShowUploadModal(false);
         setUploadFiles([]);
+        setUploadTags('');
+        setUploadCategory('');
+        setUploadCustomCategory('');
+        setUploadDepartment('');
+        setUploadCustomDepartment('');
+        setUploadApprovalNotes('');
+        setUploadOriginalDocumentId('');
+        void refreshServerDocuments(folders);
       }
     } finally {
       setIsUploading(false);
@@ -711,6 +840,7 @@ export function Documents() {
     setUploadFiles(files);
     setUploadFileName(files.length === 1 ? splitFileName(files[0].name).base : '');
     setUploadProgress({ complete: 0, total: files.length });
+    setUploadOwnerId(DEV_USER_ID);
     setShowUploadModal(true);
   };
 
@@ -759,6 +889,13 @@ export function Documents() {
     setUploadFiles([]);
     setUploadDescription('');
     setUploadFileName('');
+    setUploadTags('');
+    setUploadCategory('');
+    setUploadCustomCategory('');
+    setUploadDepartment('');
+    setUploadCustomDepartment('');
+    setUploadApprovalNotes('');
+    setUploadOriginalDocumentId('');
   };
 
   return (
@@ -879,7 +1016,20 @@ export function Documents() {
         </div>
       </div>
 
-      {previewDocument && <DocumentPreview document={previewDocument} onClose={closePreview} onDownload={downloadMockDocument} />}
+      {previewDocument && (
+        <DocumentPreview
+          document={previewDocument}
+          onClose={closePreview}
+          onDownload={downloadMockDocument}
+          onSubmitForApproval={(doc) => {
+            closePreview();
+            setPendingApprovalFiles([
+              { documentId: doc.documentId, filename: doc.fileName, filesize: doc.fileSize, uploadedAt: doc.createdAt },
+            ]);
+            setShowApprovalPrompt(true);
+          }}
+        />
+      )}
 
       {showBulkOperationsModal && (
         <BulkOperationsModal
@@ -892,11 +1042,27 @@ export function Documents() {
         />
       )}
 
+      {showApprovalPrompt && (
+        <UploadApprovalModal
+          isOpen={showApprovalPrompt}
+          files={pendingApprovalFiles}
+          onSubmit={() => {
+            setShowApprovalPrompt(false);
+            setPendingApprovalFiles([]);
+            void refreshServerDocuments(folders);
+          }}
+          onCancel={() => {
+            setShowApprovalPrompt(false);
+            setPendingApprovalFiles([]);
+          }}
+        />
+      )}
+
       <Dialog.Root open={showUploadModal} onOpenChange={(open) => open ? setShowUploadModal(true) : closeUploadModal()}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
           <Dialog.Content asChild>
-            <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 shadow-xl">
+            <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-lg max-h-[90vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] p-5 dark:border-white/10">
               <Dialog.Title className="section-heading">Upload Documents</Dialog.Title>
               <Dialog.Close asChild><button type="button" disabled={isUploading} className="text-slate-500 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400" aria-label="Close upload dialog"><X className="h-5 w-5" /></button></Dialog.Close>
@@ -949,6 +1115,135 @@ export function Documents() {
                   className="field-control min-h-[80px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
                 />
               </div>
+
+              <div className="space-y-2">
+                <label htmlFor="upload-tags" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                  Tags <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="upload-tags"
+                  type="text"
+                  value={uploadTags}
+                  onChange={(e) => setUploadTags(e.target.value)}
+                  placeholder="e.g. iso9001, quality, procedure"
+                  disabled={isUploading}
+                  className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                />
+                <p className="text-xs text-[#718198]">Comma-separated.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label htmlFor="upload-category" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                    Document Category <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="upload-category"
+                    value={uploadCategory}
+                    onChange={(e) => setUploadCategory(e.target.value)}
+                    disabled={isUploading}
+                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">Select a category...</option>
+                    {uploadCategoryOptions.map((cat) => (
+                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                    ))}
+                  </select>
+                  {uploadIsOtherCategory && (
+                    <input
+                      type="text"
+                      value={uploadCustomCategory}
+                      onChange={(e) => setUploadCustomCategory(e.target.value)}
+                      placeholder="Specify the category..."
+                      autoFocus
+                      disabled={isUploading}
+                      className="mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="upload-department" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                    Department <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="upload-department"
+                    value={uploadDepartment}
+                    onChange={(e) => setUploadDepartment(e.target.value)}
+                    disabled={isUploading}
+                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">Select a department...</option>
+                    {uploadDepartmentOptions.map((dept) => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                  {uploadIsOtherDepartment && (
+                    <input
+                      type="text"
+                      value={uploadCustomDepartment}
+                      onChange={(e) => setUploadCustomDepartment(e.target.value)}
+                      placeholder="Specify the department..."
+                      autoFocus
+                      disabled={isUploading}
+                      className="mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="upload-owner" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                  Owner <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="upload-owner"
+                  value={uploadOwnerId}
+                  onChange={(e) => setUploadOwnerId(e.target.value)}
+                  disabled={isUploading}
+                  className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                >
+                  {allUsers.length === 0 && <option value={uploadOwnerId}>Loading users...</option>}
+                  {allUsers.map((u) => (
+                    <option key={u.userId} value={u.userId}>{u.fullName}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Document ID: completely hidden for standard users. Only QA/Admin on the
+                  target folder can see or set it directly — everyone else's uploads are
+                  scanned automatically for a "Doc ID"/"Doc No" label instead. */}
+              {canSetDocIdOnUpload && (
+                <div className="space-y-2">
+                  <label htmlFor="upload-doc-id" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                    Document ID <span className="text-xs font-normal text-[#718198]">(System Admin only — leave blank to auto-detect)</span>
+                  </label>
+                  <input
+                    id="upload-doc-id"
+                    type="text"
+                    value={uploadOriginalDocumentId}
+                    onChange={(e) => setUploadOriginalDocumentId(e.target.value)}
+                    placeholder="e.g. QM-2026-0007"
+                    disabled={isUploading}
+                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label htmlFor="upload-approval-notes" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                  Approval Notes (Optional)
+                </label>
+                <textarea
+                  id="upload-approval-notes"
+                  value={uploadApprovalNotes}
+                  onChange={(e) => setUploadApprovalNotes(e.target.value)}
+                  placeholder="Add any notes for the approver..."
+                  disabled={isUploading}
+                  className="field-control min-h-[60px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                />
+              </div>
+
               <p className="text-xs text-[#718198]">{selectedFolder ? `Uploading to ${selectedFolder.name}. New documents remain view-only while entering review.` : 'A folder is required before uploading documents.'}</p>
               {isUploading && (
                 <div role="status" aria-label={activeUploadStage === 'parsing' ? 'Converting document with Docling' : 'Upload progress'} className="space-y-1.5">
@@ -962,9 +1257,25 @@ export function Documents() {
                   <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#3f8bca] transition-all" style={{ width: `${uploadProgress.total ? (uploadProgress.complete / uploadProgress.total) * 100 : 0}%` }} /></div>
                 </div>
               )}
-              <div className="flex justify-end gap-2">
-                <Button variant="secondary" onClick={closeUploadModal} disabled={isUploading}>Cancel</Button>
-                <Button onClick={handleUploadDocument} disabled={uploadFiles.length === 0 || !uploadDescription.trim() || isUploading} title={!uploadDescription.trim() ? 'Please add a description' : ''}>{isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : `Upload ${uploadFiles.length} ${uploadFiles.length === 1 ? 'file' : 'files'}`}</Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={closeUploadModal} disabled={isUploading} className="flex-1">Cancel</Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleUploadDocument('draft')}
+                  disabled={uploadFiles.length === 0 || !isUploadFormValid || isUploading}
+                  title={!isUploadFormValid ? 'Please fill in description, tags, category, owner, and department' : ''}
+                  className="flex-1"
+                >
+                  {isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Saving...') : 'Save as Draft'}
+                </Button>
+                <Button
+                  onClick={() => handleUploadDocument('submit')}
+                  disabled={uploadFiles.length === 0 || !isUploadFormValid || isUploading}
+                  title={!isUploadFormValid ? 'Please fill in description, tags, category, owner, and department' : ''}
+                  className="flex-1"
+                >
+                  {isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : 'Submit'}
+                </Button>
               </div>
             </CardBody>
             </Card>

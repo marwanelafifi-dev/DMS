@@ -29,6 +29,8 @@ export interface Document {
   folderId: string;
   currentVersionId?: string;
   trackingCode?: string;
+  originalDocumentId?: string | null;
+  hasDocId?: boolean;
   ownerId?: string;
   owner?: User;
   folder?: Folder;
@@ -38,7 +40,7 @@ export interface Document {
   fileName: string;
   fileSize: number;
   contentType: string;
-  status: 'draft' | 'pending_approval' | 'released' | 'rejected' | 'archived';
+  status: 'draft' | 'pending_approval' | 'qa_review' | 'manager_review' | 'correction_in_progress' | 'qa_final_review' | 'released' | 'rejected' | 'archived';
   uploadedBy: string;
   uploadedByUser?: User;
   uploadedAt: string;

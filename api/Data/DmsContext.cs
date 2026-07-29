@@ -25,6 +25,10 @@ public class DmsContext : DbContext
     public DbSet<DmsAuditCalendarEvent> AuditCalendarEvents => Set<DmsAuditCalendarEvent>();
     public DbSet<DmsUserCalendarConnection> UserCalendarConnections => Set<DmsUserCalendarConnection>();
     public DbSet<DmsUserCalendarEventSync> UserCalendarEventSyncs => Set<DmsUserCalendarEventSync>();
+    public DbSet<DmsApproval> Approvals => Set<DmsApproval>();
+    public DbSet<DmsApprovalDocument> ApprovalDocuments => Set<DmsApprovalDocument>();
+    public DbSet<DmsTrackingCodeSequence> TrackingCodeSequences => Set<DmsTrackingCodeSequence>();
+    public DbSet<DmsDocIdSequence> DocIdSequences => Set<DmsDocIdSequence>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -299,6 +303,70 @@ public class DmsContext : DbContext
             .WithMany()
             .HasForeignKey(s => s.EventId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // === APPROVAL WORKFLOW (C-Doc) ===
+        // Approvals: Created by (user), QA review (SET NULL), Manager review (SET NULL), Released by (SET NULL), Correction task (SET NULL)
+        modelBuilder.Entity<DmsApproval>().ToTable("dms_approvals").HasKey(a => a.ApprovalId);
+
+        // Tracking Code Sequences (no FK, just for document numbering)
+        modelBuilder.Entity<DmsTrackingCodeSequence>().ToTable("dms_tracking_code_sequences").HasKey(tcs => tcs.SequenceId);
+
+        // Document ID Sequences (system auto-generation at QA Triage)
+        modelBuilder.Entity<DmsDocIdSequence>().ToTable("dms_docid_sequences").HasKey(s => s.SequenceDate);
+
+        modelBuilder.Entity<DmsApproval>()
+            .HasOne(a => a.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(a => a.CreatedBy)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DmsApproval>()
+            .HasOne(a => a.QaReviewedByUser)
+            .WithMany()
+            .HasForeignKey(a => a.QaReviewedBy)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<DmsApproval>()
+            .HasOne(a => a.ManagerReviewedByUser)
+            .WithMany()
+            .HasForeignKey(a => a.ManagerReviewedBy)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<DmsApproval>()
+            .HasOne(a => a.ReleasedByUser)
+            .WithMany()
+            .HasForeignKey(a => a.ReleasedBy)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<DmsApproval>()
+            .HasOne(a => a.CorrectionTask)
+            .WithMany()
+            .HasForeignKey(a => a.CorrectionTaskId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Approval Documents: approval (CASCADE) + document (CASCADE) + version (CASCADE)
+        modelBuilder.Entity<DmsApprovalDocument>().ToTable("dms_approval_documents").HasKey(ad => ad.ApprovalDocumentId);
+
+        modelBuilder.Entity<DmsApprovalDocument>()
+            .HasOne(ad => ad.Approval)
+            .WithMany(a => a.ApprovalDocuments)
+            .HasForeignKey(ad => ad.ApprovalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsApprovalDocument>()
+            .HasOne(ad => ad.Document)
+            .WithMany()
+            .HasForeignKey(ad => ad.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsApprovalDocument>()
+            .HasOne(ad => ad.Version)
+            .WithMany()
+            .HasForeignKey(ad => ad.VersionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Tracking Code Sequences (no FK, just sequences for document numbering)
+        modelBuilder.Entity<DmsTrackingCodeSequence>().ToTable("dms_tracking_code_sequences").HasKey(tcs => tcs.SequenceId);
 
         // === INDEXES ===
         modelBuilder.Entity<DmsUser>(e => e.HasIndex(u => u.Email).IsUnique());

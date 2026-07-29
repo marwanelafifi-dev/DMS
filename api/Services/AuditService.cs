@@ -101,6 +101,7 @@ public static class AuditActions
     public const string DOCUMENT_REJECTED = "DOCUMENT_REJECTED";
 
     public const string TASK_COMPLETED = "TASK_COMPLETED";
+    public const string CORRECTION_TASK_COMPLETED = "CORRECTION_TASK_COMPLETED";
 
     public const string PERMISSION_GRANTED = "PERMISSION_GRANTED";
     public const string PERMISSION_REVOKED = "PERMISSION_REVOKED";

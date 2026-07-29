@@ -30,6 +30,10 @@ type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' 
 const statusStyles: Record<MockLibraryDocument['status'], string> = {
   draft: 'bg-[#edf1f5] text-[#62718a]',
   pending_approval: 'bg-[#fff1c9] text-[#b96a08]',
+  qa_review: 'bg-[#fff1c9] text-[#b96a08]',
+  manager_review: 'bg-[#fde9c8] text-[#a15c1f]',
+  correction_in_progress: 'bg-[#fde1e2] text-[#c73c44]',
+  qa_final_review: 'bg-[#dbe9fb] text-[#2f6f9f]',
   released: 'bg-[#d8f5e4] text-[#27885a]',
   rejected: 'bg-[#fde1e2] text-[#c73c44]',
   archived: 'bg-slate-100 text-slate-500',
@@ -143,6 +147,7 @@ export function DocumentList({
       <table className="data-table library-document-table w-full" aria-label="Documents">
         <colgroup>
           <col className="w-10" />
+          <col className="w-[120px]" />
           <col />
           <col className="w-[60px]" />
           <col className="w-[76px]" />
@@ -164,6 +169,7 @@ export function DocumentList({
                 label="Select all visible documents"
               />
             </th>
+            <th>Document ID</th>
             <th>{header('File name', 'fileName')}</th>
             <th>{header('Type', 'extension')}</th>
             <th>{header('Folder', 'folderName')}</th>
@@ -181,6 +187,13 @@ export function DocumentList({
             <tr key={document.documentId} className={`${index % 2 ? 'bg-[#f8fafc] dark:bg-slate-800/35' : 'bg-white dark:bg-slate-900'} hover:bg-[#f2f6fa] dark:hover:bg-slate-800/60`}>
               <td className="px-3">
                 <SelectionCheckbox checked={selectedDocumentIds.has(document.documentId)} onChange={() => toggleSelected(document.documentId)} label={`Select ${document.fileName}`} />
+              </td>
+              <td className="whitespace-nowrap text-[#52627a] dark:text-slate-200">
+                {document.originalDocumentId ? (
+                  <span className="font-mono text-xs" title={document.originalDocumentId}>{document.originalDocumentId}</span>
+                ) : (
+                  <span className="text-[#93a4bd]">—</span>
+                )}
               </td>
               <td className="min-w-0">
                 <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}`}>

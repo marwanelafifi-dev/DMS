@@ -52,6 +52,33 @@ export const doclingApi = {
     return readJsonResponse<ConvertedDocument>(response);
   },
 
+  async convertToPdf(file: File | Blob, filename: string, signal?: AbortSignal): Promise<Blob> {
+    const formData = new FormData();
+    formData.append('file', file, filename);
+
+    const response = await fetch(
+      `${DOCLING_API_ORIGIN}/api/documents/convert-to-pdf`,
+      {
+        method: 'POST',
+        body: formData,
+        signal,
+      },
+    );
+
+    if (!response.ok) {
+      let message = `Local PDF conversion returned ${response.status}`;
+      try {
+        const payload = await response.json() as { detail?: string };
+        message = payload.detail || message;
+      } catch {
+        // Preserve the status-based fallback when the service returns a non-JSON error.
+      }
+      throw new Error(message);
+    }
+
+    return response.blob();
+  },
+
   async searchDocuments(query: string, signal?: AbortSignal): Promise<ParsedDocument[]> {
     const params = new URLSearchParams({ q: query });
     const response = await fetch(

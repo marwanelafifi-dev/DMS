@@ -1,12 +1,13 @@
 import os
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 from contextlib import closing
 from pathlib import Path
 
 from docling.document_converter import DocumentConverter
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -72,6 +73,56 @@ def convert_uploaded_file(file: UploadFile) -> tuple[str, str]:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "healthy", "service": "dms-docling"}
+
+
+@app.post("/api/documents/convert-to-pdf")
+def convert_to_pdf(file: UploadFile = File(...)) -> Response:
+    """
+    Real Word/PowerPoint rendering in the browser: converts the uploaded file to
+    PDF with headless LibreOffice, and the frontend renders that PDF with the
+    same pdf.js viewer it already uses for real .pdf uploads — true layout,
+    fonts, images, and tables instead of the old plain-text reconstruction.
+    """
+    filename = Path(file.filename or "document").name
+    work_dir = Path(tempfile.mkdtemp(prefix="lo_convert_"))
+    # Each conversion gets its own LibreOffice user profile — headless soffice
+    # refuses to start a second instance against a profile that's already in use,
+    # which would otherwise make concurrent preview requests fail intermittently.
+    profile_dir = Path(tempfile.mkdtemp(prefix="lo_profile_"))
+
+    try:
+        input_path = work_dir / filename
+        with open(input_path, "wb") as destination:
+            shutil.copyfileobj(file.file, destination)
+
+        result = subprocess.run(
+            [
+                "soffice",
+                "--headless",
+                "--norestore",
+                f"-env:UserInstallation=file://{profile_dir}",
+                "--convert-to", "pdf",
+                "--outdir", str(work_dir),
+                str(input_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+
+        pdf_path = input_path.with_suffix(".pdf")
+        if result.returncode != 0 or not pdf_path.exists():
+            raise HTTPException(
+                status_code=500,
+                detail=f"PDF conversion failed: {result.stderr or result.stdout}",
+            )
+
+        pdf_bytes = pdf_path.read_bytes()
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
+    return Response(content=pdf_bytes, media_type="application/pdf")
 
 
 @app.post("/api/documents/convert")

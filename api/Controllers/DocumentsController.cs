@@ -50,6 +50,10 @@ public class DocumentsController(
                     document.Title,
                     document.Status,
                     document.Description,
+                    document.Tags,
+                    document.Department,
+                    document.OriginalDocumentId,
+                    HasDocId = !string.IsNullOrWhiteSpace(document.OriginalDocumentId),
                     document.TrackingCode,
                     document.OwnerId,
                     UploadedBy = document.OwnerId,
@@ -122,6 +126,10 @@ public class DocumentsController(
                     document.Title,
                     document.Status,
                     document.Description,
+                    document.Tags,
+                    document.Department,
+                    document.OriginalDocumentId,
+                    HasDocId = !string.IsNullOrWhiteSpace(document.OriginalDocumentId),
                     document.TrackingCode,
                     document.OwnerId,
                     UploadedBy = document.OwnerId,
@@ -187,6 +195,18 @@ public class DocumentsController(
             if (!ownerExists)
                 return BadRequest(new { success = false, error = "المالك غير موجود" });
 
+            // Document ID at upload time is System Admin only — QA only gets access to
+            // it later, at First Review (see ApprovalsController.RequireQaOrAdminForApprovalAsync).
+            var isAdmin = folderPermission.Role is FolderRoles.Admin;
+            if (!string.IsNullOrWhiteSpace(req.OriginalDocumentId) && !isAdmin)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    success = false,
+                    error = "Only System Admin can set the Document ID directly"
+                });
+            }
+
             var document = new DmsDocument
             {
                 DocumentId = Guid.NewGuid(),
@@ -194,6 +214,9 @@ public class DocumentsController(
                 Title = req.Title.Trim(),
                 Status = "draft",
                 Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
+                Tags = req.Tags?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToArray() ?? Array.Empty<string>(),
+                Department = string.IsNullOrWhiteSpace(req.Department) ? null : req.Department.Trim(),
+                OriginalDocumentId = isAdmin && !string.IsNullOrWhiteSpace(req.OriginalDocumentId) ? req.OriginalDocumentId.Trim() : null,
                 OwnerId = req.OwnerId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -233,6 +256,150 @@ public class DocumentsController(
             logger.LogError(ex, "Error creating document");
             return StatusCode(500, new { success = false, error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Automatic Document ID extraction (runs right after upload, once the frontend's
+    /// existing Docling/OCR pass has produced extracted text). Any Writer+ can trigger
+    /// this — it's detection, not authorization-sensitive — but it only ever fills in
+    /// a blank Document ID, never overwrites one a QA/Admin already set.
+    /// </summary>
+    [HttpPost("{id}/extract-doc-id")]
+    public async Task<ActionResult<object>> ExtractDocId(Guid id, [FromBody] ExtractDocIdRequest req)
+    {
+        try
+        {
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            if (!string.IsNullOrWhiteSpace(document.OriginalDocumentId))
+            {
+                return Ok(new { success = true, data = new { found = true, originalDocumentId = document.OriginalDocumentId, alreadySet = true } });
+            }
+
+            var extracted = DocIdExtractor.Extract(req.Text);
+            if (extracted != null)
+            {
+                document.OriginalDocumentId = extracted;
+                document.UpdatedAt = DateTime.UtcNow;
+                await context.SaveChangesAsync();
+
+                await auditService.LogAsync(GetCurrentUserId(), "DOCUMENT_ID_EXTRACTED", new
+                {
+                    document.DocumentId,
+                    originalDocumentId = extracted
+                });
+            }
+
+            return Ok(new { success = true, data = new { found = extracted != null, originalDocumentId = extracted, alreadySet = false } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error extracting Document ID for {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Manual Document ID entry at QA Triage — QA/Admin only.
+    /// </summary>
+    [HttpPost("{id}/set-doc-id")]
+    public async Task<ActionResult<object>> SetDocId(Guid id, [FromBody] SetDocIdRequest req)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(req.OriginalDocumentId))
+                return BadRequest(new { success = false, error = "Document ID is required" });
+
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            var roleCheck = await RequireQaOrAdminAsync(document.FolderId);
+            if (roleCheck != null) return roleCheck;
+
+            document.OriginalDocumentId = req.OriginalDocumentId.Trim();
+            document.UpdatedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(GetCurrentUserId(), "DOCUMENT_ID_SET_MANUALLY", new
+            {
+                document.DocumentId,
+                originalDocumentId = document.OriginalDocumentId
+            });
+
+            return Ok(new { success = true, data = new { originalDocumentId = document.OriginalDocumentId } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error setting Document ID for {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// System auto-generation of a Document ID at QA Triage — QA/Admin only.
+    /// Format: DOC-YYYYMMDD-#### (daily sequence).
+    /// </summary>
+    [HttpPost("{id}/generate-doc-id")]
+    public async Task<ActionResult<object>> GenerateDocId(Guid id)
+    {
+        try
+        {
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            var roleCheck = await RequireQaOrAdminAsync(document.FolderId);
+            if (roleCheck != null) return roleCheck;
+
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var sequence = await context.DocIdSequences.FirstOrDefaultAsync(s => s.SequenceDate == today);
+            if (sequence == null)
+            {
+                sequence = new DmsDocIdSequence { SequenceDate = today, NextSeq = 1 };
+                context.DocIdSequences.Add(sequence);
+            }
+
+            var generated = $"DOC-{today:yyyyMMdd}-{sequence.NextSeq:D4}";
+            sequence.NextSeq++;
+
+            document.OriginalDocumentId = generated;
+            document.UpdatedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(GetCurrentUserId(), "DOCUMENT_ID_GENERATED", new
+            {
+                document.DocumentId,
+                originalDocumentId = generated
+            });
+
+            return Ok(new { success = true, data = new { originalDocumentId = generated } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error generating Document ID for {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    private async Task<ActionResult<object>?> RequireQaOrAdminAsync(Guid folderId)
+    {
+        var userId = GetCurrentUserId();
+        var permission = await context.FolderPermissions
+            .FirstOrDefaultAsync(p => p.FolderId == folderId && p.UserId == userId);
+
+        if (permission == null || permission.Role is not (FolderRoles.QA or FolderRoles.Admin))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                success = false,
+                error = "Only QA or Admin can perform this action"
+            });
+        }
+
+        return null;
     }
 
     // POST /api/documents/{id}/upload — تحميل ملف
@@ -396,6 +563,12 @@ public class DocumentsController(
             if (req.Description != null)
                 document.Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim();
 
+            if (req.Tags != null)
+                document.Tags = req.Tags.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToArray();
+
+            if (req.Department != null)
+                document.Department = string.IsNullOrWhiteSpace(req.Department) ? null : req.Department.Trim();
+
             document.UpdatedAt = DateTime.UtcNow;
 
             context.Documents.Update(document);
@@ -421,6 +594,8 @@ public class DocumentsController(
                     document.DocumentId,
                     document.Title,
                     document.Status,
+                    document.Tags,
+                    document.Department,
                     document.UpdatedAt
                 }
             });
@@ -872,8 +1047,8 @@ public class DocumentsController(
     }
 }
 
-public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null);
-public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null);
+public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? OriginalDocumentId = null);
+public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null, string[]? Tags = null, string? Department = null);
 public record CheckoutRequest(string? Reason = null);
 public record SubmitRequest(Guid VersionId, string? Comment = null);
 public record ApproveRequest(Guid VersionId, string? Comment = null);
@@ -882,3 +1057,5 @@ public record BulkApproveRequest(List<Guid> DocumentIds, string? Comments = null
 public record BulkRejectRequest(List<Guid> DocumentIds, string Reason);
 public record BulkDeleteRequest(List<Guid> DocumentIds);
 public record BulkDownloadRequest(List<Guid> DocumentIds);
+public record ExtractDocIdRequest(string? Text);
+public record SetDocIdRequest(string OriginalDocumentId);
