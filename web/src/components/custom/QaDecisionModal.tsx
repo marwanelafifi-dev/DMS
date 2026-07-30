@@ -52,7 +52,11 @@ export const QaDecisionModal: React.FC<QaDecisionModalProps> = ({
   const [docIds, setDocIds] = useState<Record<string, string>>(() =>
     Object.fromEntries(documents.map((d) => [d.documentId, d.originalDocumentId || '']))
   );
-  const [manualDocIdInput, setManualDocIdInput] = useState<Record<string, string>>({});
+  // Pre-filled with whatever ID is already on file (extracted or previously set)
+  // so QA can correct a wrong value, not just fill in a blank one.
+  const [manualDocIdInput, setManualDocIdInput] = useState<Record<string, string>>(() =>
+    Object.fromEntries(documents.map((d) => [d.documentId, d.originalDocumentId || '']))
+  );
   const [docIdBusy, setDocIdBusy] = useState<Record<string, boolean>>({});
 
   const missingDocuments = documents.filter((d) => !docIds[d.documentId]?.trim());
@@ -85,6 +89,7 @@ export const QaDecisionModal: React.FC<QaDecisionModalProps> = ({
 
       if (extractedFromFile) {
         setDocIds((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
+        setManualDocIdInput((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
         showSuccess(`Document ID extracted from file: ${extractedFromFile}`);
         return;
       }
@@ -92,6 +97,7 @@ export const QaDecisionModal: React.FC<QaDecisionModalProps> = ({
       const res = await apiClient.generateDocId(documentId);
       if (res.success) {
         setDocIds((prev) => ({ ...prev, [documentId]: res.data.originalDocumentId }));
+        setManualDocIdInput((prev) => ({ ...prev, [documentId]: res.data.originalDocumentId }));
         showSuccess(`No Document ID found in the file — assigned system ID: ${res.data.originalDocumentId}`);
       } else {
         setError(res.error || 'Failed to generate Document ID');
@@ -293,44 +299,60 @@ export const QaDecisionModal: React.FC<QaDecisionModalProps> = ({
               }}
               className="space-y-4"
             >
-              {missingDocuments.length > 0 && (
-                <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
-                  <p className="text-sm font-medium text-amber-900 dark:text-amber-300">
-                    Document ID required before approval ({missingDocuments.length} document{missingDocuments.length !== 1 ? 's' : ''})
+              {documents.length > 0 && (
+                <div className={`space-y-3 rounded-lg border p-4 ${
+                  missingDocuments.length > 0
+                    ? 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10'
+                    : 'border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-800/50'
+                }`}>
+                  <p className={`text-sm font-medium ${missingDocuments.length > 0 ? 'text-amber-900 dark:text-amber-300' : 'text-gray-700 dark:text-slate-300'}`}>
+                    {missingDocuments.length > 0
+                      ? `Document ID required before approval (${missingDocuments.length} document${missingDocuments.length !== 1 ? 's' : ''})`
+                      : 'Document IDs — edit if a wrong value was extracted'}
                   </p>
-                  {missingDocuments.map((doc) => (
-                    <div key={doc.documentId} className="flex flex-wrap items-center gap-2 rounded-md bg-white/60 p-2 dark:bg-slate-900/40">
-                      <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-slate-300" title={doc.fileName}>
-                        {doc.fileName}
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Original Document ID"
-                        value={manualDocIdInput[doc.documentId] || ''}
-                        onChange={(e) => setManualDocIdInput((prev) => ({ ...prev, [doc.documentId]: e.target.value }))}
-                        disabled={docIdBusy[doc.documentId] || isSubmitting}
-                        className="w-40 rounded border border-gray-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleSetDocId(doc.documentId)}
-                        disabled={!manualDocIdInput[doc.documentId]?.trim() || docIdBusy[doc.documentId] || isSubmitting}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => handleGenerateDocId(doc.documentId)}
-                        disabled={docIdBusy[doc.documentId] || isSubmitting}
-                      >
-                        {docIdBusy[doc.documentId] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                        <span className="ml-1">Generate from System</span>
-                      </Button>
-                    </div>
-                  ))}
+                  {documents.map((doc) => {
+                    const isMissing = !docIds[doc.documentId]?.trim();
+                    return (
+                      <div key={doc.documentId} className="flex flex-wrap items-center gap-2 rounded-md bg-white/60 p-2 dark:bg-slate-900/40">
+                        <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-slate-300" title={doc.fileName}>
+                          {doc.fileName}
+                        </span>
+                        {!isMissing && (
+                          <span className="whitespace-nowrap rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                            {docIds[doc.documentId]}
+                          </span>
+                        )}
+                        <input
+                          type="text"
+                          placeholder="Original Document ID"
+                          value={manualDocIdInput[doc.documentId] || ''}
+                          onChange={(e) => setManualDocIdInput((prev) => ({ ...prev, [doc.documentId]: e.target.value }))}
+                          disabled={docIdBusy[doc.documentId] || isSubmitting}
+                          className="w-40 rounded border border-gray-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleSetDocId(doc.documentId)}
+                          disabled={!manualDocIdInput[doc.documentId]?.trim() || docIdBusy[doc.documentId] || isSubmitting}
+                        >
+                          {isMissing ? 'Save' : 'Correct'}
+                        </Button>
+                        {isMissing && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleGenerateDocId(doc.documentId)}
+                            disabled={docIdBusy[doc.documentId] || isSubmitting}
+                          >
+                            {docIdBusy[doc.documentId] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                            <span className="ml-1">Generate from System</span>
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
