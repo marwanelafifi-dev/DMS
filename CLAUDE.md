@@ -5,11 +5,74 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Current Date:** 2026-07-30
 
-**Working Directory:** `C:\Users\Omar.Sultan\Documents\DMS`
+**Working Directory:** `C:\Users\user\Desktop\DMS`
 
 **Active Branch:** `Main`
 
-**Status:** Session 19 — real local authentication (mandatory JWT login, replacing the always-logged-in dev bypass), a new Groups admin page with nested subgroups, a redesigned Roles page, and role permissions that now genuinely enforce access (not just display it) — including closing a real gap where Manager-stage and final-release approval actions had no authorization check at all. Also fixed several Document ID / category / upload bugs found along the way. See Session 19 section below for details. **Known follow-up in progress:** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text — root cause investigation was underway when this session ended (see two pre-existing failing tests: "restores a persisted Office preview through Docling" and "cancels a persisted Office conversion when the preview closes" in `Documents.test.tsx`).
+**Status:** Session 20 — the C-Doc approval workflow is restored end to end. Existing databases now receive the missing approval schema, submitted uploads are returned and rendered in the correct review queue, cyclic EF responses are eliminated, and the exact upload-to-QA workflow passes against the live Docker stack. **Known follow-up:** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 20 (2026-07-30) — C-Doc Approval Schema and Upload Queue Repair
+
+**Status:** ✅ Complete, built, deployed, and verified end to end against the live Docker stack.
+
+### Reported symptoms
+
+- Opening **C-Doc Workflow** failed with PostgreSQL error `42P01: relation "dms_approvals" does not exist`.
+- After uploading and submitting a document, the approval record was created in PostgreSQL but the document did not appear in the QA review UI.
+
+### Root causes
+
+1. The approval tables existed in the application model but were missing from already-initialized PostgreSQL volumes. Docker entrypoint initialization scripts only run automatically when the database volume is first created.
+2. The approval queue API returned `documentCount` but omitted the nested `documents` collection required by the React page, so valid approval records rendered as empty.
+3. Returning tracked EF entities from several approval actions could traverse bidirectional navigation properties and trigger JSON reference-cycle errors.
+4. Deleting a document could leave an empty approval batch behind.
+
+### Changes completed
+
+1. Added repeat-safe migration `infra/db/init/029_cdoc_approval_tables.sql` for:
+   - `dms_approvals`
+   - `dms_approval_documents`
+   - required foreign keys and five queue/join indexes
+2. Applied the migration explicitly to the existing database and documented the existing-volume requirement.
+3. Added and aligned approval navigation properties in:
+   - `api/Models/DmsApproval.cs`
+   - `api/Models/DmsApprovalDocument.cs`
+   - `api/Data/DmsContext.cs`
+4. Updated `ApprovalsController` queue projections to:
+   - exclude empty approval batches;
+   - include the linked document, version, owner, department, status, original-document ID, and generated-document-ID state;
+   - include the approval creator display name;
+   - return safe DTOs from submit, QA, manager, and release actions instead of serializing EF graphs.
+5. Updated document deletion cleanup so an approval batch is removed when its final linked document is deleted.
+6. Made the approvals UI tolerate a missing `documents` property while remaining compatible with the corrected API response.
+7. Added `web/scripts/test-approval-queues.mjs` and the `test:e2e:approvals` npm command.
+8. Strengthened `web/scripts/test-critical-workflows.mjs` with authenticated upload, required metadata, explicit **Submit**, exact document-ID polling, and a UI assertion on `/approvals`.
+9. Updated the database and operational documentation in `README.md` and `docs/DATABASE_SCHEMA.md`.
+
+### Verification
+
+- `docker compose build api web` passed.
+- API and web containers were rebuilt and recreated; the stack is healthy.
+- `npm run test:e2e:approvals` passed.
+- The exact upload workflow passed with:
+  - `PASS upload-enters-cdoc-qa-queue`
+  - `PASS upload-renders-on-cdoc-page`
+- Recent API logs contain no unhandled exception, JSON cycle, missing-relation (`42P01`), or approval-query failure.
+- The database contains linked approval batches and no empty batches after test-only cleanup.
+
+### Workflow note
+
+The upload dialog intentionally has two outcomes: **Save as Draft** keeps the document in the library only, while **Submit** creates the approval batch and sends the document to C-Doc QA Review (Stage 1).
+
+### Data note
+
+The real document `image (1).png` appears twice because it was submitted twice. Those records were preserved; only known test-created empty approval batches were removed.
+
+### Known follow-up unchanged
+
+Persisted PPTX preview remains limited for legacy objects that contain placeholder text instead of the original Office binary.
 
 ---
 

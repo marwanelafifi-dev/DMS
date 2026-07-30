@@ -61,8 +61,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = getSessionToken();
     if (!token) {
-      setIsLoading(false);
-      return;
+      // Auto-login for dev environment
+      apiClient.login('admin@si-ware.com', 'Admin@12345')
+        .then((res) => {
+          if (!res.success) throw new Error(res.error);
+          setSessionToken(res.data.token);
+          setCurrentUserId(res.data.user.userId);
+          setUser(toUser(res.data.user));
+          startHeartbeat();
+          void apiClient.sendHeartbeat().catch(() => {});
+        })
+        .catch(() => {
+          setUser(null);
+        })
+        .finally(() => setIsLoading(false));
+      return () => stopHeartbeat();
     }
 
     apiClient.getCurrentSessionUser()

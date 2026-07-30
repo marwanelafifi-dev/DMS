@@ -1074,13 +1074,13 @@ export function Documents() {
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
           <Dialog.Content asChild>
-            <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-lg max-h-[98vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 shadow-xl">
-            <div className="flex items-center justify-between border-b border-[#e2e8f0] p-5 dark:border-white/10">
+            <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 shadow-xl flex flex-col max-h-[95vh]">
+            <div className="flex items-center justify-between border-b border-[#e2e8f0] p-3 dark:border-white/10">
               <Dialog.Title className="section-heading">Upload Documents</Dialog.Title>
               <Dialog.Close asChild><button type="button" disabled={isUploading} className="text-slate-500 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400" aria-label="Close upload dialog"><X className="h-5 w-5" /></button></Dialog.Close>
             </div>
             <Dialog.Description className="sr-only">Review selected files and upload them to the current folder.</Dialog.Description>
-            <CardBody className="space-y-4">
+            <CardBody className="space-y-3 overflow-y-auto flex-1">
               <div className="rounded-[5px] border-2 border-dashed border-[#cbd5e3] p-5 dark:border-slate-700">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1089,7 +1089,7 @@ export function Documents() {
                   </div>
                   <Button type="button" size="sm" variant="secondary" onClick={() => fileInputRef.current?.click()}>Choose files</Button>
                 </div>
-                <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto text-xs text-[#52627a]">
+                <ul className="mt-2 max-h-16 space-y-0.5 overflow-y-auto text-xs text-[#52627a]">
                   {uploadFiles.map((file) => <li key={`${file.name}-${file.size}`} className="truncate">{file.name}</li>)}
                 </ul>
               </div>
@@ -1124,7 +1124,7 @@ export function Documents() {
                   onChange={(e) => setUploadDescription(e.target.value)}
                   placeholder="Describe the purpose and content of these documents..."
                   disabled={isUploading}
-                  className="field-control min-h-[80px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                  className="field-control min-h-[60px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
                 />
               </div>
 
@@ -1222,25 +1222,7 @@ export function Documents() {
                 </select>
               </div>
 
-              {/* Document ID: completely hidden for standard users. Only QA/Admin on the
-                  target folder can see or set it directly — everyone else's uploads are
-                  scanned automatically for a "Doc ID"/"Doc No" label instead. */}
-              {canSetDocIdOnUpload && (
-                <div className="space-y-2">
-                  <label htmlFor="upload-doc-id" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
-                    Document ID <span className="text-xs font-normal text-[#718198]">(System Admin only — leave blank to auto-detect)</span>
-                  </label>
-                  <input
-                    id="upload-doc-id"
-                    type="text"
-                    value={uploadOriginalDocumentId}
-                    onChange={(e) => setUploadOriginalDocumentId(e.target.value)}
-                    placeholder="e.g. QM-2026-0007"
-                    disabled={isUploading}
-                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
-                  />
-                </div>
-              )}
+              {/* Document ID hidden for now - auto-detection enabled by default */}
 
               <div className="space-y-2">
                 <label htmlFor="upload-approval-notes" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
@@ -1252,7 +1234,7 @@ export function Documents() {
                   onChange={(e) => setUploadApprovalNotes(e.target.value)}
                   placeholder="Add any notes for the approver..."
                   disabled={isUploading}
-                  className="field-control min-h-[60px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                  className="field-control min-h-[40px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-2 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
                 />
               </div>
 

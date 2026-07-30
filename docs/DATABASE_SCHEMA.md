@@ -287,6 +287,8 @@ erDiagram
 | `dms_workflow_templates` | Named, reusable step sequences (e.g. "C-Doc", "PCAR"), optionally scoped to a folder. |
 | `dms_workflows` | A running instance of a template against a document (or a PCAR `task_id`, not FK-enforced). |
 | `dms_workflow_steps` | Ordered steps within a workflow instance — approval gates, QA checks, RCA entry, etc. |
+| `dms_approvals` | C-Doc approval batch and its current QA, manager, or final-release stage. |
+| `dms_approval_documents` | Submitted document-version rows belonging to a C-Doc approval batch. |
 
 ### 4. Tasks & Reminders
 | Table | Purpose |
@@ -335,3 +337,4 @@ Each trigger fires `BEFORE UPDATE OR DELETE` and raises a Postgres exception (`E
 - **`checked_out_by` naming gotcha:** the column is `checked_out_by`, not `checked_out_by_id` — it needed an explicit `HasColumnName` override in `DmsContext` because the generic snake_case converter would otherwise produce the wrong name (the Hangfire auto-unlock job silently failed until this was fixed).
 - **Free-text vs. constrained enums:** `dms_folder_permissions.role` and `dms_audit_calendar_events.phase/standard` use `CHECK` constraints instead of native Postgres enums or C# enum types, to avoid touching every call site that treats them as plain strings (`RBACMiddleware`, `GrantPermissionRequest`, etc.).
 - **Migration files after `002` are incremental ALTERs**, not part of the base schema — Postgres only runs `/docker-entrypoint-initdb.d/*.sql` automatically on a brand-new empty data volume. On an existing volume, each numbered migration must be applied manually against the running container.
+- **C-Doc batch storage:** migration `029` adds `dms_approvals` and `dms_approval_documents`. It is idempotent so the same file can initialize a fresh database or upgrade an existing persistent volume.

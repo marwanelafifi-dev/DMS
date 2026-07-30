@@ -41,6 +41,16 @@ docker compose up --build
 
 Open http://localhost:5173 — the page shows the API health as a connectivity check.
 
+### Upgrade an existing database volume
+
+PostgreSQL runs `infra/db/init/*.sql` automatically only when the data volume is
+empty. After pulling a new numbered migration, apply it once to an existing
+volume. For example, the C-Doc approval tables are installed with:
+
+```bash
+docker compose exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /docker-entrypoint-initdb.d/029_cdoc_approval_tables.sql'
+```
+
 ### Run the local Docling parser directly
 
 SQLite is included with Python. Check every parser dependency from the repository

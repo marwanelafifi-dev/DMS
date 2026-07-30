@@ -71,7 +71,7 @@ const apiRequest = async (path, options = {}) => {
   const response = await fetch(`${baseUrl}/api${path}`, {
     ...options,
     headers: {
-      'X-User-Id': apiUserId,
+      Authorization: `Bearer ${apiToken}`,
       ...options.headers,
     },
   });
@@ -83,12 +83,23 @@ const apiRequest = async (path, options = {}) => {
   return body;
 };
 
+const loginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'admin@si-ware.com', password: 'Admin@12345' }),
+});
+const loginBody = await loginResponse.json();
+if (!loginResponse.ok || !loginBody.success || !loginBody.data?.token) {
+  throw new Error(`Critical workflow login failed: ${JSON.stringify(loginBody)}`);
+}
+const apiToken = loginBody.data.token;
+
 let uploadedDocumentId;
 let cleanupError;
 const cleanupDocumentIds = [];
 const cleanupFolderIds = [];
 
-try {
+criticalWorkflows: try {
   await waitFor(() => browserSocketUrl, 'Chrome did not expose a DevTools endpoint');
   const { port } = new URL(browserSocketUrl);
   let targets = [];
@@ -261,38 +272,41 @@ try {
   console.log(`PASS folder-owner-admin-reuse (${permissionFolderId})`);
 
   console.log(`RUN upload-preview-download-search (${uploadFileName})`);
+  const qaQueueBeforeUpload = await apiRequest('/approvals/qa-review-queue?page=1&pageSize=1');
   await navigate('/documents', 'button[aria-label="Upload files"]');
   await waitForPage(
     `!document.querySelector('button[aria-label="Upload files"]').disabled`,
     'Upload action did not become available',
   );
 
-  const samplesLoaded = await evaluate(`(() => {
-    const button = document.querySelector('button[aria-label="Load sample files"]');
-    if (!button) return false;
-    button.click();
-    return true;
-  })()`);
-  if (!samplesLoaded) throw new Error('Sample-file action was not available');
-  await waitForPage(
-    `document.body.textContent.includes('7 files ready')
-      && document.body.textContent.includes('DMS-Sample-Presentation.pptx')
-      && document.body.textContent.includes('Uploading to Mock Files')`,
-    'Multi-format sample pack did not load into the Mock Files folder',
-  );
-  const samplesClosed = await evaluate(`(() => {
-    const button = document.querySelector('button[aria-label="Close upload dialog"]');
-    if (!button) return false;
-    button.click();
-    return true;
-  })()`);
-  if (!samplesClosed) throw new Error('Sample-file upload dialog could not be closed');
-  await waitForPage(
-    `!document.querySelector('button[aria-label="Close upload dialog"]')
-      && document.querySelector('button[aria-label="Mock Files"]')?.getAttribute('aria-current') === 'page'`,
-    'Sample-file upload dialog did not close with Mock Files selected',
-  );
-  console.log('PASS sample-file-pack');
+  if (!process.env.DMS_SKIP_SAMPLE_PACK) {
+    const samplesLoaded = await evaluate(`(() => {
+      const button = document.querySelector('button[aria-label="Load sample files"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!samplesLoaded) throw new Error('Sample-file action was not available');
+    await waitForPage(
+      `document.body.textContent.includes('7 files ready')
+        && document.body.textContent.includes('DMS-Sample-Presentation.pptx')
+        && document.body.textContent.includes('Uploading to Mock Files')`,
+      'Multi-format sample pack did not load into the Mock Files folder',
+    );
+    const samplesClosed = await evaluate(`(() => {
+      const button = document.querySelector('button[aria-label="Close upload dialog"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!samplesClosed) throw new Error('Sample-file upload dialog could not be closed');
+    await waitForPage(
+      `!document.querySelector('button[aria-label="Close upload dialog"]')
+        && document.querySelector('button[aria-label="Mock Files"]')?.getAttribute('aria-current') === 'page'`,
+      'Sample-file upload dialog did not close with Mock Files selected',
+    );
+    console.log('PASS sample-file-pack');
+  }
 
   const documentTree = await send('DOM.getDocument', { depth: -1, pierce: true });
   const fileInput = await send('DOM.querySelector', {
@@ -309,7 +323,11 @@ try {
     `document.body.textContent.includes(${JSON.stringify(uploadFileName)}) && document.body.textContent.includes('1 file ready')`,
     'Selected file did not appear in the upload dialog',
   );
-  await clickButton('Upload 1 file');
+  await setControlValue('#upload-description', `Critical workflow upload ${runId}`);
+  await setControlValue('#upload-tags', 'e2e, c-doc');
+  await setControlValue('#upload-category', 'POLICY');
+  await setControlValue('#upload-department', 'Quality Assurance');
+  await clickButton('Submit');
   await waitForPage(
     `Boolean(document.querySelector('button[aria-label=${JSON.stringify(`Preview ${uploadFileName}`)}]'))`,
     'Uploaded document did not appear in the library',
@@ -323,6 +341,35 @@ try {
   }
   uploadedDocumentId = persistedDocument.documentId;
   cleanupDocumentIds.push(uploadedDocumentId);
+
+  let qaQueueAfterUpload;
+  await waitFor(async () => {
+    qaQueueAfterUpload = await apiRequest('/approvals/qa-review-queue?page=1&pageSize=10');
+    return qaQueueAfterUpload.totalCount === qaQueueBeforeUpload.totalCount + 1
+      && qaQueueAfterUpload.data?.some((approval) =>
+        approval.documents?.some((document) => document.documentId === uploadedDocumentId)
+      );
+  }, `Uploaded document ${uploadedDocumentId} did not appear in the C-Doc QA queue`, 15_000);
+  console.log('PASS upload-enters-cdoc-qa-queue');
+
+  await navigate('/approvals', 'button');
+  await waitForPage(
+    `document.body.textContent.includes(${JSON.stringify(uploadFileName)})`,
+    `Uploaded document ${uploadFileName} did not render on the C-Doc page`,
+    15_000,
+  );
+  const submitErrorVisible = await evaluate(
+    `document.body.textContent.includes('Uploaded, but failed to submit for approval')`,
+  );
+  if (submitErrorVisible) {
+    throw new Error('The upload reached C-Doc, but the submit API returned an error to the browser');
+  }
+  console.log('PASS upload-renders-on-cdoc-page');
+
+  if (process.env.DMS_ONLY_UPLOAD_CDOC) {
+    socket.close();
+    break criticalWorkflows;
+  }
 
   await send('Page.reload', { ignoreCache: true });
   await selectMockFilesFolder('after reloading the library');

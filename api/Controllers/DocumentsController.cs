@@ -666,6 +666,15 @@ public class DocumentsController(
         document.CurrentVersionId = null;
         await context.SaveChangesAsync();
 
+        // A single-document approval batch would otherwise become an empty,
+        // permanently orphaned queue record after the document is deleted.
+        var approvalsToDelete = await context.Approvals
+            .Where(a =>
+                a.Documents.Any(ad => ad.DocumentId == id)
+                && a.Documents.All(ad => ad.DocumentId == id))
+            .ToListAsync();
+
+        context.Approvals.RemoveRange(approvalsToDelete);
         context.DocumentVersions.RemoveRange(versions);
         context.Documents.Remove(document);
         await context.SaveChangesAsync();

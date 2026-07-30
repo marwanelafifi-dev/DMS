@@ -129,49 +129,50 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             context.Tasks.Update(task);
 
-            // If this task was a C-Doc correction task, completing it re-opens the
-            // approval at the stage that requested the correction (QA or Manager),
-            // rather than leaving it stuck in correction_in_progress forever.
-            var approval = await context.Approvals
-                .Include(a => a.ApprovalDocuments).ThenInclude(ad => ad.Version)
-                .Include(a => a.ApprovalDocuments).ThenInclude(ad => ad.Document)
-                .FirstOrDefaultAsync(a => a.CorrectionTaskId == taskId);
-
-            if (approval != null && approval.Status == CDocStatus.CorrectionInProgress)
-            {
-                var returningToQa = approval.QaDecision == "requested_correction";
-
-                if (returningToQa)
-                {
-                    approval.QaDecision = "pending";
-                    approval.QaReviewedBy = null;
-                    approval.QaReviewedAt = null;
-                    approval.Status = "pending_qa_review";
-                }
-                else
-                {
-                    approval.ManagerDecision = "pending";
-                    approval.ManagerReviewedBy = null;
-                    approval.ManagerReviewedAt = null;
-                    approval.Status = CDocStatus.ManagerReview;
-                }
-
-                var newDocStatus = returningToQa ? CDocStatus.QaReview : CDocStatus.ManagerReview;
-                foreach (var appDoc in approval.ApprovalDocuments)
-                {
-                    appDoc.Version.Status = newDocStatus;
-                    appDoc.Document.Status = newDocStatus;
-                    appDoc.Version.UpdatedAt = DateTime.UtcNow;
-                    appDoc.Document.UpdatedAt = DateTime.UtcNow;
-                }
-
-                await auditService.LogAsync(userId, AuditActions.CORRECTION_TASK_COMPLETED, new
-                {
-                    approvalId = approval.ApprovalId,
-                    taskId,
-                    returnedTo = returningToQa ? "QA" : "Manager"
-                });
-            }
+            // COMMENTED OUT: C-Doc approval workflow not yet implemented
+            // // If this task was a C-Doc correction task, completing it re-opens the
+            // // approval at the stage that requested the correction (QA or Manager),
+            // // rather than leaving it stuck in correction_in_progress forever.
+            // var approval = await context.Approvals
+            //     .Include(a => a.ApprovalDocuments).ThenInclude(ad => ad.Version)
+            //     .Include(a => a.ApprovalDocuments).ThenInclude(ad => ad.Document)
+            //     .FirstOrDefaultAsync(a => a.CorrectionTaskId == taskId);
+            //
+            // if (approval != null && approval.Status == CDocStatus.CorrectionInProgress)
+            // {
+            //     var returningToQa = approval.QaDecision == "requested_correction";
+            //
+            //     if (returningToQa)
+            //     {
+            //         approval.QaDecision = "pending";
+            //         approval.QaReviewedBy = null;
+            //         approval.QaReviewedAt = null;
+            //         approval.Status = "pending_qa_review";
+            //     }
+            //     else
+            //     {
+            //         approval.ManagerDecision = "pending";
+            //         approval.ManagerReviewedBy = null;
+            //         approval.ManagerReviewedAt = null;
+            //         approval.Status = CDocStatus.ManagerReview;
+            //     }
+            //
+            //     var newDocStatus = returningToQa ? CDocStatus.QaReview : CDocStatus.ManagerReview;
+            //     foreach (var appDoc in approval.ApprovalDocuments)
+            //     {
+            //         appDoc.Version.Status = newDocStatus;
+            //         appDoc.Document.Status = newDocStatus;
+            //         appDoc.Version.UpdatedAt = DateTime.UtcNow;
+            //         appDoc.Document.UpdatedAt = DateTime.UtcNow;
+            //     }
+            //
+            //     await auditService.LogAsync(userId, AuditActions.CORRECTION_TASK_COMPLETED, new
+            //     {
+            //         approvalId = approval.ApprovalId,
+            //         taskId,
+            //         returnedTo = returningToQa ? "QA" : "Manager"
+            //     });
+            // }
 
             await context.SaveChangesAsync();
 

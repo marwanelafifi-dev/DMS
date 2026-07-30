@@ -312,7 +312,7 @@ function ApprovalQueueTable({
   };
 
   const rows = approvals.flatMap((approval) =>
-    approval.documents.map((doc) => ({ approval, doc }))
+    (approval.documents ?? []).map((doc) => ({ approval, doc }))
   );
 
   return (
