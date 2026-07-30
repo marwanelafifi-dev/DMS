@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card, CardBody, Badge, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Check, Plus, Shield, Trash2, X } from 'lucide-react';
+import { AlertCircle, Check, Edit2, Plus, Shield, Trash2, X } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 
@@ -26,6 +26,14 @@ interface PermissionGrant {
   grantedAt: string;
 }
 
+interface RolePermission {
+  role: string;
+  viewOnly: boolean;
+  downloadReadOnly: boolean;
+  downloadForEditing: boolean;
+  adminForceUnlock: boolean;
+}
+
 // Values match HasPermissionForMethod() in api/Middleware/RBACMiddleware.cs —
 // only the labels shown here are friendlier names for the same underlying roles.
 const ROLE_OPTIONS = [
@@ -37,14 +45,23 @@ const ROLE_OPTIONS = [
 
 // Same four permissions previously shown in the plain Permissions Matrix
 // table — now rendered as checkmarked tags per role card instead of a row.
-const PERMISSION_LABELS = ['View Only', 'Download (Read-Only)', 'Download for Editing', 'Admin / Force-Unlock'] as const;
+// Editing these on a card's Edit button changes real access (see
+// RolePermissionsController / RBACMiddleware), not just what's displayed.
+const PERMISSION_KEYS = ['viewOnly', 'downloadReadOnly', 'downloadForEditing', 'adminForceUnlock'] as const;
+const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
+  viewOnly: 'View Only',
+  downloadReadOnly: 'Download (Read-Only)',
+  downloadForEditing: 'Download for Editing',
+  adminForceUnlock: 'Admin / Force-Unlock',
+};
 
-const ROLE_CARDS: Array<{ value: string; label: string; description: string; permissions: [boolean, boolean, boolean, boolean] }> = [
-  { value: 'Admin', label: 'Full Access', description: 'Full access to all folders, documents, and admin settings', permissions: [true, true, true, true] },
-  { value: 'QA', label: 'Quality', description: 'Reviews documents at QA stages of the C-Doc workflow', permissions: [true, true, false, false] },
-  { value: 'Writer', label: 'Folder Member', description: 'Can view, download, and upload within assigned folders', permissions: [true, true, true, false] },
-  { value: 'Manager', label: 'Folder Owner', description: 'Owns the folder — same access as a member, plus deletion', permissions: [true, true, true, false] },
-];
+const ROLE_CARD_META: Record<string, { label: string; description: string }> = {
+  Admin: { label: 'Full Access', description: 'Full access to all folders, documents, and admin settings' },
+  QA: { label: 'Quality', description: 'Reviews documents at QA stages of the C-Doc workflow' },
+  Writer: { label: 'Folder Member', description: 'Can view, download, and upload within assigned folders' },
+  Manager: { label: 'Folder Owner', description: 'Owns the folder — same access as a member, plus deletion' },
+};
+const ROLE_CARD_ORDER = ['Admin', 'QA', 'Writer', 'Manager'];
 
 const roleLabel = (role: string): string => ROLE_OPTIONS.find(r => r.value === role)?.label ?? role;
 
@@ -65,6 +82,7 @@ export function RolePermissions() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [users, setUsers] = useState<UserLite[]>([]);
   const [grants, setGrants] = useState<PermissionGrant[]>([]);
+  const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermission>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -74,18 +92,26 @@ export function RolePermissions() {
 
   const [revokeConfirm, setRevokeConfirm] = useState<{ permissionId?: string; label?: string }>({});
 
+  const [editingRole, setEditingRole] = useState<RolePermission | null>(null);
+  const [editPermissions, setEditPermissions] = useState<Record<typeof PERMISSION_KEYS[number], boolean>>({
+    viewOnly: false, downloadReadOnly: false, downloadForEditing: false, adminForceUnlock: false,
+  });
+  const [isSavingRole, setIsSavingRole] = useState(false);
+
   const loadData = async () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [foldersRes, usersRes] = await Promise.all([
+      const [foldersRes, usersRes, rolePermsRes] = await Promise.all([
         apiClient.getFolders(),
         apiClient.getUsers({ activeOnly: false }),
+        apiClient.getRolePermissions(),
       ]);
       const folderList: Folder[] = foldersRes.data || [];
       const userList: UserLite[] = usersRes.data || [];
       setFolders(folderList);
       setUsers(userList);
+      setRolePermissions(Object.fromEntries((rolePermsRes.data || []).map((rp: RolePermission) => [rp.role, rp])));
 
       const permissionsPerFolder = await Promise.all(
         folderList.map(f => apiClient.getFolderPermissions(f.folderId))
@@ -137,6 +163,31 @@ export function RolePermissions() {
       showError(err.response?.data?.error || 'Failed to grant permission');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openEditRole = (role: RolePermission) => {
+    setEditingRole(role);
+    setEditPermissions({
+      viewOnly: role.viewOnly,
+      downloadReadOnly: role.downloadReadOnly,
+      downloadForEditing: role.downloadForEditing,
+      adminForceUnlock: role.adminForceUnlock,
+    });
+  };
+
+  const handleSaveRolePermissions = async () => {
+    if (!editingRole) return;
+    setIsSavingRole(true);
+    try {
+      const res = await apiClient.updateRolePermission(editingRole.role, editPermissions);
+      setRolePermissions((prev) => ({ ...prev, [editingRole.role]: res.data }));
+      showSuccess(`${roleLabel(editingRole.role)} permissions updated`);
+      setEditingRole(null);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to update role permissions');
+    } finally {
+      setIsSavingRole(false);
     }
   };
 
@@ -285,33 +336,50 @@ export function RolePermissions() {
       <div className="space-y-4">
         <h3 className="text-lg font-serif font-bold tracking-tight text-navy-900 dark:text-white">Role Permissions</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {ROLE_CARDS.map((role) => (
-            <Card key={role.value} className="overflow-hidden">
+          {ROLE_CARD_ORDER.map((roleValue) => {
+            const meta = ROLE_CARD_META[roleValue];
+            const permission = rolePermissions[roleValue];
+            if (!permission) return null;
+            return (
+            <Card key={roleValue} className="overflow-hidden">
               <CardBody className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-navy-800 dark:text-navy-300">
-                    <Shield className="h-4 w-4" />
-                  </span>
-                  <h4 className="font-serif font-bold text-navy-900 dark:text-white">{role.label}</h4>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-navy-800 dark:text-navy-300">
+                      <Shield className="h-4 w-4" />
+                    </span>
+                    <h4 className="font-serif font-bold text-navy-900 dark:text-white">{meta.label}</h4>
+                  </div>
+                  <button
+                    onClick={() => openEditRole(permission)}
+                    className="p-1.5 hover:bg-gray-200 dark:hover:bg-navy-700 rounded-lg transition-colors text-blue-600 dark:text-blue-400"
+                    title={`Edit ${meta.label} permissions`}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <p className="text-sm text-gray-500 dark:text-navy-400">{role.description}</p>
+                <p className="text-sm text-gray-500 dark:text-navy-400">{meta.description}</p>
                 <div>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">Permissions</p>
                   <div className="flex flex-wrap gap-2">
-                    {PERMISSION_LABELS.map((label, index) => role.permissions[index] && (
+                    {PERMISSION_KEYS.map((key) => permission[key] && (
                       <span
-                        key={label}
+                        key={key}
                         className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300"
                       >
                         <Check className="h-3 w-3" />
-                        {label}
+                        {PERMISSION_LABELS[key]}
                       </span>
                     ))}
+                    {PERMISSION_KEYS.every((key) => !permission[key]) && (
+                      <span className="text-xs text-gray-400 dark:text-navy-500">No permissions</span>
+                    )}
                   </div>
                 </div>
               </CardBody>
             </Card>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -414,6 +482,52 @@ export function RolePermissions() {
               >
                 Revoke
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Role Permissions Modal */}
+      {editingRole && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
+            <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
+              <h3 className="text-lg font-serif font-bold tracking-tight text-white">Edit {roleLabel(editingRole.role)} Permissions</h3>
+              <button onClick={() => setEditingRole(null)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  This changes real access for every user holding this role on any folder — not just what's displayed.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {PERMISSION_KEYS.map((key) => (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editPermissions[key]}
+                      onChange={(e) => setEditPermissions((prev) => ({ ...prev, [key]: e.target.checked }))}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-navy-200">{PERMISSION_LABELS[key]}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
+              <button
+                onClick={() => setEditingRole(null)}
+                className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <Button variant="primary" className="flex-1" onClick={handleSaveRolePermissions} isLoading={isSavingRole}>
+                Save
+              </Button>
             </div>
           </div>
         </div>

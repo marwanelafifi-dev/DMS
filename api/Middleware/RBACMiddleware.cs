@@ -148,7 +148,7 @@ public class RBACMiddleware
         }
 
         // التحقق من الصلاحيات بناءً على الـ method
-        if (!HasPermissionForMethod(method, permission.Role))
+        if (!await HasPermissionForMethodAsync(dbContext, method, path, permission.Role))
         {
             _logger.LogWarning("User {UserId} with role {Role} cannot {Method} document", userId, permission.Role, method);
             context.Response.StatusCode = 403;
@@ -209,7 +209,7 @@ public class RBACMiddleware
         }
 
         // التحقق من الصلاحيات
-        if (!HasPermissionForMethod(method, permission.Role))
+        if (!await HasPermissionForMethodAsync(dbContext, method, path, permission.Role))
         {
             _logger.LogWarning("User {UserId} with role {Role} cannot {Method} folder", userId, permission.Role, method);
             context.Response.StatusCode = 403;
@@ -226,14 +226,27 @@ public class RBACMiddleware
         return false;
     }
 
-    private bool HasPermissionForMethod(string method, string role)
+    // Reads the editable dms_role_permissions table (see RolePermissionsController)
+    // instead of a hardcoded role list — editing a role's permissions on the Roles
+    // admin page changes what actually happens here, not just what's displayed.
+    // GET is split between "view" and "download" by path since both use the same
+    // HTTP method; POST and PUT share "download_for_editing" since the Roles page
+    // only exposes one edit-related toggle, not one per HTTP method.
+    private async Task<bool> HasPermissionForMethodAsync(DmsContext dbContext, string method, string path, string role)
     {
+        var permission = await dbContext.RolePermissions.FirstOrDefaultAsync(rp => rp.Role == role);
+        if (permission == null)
+        {
+            _logger.LogWarning("No role permission row found for role {Role} — denying by default", role);
+            return false;
+        }
+
         return method.ToUpper() switch
         {
-            "GET" => role is "Reader" or "Writer" or "Manager" or "QA" or "Admin",
-            "POST" => role is "Writer" or "Manager" or "QA" or "Admin",
-            "PUT" => role is "Manager" or "QA" or "Admin",
-            "DELETE" => role is "Manager" or "Admin",
+            "GET" => path.Contains("/download", StringComparison.OrdinalIgnoreCase) ? permission.DownloadReadOnly : permission.ViewOnly,
+            "POST" => permission.DownloadForEditing,
+            "PUT" => permission.DownloadForEditing,
+            "DELETE" => permission.AdminForceUnlock,
             _ => false
         };
     }

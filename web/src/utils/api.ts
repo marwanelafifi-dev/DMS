@@ -504,6 +504,17 @@ class APIClient {
     return data;
   }
 
+  // Role Permissions
+  async getRolePermissions() {
+    const { data } = await this.client.get<ApiResponse>('/role-permissions');
+    return data;
+  }
+
+  async updateRolePermission(role: string, permissions: { viewOnly: boolean; downloadReadOnly: boolean; downloadForEditing: boolean; adminForceUnlock: boolean }) {
+    const { data } = await this.client.put<ApiResponse>(`/role-permissions/${role}`, permissions);
+    return data;
+  }
+
   // Document Versions
   async getDocumentVersions(documentId: string, params?: any) {
     const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions`, { params });

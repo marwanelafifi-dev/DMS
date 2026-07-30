@@ -32,6 +32,7 @@ public class DmsContext : DbContext
     public DbSet<DmsGroup> Groups => Set<DmsGroup>();
     public DbSet<DmsGroupMember> GroupMembers => Set<DmsGroupMember>();
     public DbSet<DmsGroupSubgroup> GroupSubgroups => Set<DmsGroupSubgroup>();
+    public DbSet<DmsRolePermission> RolePermissions => Set<DmsRolePermission>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -91,6 +92,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsGroup>().ToTable("dms_groups").HasKey(g => g.GroupId);
         modelBuilder.Entity<DmsGroupMember>().ToTable("dms_group_members").HasKey(gm => gm.GroupMemberId);
         modelBuilder.Entity<DmsGroupSubgroup>().ToTable("dms_group_subgroups").HasKey(gs => gs.GroupSubgroupId);
+        modelBuilder.Entity<DmsRolePermission>().ToTable("dms_role_permissions").HasKey(rp => rp.Role);
 
         modelBuilder.Entity<DmsGroupMember>()
             .HasOne(gm => gm.Group)
