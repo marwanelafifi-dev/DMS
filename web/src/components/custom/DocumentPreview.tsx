@@ -256,16 +256,28 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
         const activeSheet = sheets[safeSheetIndex];
         return (
           <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
-            <div className="flex flex-shrink-0 items-center gap-2 border-b border-[#dbe2ec] bg-[#f7fafc] px-4 py-3 text-sm font-semibold text-[#2f3e83] dark:border-white/10 dark:bg-slate-800 dark:text-white">
-              <Sheet className="h-4 w-4 text-emerald-600" />Read-only spreadsheet preview
-            </div>
+            <PreviewToolbar
+              icon={<Sheet className="h-4 w-4 text-emerald-600" />}
+              label="Read-only spreadsheet preview"
+              zoom={zoom}
+              onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
+              onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
+              onZoomReset={() => setZoom(100)}
+              pageLabel={`Sheet ${safeSheetIndex + 1} of ${sheets.length}`}
+              onPrev={() => setPageIndex((i) => Math.max(i - 1, 0))}
+              onNext={() => setPageIndex((i) => Math.min(i + 1, sheets.length - 1))}
+              canPrev={safeSheetIndex > 0}
+              canNext={safeSheetIndex < sheets.length - 1}
+            />
             <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 bg-[#eff6f1] text-[#3f5e49] dark:bg-emerald-950/40 dark:text-emerald-100">
-                  <tr>{activeSheet.columns.map((column) => <th key={column} className="border-b border-r border-[#dbe2ec] px-4 py-3 font-semibold last:border-r-0 dark:border-white/10">{column}</th>)}</tr>
-                </thead>
-                <tbody>{activeSheet.rows.map((row, rowIndex) => <tr key={row.join('-')} className={rowIndex % 2 ? 'bg-[#fbfcfe] dark:bg-slate-800/50' : ''}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`} className="border-b border-r border-[#edf1f5] px-4 py-3 text-[#52627a] last:border-r-0 dark:border-white/10 dark:text-slate-200">{cell}</td>)}</tr>)}</tbody>
-              </table>
+              <div className="origin-top transition-transform" style={{ transform: `scale(${zoom / 100})` }}>
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-[#eff6f1] text-[#3f5e49] dark:bg-emerald-950/40 dark:text-emerald-100">
+                    <tr>{activeSheet.columns.map((column) => <th key={column} className="border-b border-r border-[#dbe2ec] px-4 py-3 font-semibold last:border-r-0 dark:border-white/10">{column}</th>)}</tr>
+                  </thead>
+                  <tbody>{activeSheet.rows.map((row, rowIndex) => <tr key={row.join('-')} className={rowIndex % 2 ? 'bg-[#fbfcfe] dark:bg-slate-800/50' : ''}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`} className="border-b border-r border-[#edf1f5] px-4 py-3 text-[#52627a] last:border-r-0 dark:border-white/10 dark:text-slate-200">{cell}</td>)}</tr>)}</tbody>
+                </table>
+              </div>
             </div>
             {sheets.length > 1 && (
               <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto border-t border-[#dbe2ec] bg-[#f1f5f9] px-2 py-1.5 dark:border-white/10 dark:bg-slate-800" role="tablist" aria-label="Spreadsheet sheets">
