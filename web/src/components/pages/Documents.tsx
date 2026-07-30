@@ -1074,7 +1074,7 @@ export function Documents() {
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
           <Dialog.Content asChild>
-            <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-lg max-h-[90vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 shadow-xl">
+            <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-lg max-h-[98vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] p-5 dark:border-white/10">
               <Dialog.Title className="section-heading">Upload Documents</Dialog.Title>
               <Dialog.Close asChild><button type="button" disabled={isUploading} className="text-slate-500 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400" aria-label="Close upload dialog"><X className="h-5 w-5" /></button></Dialog.Close>
