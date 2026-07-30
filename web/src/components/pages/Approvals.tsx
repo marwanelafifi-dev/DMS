@@ -17,6 +17,8 @@ interface QueueDocument {
   ownerName: string;
   department: string;
   status: string;
+  originalDocumentId?: string | null;
+  hasDocId?: boolean;
 }
 
 interface QueueApproval {
@@ -337,9 +339,15 @@ function ApprovalQueueTable({
                 } hover:bg-gray-100 dark:hover:bg-slate-800/60 transition-colors`}
               >
                 <td className="px-6 py-4">
-                  <p className="font-mono text-xs text-gray-500 dark:text-gray-400" title={doc.documentId}>
-                    {doc.documentId.slice(0, 8)}…
-                  </p>
+                  {doc.originalDocumentId ? (
+                    <p className="font-mono text-xs text-navy-900 dark:text-white" title={doc.documentId}>
+                      {doc.originalDocumentId}
+                    </p>
+                  ) : (
+                    <p className="font-mono text-xs italic text-gray-400 dark:text-gray-500" title={`No Document ID set — internal ID: ${doc.documentId}`}>
+                      Not set
+                    </p>
+                  )}
                 </td>
                 <td className="px-6 py-4">
                   <p className="font-medium text-navy-900 dark:text-white">{doc.fileName}</p>
