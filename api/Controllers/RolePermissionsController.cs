@@ -28,7 +28,10 @@ public class RolePermissionsController(DmsContext context, AuditService auditSer
                     rp.Role,
                     rp.ViewOnly,
                     rp.DownloadReadOnly,
-                    rp.DownloadForEditing,
+                    rp.Upload,
+                    rp.UpdatePermission,
+                    rp.Approve,
+                    rp.Reject,
                     rp.AdminForceUnlock,
                     rp.UpdatedAt,
                 })
@@ -57,7 +60,10 @@ public class RolePermissionsController(DmsContext context, AuditService auditSer
 
             permission.ViewOnly = req.ViewOnly;
             permission.DownloadReadOnly = req.DownloadReadOnly;
-            permission.DownloadForEditing = req.DownloadForEditing;
+            permission.Upload = req.Upload;
+            permission.UpdatePermission = req.UpdatePermission;
+            permission.Approve = req.Approve;
+            permission.Reject = req.Reject;
             permission.AdminForceUnlock = req.AdminForceUnlock;
             permission.UpdatedAt = DateTime.UtcNow;
 
@@ -68,7 +74,10 @@ public class RolePermissionsController(DmsContext context, AuditService auditSer
                 permission.Role,
                 permission.ViewOnly,
                 permission.DownloadReadOnly,
-                permission.DownloadForEditing,
+                permission.Upload,
+                permission.UpdatePermission,
+                permission.Approve,
+                permission.Reject,
                 permission.AdminForceUnlock,
             });
 
@@ -77,7 +86,18 @@ public class RolePermissionsController(DmsContext context, AuditService auditSer
             return Ok(new
             {
                 success = true,
-                data = new { permission.Role, permission.ViewOnly, permission.DownloadReadOnly, permission.DownloadForEditing, permission.AdminForceUnlock, permission.UpdatedAt },
+                data = new
+                {
+                    permission.Role,
+                    permission.ViewOnly,
+                    permission.DownloadReadOnly,
+                    permission.Upload,
+                    permission.UpdatePermission,
+                    permission.Approve,
+                    permission.Reject,
+                    permission.AdminForceUnlock,
+                    permission.UpdatedAt,
+                },
             });
         }
         catch (Exception ex)
@@ -88,4 +108,4 @@ public class RolePermissionsController(DmsContext context, AuditService auditSer
     }
 }
 
-public record UpdateRolePermissionRequest(bool ViewOnly, bool DownloadReadOnly, bool DownloadForEditing, bool AdminForceUnlock);
+public record UpdateRolePermissionRequest(bool ViewOnly, bool DownloadReadOnly, bool Upload, bool UpdatePermission, bool Approve, bool Reject, bool AdminForceUnlock);

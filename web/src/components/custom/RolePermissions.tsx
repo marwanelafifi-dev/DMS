@@ -30,7 +30,10 @@ interface RolePermission {
   role: string;
   viewOnly: boolean;
   downloadReadOnly: boolean;
-  downloadForEditing: boolean;
+  upload: boolean;
+  updatePermission: boolean;
+  approve: boolean;
+  reject: boolean;
   adminForceUnlock: boolean;
 }
 
@@ -43,15 +46,18 @@ const ROLE_OPTIONS = [
   { value: 'Admin', label: 'Full Access' },
 ];
 
-// Same four permissions previously shown in the plain Permissions Matrix
-// table — now rendered as checkmarked tags per role card instead of a row.
-// Editing these on a card's Edit button changes real access (see
-// RolePermissionsController / RBACMiddleware), not just what's displayed.
-const PERMISSION_KEYS = ['viewOnly', 'downloadReadOnly', 'downloadForEditing', 'adminForceUnlock'] as const;
+// Rendered as checkmarked tags per role card, and as checkboxes in the Edit
+// modal. Editing these changes real access — see RolePermissionsController /
+// RBACMiddleware (view/download/upload/update) and ApprovalsController
+// (approve/reject gate the QA and Manager decision endpoints).
+const PERMISSION_KEYS = ['viewOnly', 'downloadReadOnly', 'upload', 'updatePermission', 'approve', 'reject', 'adminForceUnlock'] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   viewOnly: 'View Only',
   downloadReadOnly: 'Download (Read-Only)',
-  downloadForEditing: 'Download for Editing',
+  upload: 'Upload',
+  updatePermission: 'Update',
+  approve: 'Approve',
+  reject: 'Reject',
   adminForceUnlock: 'Admin / Force-Unlock',
 };
 
@@ -94,7 +100,7 @@ export function RolePermissions() {
 
   const [editingRole, setEditingRole] = useState<RolePermission | null>(null);
   const [editPermissions, setEditPermissions] = useState<Record<typeof PERMISSION_KEYS[number], boolean>>({
-    viewOnly: false, downloadReadOnly: false, downloadForEditing: false, adminForceUnlock: false,
+    viewOnly: false, downloadReadOnly: false, upload: false, updatePermission: false, approve: false, reject: false, adminForceUnlock: false,
   });
   const [isSavingRole, setIsSavingRole] = useState(false);
 
@@ -171,7 +177,10 @@ export function RolePermissions() {
     setEditPermissions({
       viewOnly: role.viewOnly,
       downloadReadOnly: role.downloadReadOnly,
-      downloadForEditing: role.downloadForEditing,
+      upload: role.upload,
+      updatePermission: role.updatePermission,
+      approve: role.approve,
+      reject: role.reject,
       adminForceUnlock: role.adminForceUnlock,
     });
   };

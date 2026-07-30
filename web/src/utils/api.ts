@@ -510,7 +510,7 @@ class APIClient {
     return data;
   }
 
-  async updateRolePermission(role: string, permissions: { viewOnly: boolean; downloadReadOnly: boolean; downloadForEditing: boolean; adminForceUnlock: boolean }) {
+  async updateRolePermission(role: string, permissions: { viewOnly: boolean; downloadReadOnly: boolean; upload: boolean; updatePermission: boolean; approve: boolean; reject: boolean; adminForceUnlock: boolean }) {
     const { data } = await this.client.put<ApiResponse>(`/role-permissions/${role}`, permissions);
     return data;
   }

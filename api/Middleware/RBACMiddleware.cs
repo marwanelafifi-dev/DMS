@@ -230,8 +230,7 @@ public class RBACMiddleware
     // instead of a hardcoded role list — editing a role's permissions on the Roles
     // admin page changes what actually happens here, not just what's displayed.
     // GET is split between "view" and "download" by path since both use the same
-    // HTTP method; POST and PUT share "download_for_editing" since the Roles page
-    // only exposes one edit-related toggle, not one per HTTP method.
+    // HTTP method.
     private async Task<bool> HasPermissionForMethodAsync(DmsContext dbContext, string method, string path, string role)
     {
         var permission = await dbContext.RolePermissions.FirstOrDefaultAsync(rp => rp.Role == role);
@@ -244,8 +243,8 @@ public class RBACMiddleware
         return method.ToUpper() switch
         {
             "GET" => path.Contains("/download", StringComparison.OrdinalIgnoreCase) ? permission.DownloadReadOnly : permission.ViewOnly,
-            "POST" => permission.DownloadForEditing,
-            "PUT" => permission.DownloadForEditing,
+            "POST" => permission.Upload,
+            "PUT" => permission.UpdatePermission,
             "DELETE" => permission.AdminForceUnlock,
             _ => false
         };
