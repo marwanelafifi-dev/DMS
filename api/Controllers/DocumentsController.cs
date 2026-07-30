@@ -343,7 +343,9 @@ public class DocumentsController(
 
     /// <summary>
     /// System auto-generation of a Document ID at QA Triage — QA/Admin only.
-    /// Format: DOC-YYYYMMDD-#### (daily sequence).
+    /// Format: SWS-{n}, where {n} is one more than the highest existing SWS-{n}
+    /// Document ID across all documents (e.g. last one on file is SWS-2, so the
+    /// next generated one is SWS-3).
     /// </summary>
     [HttpPost("{id}/generate-doc-id")]
     public async Task<ActionResult<object>> GenerateDocId(Guid id)
@@ -357,16 +359,19 @@ public class DocumentsController(
             var roleCheck = await RequireQaOrAdminAsync(document.FolderId);
             if (roleCheck != null) return roleCheck;
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            var sequence = await context.DocIdSequences.FirstOrDefaultAsync(s => s.SequenceDate == today);
-            if (sequence == null)
-            {
-                sequence = new DmsDocIdSequence { SequenceDate = today, NextSeq = 1 };
-                context.DocIdSequences.Add(sequence);
-            }
+            var existingIds = await context.Documents
+                .Where(d => d.OriginalDocumentId != null && EF.Functions.ILike(d.OriginalDocumentId, "SWS-%"))
+                .Select(d => d.OriginalDocumentId!)
+                .ToListAsync();
 
-            var generated = $"DOC-{today:yyyyMMdd}-{sequence.NextSeq:D4}";
-            sequence.NextSeq++;
+            var lastNumber = existingIds
+                .Select(docId => System.Text.RegularExpressions.Regex.Match(docId, @"^SWS-(\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                .Where(match => match.Success)
+                .Select(match => int.Parse(match.Groups[1].Value))
+                .DefaultIfEmpty(0)
+                .Max();
+
+            var generated = $"SWS-{lastNumber + 1}";
 
             document.OriginalDocumentId = generated;
             document.UpdatedAt = DateTime.UtcNow;
