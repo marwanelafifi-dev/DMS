@@ -679,6 +679,9 @@ export function Documents() {
     const errors: string[] = [];
     const parseErrors: string[] = [];
     const submittedForApproval: Array<{ documentId: string; filename: string; filesize: number; uploadedAt: string }> = [];
+    // Capture folder ID early to ensure it's consistent across all uploads in this batch
+    const uploadFolderId = selectedFolder.folderId;
+    const uploadFolder = selectedFolder;
     // Renaming only applies when uploading a single file — the field is hidden
     // for multi-file uploads since there's no unambiguous target for a single name.
     const trimmedRename = uploadFileName.trim();
@@ -695,7 +698,7 @@ export function Documents() {
           setActiveUploadStage('uploading');
           setActiveUploadFileName(uploadFile.name);
           const docRes = await apiClient.createDocument({
-            folderId: selectedFolderId,
+            folderId: uploadFolderId,
             title: uploadFile.name.replace(/\.[^/.]+$/, ''),
             ownerId: uploadOwnerId,
             description: uploadDescription.trim(),
@@ -730,8 +733,8 @@ export function Documents() {
           const source: Document = {
             documentId: createdDocument.documentId,
             currentVersionId: uploadRes.data?.versionId,
-            folderId: selectedFolderId,
-            folder: selectedFolder,
+            folderId: uploadFolderId,
+            folder: uploadFolder,
             name: uploadFile.name.replace(/\.[^/.]+$/, ''),
             fileName: uploadFile.name,
             fileSize: uploadFile.size,
