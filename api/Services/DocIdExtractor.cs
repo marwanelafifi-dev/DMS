@@ -8,19 +8,29 @@ namespace DMS.Api.Services;
 // Examples: "Doc No.: SWS-13100002", "Document ID: QM-2026-0042"
 public static partial class DocIdExtractor
 {
-    // Pattern: matches "Doc No.:", "Document ID:", etc. followed by the ID value
+    // Pattern: matches "Doc No.:", "Document ID:", etc. followed by the ID value.
+    // Docling exports tables as Markdown (e.g. "| Doc No.: | SWS-13100002 |"), so the
+    // label and value are often separated by a "|" cell divider and/or multiple
+    // punctuation characters (".:") rather than a single colon — the separator here
+    // allows any mix of punctuation, whitespace, and "|" between the two.
     // Captures IDs like SWS-13100002, QM-2026-0042, ABC-123
     [GeneratedRegex(
-        @"(?:doc(?:ument)?\s*(?:no|id)\s*[:\.\-]?\s*)([A-Za-z0-9\-\.]+)",
+        @"doc(?:ument)?\.?\s*(?:no|id)\.?\s*[:\-\|\s]*([A-Za-z0-9][A-Za-z0-9\-\./]{2,40})",
         RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex DocIdPattern();
+
+    // Docling renders emphasized table headers/labels as Markdown ("**Doc No.:**"),
+    // which otherwise breaks the label match right after "doc".
+    [GeneratedRegex(@"[*_`]")]
+    private static partial Regex MarkdownEmphasisPattern();
 
     public static string? Extract(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return null;
 
-        var match = DocIdPattern().Match(text);
+        var cleaned = MarkdownEmphasisPattern().Replace(text, "");
+        var match = DocIdPattern().Match(cleaned);
         if (!match.Success)
             return null;
 
