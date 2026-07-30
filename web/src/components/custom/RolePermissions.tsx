@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card, CardBody, Badge, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Check, Plus, Shield, Trash2, X } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 
@@ -33,6 +33,17 @@ const ROLE_OPTIONS = [
   { value: 'Manager', label: 'Folder Owner' },
   { value: 'QA', label: 'Quality' },
   { value: 'Admin', label: 'Full Access' },
+];
+
+// Same four permissions previously shown in the plain Permissions Matrix
+// table — now rendered as checkmarked tags per role card instead of a row.
+const PERMISSION_LABELS = ['View Only', 'Download (Read-Only)', 'Download for Editing', 'Admin / Force-Unlock'] as const;
+
+const ROLE_CARDS: Array<{ value: string; label: string; description: string; permissions: [boolean, boolean, boolean, boolean] }> = [
+  { value: 'Admin', label: 'Full Access', description: 'Full access to all folders, documents, and admin settings', permissions: [true, true, true, true] },
+  { value: 'QA', label: 'Quality', description: 'Reviews documents at QA stages of the C-Doc workflow', permissions: [true, true, false, false] },
+  { value: 'Writer', label: 'Folder Member', description: 'Can view, download, and upload within assigned folders', permissions: [true, true, true, false] },
+  { value: 'Manager', label: 'Folder Owner', description: 'Owns the folder — same access as a member, plus deletion', permissions: [true, true, true, false] },
 ];
 
 const roleLabel = (role: string): string => ROLE_OPTIONS.find(r => r.value === role)?.label ?? role;
@@ -144,7 +155,7 @@ export function RolePermissions() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Folder Permissions</h2>
+        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Roles</h2>
         <SkeletonTable />
       </div>
     );
@@ -153,7 +164,7 @@ export function RolePermissions() {
   if (loadError) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Folder Permissions</h2>
+        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Roles</h2>
         <Card className="border-l-4 border-l-red-600">
           <CardBody>
             <p className="text-red-700 dark:text-red-400 font-medium">{loadError}</p>
@@ -168,98 +179,140 @@ export function RolePermissions() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Folder Permissions</h2>
-        <Button
-          variant="primary"
-          size="sm"
-          className="flex items-center gap-2"
-          onClick={() => setShowGrantForm(true)}
-          disabled={folders.length === 0 || users.length === 0}
-        >
-          <Plus className="w-4 h-4" />
-          Grant Permission
-        </Button>
+      {/* Page header */}
+      <div>
+        <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Roles</h2>
+        <p className="text-sm text-gray-500 dark:text-navy-400">Define roles and manage access permissions</p>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="text-center">
-            <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Total Grants</p>
-            <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{grants.length}</p>
-          </CardBody>
-        </Card>
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="text-center">
-            <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Folders</p>
-            <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{folders.length}</p>
-          </CardBody>
-        </Card>
-        {ROLE_OPTIONS.map(r => (
-          <Card key={r.value} className="border-l-4 border-l-navy-700">
+      {/* Folder Permissions — shown first */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-serif font-bold tracking-tight text-navy-900 dark:text-white">Folder Permissions</h3>
+          <Button
+            variant="primary"
+            size="sm"
+            className="flex items-center gap-2"
+            onClick={() => setShowGrantForm(true)}
+            disabled={folders.length === 0 || users.length === 0}
+          >
+            <Plus className="w-4 h-4" />
+            Grant Permission
+          </Button>
+        </div>
+
+        {/* Summary */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <Card className="border-l-4 border-l-navy-700">
             <CardBody className="text-center">
-              <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">{r.label}</p>
-              <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{roleCounts[r.value] || 0}</p>
+              <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Total Grants</p>
+              <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{grants.length}</p>
             </CardBody>
           </Card>
-        ))}
-      </div>
+          <Card className="border-l-4 border-l-navy-700">
+            <CardBody className="text-center">
+              <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Folders</p>
+              <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{folders.length}</p>
+            </CardBody>
+          </Card>
+          {ROLE_OPTIONS.map(r => (
+            <Card key={r.value} className="border-l-4 border-l-navy-700">
+              <CardBody className="text-center">
+                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">{r.label}</p>
+                <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{roleCounts[r.value] || 0}</p>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
 
-      {/* Grants Table */}
-      <div className="overflow-hidden rounded-[5px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
-        <table className="w-full text-sm bg-white dark:bg-navy-900">
-          <thead className="border-b border-[#e2e8f0] bg-[#f7f9fc] dark:border-white/10 dark:bg-slate-950">
-            <tr className="text-left text-xs uppercase text-[#64748b] dark:text-slate-400">
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Folder</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">User</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Role</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Granted</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
-            {grants.length > 0 ? (
-              grants.map((grant, idx) => (
-                <tr
-                  key={grant.permissionId}
-                  className={`${
-                    idx % 2 === 0
-                      ? 'bg-white dark:bg-navy-900'
-                      : 'bg-gray-50 dark:bg-navy-950/60'
-                  } hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
-                >
-                  <td className="px-6 py-4 font-semibold text-navy-900 dark:text-white">{grant.folderName}</td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-navy-200">{grant.userName}</td>
-                  <td className="px-6 py-4">
-                    <Badge status={getRoleBadge(grant.role)} size="sm" variant="outline">
-                      {roleLabel(grant.role)}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
-                    {new Date(grant.grantedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => setRevokeConfirm({ permissionId: grant.permissionId, label: `${grant.userName} on ${grant.folderName}` })}
-                      className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600 dark:text-red-400"
-                      title="Revoke permission"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+        {/* Grants Table */}
+        <div className="overflow-hidden rounded-[5px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
+          <table className="w-full text-sm bg-white dark:bg-navy-900">
+            <thead className="border-b border-[#e2e8f0] bg-[#f7f9fc] dark:border-white/10 dark:bg-slate-950">
+              <tr className="text-left text-xs uppercase text-[#64748b] dark:text-slate-400">
+                <th className="px-6 py-4 font-semibold text-sm tracking-wide">Folder</th>
+                <th className="px-6 py-4 font-semibold text-sm tracking-wide">User</th>
+                <th className="px-6 py-4 font-semibold text-sm tracking-wide">Role</th>
+                <th className="px-6 py-4 font-semibold text-sm tracking-wide">Granted</th>
+                <th className="px-6 py-4 font-semibold text-sm tracking-wide text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
+              {grants.length > 0 ? (
+                grants.map((grant, idx) => (
+                  <tr
+                    key={grant.permissionId}
+                    className={`${
+                      idx % 2 === 0
+                        ? 'bg-white dark:bg-navy-900'
+                        : 'bg-gray-50 dark:bg-navy-950/60'
+                    } hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
+                  >
+                    <td className="px-6 py-4 font-semibold text-navy-900 dark:text-white">{grant.folderName}</td>
+                    <td className="px-6 py-4 text-gray-700 dark:text-navy-200">{grant.userName}</td>
+                    <td className="px-6 py-4">
+                      <Badge status={getRoleBadge(grant.role)} size="sm" variant="outline">
+                        {roleLabel(grant.role)}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
+                      {new Date(grant.grantedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => setRevokeConfirm({ permissionId: grant.permissionId, label: `${grant.userName} on ${grant.folderName}` })}
+                        className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600 dark:text-red-400"
+                        title="Revoke permission"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-navy-400">
+                    No folder permissions granted yet
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-navy-400">
-                  No folder permissions granted yet
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Role cards */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-serif font-bold tracking-tight text-navy-900 dark:text-white">Role Permissions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {ROLE_CARDS.map((role) => (
+            <Card key={role.value} className="overflow-hidden">
+              <CardBody className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-navy-800 dark:text-navy-300">
+                    <Shield className="h-4 w-4" />
+                  </span>
+                  <h4 className="font-serif font-bold text-navy-900 dark:text-white">{role.label}</h4>
+                </div>
+                <p className="text-sm text-gray-500 dark:text-navy-400">{role.description}</p>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">Permissions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {PERMISSION_LABELS.map((label, index) => role.permissions[index] && (
+                      <span
+                        key={label}
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300"
+                      >
+                        <Check className="h-3 w-3" />
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {/* Info Box */}
