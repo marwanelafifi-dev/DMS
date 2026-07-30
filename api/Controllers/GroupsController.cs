@@ -27,6 +27,7 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
                     g.CreatedAt,
                     g.UpdatedAt,
                     MemberCount = context.GroupMembers.Count(gm => gm.GroupId == g.GroupId),
+                    SubgroupCount = context.GroupSubgroups.Count(gs => gs.ParentGroupId == g.GroupId),
                 })
                 .ToListAsync();
 
@@ -63,10 +64,23 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
                 })
                 .ToListAsync();
 
+            var subgroups = await context.GroupSubgroups
+                .Where(gs => gs.ParentGroupId == id)
+                .Include(gs => gs.ChildGroup)
+                .OrderBy(gs => gs.ChildGroup!.Name)
+                .Select(gs => new
+                {
+                    gs.GroupSubgroupId,
+                    ChildGroupId = gs.ChildGroupId,
+                    ChildGroupName = gs.ChildGroup!.Name,
+                    gs.AddedAt,
+                })
+                .ToListAsync();
+
             return Ok(new
             {
                 success = true,
-                data = new { group.GroupId, group.Name, group.Description, group.CreatedAt, group.UpdatedAt, Members = members },
+                data = new { group.GroupId, group.Name, group.Description, group.CreatedAt, group.UpdatedAt, Members = members, Subgroups = subgroups },
             });
         }
         catch (Exception ex)
@@ -239,8 +253,111 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
+
+    // POST /api/groups/{id}/subgroups — nest an existing group inside this one
+    [HttpPost("{id}/subgroups")]
+    public async Task<ActionResult<object>> AddSubgroup(Guid id, [FromBody] AddSubgroupRequest req)
+    {
+        try
+        {
+            if (id == req.ChildGroupId)
+                return BadRequest(new { success = false, error = "A group cannot contain itself" });
+
+            var parent = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == id);
+            if (parent == null)
+                return NotFound(new { success = false, error = "Group not found" });
+
+            var child = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == req.ChildGroupId);
+            if (child == null)
+                return NotFound(new { success = false, error = "Subgroup not found" });
+
+            if (await context.GroupSubgroups.AnyAsync(gs => gs.ParentGroupId == id && gs.ChildGroupId == req.ChildGroupId))
+                return BadRequest(new { success = false, error = "This group is already a subgroup" });
+
+            // Reject if the proposed child already (directly or indirectly) contains
+            // the parent — otherwise this would create a membership cycle.
+            var descendantsOfChild = await GetDescendantGroupIdsAsync(req.ChildGroupId);
+            if (descendantsOfChild.Contains(id))
+                return BadRequest(new { success = false, error = "Adding this group would create a circular nesting" });
+
+            var subgroup = new DmsGroupSubgroup
+            {
+                GroupSubgroupId = Guid.NewGuid(),
+                ParentGroupId = id,
+                ChildGroupId = req.ChildGroupId,
+                AddedAt = DateTime.UtcNow,
+            };
+
+            context.GroupSubgroups.Add(subgroup);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(GetCurrentUserId(), GROUP_SUBGROUP_ADDED, new { ParentGroupId = id, ParentName = parent.Name, req.ChildGroupId, ChildName = child.Name });
+
+            return Ok(new
+            {
+                success = true,
+                data = new { subgroup.GroupSubgroupId, ChildGroupId = child.GroupId, ChildGroupName = child.Name, subgroup.AddedAt },
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error adding subgroup to group {GroupId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // DELETE /api/groups/{id}/subgroups/{childGroupId} — un-nest a subgroup
+    [HttpDelete("{id}/subgroups/{childGroupId}")]
+    public async Task<ActionResult<object>> RemoveSubgroup(Guid id, Guid childGroupId)
+    {
+        try
+        {
+            var subgroup = await context.GroupSubgroups.FirstOrDefaultAsync(gs => gs.ParentGroupId == id && gs.ChildGroupId == childGroupId);
+            if (subgroup == null)
+                return NotFound(new { success = false, error = "This group is not a subgroup" });
+
+            context.GroupSubgroups.Remove(subgroup);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(GetCurrentUserId(), GROUP_SUBGROUP_REMOVED, new { ParentGroupId = id, ChildGroupId = childGroupId });
+
+            return Ok(new { success = true, message = "Subgroup removed" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error removing subgroup from group {GroupId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // Breadth-first walk down the "contains" graph — every group directly or
+    // indirectly nested inside groupId.
+    private async Task<HashSet<Guid>> GetDescendantGroupIdsAsync(Guid groupId)
+    {
+        var descendants = new HashSet<Guid>();
+        var frontier = new Queue<Guid>();
+        frontier.Enqueue(groupId);
+
+        while (frontier.Count > 0)
+        {
+            var current = frontier.Dequeue();
+            var children = await context.GroupSubgroups
+                .Where(gs => gs.ParentGroupId == current)
+                .Select(gs => gs.ChildGroupId)
+                .ToListAsync();
+
+            foreach (var childId in children)
+            {
+                if (descendants.Add(childId))
+                    frontier.Enqueue(childId);
+            }
+        }
+
+        return descendants;
+    }
 }
 
 public record CreateGroupRequest(string Name, string? Description = null);
 public record UpdateGroupRequest(string? Name = null, string? Description = null);
 public record AddGroupMemberRequest(Guid UserId);
+public record AddSubgroupRequest(Guid ChildGroupId);

@@ -127,4 +127,6 @@ public static class AuditActions
     public const string GROUP_DELETED = "GROUP_DELETED";
     public const string GROUP_MEMBER_ADDED = "GROUP_MEMBER_ADDED";
     public const string GROUP_MEMBER_REMOVED = "GROUP_MEMBER_REMOVED";
+    public const string GROUP_SUBGROUP_ADDED = "GROUP_SUBGROUP_ADDED";
+    public const string GROUP_SUBGROUP_REMOVED = "GROUP_SUBGROUP_REMOVED";
 }

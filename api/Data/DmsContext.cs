@@ -31,6 +31,7 @@ public class DmsContext : DbContext
     public DbSet<DmsDocIdSequence> DocIdSequences => Set<DmsDocIdSequence>();
     public DbSet<DmsGroup> Groups => Set<DmsGroup>();
     public DbSet<DmsGroupMember> GroupMembers => Set<DmsGroupMember>();
+    public DbSet<DmsGroupSubgroup> GroupSubgroups => Set<DmsGroupSubgroup>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -89,6 +90,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsEsignature>().ToTable("dms_esignatures").HasKey(e => e.SignatureId);
         modelBuilder.Entity<DmsGroup>().ToTable("dms_groups").HasKey(g => g.GroupId);
         modelBuilder.Entity<DmsGroupMember>().ToTable("dms_group_members").HasKey(gm => gm.GroupMemberId);
+        modelBuilder.Entity<DmsGroupSubgroup>().ToTable("dms_group_subgroups").HasKey(gs => gs.GroupSubgroupId);
 
         modelBuilder.Entity<DmsGroupMember>()
             .HasOne(gm => gm.Group)
@@ -101,6 +103,18 @@ public class DmsContext : DbContext
             .WithMany()
             .HasForeignKey(gm => gm.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsGroupSubgroup>()
+            .HasOne(gs => gs.ParentGroup)
+            .WithMany()
+            .HasForeignKey(gs => gs.ParentGroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsGroupSubgroup>()
+            .HasOne(gs => gs.ChildGroup)
+            .WithMany()
+            .HasForeignKey(gs => gs.ChildGroupId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // === FOREIGN KEY RELATIONSHIPS (Fluent API) ===
         // Folders: parent folder (self-ref, CASCADE) + owner (RESTRICT)

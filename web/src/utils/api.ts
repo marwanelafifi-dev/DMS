@@ -494,6 +494,16 @@ class APIClient {
     return data;
   }
 
+  async addSubgroup(parentGroupId: string, childGroupId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/groups/${parentGroupId}/subgroups`, { childGroupId });
+    return data;
+  }
+
+  async removeSubgroup(parentGroupId: string, childGroupId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/groups/${parentGroupId}/subgroups/${childGroupId}`);
+    return data;
+  }
+
   // Document Versions
   async getDocumentVersions(documentId: string, params?: any) {
     const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions`, { params });
