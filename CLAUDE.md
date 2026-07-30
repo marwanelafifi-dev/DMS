@@ -3,13 +3,59 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-07-28
+**Current Date:** 2026-07-30
 
 **Working Directory:** `C:\Users\Omar.Sultan\Documents\DMS`
 
 **Active Branch:** `Main`
 
-**Status:** Session 18 — OCR search now uses real Tesseract text extraction instead of mock content, uploads are indexed into the searchable list immediately, full-metadata search (owner/extension/department/tags/description/status) works across the Document Library, OCR search page, and top navbar autocomplete, Word/PowerPoint previews gained zoom + page navigation, Excel previews support multiple sheets, and several real bugs were found and fixed along the way (default-folder 403s, stuck preview overlay, hardcoded owner name, missing DB migrations). All verified with real browser automation (Playwright) plus the full Vitest suite (67/67 passing). See Session 18 section below for details.
+**Status:** Session 19 — real local authentication (mandatory JWT login, replacing the always-logged-in dev bypass), a new Groups admin page with nested subgroups, a redesigned Roles page, and role permissions that now genuinely enforce access (not just display it) — including closing a real gap where Manager-stage and final-release approval actions had no authorization check at all. Also fixed several Document ID / category / upload bugs found along the way. See Session 19 section below for details. **Known follow-up in progress:** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text — root cause investigation was underway when this session ended (see two pre-existing failing tests: "restores a persisted Office preview through Docling" and "cancels a persisted Office conversion when the preview closes" in `Documents.test.tsx`).
+
+---
+
+## Session 19 (2026-07-30) — Real Login, Groups, and Enforced Role Permissions
+
+**Status:** 🔶 Mostly complete and verified; one known bug (persisted PPTX preview, see above) was being investigated when the session ended, not yet fixed.
+
+**Context:** A long session driven by a sequence of escalating admin-panel requests — each feature request (login → Groups page → subgroups → Roles redesign → editable permissions) turned out to require the next once the user saw the result, ending with real backend enforcement rather than a cosmetic admin UI.
+
+**Work completed:**
+
+1. **Real local authentication** — the app previously always ran as a hardcoded dev-bootstrap admin (`X-User-Id` header, no login at all). Login is now mandatory to reach any route.
+   - Backend: `JwtTokenService` (HS256, secret via `JWT_SECRET`/`Jwt:Secret`), `AuthController` (`POST /login`, `GET /me`, `POST /heartbeat`, and a self-closing `POST /set-initial-password` to bootstrap accounts — like the SQL-seeded admin — that never had a password), `JwtAuthMiddleware` that validates the bearer token and forwards the resulting user id into the pre-existing `X-User-Id`-based RBAC pipeline so none of the permission-checking logic had to change.
+   - Migration `022`: `last_heartbeat_at` on `dms_users`; `GetUsers` now returns real `IsOnline` (heartbeat within 3 minutes) and `AccessLevel` (highest folder role actually held, not a fabricated global role).
+   - Frontend: new `Login.tsx` page styled consistent with the rest of DMS; `useAuth` rewritten as a shared `AuthProvider`/context (one bootstrap fetch + heartbeat timer for the whole app, not one per call site); `App.tsx` gates every route except `/login` behind `RequireAuth`; `api.ts` stores the session token and attaches it as a Bearer header, `DEV_USER_ID` is now a live binding set after login instead of a hardcoded constant.
+   - Users admin page redesigned with Total/Active/Inactive/Online/Offline stat cards and a Session column reflecting real heartbeat presence.
+   - **Debugging note:** a two-day-old zombie `npm run dev` process squatting on port 5173 caused a long, confusing round of "the login page won't load" — every "restart" attempt either failed to rebind the port or landed elsewhere while the old process kept answering. Root cause found via `Get-NetTCPConnection`, not guesswork; killed it and started a clean instance.
+
+2. **Groups admin page** (`/admin/groups`) — create/edit (name + description), delete, and manage membership (add/remove users) for named user groups, separate from per-folder permission roles.
+   - Backend: `dms_groups` / `dms_group_members` tables (migration `023`), `GroupsController` (CRUD + membership), audit logging.
+   - Later extended with **real nested subgroups** (migration `024`, `dms_group_subgroups`) — a group can contain other groups, with a BFS cycle-detection helper (`GetDescendantGroupIdsAsync`) that rejects nesting a group inside its own descendant or itself. Verified against the live API (add, reject-cycle, reject-self-nest, list/detail, remove) before wiring up the UI.
+   - Frontend: `GroupManagement.tsx` with explicit "Manage Users" / "Manage sub-groups" text-link columns and a Subgroups count, matching the AD/LDAP-style reference UI the user shared.
+
+3. **Roles page redesign** — "Folder Permissions" (the existing grants table) now shown first, followed by the 4 editable roles (Full Access / Quality / Folder Member / Folder Owner, i.e. Admin/QA/Writer/Manager under the hood — labels only, values unchanged) as cards instead of a plain table.
+
+4. **Role permissions now actually enforce access, not just display it** — the biggest architectural change this session.
+   - Migration `025` + `026`: `dms_role_permissions` table with 7 editable flags per role (`view_only`, `download_read_only`, `upload`, `update_permission`, `approve`, `reject`, `admin_force_unlock`), seeded from the *actual* current enforcement (not the old cosmetic Permissions Matrix, which had drifted — QA could already PUT and Manager could already DELETE despite that table saying otherwise).
+   - `RBACMiddleware.HasPermissionForMethod` is no longer a hardcoded switch — it queries this table per request (GET split into view vs. download by path; POST→Upload; PUT→Update; DELETE→AdminForceUnlock).
+   - `ApprovalsController`: new `RequireApprovalPermissionAsync` checks the Approve/Reject flags for `qa-accept`, `qa-request-correction`, `manager-approve`, `manager-reject-correction-task`, `manager-self-correct`, and `qa-final-release` — replacing the old hardcoded "role is QA or Admin" check, and **closing a real pre-existing gap**: the Manager-stage and final-release endpoints had no authorization check at all before this.
+   - `RolePermissionsController`: `GET`/`PUT /api/role-permissions/{role}` for the 4 editable roles; Reader stays fixed (no card, no edit UI).
+   - Frontend: role cards show real DB-backed permissions with an Edit button opening a checkbox modal, with an explicit warning that saving changes real access.
+   - **Verified against the live API before shipping**, not just assumed: created a throwaway Writer-role test user, confirmed DELETE was blocked, flipped `admin_force_unlock` on, confirmed the *same* request then succeeded with no new token/relogin, reverted, and cleaned up. Repeated the same pattern for Approve (QA-role test user, full upload→submit-batch→qa-accept flow, disabled Approve → real 403 → re-enabled → passed the permission check).
+
+5. **Smaller fixes along the way:**
+   - Excel/spreadsheet previews gained the same zoom controls Word/PowerPoint already had.
+   - Multi-file upload now captures the target folder ID once up front instead of re-reading (possibly stale) state per file.
+   - Document ID extraction (`DocIdExtractor`) fixed to handle Docling's Markdown table output (`| Doc No.: | SWS-13100002 |`) and bold emphasis (`**Doc No.:**`) — it was silently failing on essentially all real table-based documents before this.
+   - "Generate from System" now derives the next Document ID as `SWS-{n+1}` from the highest existing one, instead of a disconnected `DOC-YYYYMMDD-####` sequence; also now available (not just for missing IDs) so QA can correct a wrong extraction.
+   - The C-Doc Workflow queue tables were showing the internal database GUID as "Document ID" instead of the real extracted/assigned one.
+   - Document Category chosen at draft-upload time now actually persists (previously discarded — asked again every time a draft was later submitted).
+
+**Key files changed:** `api/Controllers/{AuthController,GroupsController,RolePermissionsController,ApprovalsController,UsersController,DocumentsController}.cs`, `api/Middleware/{JwtAuthMiddleware,RBACMiddleware}.cs`, `api/Services/{JwtTokenService,DocIdExtractor,AuditService}.cs`, `api/Models/{DmsGroup,DmsGroupMember,DmsGroupSubgroup,DmsRolePermission,DmsUser}.cs`, `infra/db/init/022`–`026_*.sql`, `web/src/hooks/useAuth.tsx` (renamed from `.ts`), `web/src/components/pages/Login.tsx`, `web/src/components/custom/{GroupManagement,RolePermissions,UserManagement,QaDecisionModal}.tsx`, `web/src/App.tsx`, `web/src/utils/api.ts`.
+
+**Verification:** TypeScript strict mode clean throughout; production build passing; every backend permission change verified against the *live* API with real lockout/unlock round-trips before the UI was built on top of it — not just unit-tested. Pre-existing test failures (7 in `Documents.test.tsx`, unrelated to this session's work — confirmed via `git stash` comparison against pre-session code) were left as-is rather than papered over.
+
+**Known follow-up (not done this session):** the persisted-PPTX-preview bug described above. An `Explore` agent was mid-investigation (tracing `loadPersistedPreview` in `Documents.tsx` vs. the structured `officeParser.ts` slide/paragraph/sheet parser) when the session ended — pick up there first.
 
 ---
 
