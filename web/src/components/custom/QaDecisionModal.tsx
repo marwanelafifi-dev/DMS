@@ -66,39 +66,51 @@ export const QaDecisionModal: React.FC<QaDecisionModalProps> = ({
     setDocIdBusy((prev) => ({ ...prev, [documentId]: true }));
     setError(null);
     try {
-      // Prefer the real Document ID printed on the file itself (e.g. "Doc No.: SWS-13100002")
-      // over a fabricated sequential one — re-download the file and re-run the same
-      // extraction pass the upload flow does, since the parsed text isn't persisted.
-      const document = documents.find((d) => d.documentId === documentId);
-      let extractedFromFile: string | null = null;
+      // The backend never re-extracts over a Document ID that's already set (to
+      // avoid silently clobbering a value QA already confirmed), so re-parsing the
+      // file here would just be a wasted round trip for a document that already has
+      // one — go straight to a fresh system-assigned SWS-{n} number instead.
+      const alreadyHasId = Boolean(docIds[documentId]?.trim());
 
-      if (document?.versionId) {
-        try {
-          const { blob, fileName } = await apiClient.getDocumentFile(documentId, document.versionId);
-          const file = new File([blob], fileName);
-          const { content } = await doclingApi.convertDocument(file);
-          const extractRes = await apiClient.extractDocId(documentId, content);
-          if (extractRes.success && extractRes.data.found) {
-            extractedFromFile = extractRes.data.originalDocumentId;
+      if (!alreadyHasId) {
+        // Prefer the real Document ID printed on the file itself (e.g. "Doc No.: SWS-13100002")
+        // over a fabricated sequential one — re-download the file and re-run the same
+        // extraction pass the upload flow does, since the parsed text isn't persisted.
+        const document = documents.find((d) => d.documentId === documentId);
+        let extractedFromFile: string | null = null;
+
+        if (document?.versionId) {
+          try {
+            const { blob, fileName } = await apiClient.getDocumentFile(documentId, document.versionId);
+            const file = new File([blob], fileName);
+            const { content } = await doclingApi.convertDocument(file);
+            const extractRes = await apiClient.extractDocId(documentId, content);
+            if (extractRes.success && extractRes.data.found) {
+              extractedFromFile = extractRes.data.originalDocumentId;
+            }
+          } catch {
+            // Re-parsing failed (unsupported format, service down, etc.) — fall back
+            // to system-generated sequence below rather than blocking QA entirely.
           }
-        } catch {
-          // Re-parsing failed (unsupported format, service down, etc.) — fall back
-          // to system-generated sequence below rather than blocking QA entirely.
         }
-      }
 
-      if (extractedFromFile) {
-        setDocIds((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
-        setManualDocIdInput((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
-        showSuccess(`Document ID extracted from file: ${extractedFromFile}`);
-        return;
+        if (extractedFromFile) {
+          setDocIds((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
+          setManualDocIdInput((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
+          showSuccess(`Document ID extracted from file: ${extractedFromFile}`);
+          return;
+        }
       }
 
       const res = await apiClient.generateDocId(documentId);
       if (res.success) {
         setDocIds((prev) => ({ ...prev, [documentId]: res.data.originalDocumentId }));
         setManualDocIdInput((prev) => ({ ...prev, [documentId]: res.data.originalDocumentId }));
-        showSuccess(`No Document ID found in the file — assigned system ID: ${res.data.originalDocumentId}`);
+        showSuccess(
+          alreadyHasId
+            ? `New system Document ID assigned: ${res.data.originalDocumentId}`
+            : `No Document ID found in the file — assigned system ID: ${res.data.originalDocumentId}`,
+        );
       } else {
         setError(res.error || 'Failed to generate Document ID');
       }
@@ -339,17 +351,15 @@ export const QaDecisionModal: React.FC<QaDecisionModalProps> = ({
                         >
                           {isMissing ? 'Save' : 'Correct'}
                         </Button>
-                        {isMissing && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleGenerateDocId(doc.documentId)}
-                            disabled={docIdBusy[doc.documentId] || isSubmitting}
-                          >
-                            {docIdBusy[doc.documentId] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                            <span className="ml-1">Generate from System</span>
-                          </Button>
-                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleGenerateDocId(doc.documentId)}
+                          disabled={docIdBusy[doc.documentId] || isSubmitting}
+                        >
+                          {docIdBusy[doc.documentId] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                          <span className="ml-1">{isMissing ? 'Generate from System' : 'Generate New ID'}</span>
+                        </Button>
                       </div>
                     );
                   })}
