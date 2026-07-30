@@ -52,6 +52,7 @@ public class DocumentsController(
                     document.Description,
                     document.Tags,
                     document.Department,
+                    document.Category,
                     document.OriginalDocumentId,
                     HasDocId = !string.IsNullOrWhiteSpace(document.OriginalDocumentId),
                     document.TrackingCode,
@@ -128,6 +129,7 @@ public class DocumentsController(
                     document.Description,
                     document.Tags,
                     document.Department,
+                    document.Category,
                     document.OriginalDocumentId,
                     HasDocId = !string.IsNullOrWhiteSpace(document.OriginalDocumentId),
                     document.TrackingCode,
@@ -216,6 +218,7 @@ public class DocumentsController(
                 Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
                 Tags = req.Tags?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToArray() ?? Array.Empty<string>(),
                 Department = string.IsNullOrWhiteSpace(req.Department) ? null : req.Department.Trim(),
+                Category = string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim(),
                 OriginalDocumentId = isAdmin && !string.IsNullOrWhiteSpace(req.OriginalDocumentId) ? req.OriginalDocumentId.Trim() : null,
                 OwnerId = req.OwnerId,
                 CreatedAt = DateTime.UtcNow,
@@ -1047,7 +1050,7 @@ public class DocumentsController(
     }
 }
 
-public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? OriginalDocumentId = null);
+public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, string? OriginalDocumentId = null);
 public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null, string[]? Tags = null, string? Department = null);
 public record CheckoutRequest(string? Reason = null);
 public record SubmitRequest(Guid VersionId, string? Comment = null);

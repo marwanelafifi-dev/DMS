@@ -141,6 +141,7 @@ export function Documents() {
   const [pendingApprovalFiles, setPendingApprovalFiles] = useState<
     Array<{ documentId: string; filename: string; filesize: number; uploadedAt: string }>
   >([]);
+  const [pendingApprovalCategory, setPendingApprovalCategory] = useState('');
   const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
@@ -704,6 +705,7 @@ export function Documents() {
             description: uploadDescription.trim(),
             tags: uploadTagList,
             department: effectiveUploadDepartment,
+            category: effectiveUploadCategory,
             originalDocumentId: canSetDocIdOnUpload && uploadOriginalDocumentId.trim() ? uploadOriginalDocumentId.trim() : undefined,
           });
           const createdDocument = docRes.data;
@@ -741,6 +743,7 @@ export function Documents() {
             contentType: uploadFile.type || 'application/octet-stream',
             status: createdDocument.status ?? 'draft',
             department: effectiveUploadDepartment,
+            category: effectiveUploadCategory,
             description: uploadDescription.trim(),
             tags: uploadTagList,
             owner: allUsers.find((u) => u.userId === uploadOwnerId) ?? currentUser ?? undefined,
@@ -1029,6 +1032,9 @@ export function Documents() {
             setPendingApprovalFiles([
               { documentId: doc.documentId, filename: doc.fileName, filesize: doc.fileSize, uploadedAt: doc.createdAt },
             ]);
+            // Category was already chosen when this document was saved as a draft —
+            // don't make the user pick it again.
+            setPendingApprovalCategory(doc.category || '');
             setShowApprovalPrompt(true);
           }}
         />
@@ -1049,14 +1055,17 @@ export function Documents() {
         <UploadApprovalModal
           isOpen={showApprovalPrompt}
           files={pendingApprovalFiles}
+          presetCategory={pendingApprovalCategory}
           onSubmit={() => {
             setShowApprovalPrompt(false);
             setPendingApprovalFiles([]);
+            setPendingApprovalCategory('');
             void refreshServerDocuments(folders);
           }}
           onCancel={() => {
             setShowApprovalPrompt(false);
             setPendingApprovalFiles([]);
+            setPendingApprovalCategory('');
           }}
         />
       )}

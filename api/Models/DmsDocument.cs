@@ -11,6 +11,7 @@ public class DmsDocument
     public string? Description { get; set; }
     public string[] Tags { get; set; } = Array.Empty<string>();
     public string? Department { get; set; }
+    public string? Category { get; set; }
     public string? OriginalDocumentId { get; set; }
     public Guid OwnerId { get; set; }
     public DateTime CreatedAt { get; set; }
