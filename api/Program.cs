@@ -34,6 +34,7 @@ builder.Services.AddSingleton<IMinioClient>(sp =>
     return minioClient.Build();
 });
 
+builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<MinioService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<CheckoutService>();
@@ -89,6 +90,10 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {
     Authorization = new[] { new NoAuthorizationFilter() }
 });
+
+// Login session validation — runs before RBAC and forwards the authenticated
+// user id into the X-User-Id header RBACMiddleware already trusts.
+app.UseMiddleware<JwtAuthMiddleware>();
 
 // RBAC Middleware — التحقق من الصلاحيات
 app.UseMiddleware<RBACMiddleware>();

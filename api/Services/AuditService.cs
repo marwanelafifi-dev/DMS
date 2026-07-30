@@ -120,4 +120,5 @@ public static class AuditActions
     public const string USER_DEACTIVATED = "USER_DEACTIVATED";
     public const string USER_DELETED = "USER_DELETED";
     public const string USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
+    public const string USER_LOGIN = "USER_LOGIN";
 }

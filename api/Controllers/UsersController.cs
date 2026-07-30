@@ -41,7 +41,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                 pageSize = effectivePageSize;
             }
 
-            var users = await query
+            var pagedUsers = await query
                 .Select(u => new
                 {
                     u.UserId,
@@ -50,9 +50,40 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                     u.IsActive,
                     u.CreatedAt,
                     u.LastLoginAt,
+                    u.LastHeartbeatAt,
                     AuthType = u.SsoSubject != null ? "Google" : "Local"
                 })
                 .ToListAsync();
+
+            var userIds = pagedUsers.Select(u => u.UserId).ToList();
+            var accessByUser = await context.FolderPermissions
+                .Where(p => userIds.Contains(p.UserId))
+                .Select(p => new { p.UserId, p.Role })
+                .ToListAsync();
+
+            // Folder permissions are per-folder, not a global role — this is the
+            // highest one a user holds on any folder, shown as a quick-glance
+            // access summary (not a fabricated global "role").
+            string[] roleRank = { "Admin", "QA", "Manager", "Writer", "Reader" };
+            var highestAccessByUser = accessByUser
+                .GroupBy(p => p.UserId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(p => p.Role).OrderBy(role => Array.IndexOf(roleRank, role) is var idx && idx >= 0 ? idx : int.MaxValue).FirstOrDefault());
+
+            var onlineThreshold = DateTime.UtcNow.AddMinutes(-3);
+            var users = pagedUsers.Select(u => new
+            {
+                u.UserId,
+                u.Email,
+                u.FullName,
+                u.IsActive,
+                u.CreatedAt,
+                u.LastLoginAt,
+                u.AuthType,
+                IsOnline = u.LastHeartbeatAt.HasValue && u.LastHeartbeatAt.Value >= onlineThreshold,
+                AccessLevel = highestAccessByUser.GetValueOrDefault(u.UserId, "No Access"),
+            }).ToList();
 
             logger.LogInformation("Retrieved {Count} users", users.Count);
 

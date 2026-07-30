@@ -3,20 +3,43 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Documents } from './Documents';
-import { apiClient, DEV_USER_ID } from '../../utils/api';
+import { apiClient, DEV_USER_ID, setCurrentUserId } from '../../utils/api';
 import { mockLibraryFolders } from '../../fixtures/documentLibrary';
 import { doclingApi } from '../../services/doclingApi';
+import { AuthContext, type AuthContextValue } from '../../hooks/useAuth';
+
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+const authContextValue: AuthContextValue = {
+  user: {
+    userId: TEST_USER_ID,
+    fullName: 'System Admin',
+    email: 'admin@si-ware.com',
+    role: 'Admin',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+  isLoading: false,
+  error: null,
+  login: vi.fn(),
+  logout: vi.fn(),
+};
 
 function renderDocumentLibrary(initialEntry = '/documents') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <Documents />
+      <AuthContext.Provider value={authContextValue}>
+        <Documents />
+      </AuthContext.Provider>
     </MemoryRouter>,
   );
 }
 
 describe('Document Library', () => {
   beforeEach(() => {
+    // Documents.tsx reads DEV_USER_ID directly (not just through useAuth) for
+    // default owner/permission checks — keep it in sync with the fixed test user.
+    setCurrentUserId(TEST_USER_ID);
     vi.spyOn(apiClient, 'getFolders').mockResolvedValue({
       success: true,
       data: mockLibraryFolders,

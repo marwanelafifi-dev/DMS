@@ -2,11 +2,30 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import type { ApiResponse } from '../types';
 
 const API_BASE = '/api';
+const TOKEN_STORAGE_KEY = 'dms_session_token';
 
-// Dev-only bootstrap user until Google Workspace SSO is wired up (see CLAUDE.md).
-// Every protected endpoint requires X-User-Id to match an active dms_users row —
-// this must match the GUID seeded in infra/db/init/003_dev_seed_admin.sql.
-export const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
+// The id of whoever is currently logged in. Many components reference this
+// directly (as "my user id" for permission checks, default owner, etc.) —
+// it starts empty and is populated by useAuth after a successful login/me
+// call. Kept as a mutable `let` (not `const`) so those live ESM bindings
+// pick up the update without every call site needing to change.
+export let DEV_USER_ID = '';
+
+export function setCurrentUserId(userId: string) {
+  DEV_USER_ID = userId;
+}
+
+export function getSessionToken(): string | null {
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+export function setSessionToken(token: string) {
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+}
+
+export function clearSessionToken() {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
 
 class APIClient {
   private client: AxiosInstance;
@@ -14,10 +33,18 @@ class APIClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE,
-      headers: {
-        'X-User-Id': DEV_USER_ID,
-      },
       timeout: 30000,
+    });
+
+    // Attach the current session token fresh on every request rather than at
+    // construction time, since the token doesn't exist yet when this
+    // singleton is created at module load (before login).
+    this.client.interceptors.request.use((config) => {
+      const token = getSessionToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
     });
 
     // Add response interceptor for error handling
@@ -29,6 +56,22 @@ class APIClient {
         return Promise.reject(error);
       }
     );
+  }
+
+  // Auth
+  async login(email: string, password: string) {
+    const { data } = await this.client.post<ApiResponse>('/auth/login', { email, password });
+    return data;
+  }
+
+  async getCurrentSessionUser() {
+    const { data } = await this.client.get<ApiResponse>('/auth/me');
+    return data;
+  }
+
+  async sendHeartbeat() {
+    const { data } = await this.client.post<ApiResponse>('/auth/heartbeat');
+    return data;
   }
 
   // Users

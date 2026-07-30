@@ -71,6 +71,7 @@ services:
       Minio__AccessKey: ${MINIO_ROOT_USER}
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
       OcrRag__BaseUrl: "http://ocr-rag:8000"
+      Jwt__Secret: ${JWT_SECRET}
     ports:
       - "${API_PORT:-8080}:8080"
     healthcheck:

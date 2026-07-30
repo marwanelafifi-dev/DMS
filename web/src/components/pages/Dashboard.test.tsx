@@ -1,8 +1,26 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiClient, DEV_USER_ID } from '../../utils/api';
+import { apiClient } from '../../utils/api';
 import { Dashboard } from './Dashboard';
+import { AuthContext, type AuthContextValue } from '../../hooks/useAuth';
+
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+const authContextValue: AuthContextValue = {
+  user: {
+    userId: TEST_USER_ID,
+    fullName: 'System Admin',
+    email: 'admin@si-ware.com',
+    role: 'Admin',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+  isLoading: false,
+  error: null,
+  login: vi.fn(),
+  logout: vi.fn(),
+};
 
 const inDays = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
@@ -11,7 +29,7 @@ const tasks = [
     taskId: 'task-open',
     title: 'Review calibration evidence',
     taskType: 'correction',
-    assignedTo: DEV_USER_ID,
+    assignedTo: TEST_USER_ID,
     assignedBy: 'manager-1',
     status: 'open',
     priority: 'critical',
@@ -22,7 +40,7 @@ const tasks = [
     taskId: 'task-overdue',
     title: 'Close out audit finding',
     taskType: 'audit_action',
-    assignedTo: DEV_USER_ID,
+    assignedTo: TEST_USER_ID,
     assignedBy: 'manager-1',
     status: 'in_progress',
     priority: 'high',
@@ -34,7 +52,7 @@ const tasks = [
     title: 'Not mine',
     taskType: 'correction',
     assignedTo: 'other-user',
-    assignedBy: DEV_USER_ID,
+    assignedBy: TEST_USER_ID,
     status: 'open',
     priority: 'low',
     dueDate: inDays(5),
@@ -51,7 +69,7 @@ const documents = [
     fileName: 'training-records-q3.xlsx',
     fileSize: 2048,
     status: 'pending_approval',
-    uploadedBy: DEV_USER_ID,
+    uploadedBy: TEST_USER_ID,
     uploadedAt: inDays(-1),
     updatedAt: inDays(-1),
   },
@@ -63,11 +81,11 @@ const documents = [
     fileName: 'sop-204.pdf',
     fileSize: 4096,
     status: 'released',
-    uploadedBy: DEV_USER_ID,
+    uploadedBy: TEST_USER_ID,
     uploadedAt: inDays(-4),
     updatedAt: inDays(-4),
     checkoutStatus: 'checked_out',
-    checkedOutBy: DEV_USER_ID,
+    checkedOutBy: TEST_USER_ID,
   },
 ];
 
@@ -86,7 +104,7 @@ const approvals = [
     approvalId: 'approval-from-me',
     documentId: 'doc-mine-in-review',
     document: { documentId: 'doc-mine-in-review', name: 'Training Records Q3' },
-    submittedBy: DEV_USER_ID,
+    submittedBy: TEST_USER_ID,
     submittedAt: inDays(-1),
     approvalStatus: 'pending',
   },
@@ -95,7 +113,9 @@ const approvals = [
 function renderDashboard() {
   return render(
     <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <Dashboard />
+      <AuthContext.Provider value={authContextValue}>
+        <Dashboard />
+      </AuthContext.Provider>
     </MemoryRouter>,
   );
 }

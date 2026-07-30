@@ -10,6 +10,7 @@ public class DmsUser
     public byte[]? MfaSecret { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime? LastLoginAt { get; set; }
+    public DateTime? LastHeartbeatAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
