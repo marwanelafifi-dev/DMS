@@ -121,4 +121,10 @@ public static class AuditActions
     public const string USER_DELETED = "USER_DELETED";
     public const string USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
     public const string USER_LOGIN = "USER_LOGIN";
+
+    public const string GROUP_CREATED = "GROUP_CREATED";
+    public const string GROUP_UPDATED = "GROUP_UPDATED";
+    public const string GROUP_DELETED = "GROUP_DELETED";
+    public const string GROUP_MEMBER_ADDED = "GROUP_MEMBER_ADDED";
+    public const string GROUP_MEMBER_REMOVED = "GROUP_MEMBER_REMOVED";
 }

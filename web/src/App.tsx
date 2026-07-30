@@ -114,6 +114,15 @@ function App() {
             />
 
             <Route
+              path="/admin/groups"
+              element={
+                <MainLayout>
+                  <Settings defaultTab="groups" />
+                </MainLayout>
+              }
+            />
+
+            <Route
               path="/admin/audit"
               element={
                 <MainLayout>

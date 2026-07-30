@@ -15,6 +15,7 @@ import {
   Settings as SettingsIcon,
   Shield,
   Users,
+  UsersRound,
   X,
 } from 'lucide-react';
 
@@ -34,6 +35,7 @@ const navItems = [
 const adminItems = [
   { label: 'Users', path: '/admin/users', icon: Users },
   { label: 'Roles', path: '/admin/roles', icon: Shield },
+  { label: 'Groups', path: '/admin/groups', icon: UsersRound },
   { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   { label: 'Notifications', path: '/admin/notifications', icon: Bell },
   { label: 'Company Data', path: '/admin/company-data', icon: Building2 },

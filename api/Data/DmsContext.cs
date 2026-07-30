@@ -29,6 +29,8 @@ public class DmsContext : DbContext
     public DbSet<DmsApprovalDocument> ApprovalDocuments => Set<DmsApprovalDocument>();
     public DbSet<DmsTrackingCodeSequence> TrackingCodeSequences => Set<DmsTrackingCodeSequence>();
     public DbSet<DmsDocIdSequence> DocIdSequences => Set<DmsDocIdSequence>();
+    public DbSet<DmsGroup> Groups => Set<DmsGroup>();
+    public DbSet<DmsGroupMember> GroupMembers => Set<DmsGroupMember>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -85,6 +87,20 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsAuditTrail>().ToTable("dms_audit_trails").HasKey(a => a.LogId);
         modelBuilder.Entity<DmsOcrIndex>().ToTable("dms_ocr_indexes").HasKey(o => o.OcrId);
         modelBuilder.Entity<DmsEsignature>().ToTable("dms_esignatures").HasKey(e => e.SignatureId);
+        modelBuilder.Entity<DmsGroup>().ToTable("dms_groups").HasKey(g => g.GroupId);
+        modelBuilder.Entity<DmsGroupMember>().ToTable("dms_group_members").HasKey(gm => gm.GroupMemberId);
+
+        modelBuilder.Entity<DmsGroupMember>()
+            .HasOne(gm => gm.Group)
+            .WithMany()
+            .HasForeignKey(gm => gm.GroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsGroupMember>()
+            .HasOne(gm => gm.User)
+            .WithMany()
+            .HasForeignKey(gm => gm.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // === FOREIGN KEY RELATIONSHIPS (Fluent API) ===
         // Folders: parent folder (self-ref, CASCADE) + owner (RESTRICT)

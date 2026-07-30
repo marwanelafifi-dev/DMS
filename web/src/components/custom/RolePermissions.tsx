@@ -26,8 +26,16 @@ interface PermissionGrant {
   grantedAt: string;
 }
 
-// Matches HasPermissionForMethod() in api/Middleware/RBACMiddleware.cs
-const ROLE_OPTIONS = ['Reader', 'Writer', 'Manager', 'QA', 'Admin'];
+// Values match HasPermissionForMethod() in api/Middleware/RBACMiddleware.cs —
+// only the labels shown here are friendlier names for the same underlying roles.
+const ROLE_OPTIONS = [
+  { value: 'Writer', label: 'Folder Member' },
+  { value: 'Manager', label: 'Folder Owner' },
+  { value: 'QA', label: 'Quality' },
+  { value: 'Admin', label: 'Full Access' },
+];
+
+const roleLabel = (role: string): string => ROLE_OPTIONS.find(r => r.value === role)?.label ?? role;
 
 const getRoleBadge = (role: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
   const map: Record<string, any> = {
@@ -50,7 +58,7 @@ export function RolePermissions() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [showGrantForm, setShowGrantForm] = useState(false);
-  const [newGrant, setNewGrant] = useState({ folderId: '', userId: '', role: 'Reader' });
+  const [newGrant, setNewGrant] = useState({ folderId: '', userId: '', role: 'Writer' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [revokeConfirm, setRevokeConfirm] = useState<{ permissionId?: string; label?: string }>({});
@@ -112,7 +120,7 @@ export function RolePermissions() {
       await apiClient.grantPermission(newGrant.folderId, newGrant.userId, newGrant.role);
       showSuccess('Permission granted');
       setShowGrantForm(false);
-      setNewGrant({ folderId: '', userId: '', role: 'Reader' });
+      setNewGrant({ folderId: '', userId: '', role: 'Writer' });
       loadData();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to grant permission');
@@ -176,7 +184,7 @@ export function RolePermissions() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card className="border-l-4 border-l-navy-700">
           <CardBody className="text-center">
             <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Total Grants</p>
@@ -189,18 +197,14 @@ export function RolePermissions() {
             <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{folders.length}</p>
           </CardBody>
         </Card>
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="text-center">
-            <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Managers</p>
-            <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{roleCounts['Manager'] || 0}</p>
-          </CardBody>
-        </Card>
-        <Card className="border-l-4 border-l-navy-700">
-          <CardBody className="text-center">
-            <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Readers</p>
-            <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{roleCounts['Reader'] || 0}</p>
-          </CardBody>
-        </Card>
+        {ROLE_OPTIONS.map(r => (
+          <Card key={r.value} className="border-l-4 border-l-navy-700">
+            <CardBody className="text-center">
+              <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">{r.label}</p>
+              <p className="text-3xl font-bold text-navy-900 dark:text-white mt-1">{roleCounts[r.value] || 0}</p>
+            </CardBody>
+          </Card>
+        ))}
       </div>
 
       {/* Grants Table */}
@@ -230,7 +234,7 @@ export function RolePermissions() {
                   <td className="px-6 py-4 text-gray-700 dark:text-navy-200">{grant.userName}</td>
                   <td className="px-6 py-4">
                     <Badge status={getRoleBadge(grant.role)} size="sm" variant="outline">
-                      {grant.role}
+                      {roleLabel(grant.role)}
                     </Badge>
                   </td>
                   <td className="px-6 py-4 text-gray-700 dark:text-navy-200 text-sm">
@@ -263,7 +267,7 @@ export function RolePermissions() {
         <h4 className="font-semibold text-blue-900 dark:text-blue-300 mb-2">How permissions work</h4>
         <p className="text-sm text-blue-800 dark:text-blue-400">
           Access is granted per folder, not as a global role. A user with no grant on a folder cannot see documents inside it.
-          Reader can view/download, Writer can also upload/edit, Manager and above can also delete.
+          Folder Member can view, download, and upload; Folder Owner can also delete; Quality reviews documents at QA stages; Full Access can manage the folder itself.
         </p>
       </div>
 
@@ -312,7 +316,7 @@ export function RolePermissions() {
                   className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
                 >
                   {ROLE_OPTIONS.map(r => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
                 </select>
               </div>

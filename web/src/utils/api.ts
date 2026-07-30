@@ -458,6 +458,42 @@ class APIClient {
     return data;
   }
 
+  // Groups
+  async getGroups() {
+    const { data } = await this.client.get<ApiResponse>('/groups');
+    return data;
+  }
+
+  async getGroup(groupId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/groups/${groupId}`);
+    return data;
+  }
+
+  async createGroup(groupData: { name: string; description?: string }) {
+    const { data } = await this.client.post<ApiResponse>('/groups', groupData);
+    return data;
+  }
+
+  async updateGroup(groupId: string, groupData: { name?: string; description?: string }) {
+    const { data } = await this.client.put<ApiResponse>(`/groups/${groupId}`, groupData);
+    return data;
+  }
+
+  async deleteGroup(groupId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/groups/${groupId}`);
+    return data;
+  }
+
+  async addGroupMember(groupId: string, userId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/groups/${groupId}/members`, { userId });
+    return data;
+  }
+
+  async removeGroupMember(groupId: string, userId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/groups/${groupId}/members/${userId}`);
+    return data;
+  }
+
   // Document Versions
   async getDocumentVersions(documentId: string, params?: any) {
     const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions`, { params });
