@@ -22,7 +22,27 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   throw new Error(message);
 }
 
+const HEALTH_CHECK_TIMEOUT_MS = 2500;
+
 export const doclingApi = {
+  /**
+   * Cheap up-front probe for the local Docling/LibreOffice sidecar so callers can
+   * skip straight to a text-based fallback with a clear message instead of waiting
+   * out a multi-second conversion timeout only to fail anyway.
+   */
+  async isAvailable(): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${DOCLING_API_ORIGIN}/health`, { signal: controller.signal });
+      return response.ok;
+    } catch {
+      return false;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  },
+
   async uploadDocument(file: File): Promise<ParsedDocument> {
     const formData = new FormData();
     formData.append('file', file);

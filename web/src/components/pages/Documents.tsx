@@ -45,7 +45,7 @@ function readBlobAsText(blob: Blob): Promise<string> {
   });
 }
 
-const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'csv', 'md', 'markdown', 'json', 'xml', 'log']);
+const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log']);
 const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const MOCK_FILES_FOLDER_NAME = 'Mock Files';
 const MOCK_FILES_FOLDER_DESCRIPTION = 'Local multi-format documents for upload, preview, OCR, and workflow testing';
@@ -68,6 +68,12 @@ async function createNativePreview(
   registerObjectUrl?: (url: string) => void,
 ): Promise<LibraryPreview | null> {
   const extension = getFileExtension(fileName);
+  // CSV is tabular data, not free text — route it through the same sheet parser
+  // as .xlsx so it gets the spreadsheet table/sheet-tab UI instead of a raw
+  // comma-separated dump in a monospace <pre>.
+  if (extension === 'csv' || contentType === 'text/csv') {
+    return parseExcelDocument(source, sourceUrl);
+  }
   if (contentType.startsWith('text/') || TEXT_PREVIEW_EXTENSIONS.has(extension)) {
     const content = await readBlobAsText(source);
     return extension === 'md' || extension === 'markdown'
@@ -86,15 +92,30 @@ async function createNativePreview(
     // Real Word/PowerPoint rendering: convert to PDF locally (LibreOffice, via the
     // OCR sidecar) and reuse the same pdf.js viewer already used for real PDFs —
     // true layout/fonts/images/tables instead of a plain-text reconstruction.
-    try {
-      const pdfBlob = await doclingApi.convertToPdf(source, fileName);
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      registerObjectUrl?.(pdfUrl);
-      return { kind: 'pdf', url: pdfUrl };
-    } catch (error) {
-      console.error(`Failed to render ${fileName} as PDF, falling back to text extraction:`, error);
-      return isWord ? parseWordDocument(source, sourceUrl) : parsePowerPointDocument(source, sourceUrl);
+    // Health-check the sidecar up front instead of always attempting the network
+    // call: a down/unreachable sidecar used to mean a multi-second hang before
+    // silently degrading to text extraction with no explanation to the user.
+    const sidecarAvailable = await doclingApi.isAvailable();
+    let renderNotice: string | undefined;
+    if (sidecarAvailable) {
+      try {
+        const pdfBlob = await doclingApi.convertToPdf(source, fileName);
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        registerObjectUrl?.(pdfUrl);
+        return { kind: 'pdf', url: pdfUrl };
+      } catch (error) {
+        console.error(`Failed to render ${fileName} as PDF, falling back to text extraction:`, error);
+        renderNotice = 'Live rendering failed — showing extracted text only.';
+      }
+    } else {
+      console.warn(`Local document renderer is unreachable; falling back to text extraction for ${fileName}`);
+      renderNotice = 'Live rendering is unavailable right now — showing extracted text only.';
     }
+    const fallback = isWord ? await parseWordDocument(source, sourceUrl) : await parsePowerPointDocument(source, sourceUrl);
+    if (fallback && (fallback.kind === 'word' || fallback.kind === 'presentation')) {
+      return { ...fallback, renderNotice };
+    }
+    return fallback;
   }
   if (extension === 'xlsx' || contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
     return parseExcelDocument(source, sourceUrl);
@@ -147,6 +168,42 @@ export function Documents() {
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const previewRequestRef = useRef(0);
   const previewAbortControllerRef = useRef<AbortController | null>(null);
+  // Bounds how many documents' preview blob URLs (source file + any locally
+  // converted PDF) stay alive at once. Without this, browsing many documents in
+  // one session accumulated unbounded live blob URLs since they were previously
+  // only revoked on full page unmount.
+  const PREVIEW_CACHE_LIMIT = 6;
+  const documentObjectUrlsRef = useRef<Map<string, string[]>>(new Map());
+  const previewCacheOrderRef = useRef<string[]>([]);
+
+  const touchPreviewCache = useCallback((documentId: string) => {
+    const order = previewCacheOrderRef.current;
+    const existingIndex = order.indexOf(documentId);
+    if (existingIndex !== -1) order.splice(existingIndex, 1);
+    order.push(documentId);
+
+    while (order.length > PREVIEW_CACHE_LIMIT) {
+      const evictedId = order.shift();
+      if (!evictedId) break;
+      const urls = documentObjectUrlsRef.current.get(evictedId);
+      if (urls) {
+        urls.forEach((url) => {
+          URL.revokeObjectURL(url);
+          objectUrlsRef.current.delete(url);
+        });
+        documentObjectUrlsRef.current.delete(evictedId);
+      }
+      setAllDocuments((current) => current.map((doc) => (
+        doc.documentId === evictedId && doc.preview.kind !== 'unavailable'
+          ? {
+            ...doc,
+            sourceUrl: undefined,
+            preview: { kind: 'unavailable', message: 'This preview was released to free up memory. Reopen the document to reload it.' },
+          }
+          : doc
+      )));
+    }
+  }, []);
 
   const documents = useMemo(() => allDocuments.filter((document) => document.folderId === selectedFolderId), [allDocuments, selectedFolderId]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
@@ -346,8 +403,12 @@ export function Documents() {
 
       sourceUrl = URL.createObjectURL(blob);
       objectUrlsRef.current.add(sourceUrl);
+      const previewUrls = [sourceUrl];
 
-      let preview = await createNativePreview(blob, resolvedFileName, contentType, sourceUrl, (url) => objectUrlsRef.current.add(url));
+      let preview = await createNativePreview(blob, resolvedFileName, contentType, sourceUrl, (url) => {
+        objectUrlsRef.current.add(url);
+        previewUrls.push(url);
+      });
       let fallbackDownload = libraryDocument.fallbackDownload;
 
       if (!preview) {
@@ -381,6 +442,8 @@ export function Documents() {
         document.documentId === restoredDocument.documentId ? restoredDocument : document,
       ));
       setPreviewDocument(restoredDocument);
+      documentObjectUrlsRef.current.set(restoredDocument.documentId, previewUrls);
+      touchPreviewCache(restoredDocument.documentId);
     } catch (error) {
       if (sourceUrl) {
         URL.revokeObjectURL(sourceUrl);
@@ -399,7 +462,7 @@ export function Documents() {
       });
       showError('Document preview could not be loaded');
     }
-  }, [showError]);
+  }, [showError, touchPreviewCache]);
 
   const hydrateDocumentPreview = useCallback((libraryDocument: MockLibraryDocument) => {
     previewAbortControllerRef.current?.abort();
@@ -731,6 +794,7 @@ export function Documents() {
 
           const sourceUrl = URL.createObjectURL(uploadFile);
           objectUrlsRef.current.add(sourceUrl);
+          const uploadPreviewUrls = [sourceUrl];
           const timestamp = new Date().toISOString();
           const source: Document = {
             documentId: createdDocument.documentId,
@@ -763,7 +827,10 @@ export function Documents() {
             uploadFile.name,
             uploadFile.type || 'application/octet-stream',
             sourceUrl,
-            (url) => objectUrlsRef.current.add(url),
+            (url) => {
+              objectUrlsRef.current.add(url);
+              uploadPreviewUrls.push(url);
+            },
           );
           if (nativePreview?.kind === 'image') {
             uploadedDocument.preview = nativePreview;
@@ -782,6 +849,8 @@ export function Documents() {
           } else if (nativePreview) {
             uploadedDocument.preview = nativePreview;
           }
+          documentObjectUrlsRef.current.set(uploadedDocument.documentId, uploadPreviewUrls);
+          touchPreviewCache(uploadedDocument.documentId);
           uploaded.push(uploadedDocument);
           submittedForApproval.push({
             documentId: createdDocument.documentId,

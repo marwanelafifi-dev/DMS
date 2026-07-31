@@ -98,6 +98,34 @@ input:-webkit-autofill:focus {
 .library-document-table th { @apply px-2; }
 .library-document-table td { @apply px-2; }
 
+/* Document preview printing: only the printable preview content is shown, everything
+   else in the app (sidebar, toolbar chrome, overlays) is hidden for the print job.
+   Gated on a JS-toggled body class (set while DocumentPreview is mounted) rather
+   than :has(), which isn't supported in Firefox <121 or Safari <15.4. */
+@media print {
+  body.dms-preview-open * { visibility: hidden !important; }
+  body.dms-preview-open #dms-printable-preview,
+  body.dms-preview-open #dms-printable-preview * { visibility: visible !important; }
+  body.dms-preview-open #dms-printable-preview {
+    position: absolute;
+    inset: 0;
+    overflow: visible !important;
+    height: auto !important;
+  }
+}
+
+/* PDF in-app search highlight marks, applied to pdf.js text-layer spans. */
+.dms-pdf-match {
+  background-color: rgba(253, 224, 71, 0.7);
+  color: inherit;
+  border-radius: 2px;
+}
+.dms-pdf-match-active {
+  background-color: #fb923c;
+  color: #1f2937;
+  border-radius: 2px;
+}
+
 /* Animations */
 @keyframes spin-slow {
   from {

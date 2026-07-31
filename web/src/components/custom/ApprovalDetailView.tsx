@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Card, CardBody, Button, Badge } from '../ui';
+import { Card, CardBody, Button } from '../ui';
 import { ChevronLeft, AlertCircle } from 'lucide-react';
-import { apiClient } from '../../utils/api';
 
 interface ApprovalDetailViewProps {
   approvalId: string;
@@ -10,7 +9,7 @@ interface ApprovalDetailViewProps {
   onChanged: () => void;
 }
 
-export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: ApprovalDetailViewProps) {
+export function ApprovalDetailView({ approvalId, onClose, onChanged }: ApprovalDetailViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isActionInProgress, setIsActionInProgress] = useState(false);

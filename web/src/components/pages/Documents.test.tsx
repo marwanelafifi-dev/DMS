@@ -66,6 +66,12 @@ describe('Document Library', () => {
       filename: file.name,
       content: `# Parsed ${file.name}\n\nLocally extracted document content.`,
     }));
+    // The Word/PowerPoint preview path health-checks the local sidecar before
+    // attempting live PDF rendering — without this mock, the health check falls
+    // through to a real `fetch()` against 127.0.0.1:8000 that hangs/times out
+    // under jsdom. Defaulting to "unavailable" matches these tests' existing
+    // assumption that Office files fall back to text/markdown extraction.
+    vi.spyOn(doclingApi, 'isAvailable').mockResolvedValue(false);
   });
 
   it('shows both mock folders', async () => {
@@ -683,12 +689,12 @@ describe('Document Library', () => {
 
     const overlay = screen.getByTestId('document-preview-overlay');
     const body = screen.getByTestId('document-preview-body');
-    const viewer = screen.getByTitle('PDF preview of Calibration Procedure SOP-204.pdf');
+    const viewerWorkspace = document.getElementById('dms-printable-preview');
 
     expect(overlay).toHaveClass('fixed', 'inset-y-0', 'overflow-hidden');
     expect(body).toHaveClass('min-h-0', 'flex-1', 'overflow-hidden');
-    expect(viewer).toHaveClass('block', 'h-full', 'w-full');
-    expect(viewer.className).not.toMatch(/65vh|min-h-\[/);
+    expect(viewerWorkspace).toHaveClass('h-full', 'w-full');
+    expect(viewerWorkspace?.className).not.toMatch(/65vh|min-h-\[/);
     expect(document.body.style.overflow).toBe('hidden');
 
   });

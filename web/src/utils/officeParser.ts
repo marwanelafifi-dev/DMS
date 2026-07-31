@@ -1,9 +1,29 @@
 import { read as readExcel, utils as xlsxUtils } from 'xlsx';
 import type { LibraryPreview } from '../fixtures/documentLibrary';
 
+const WORD_PARAGRAPH_LIMIT = 10;
+const PRESENTATION_SLIDE_LIMIT = 10;
+const SPREADSHEET_ROW_LIMIT = 15;
+const SPREADSHEET_COLUMN_LIMIT = 8;
+
+// Some Blob-like sources (older browsers, certain test doubles) don't implement
+// `arrayBuffer()` even though they implement the rest of the Blob contract — fall
+// back to FileReader so the whole parser doesn't silently throw and get swallowed
+// by its own try/catch.
+async function readBlobAsArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
+  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer();
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error ?? new Error('The document could not be read'));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 export async function parseWordDocument(blob: Blob, _sourceUrl: string): Promise<LibraryPreview | null> {
   try {
-    const buffer = await blob.arrayBuffer();
+    const buffer = await readBlobAsArrayBuffer(blob);
     const uint8Array = new Uint8Array(buffer);
 
     // Check for DOCX signature (ZIP file)
@@ -16,22 +36,25 @@ export async function parseWordDocument(blob: Blob, _sourceUrl: string): Promise
       if (!documentXml) return null;
 
       const xmlContent = await documentXml.async('text');
-      const paragraphs = xmlContent.match(/<w:p>[\s\S]*?<\/w:p>/g) || [];
+      // `<w:p>` almost always carries attributes in real documents (e.g.
+      // `<w:p w:rsidR="..." w:rsidRDefault="...">`) — matching only the
+      // attribute-free tag matched zero paragraphs for virtually all real files.
+      const paragraphs = xmlContent.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
 
-      const content = paragraphs
+      const allParagraphs = paragraphs
         .map((para) => {
           const textElements = para.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
           return textElements.map((el) => el.replace(/<w:t[^>]*>|<\/w:t>/g, '')).join('');
         })
-        .filter((text) => text.trim())
-        .join('\n');
+        .filter((text) => text.trim());
 
-      if (!content) return null;
+      if (allParagraphs.length === 0) return null;
 
       return {
         kind: 'word',
         title: 'Document',
-        paragraphs: content.split('\n').slice(0, 10),
+        paragraphs: allParagraphs.slice(0, WORD_PARAGRAPH_LIMIT),
+        totalParagraphs: allParagraphs.length,
       };
     }
 
@@ -44,7 +67,7 @@ export async function parseWordDocument(blob: Blob, _sourceUrl: string): Promise
 
 export async function parseExcelDocument(blob: Blob, _sourceUrl: string): Promise<LibraryPreview | null> {
   try {
-    const buffer = await blob.arrayBuffer();
+    const buffer = await readBlobAsArrayBuffer(blob);
     const workbook = readExcel(buffer);
 
     if (!workbook.SheetNames.length) return null;
@@ -56,16 +79,37 @@ export async function parseExcelDocument(blob: Blob, _sourceUrl: string): Promis
       const rows = xlsxUtils.sheet_to_json(worksheet) as Array<Record<string, unknown>>;
       if (rows.length === 0) return null;
 
-      const columns = Object.keys(rows[0]).slice(0, 8);
-      const tableRows = rows.slice(0, 15).map((row) =>
+      // `sheet_to_json` omits a key entirely for a row when that cell is blank, so
+      // deriving columns from row 0 alone can silently drop columns that only have
+      // data further down. Union the keys (in first-seen order) across all rows.
+      const columnOrder: string[] = [];
+      const seenColumns = new Set<string>();
+      for (const row of rows) {
+        for (const key of Object.keys(row)) {
+          if (!seenColumns.has(key)) {
+            seenColumns.add(key);
+            columnOrder.push(key);
+          }
+        }
+      }
+
+      const totalColumns = columnOrder.length;
+      const columns = columnOrder.slice(0, SPREADSHEET_COLUMN_LIMIT);
+      const tableRows = rows.slice(0, SPREADSHEET_ROW_LIMIT).map((row) =>
         columns.map((col) => {
           const value = row[col];
           return value === null || value === undefined ? '' : String(value);
         }),
       );
 
-      return { name: sheetName, columns, rows: tableRows };
-    }).filter((sheet): sheet is { name: string; columns: string[]; rows: string[][] } => sheet !== null);
+      return {
+        name: sheetName,
+        columns,
+        rows: tableRows,
+        totalRows: rows.length,
+        totalColumns,
+      };
+    }).filter((sheet): sheet is { name: string; columns: string[]; rows: string[][]; totalRows: number; totalColumns: number } => sheet !== null);
 
     if (sheets.length === 0) return null;
 
@@ -79,9 +123,46 @@ export async function parseExcelDocument(blob: Blob, _sourceUrl: string): Promis
   }
 }
 
+// The zip entry names under ppt/slides/ carry no guarantee of matching the deck's
+// actual authored order (a slide can be renumbered/reordered by tools other than
+// PowerPoint without renaming its file) — the real order lives in
+// ppt/presentation.xml's <p:sldIdLst>, resolved through ppt/_rels/presentation.xml.rels.
+async function getAuthoredSlideOrder(zip: import('jszip')): Promise<string[] | null> {
+  try {
+    const presentationXml = await zip.file('ppt/presentation.xml')?.async('text');
+    const relsXml = await zip.file('ppt/_rels/presentation.xml.rels')?.async('text');
+    if (!presentationXml || !relsXml) return null;
+
+    const sldIdListMatch = presentationXml.match(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/);
+    if (!sldIdListMatch) return null;
+    const rIds = Array.from(sldIdListMatch[0].matchAll(/r:id="([^"]+)"/g)).map((m) => m[1]);
+    if (rIds.length === 0) return null;
+
+    const relationshipMap = new Map<string, string>();
+    for (const tagMatch of relsXml.matchAll(/<Relationship\b[^>]*\/?>/g)) {
+      const tag = tagMatch[0];
+      const id = tag.match(/\bId="([^"]+)"/)?.[1];
+      const target = tag.match(/\bTarget="([^"]+)"/)?.[1];
+      if (id && target) relationshipMap.set(id, target);
+    }
+
+    const orderedPaths: string[] = [];
+    for (const rId of rIds) {
+      const target = relationshipMap.get(rId);
+      if (!target) return null;
+      const normalized = target.replace(/^\.?\/?/, '');
+      orderedPaths.push(normalized.startsWith('slides/') ? `ppt/${normalized}` : normalized);
+    }
+    return orderedPaths;
+  } catch (error) {
+    console.error('Failed to resolve authored PowerPoint slide order:', error);
+    return null;
+  }
+}
+
 export async function parsePowerPointDocument(blob: Blob, _sourceUrl: string): Promise<LibraryPreview | null> {
   try {
-    const buffer = await blob.arrayBuffer();
+    const buffer = await readBlobAsArrayBuffer(blob);
     const uint8Array = new Uint8Array(buffer);
 
     // Check for PPTX signature (ZIP file)
@@ -92,11 +173,32 @@ export async function parsePowerPointDocument(blob: Blob, _sourceUrl: string): P
     await zip.loadAsync(buffer);
 
     const slides: Array<{ title: string; bullets: string[] }> = [];
-    const slideFiles = Object.keys(zip.files).filter((name) => name.match(/ppt\/slides\/slide\d+\.xml$/));
+    // Use the actual matched filenames (and sort numerically) as a fallback
+    // instead of reconstructing `slide${i + 1}.xml` — decks whose internal slide
+    // files aren't contiguously numbered from 1 (common after slide deletion/
+    // reordering outside PowerPoint) were silently skipping slides.
+    const discoveredSlideFiles = Object.keys(zip.files)
+      .filter((name) => name.match(/ppt\/slides\/slide\d+\.xml$/))
+      .sort((a, b) => {
+        const numA = Number(a.match(/slide(\d+)\.xml$/)?.[1] ?? 0);
+        const numB = Number(b.match(/slide(\d+)\.xml$/)?.[1] ?? 0);
+        return numA - numB;
+      });
 
-    for (let i = 0; i < Math.min(slideFiles.length, 10); i++) {
-      const slideNum = i + 1;
-      const slideFile = zip.file(`ppt/slides/slide${slideNum}.xml`);
+    // Prefer the deck's true authored order from presentation.xml when it's
+    // resolvable and accounts for exactly the same set of slide files — falls
+    // back to filename-sorted order for decks with unusual/malformed rels.
+    const authoredOrder = await getAuthoredSlideOrder(zip);
+    const slideFiles = authoredOrder
+      && authoredOrder.length === discoveredSlideFiles.length
+      && authoredOrder.every((path) => zip.file(path) !== null)
+      ? authoredOrder
+      : discoveredSlideFiles;
+
+    const totalSlides = slideFiles.length;
+
+    for (let i = 0; i < Math.min(slideFiles.length, PRESENTATION_SLIDE_LIMIT); i++) {
+      const slideFile = zip.file(slideFiles[i]);
       if (!slideFile) continue;
 
       const xmlContent = await slideFile.async('text');
@@ -104,7 +206,7 @@ export async function parsePowerPointDocument(blob: Blob, _sourceUrl: string): P
       const allText = textElements.map((el) => el.replace(/<a:t>|<\/a:t>/g, '')).filter(Boolean);
 
       if (allText.length > 0) {
-        const title = allText[0] || `Slide ${slideNum}`;
+        const title = allText[0] || `Slide ${i + 1}`;
         const bullets = allText.slice(1).filter((text) => text.length > 0);
         slides.push({
           title,
@@ -118,6 +220,7 @@ export async function parsePowerPointDocument(blob: Blob, _sourceUrl: string): P
     return {
       kind: 'presentation',
       slides,
+      totalSlides,
     };
   } catch (error) {
     console.error('Failed to parse PowerPoint document:', error);

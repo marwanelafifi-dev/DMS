@@ -7,10 +7,10 @@ export type LibraryFileExtension = RequiredLibraryFileExtension | 'jpg' | 'jpeg'
 
 type TextPreview = { kind: 'text'; content: string };
 type MarkdownPreview = { kind: 'markdown'; content: string };
-type WordPreview = { kind: 'word'; title: string; paragraphs: string[] };
-export type SpreadsheetSheet = { name: string; columns: string[]; rows: string[][] };
+type WordPreview = { kind: 'word'; title: string; paragraphs: string[]; totalParagraphs?: number; renderNotice?: string };
+export type SpreadsheetSheet = { name: string; columns: string[]; rows: string[][]; totalRows?: number; totalColumns?: number };
 type SpreadsheetPreview = { kind: 'spreadsheet'; sheets: SpreadsheetSheet[] };
-type PresentationPreview = { kind: 'presentation'; slides: Array<{ title: string; bullets: string[] }> };
+type PresentationPreview = { kind: 'presentation'; slides: Array<{ title: string; bullets: string[] }>; totalSlides?: number; renderNotice?: string };
 type PdfPreview = { kind: 'pdf'; url: string };
 type ImagePreview = { kind: 'image'; url: string; alt: string };
 type OfficeEmbedPreview = { kind: 'office-embed'; url: string };
