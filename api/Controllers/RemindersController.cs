@@ -8,7 +8,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class RemindersController(ReminderService reminderService, ILogger<RemindersController> logger) : BaseController
 {
-    // GET /api/reminders — تذكيراتي
+    // GET /api/reminders — my reminders
     [HttpGet]
     public async Task<ActionResult<object>> GetMyReminders()
     {
@@ -28,7 +28,7 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
         }
     }
 
-    // GET /api/reminders/pending — التذكيرات المنتظرة
+    // GET /api/reminders/pending — pending reminders
     [HttpGet("pending/list")]
     public async Task<ActionResult<object>> GetPendingReminders([FromQuery] int limit = 100)
     {
@@ -47,7 +47,7 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
         }
     }
 
-    // POST /api/reminders/{id}/send — إرسال تذكير محدد
+    // POST /api/reminders/{id}/send — send a specific reminder
     [HttpPost("{id}/send")]
     public async Task<ActionResult<object>> SendReminderManually(Guid id)
     {
@@ -74,7 +74,7 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
         }
     }
 
-    // POST /api/reminders/send-due — تشغيل مسح Hangfire لكل التذكيرات المستحقة
+    // POST /api/reminders/send-due — run a Hangfire scan for all due reminders
     [HttpPost("send-due")]
     public ActionResult<object> SendDueReminders([FromServices] IBackgroundJobClient jobClient)
     {
@@ -93,7 +93,7 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
         }
     }
 
-    // DELETE /api/reminders/{id} — حذف تذكير
+    // DELETE /api/reminders/{id} — delete a reminder
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeleteReminder(Guid id)
     {
@@ -119,7 +119,7 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
         }
     }
 
-    // POST /api/reminders — إنشاء تذكير
+    // POST /api/reminders — create a reminder
     [HttpPost]
     public async Task<ActionResult<object>> CreateReminder([FromBody] CreateReminderRequest req)
     {

@@ -7,7 +7,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class AuditCalendarController(AuditCalendarService auditCalendarService, ILogger<AuditCalendarController> logger) : BaseController
 {
-    // GET /api/auditcalendar — كل أحداث تقويم التدقيق، مرئية لجميع المستخدمين
+    // GET /api/auditcalendar — all audit calendar events, visible to all users
     [HttpGet]
     public async Task<ActionResult<object>> GetEvents()
     {
@@ -23,7 +23,7 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
         }
     }
 
-    // POST /api/auditcalendar — نشر حدث جديد
+    // POST /api/auditcalendar — publish a new event
     //
     // NOTE: DmsUser has no global role column (see Session 5 in CLAUDE.md — role
     // only exists per-folder via dms_folder_permissions). This endpoint currently
@@ -57,7 +57,7 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
         }
     }
 
-    // DELETE /api/auditcalendar/{id} — إزالة حدث
+    // DELETE /api/auditcalendar/{id} — remove event
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeleteEvent(Guid id)
     {

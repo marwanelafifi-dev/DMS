@@ -95,7 +95,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 // user id into the X-User-Id header RBACMiddleware already trusts.
 app.UseMiddleware<JwtAuthMiddleware>();
 
-// RBAC Middleware — التحقق من الصلاحيات
+// RBAC Middleware — permission check
 app.UseMiddleware<RBACMiddleware>();
 
 app.MapControllers();

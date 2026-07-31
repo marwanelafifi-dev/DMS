@@ -1,11 +1,11 @@
 # Document Approval Workflow — Phase 2
 
-## نظرة عامة
-نظام الموافقة على المستندات. بعد إنهاء التعديلات، يرسل المستخدم المستند للموافقة. المدير يراجعه ويوافق أو يرفض.
+## Overview
+A document approval system. After finishing edits, the user submits the document for approval. The manager reviews it and either approves or rejects it.
 
 ---
 
-## المراحل
+## Stages
 
 ```
 ┌──────────────┐
@@ -195,7 +195,7 @@ curl -H "X-User-Id: user-123" \
     "documentId": "uuid-doc",
     "versionNumber": "1.0",
     "status": "pending_approval",
-    "submittedBy": "محمد أحمد",
+    "submittedBy": "Mohamed Ahmed",
     "submittedAt": "2026-07-16T14:30:00Z",
     "approvedBy": null,
     "approvedAt": null,
@@ -213,9 +213,9 @@ curl -H "X-User-Id: user-123" \
   "success": true,
   "data": {
     "status": "released",
-    "submittedBy": "محمد أحمد",
+    "submittedBy": "Mohamed Ahmed",
     "submittedAt": "2026-07-16T14:30:00Z",
-    "approvedBy": "علي محمود",
+    "approvedBy": "Ali Mahmoud",
     "approvedAt": "2026-07-16T14:35:00Z",
     "approvalComment": "Approved. Good to release.",
     "isPending": false,
@@ -246,7 +246,7 @@ curl -H "X-User-Id: manager-123" \
       "title": "SOP Document",
       "versionNumber": "1.0",
       "status": "pending_approval",
-      "submittedBy": "محمد أحمد",
+      "submittedBy": "Mohamed Ahmed",
       "submittedAt": "2026-07-16T14:30:00Z",
       "folderId": "folder-uuid"
     },
@@ -256,7 +256,7 @@ curl -H "X-User-Id: manager-123" \
       "title": "Quality Manual",
       "versionNumber": "2.1",
       "status": "pending_approval",
-      "submittedBy": "أحمد علي",
+      "submittedBy": "Ahmed Ali",
       "submittedAt": "2026-07-16T14:35:00Z",
       "folderId": "folder-uuid"
     }

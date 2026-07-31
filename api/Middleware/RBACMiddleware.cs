@@ -16,18 +16,18 @@ public class RBACMiddleware
 
     public async Task InvokeAsync(HttpContext context, DmsContext dbContext)
     {
-        // قراءة معلومات الـ request
+        // Read request information
         var method = context.Request.Method;
         var path = context.Request.Path.Value;
 
-        // تخطي الـ endpoints التي لا تحتاج authorization (مثل health check, test)
+        // Skip endpoints that don't need authorization (e.g. health check, test)
         if (ShouldSkipAuth(path, method))
         {
             await _next(context);
             return;
         }
 
-        // محاولة الحصول على userId من header
+        // Try to get userId from the header
         var userIdHeader = context.Request.Headers["X-User-Id"].ToString();
 
         if (string.IsNullOrEmpty(userIdHeader) || !Guid.TryParse(userIdHeader, out var userId))
@@ -42,7 +42,7 @@ public class RBACMiddleware
             return;
         }
 
-        // التحقق من أن المستخدم موجود ومفعّل
+        // Verify that the user exists and is active
         var user = await dbContext.Users
             .FirstOrDefaultAsync(u => u.UserId == userId && u.IsActive);
 
@@ -58,11 +58,11 @@ public class RBACMiddleware
             return;
         }
 
-        // إضافة معلومات المستخدم إلى context
+        // Add user information to the context
         context.Items["UserId"] = userId;
         context.Items["User"] = user;
 
-        // التحقق من الصلاحيات بناءً على الـ endpoint والـ method
+        // Check permissions based on the endpoint and method
         if (IsDocumentEndpoint(path))
         {
             var handled = await CheckDocumentPermissions(context, dbContext, userId, method, path);
@@ -91,6 +91,9 @@ public class RBACMiddleware
             // No session token exists yet at login time.
             "/api/auth/login",
             "/api/auth/set-initial-password",
+            // No session/X-User-Id exists yet at Google sign-in time either —
+            // AuthController verifies the Google ID token itself instead.
+            "/api/auth/google",
             // Google redirects the user's browser here directly after OAuth
             // consent — there is no X-User-Id header on that request. The user
             // is instead identified via the `state` query parameter, which
@@ -105,18 +108,18 @@ public class RBACMiddleware
     private bool IsDocumentEndpoint(string path) => path.StartsWith("/api/documents", StringComparison.OrdinalIgnoreCase);
     private bool IsFolderEndpoint(string path) => path.StartsWith("/api/folders", StringComparison.OrdinalIgnoreCase);
 
-    // يرجع true إذا تم التعامل مع الطلب بالفعل (لا تستدعي _next بعدها)
+    // Returns true if the request has already been handled (don't call _next afterwards)
     private async Task<bool> CheckDocumentPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
     {
-        // استخراج document ID من الـ path
+        // Extract the document ID from the path
         var segments = path.Split('/');
         if (segments.Length < 4 || !Guid.TryParse(segments[3], out var documentId))
         {
-            // لا توجد document ID (مثل GET /api/documents) — اترك الكنترولر يتعامل معها
+            // No document ID present (e.g. GET /api/documents) — let the controller handle it
             return false;
         }
 
-        // الحصول على المستند
+        // Get the document
         var document = await dbContext.Documents
             .FirstOrDefaultAsync(d => d.DocumentId == documentId);
 
@@ -131,7 +134,7 @@ public class RBACMiddleware
             return true;
         }
 
-        // الحصول على صلاحيات المستخدم على المجلد الذي فيه المستند
+        // Get the user's permissions on the folder containing the document
         var permission = await dbContext.FolderPermissions
             .FirstOrDefaultAsync(p => p.FolderId == document.FolderId && p.UserId == userId);
 
@@ -147,7 +150,7 @@ public class RBACMiddleware
             return true;
         }
 
-        // التحقق من الصلاحيات بناءً على الـ method
+        // Check permissions based on the method
         if (!await HasPermissionForMethodAsync(dbContext, method, path, permission.Role))
         {
             _logger.LogWarning("User {UserId} with role {Role} cannot {Method} document", userId, permission.Role, method);
@@ -166,18 +169,18 @@ public class RBACMiddleware
         return false;
     }
 
-    // يرجع true إذا تم التعامل مع الطلب بالفعل (لا تستدعي _next بعدها)
+    // Returns true if the request has already been handled (don't call _next afterwards)
     private async Task<bool> CheckFolderPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
     {
-        // استخراج folder ID من الـ path
+        // Extract the folder ID from the path
         var segments = path.Split('/');
         if (segments.Length < 4 || !Guid.TryParse(segments[3], out var folderId))
         {
-            // إذا لا توجد folder ID (مثل GET /api/folders) — كل مستخدم يقدر يرى جميع المجلدات
+            // If there's no folder ID (e.g. GET /api/folders) — every user can see all folders
             return false;
         }
 
-        // الحصول على المجلد
+        // Get the folder
         var folder = await dbContext.Folders
             .FirstOrDefaultAsync(f => f.FolderId == folderId);
 
@@ -192,7 +195,7 @@ public class RBACMiddleware
             return true;
         }
 
-        // الحصول على صلاحيات المستخدم
+        // Get the user's permissions
         var permission = await dbContext.FolderPermissions
             .FirstOrDefaultAsync(p => p.FolderId == folderId && p.UserId == userId);
 
@@ -208,7 +211,7 @@ public class RBACMiddleware
             return true;
         }
 
-        // التحقق من الصلاحيات
+        // Check permissions
         if (!await HasPermissionForMethodAsync(dbContext, method, path, permission.Role))
         {
             _logger.LogWarning("User {UserId} with role {Role} cannot {Method} folder", userId, permission.Role, method);

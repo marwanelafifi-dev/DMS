@@ -10,7 +10,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class TasksController(DmsContext context, TaskService taskService, ILogger<TasksController> logger) : BaseController
 {
-    // GET /api/tasks — مهامي
+    // GET /api/tasks — my tasks
     [HttpGet]
     public async Task<ActionResult<object>> GetMyTasks(
         [FromQuery] string? status,
@@ -45,7 +45,7 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         }
     }
 
-    // GET /api/tasks/{id} — تفاصيل مهمة
+    // GET /api/tasks/{id} — task details
     [HttpGet("{id}")]
     public async Task<ActionResult<object>> GetTask(Guid id)
     {
@@ -57,7 +57,7 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
                 .FirstOrDefaultAsync(t => t.TaskId == id);
 
             if (task == null)
-                return NotFound(new { success = false, error = "المهمة غير موجودة" });
+                return NotFound(new { success = false, error = "Task not found" });
 
             logger.LogInformation("Retrieved task {TaskId}", id);
 
@@ -90,14 +90,14 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         }
     }
 
-    // POST /api/tasks — إنشاء مهمة جديدة
+    // POST /api/tasks — create a new task
     [HttpPost]
     public async Task<ActionResult<object>> CreateTask([FromBody] CreateTaskRequest req)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(req.Title))
-                return BadRequest(new { success = false, error = "العنوان مطلوب" });
+                return BadRequest(new { success = false, error = "Title is required" });
 
             var managerId = GetCurrentUserId();
             var result = await taskService.CreateTaskAsync(
@@ -134,7 +134,7 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         }
     }
 
-    // POST /api/tasks/{id}/complete — إغلاق المهمة
+    // POST /api/tasks/{id}/complete — close the task
     [HttpPost("{id}/complete")]
     public async Task<ActionResult<object>> CompleteTask(Guid id, [FromBody] CompleteTaskRequest req)
     {
@@ -163,7 +163,7 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         }
     }
 
-    // PUT /api/tasks/{id} — تحديث المهمة
+    // PUT /api/tasks/{id} — update the task
     [HttpPut("{id}")]
     public async Task<ActionResult<object>> UpdateTask(Guid id, [FromBody] UpdateTaskRequest req)
     {
@@ -197,7 +197,7 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         }
     }
 
-    // GET /api/tasks/overdue — المهام المتأخرة
+    // GET /api/tasks/overdue — overdue tasks
     [HttpGet("overdue/list")]
     public async Task<ActionResult<object>> GetOverdueTasks([FromQuery] int limit = 100)
     {
@@ -216,7 +216,7 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         }
     }
 
-    // GET /api/tasks/document/{documentId} — مهام المستند
+    // GET /api/tasks/document/{documentId} — document's tasks
     [HttpGet("document/{documentId}")]
     public async Task<ActionResult<object>> GetDocumentTasks(Guid documentId)
     {

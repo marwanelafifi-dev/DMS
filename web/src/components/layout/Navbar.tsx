@@ -148,9 +148,18 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
           <div className="hidden h-9 w-px bg-[#e2e8f0] sm:block" />
 
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#2f3e83] text-sm font-bold text-white">
-              {initials}
-            </div>
+            {user?.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.fullName}
+                referrerPolicy="no-referrer"
+                className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#2f3e83] text-sm font-bold text-white">
+                {initials}
+              </div>
+            )}
             <div className="hidden min-w-[92px] sm:block">
               <div className="truncate text-sm font-semibold leading-5 text-[#17213a] dark:text-white">{user?.fullName}</div>
               <div className="text-xs leading-4 text-[#718198]">{user?.role || 'Full Access'}</div>

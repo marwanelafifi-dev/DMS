@@ -19,7 +19,7 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
         FolderRoles.Admin
     ];
 
-    // GET /api/folders — قائمة جميع المجلدات
+    // GET /api/folders — list all folders
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetFolders()
     {
@@ -50,7 +50,7 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
         }
     }
 
-    // GET /api/folders/{id} — تفاصيل مجلد واحد
+    // GET /api/folders/{id} — details of a single folder
     [HttpGet("{id}")]
     public async Task<ActionResult<object>> GetFolder(Guid id)
     {
@@ -60,7 +60,7 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 .FirstOrDefaultAsync(f => f.FolderId == id);
 
             if (folder == null)
-                return NotFound(new { success = false, error = "المجلد غير موجود" });
+                return NotFound(new { success = false, error = "Folder not found" });
 
             var permissions = await context.FolderPermissions
                 .Where(p => p.FolderId == id)
@@ -97,7 +97,7 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
         }
     }
 
-    // POST /api/folders — إنشاء مجلد جديد
+    // POST /api/folders — create a new folder
     [HttpPost]
     public async Task<ActionResult<object>> CreateFolder([FromBody] CreateFolderRequest req)
     {
@@ -105,35 +105,35 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
         {
             var userId = GetCurrentUserId();
 
-            // التحقق من المدخلات
+            // Validate inputs
             if (string.IsNullOrWhiteSpace(req.Name))
-                return BadRequest(new { success = false, error = "اسم المجلد مطلوب" });
+                return BadRequest(new { success = false, error = "Folder name is required" });
 
             if (req.OwnerId == Guid.Empty)
-                return BadRequest(new { success = false, error = "المالك مطلوب" });
+                return BadRequest(new { success = false, error = "Owner is required" });
 
             // Folder ownership is derived from the authenticated request. The API
             // does not permit callers to grant Admin access to an arbitrary user.
             if (req.OwnerId != userId)
                 return StatusCode(403, new { success = false, error = "Folder owner must match the authenticated user" });
 
-            // التحقق من وجود المالك
+            // Verify owner exists
             var ownerExists = await context.Users
                 .AnyAsync(u => u.UserId == userId && u.IsActive);
 
             if (!ownerExists)
-                return BadRequest(new { success = false, error = "المالك غير موجود أو معطل" });
+                return BadRequest(new { success = false, error = "Owner not found or disabled" });
 
             var canCreateFolder = userId == DevSystemAdminId;
 
-            // التحقق من المجلد الأب إن وجد
+            // Verify parent folder if provided
             if (req.ParentFolderId.HasValue)
             {
                 var parentExists = await context.Folders
                     .AnyAsync(f => f.FolderId == req.ParentFolderId);
 
                 if (!parentExists)
-                    return BadRequest(new { success = false, error = "المجلد الأب غير موجود" });
+                    return BadRequest(new { success = false, error = "Parent folder not found" });
 
                 canCreateFolder = await context.FolderPermissions.AnyAsync(permission =>
                     permission.FolderId == req.ParentFolderId &&
@@ -292,7 +292,7 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
         };
     }
 
-    // PUT /api/folders/{id} — تعديل مجلد
+    // PUT /api/folders/{id} — update folder
     [HttpPut("{id}")]
     public async Task<ActionResult<object>> UpdateFolder(Guid id, [FromBody] UpdateFolderRequest req)
     {
@@ -302,9 +302,9 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 .FirstOrDefaultAsync(f => f.FolderId == id);
 
             if (folder == null)
-                return NotFound(new { success = false, error = "المجلد غير موجود" });
+                return NotFound(new { success = false, error = "Folder not found" });
 
-            // تحديث الحقول
+            // Update fields
             if (!string.IsNullOrWhiteSpace(req.Name))
                 folder.Name = req.Name.Trim();
 
@@ -350,7 +350,7 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
         }
     }
 
-    // DELETE /api/folders/{id} — حذف مجلد
+    // DELETE /api/folders/{id} — delete folder
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeleteFolder(Guid id)
     {
@@ -360,9 +360,9 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 .FirstOrDefaultAsync(f => f.FolderId == id);
 
             if (folder == null)
-                return NotFound(new { success = false, error = "المجلد غير موجود" });
+                return NotFound(new { success = false, error = "Folder not found" });
 
-            // التحقق من عدم وجود مستندات
+            // Verify no documents exist
             var documentCount = await context.Documents
                 .Where(d => d.FolderId == id)
                 .CountAsync();
@@ -371,17 +371,17 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 return BadRequest(new
                 {
                     success = false,
-                    error = $"لا يمكن حذف المجلد - يحتوي على {documentCount} مستندات"
+                    error = $"Cannot delete folder - it contains {documentCount} documents"
                 });
 
-            // حذف الصلاحيات أولاً
+            // Delete permissions first
             var permissions = await context.FolderPermissions
                 .Where(p => p.FolderId == id)
                 .ToListAsync();
 
             context.FolderPermissions.RemoveRange(permissions);
 
-            // حذف المجلد
+            // Delete folder
             context.Folders.Remove(folder);
             await context.SaveChangesAsync();
 
@@ -396,7 +396,7 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
 
             logger.LogInformation("Deleted folder {FolderId}", id);
 
-            return Ok(new { success = true, message = "تم حذف المجلد بنجاح" });
+            return Ok(new { success = true, message = "Folder deleted successfully" });
         }
         catch (Exception ex)
         {

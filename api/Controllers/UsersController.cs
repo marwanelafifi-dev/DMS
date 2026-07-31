@@ -11,7 +11,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class UsersController(DmsContext context, AuditService auditService, ILogger<UsersController> logger) : BaseController
 {
-    // GET /api/users — قائمة المستخدمين
+    // GET /api/users — list of users
     // Pass `page`/`pageSize` to paginate (used by the Users admin table); omit both to get
     // the full list unpaginated (used by lookup/dropdown callers like Audit Trail and Folder Permissions).
     [HttpGet]
@@ -51,6 +51,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                     u.CreatedAt,
                     u.LastLoginAt,
                     u.LastHeartbeatAt,
+                    u.AvatarUrl,
                     AuthType = u.SsoSubject != null ? "Google" : "Local"
                 })
                 .ToListAsync();
@@ -81,6 +82,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                 u.CreatedAt,
                 u.LastLoginAt,
                 u.AuthType,
+                u.AvatarUrl,
                 IsOnline = u.LastHeartbeatAt.HasValue && u.LastHeartbeatAt.Value >= onlineThreshold,
                 AccessLevel = highestAccessByUser.GetValueOrDefault(u.UserId, "No Access"),
             }).ToList();
@@ -110,7 +112,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
-    // GET /api/users/{id} — تفاصيل مستخدم
+    // GET /api/users/{id} — user details
     [HttpGet("{id}")]
     public async Task<ActionResult<object>> GetUser(Guid id)
     {
@@ -120,7 +122,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                 .FirstOrDefaultAsync(u => u.UserId == id);
 
             if (user == null)
-                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+                return NotFound(new { success = false, error = "User not found" });
 
             var permissions = await context.FolderPermissions
                 .Where(p => p.UserId == id)
@@ -143,6 +145,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                     user.FullName,
                     user.IsActive,
                     user.SsoSubject,
+                    user.AvatarUrl,
                     Permissions = permissions,
                     PendingTasks = taskCount,
                     user.CreatedAt,
@@ -158,25 +161,25 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
-    // POST /api/users — إنشاء مستخدم جديد
+    // POST /api/users — create a new user
     [HttpPost]
     public async Task<ActionResult<object>> CreateUser([FromBody] CreateUserRequest req)
     {
         try
         {
-            // التحقق من المدخلات
+            // Validate input
             if (string.IsNullOrWhiteSpace(req.Email))
-                return BadRequest(new { success = false, error = "البريد الإلكتروني مطلوب" });
+                return BadRequest(new { success = false, error = "Email is required" });
 
             if (string.IsNullOrWhiteSpace(req.FullName))
-                return BadRequest(new { success = false, error = "الاسم الكامل مطلوب" });
+                return BadRequest(new { success = false, error = "Full name is required" });
 
-            // التحقق من عدم تكرار البريد
+            // Check for duplicate email
             if (await context.Users.AnyAsync(u => u.Email == req.Email.ToLower()))
-                return BadRequest(new { success = false, error = "المستخدم بهذا البريد موجود بالفعل" });
+                return BadRequest(new { success = false, error = "A user with this email already exists" });
 
             if (!string.IsNullOrEmpty(req.Password) && req.Password.Length < 8)
-                return BadRequest(new { success = false, error = "كلمة المرور يجب أن تكون 8 أحرف على الأقل" });
+                return BadRequest(new { success = false, error = "Password must be at least 8 characters" });
 
             var user = new DmsUser
             {
@@ -223,7 +226,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
-    // PUT /api/users/{id} — تعديل مستخدم
+    // PUT /api/users/{id} — update user
     [HttpPut("{id}")]
     public async Task<ActionResult<object>> UpdateUser(Guid id, [FromBody] UpdateUserRequest req)
     {
@@ -236,7 +239,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                 .FirstOrDefaultAsync(u => u.UserId == id);
 
             if (user == null)
-                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+                return NotFound(new { success = false, error = "User not found" });
 
             if (!string.IsNullOrWhiteSpace(req.FullName))
                 user.FullName = req.FullName.Trim();
@@ -282,7 +285,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
-    // DELETE /api/users/{id} — تعطيل المستخدم (soft delete - عدم الحذف الحقيقي)
+    // DELETE /api/users/{id} — deactivate user (soft delete, not a real delete)
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeactivateUser(Guid id)
     {
@@ -290,13 +293,13 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         {
             var currentUserId = GetCurrentUserId();
             if (id == currentUserId)
-                return BadRequest(new { success = false, error = "لا يمكنك تعطيل حسابك الخاص" });
+                return BadRequest(new { success = false, error = "You cannot deactivate your own account" });
 
             var user = await context.Users
                 .FirstOrDefaultAsync(u => u.UserId == id);
 
             if (user == null)
-                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+                return NotFound(new { success = false, error = "User not found" });
 
             user.IsActive = false;
             user.UpdatedAt = DateTime.UtcNow;
@@ -314,7 +317,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Deactivated user {UserId}", id);
 
-            return Ok(new { success = true, message = "تم تعطيل المستخدم بنجاح" });
+            return Ok(new { success = true, message = "User deactivated successfully" });
         }
         catch (Exception ex)
         {
@@ -323,18 +326,18 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
-    // PUT /api/users/{id}/reset-password — إعادة تعيين كلمة المرور (للمستخدمين المحليين)
+    // PUT /api/users/{id}/reset-password — reset password (for local users)
     [HttpPut("{id}/reset-password")]
     public async Task<ActionResult<object>> ResetPassword(Guid id, [FromBody] ResetPasswordRequest req)
     {
         try
         {
             if (string.IsNullOrEmpty(req.NewPassword) || req.NewPassword.Length < 8)
-                return BadRequest(new { success = false, error = "كلمة المرور يجب أن تكون 8 أحرف على الأقل" });
+                return BadRequest(new { success = false, error = "Password must be at least 8 characters" });
 
             var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == id);
             if (user == null)
-                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+                return NotFound(new { success = false, error = "User not found" });
 
             user.PasswordHash = PasswordHasher.Hash(req.NewPassword);
             user.UpdatedAt = DateTime.UtcNow;
@@ -352,7 +355,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Password reset for user {UserId}", id);
 
-            return Ok(new { success = true, message = "تم إعادة تعيين كلمة المرور بنجاح" });
+            return Ok(new { success = true, message = "Password reset successfully" });
         }
         catch (Exception ex)
         {
@@ -361,7 +364,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
-    // DELETE /api/users/{id}/permanent — حذف نهائي (لا يمكن التراجع عنه)
+    // DELETE /api/users/{id}/permanent — permanent delete (cannot be undone)
     [HttpDelete("{id}/permanent")]
     public async Task<ActionResult<object>> DeleteUserPermanently(Guid id)
     {
@@ -369,11 +372,11 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         {
             var currentUserId = GetCurrentUserId();
             if (id == currentUserId)
-                return BadRequest(new { success = false, error = "لا يمكنك حذف حسابك الخاص" });
+                return BadRequest(new { success = false, error = "You cannot delete your own account" });
 
             var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == id);
             if (user == null)
-                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+                return NotFound(new { success = false, error = "User not found" });
 
             await auditService.LogAsync(currentUserId, USER_DELETED, new
             {
@@ -388,14 +391,14 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
 
             logger.LogInformation("Permanently deleted user {UserId}", id);
 
-            return Ok(new { success = true, message = "تم حذف المستخدم نهائيًا" });
+            return Ok(new { success = true, message = "User permanently deleted" });
         }
         catch (DbUpdateException)
         {
             return Conflict(new
             {
                 success = false,
-                error = "لا يمكن حذف هذا المستخدم لأنه لا يزال يملك مستندات أو مهام أو توقيعات مرتبطة به. قم بإلغاء تنشيطه بدلاً من ذلك."
+                error = "This user cannot be deleted because they still have documents, tasks, or signatures associated with them. Deactivate them instead."
             });
         }
         catch (Exception ex)

@@ -8,7 +8,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class BackgroundJobsController(ILogger<BackgroundJobsController> logger) : ControllerBase
 {
-    // GET /api/backgroundjobs/status — حالة الـ background jobs
+    // GET /api/backgroundjobs/status — status of background jobs
     [HttpGet("status")]
     public ActionResult<object> GetBackgroundJobStatus()
     {
@@ -41,7 +41,7 @@ public class BackgroundJobsController(ILogger<BackgroundJobsController> logger) 
         }
     }
 
-    // POST /api/backgroundjobs/run-auto-unlock — تشغيل يدوي
+    // POST /api/backgroundjobs/run-auto-unlock — manual trigger
     [HttpPost("run-auto-unlock")]
     public ActionResult<object> RunAutoUnlockManually([FromServices] BackgroundJobService backgroundJobService)
     {
@@ -65,7 +65,7 @@ public class BackgroundJobsController(ILogger<BackgroundJobsController> logger) 
         }
     }
 
-    // GET /api/backgroundjobs/dashboard-url — رابط الـ Hangfire dashboard
+    // GET /api/backgroundjobs/dashboard-url — Hangfire dashboard link
     [HttpGet("dashboard-url")]
     public ActionResult<object> GetDashboardUrl()
     {

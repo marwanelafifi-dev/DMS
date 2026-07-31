@@ -1,20 +1,20 @@
 # Tasks & Reminders API — Phase 2
 
-## نظرة عامة
-نظام إدارة المهام والتذكيرات. المستخدمون يتلقون مهام مرتبطة بالمستندات (تصحيحات، توثيقات، إلخ)، ويمكنهم تتبع الحالة والمواعيد النهائية.
+## Overview
+Task and reminder management system. Users receive tasks linked to documents (corrections, documentation, etc.) and can track their status and due dates.
 
 ---
 
-## الحالات
+## Statuses
 
 ```
 ┌──────────┐
-│ Open     │ (جديدة، لم تُنجز بعد)
+│ Open     │ (new, not yet done)
 └────┬─────┘
-     │ (المستخدم ينهيها)
+     │ (user completes it)
      ▼
 ┌──────────┐
-│Completed │ (منجزة)
+│Completed │ (done)
 └──────────┘
 
 Special: Overdue = Open + DueDate < today
@@ -88,7 +88,7 @@ curl -H "X-User-Id: user-123" \
     "riskSeverity": null,
     "assignedTo": {
       "userId": "user-123",
-      "fullName": "محمد أحمد",
+      "fullName": "Mohamed Ahmed",
       "email": "m.ahmed@example.com"
     },
     "dueDate": "2026-07-20",
@@ -145,7 +145,7 @@ curl -X POST \
     "documentId": "uuid-doc",
     "title": "Add watermark to all pages",
     "assignedToId": "user-123",
-    "assignedToName": "محمد أحمد",
+    "assignedToName": "Mohamed Ahmed",
     "dueDate": "2026-07-20",
     "status": "open",
     "createdAt": "2026-07-16T15:00:00Z"
@@ -250,7 +250,7 @@ curl -H "X-User-Id: manager-123" \
       "title": "Urgent: Add signatures",
       "assignedTo": {
         "userId": "user-456",
-        "fullName": "علي محمود"
+        "fullName": "Ali Mahmoud"
       },
       "dueDate": "2026-07-10",
       "status": "open",
@@ -283,7 +283,7 @@ curl -H "X-User-Id: user-123" \
       "taskType": "correction",
       "assignedTo": {
         "userId": "user-123",
-        "fullName": "محمد أحمد"
+        "fullName": "Mohamed Ahmed"
       },
       "dueDate": "2026-07-20",
       "status": "open",
@@ -296,7 +296,7 @@ curl -H "X-User-Id: user-123" \
       "taskType": "audit_action",
       "assignedTo": {
         "userId": "qa-user",
-        "fullName": "فاطمة علي"
+        "fullName": "Fatma Ali"
       },
       "dueDate": "2026-07-25",
       "status": "open",

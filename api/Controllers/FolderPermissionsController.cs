@@ -11,7 +11,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class FolderPermissionsController(DmsContext context, AuditService auditService, ILogger<FolderPermissionsController> logger) : BaseController
 {
-    // GET /api/folderpermissions/folder/{folderId} — صلاحيات المجلد
+    // GET /api/folderpermissions/folder/{folderId} — folder permissions
     [HttpGet("folder/{folderId}")]
     public async Task<ActionResult<object>> GetFolderPermissions(Guid folderId)
     {
@@ -19,7 +19,7 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
         {
             var folder = await context.Folders.FirstOrDefaultAsync(f => f.FolderId == folderId);
             if (folder == null)
-                return NotFound(new { success = false, error = "المجلد غير موجود" });
+                return NotFound(new { success = false, error = "Folder not found" });
 
             var permissions = await context.FolderPermissions
                 .Where(p => p.FolderId == folderId)
@@ -46,7 +46,7 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
         }
     }
 
-    // GET /api/folderpermissions/user/{userId} — صلاحيات المستخدم
+    // GET /api/folderpermissions/user/{userId} — user permissions
     [HttpGet("user/{userId}")]
     public async Task<ActionResult<object>> GetUserPermissions(Guid userId)
     {
@@ -75,7 +75,7 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
         }
     }
 
-    // POST /api/folderpermissions — منح صلاحية
+    // POST /api/folderpermissions — grant permission
     [HttpPost]
     public async Task<ActionResult<object>> GrantPermission([FromBody] GrantPermissionRequest req)
     {
@@ -88,17 +88,17 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
 
             var folder = await context.Folders.FirstOrDefaultAsync(f => f.FolderId == req.FolderId);
             if (folder == null)
-                return NotFound(new { success = false, error = "المجلد غير موجود" });
+                return NotFound(new { success = false, error = "Folder not found" });
 
             var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == req.UserId && u.IsActive);
             if (user == null)
-                return NotFound(new { success = false, error = "المستخدم غير موجود أو معطل" });
+                return NotFound(new { success = false, error = "User not found or disabled" });
 
             var existing = await context.FolderPermissions
                 .FirstOrDefaultAsync(p => p.FolderId == req.FolderId && p.UserId == req.UserId);
 
             if (existing != null)
-                return BadRequest(new { success = false, error = "المستخدم لديه صلاحية بالفعل" });
+                return BadRequest(new { success = false, error = "User already has this permission" });
 
             var permission = new DmsFolderPermission
             {
@@ -145,7 +145,7 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
         }
     }
 
-    // DELETE /api/folderpermissions/{id} — إلغاء صلاحية
+    // DELETE /api/folderpermissions/{id} — revoke permission
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> RevokePermission(Guid id)
     {
@@ -155,7 +155,7 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
             var permission = await context.FolderPermissions.FirstOrDefaultAsync(p => p.PermissionId == id);
 
             if (permission == null)
-                return NotFound(new { success = false, error = "الصلاحية غير موجودة" });
+                return NotFound(new { success = false, error = "Permission not found" });
 
             var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == permission.UserId);
 
@@ -174,7 +174,7 @@ public class FolderPermissionsController(DmsContext context, AuditService auditS
 
             logger.LogInformation("Revoked permission {PermissionId} from user {UserId}", id, permission.UserId);
 
-            return Ok(new { success = true, message = "تم إلغاء الصلاحية بنجاح" });
+            return Ok(new { success = true, message = "Permission revoked successfully" });
         }
         catch (Exception ex)
         {

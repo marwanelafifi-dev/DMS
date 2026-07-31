@@ -1,13 +1,13 @@
 # RBAC Middleware Usage Guide
 
-## المقدمة
-الـ RBAC (Role-Based Access Control) middleware يتحكم في الوصول إلى المستندات والمجلدات بناءً على:
-1. صلاحيات المستخدم على المجلد
-2. نوع الـ HTTP method
+## Introduction
+The RBAC (Role-Based Access Control) middleware controls access to documents and folders based on:
+1. The user's permissions on the folder
+2. The HTTP method type
 
 ---
 
-## الأدوار والصلاحيات
+## Roles and Permissions
 
 | Role | GET | POST | PUT | DELETE |
 |------|-----|------|-----|--------|
@@ -19,55 +19,55 @@
 
 ---
 
-## كيفية الاستخدام
+## How to Use
 
-### 1️⃣ إضافة Header في كل Request
+### 1️⃣ Add a Header to Every Request
 
 ```bash
-# قراءة المستندات
+# Read documents
 curl -H "X-User-Id: {userId}" http://localhost:8080/api/documents
 
-# تحميل ملف (يحتاج Writer role)
+# Upload a file (requires Writer role)
 curl -X POST \
   -H "X-User-Id: {userId}" \
   -F "file=@document.pdf" \
   http://localhost:8080/api/documents/{documentId}/upload
 
-# تعديل مستند (يحتاج Manager role)
+# Update a document (requires Manager role)
 curl -X PUT \
   -H "X-User-Id: {userId}" \
   -H "Content-Type: application/json" \
   -d '{"title": "New Title"}' \
   http://localhost:8080/api/documents/{documentId}
 
-# حذف مستند (يحتاج Manager role)
+# Delete a document (requires Manager role)
 curl -X DELETE \
   -H "X-User-Id: {userId}" \
   http://localhost:8080/api/documents/{documentId}
 ```
 
-### 2️⃣ الحصول على صلاحيات المستخدم في Controller
+### 2️⃣ Getting the User's Permissions in a Controller
 
 ```csharp
-// في أي controller يرث من BaseController
+// In any controller that inherits from BaseController
 
 public async Task<ActionResult> MyAction()
 {
-    var userId = GetCurrentUserId();           // الحصول على userId
-    var user = GetCurrentUser();               // بيانات المستخدم الكاملة
-    var role = GetUserRole();                  // دوره (Reader, Manager, إلخ)
-    var folderId = GetFolderId();              // folder ID من context
+    var userId = GetCurrentUserId();           // Get the userId
+    var user = GetCurrentUser();               // Full user data
+    var role = GetUserRole();                  // Their role (Reader, Manager, etc.)
+    var folderId = GetFolderId();              // folder ID from context
     
-    // استخدم هذه المتغيرات في logic
+    // Use these variables in the logic
     return Ok(new { userId, role });
 }
 ```
 
 ---
 
-## Response الأمان
+## Security Response
 
-### ✅ عند النجاح (200 OK)
+### ✅ On Success (200 OK)
 ```json
 {
   "success": true,
@@ -75,7 +75,7 @@ public async Task<ActionResult> MyAction()
 }
 ```
 
-### ❌ عند عدم وجود User (401 Unauthorized)
+### ❌ When No User Exists (401 Unauthorized)
 ```json
 {
   "success": false,
@@ -83,7 +83,7 @@ public async Task<ActionResult> MyAction()
 }
 ```
 
-### ❌ عند عدم وجود صلاحيات (403 Forbidden)
+### ❌ When Permissions Are Missing (403 Forbidden)
 ```json
 {
   "success": false,
@@ -93,41 +93,41 @@ public async Task<ActionResult> MyAction()
 
 ---
 
-## أمثلة سيناريوهات
+## Example Scenarios
 
-### السيناريو 1: Reader يحاول تحميل ملف
+### Scenario 1: Reader tries to upload a file
 ```
 Method: POST /api/documents/upload
 Header: X-User-Id: user-123
 Role: Reader
 
-النتيجة: ❌ 403 Forbidden
+Result: ❌ 403 Forbidden
 Reason: "Role 'Reader' cannot post documents"
 ```
 
-### السيناريو 2: Manager يحذف مستند
+### Scenario 2: Manager deletes a document
 ```
 Method: DELETE /api/documents/{docId}
 Header: X-User-Id: user-456
 Role: Manager
 
-النتيجة: ✅ 200 OK
-Message: "تم حذف المستند بنجاح"
+Result: ✅ 200 OK
+Message: "Document deleted successfully"
 ```
 
-### السيناريو 3: User بدون صلاحيات
+### Scenario 3: User without permissions
 ```
 Method: GET /api/documents/folder-123
 Header: X-User-Id: user-789
-Folder Permissions: (لا توجد)
+Folder Permissions: (none)
 
-النتيجة: ❌ 403 Forbidden
+Result: ❌ 403 Forbidden
 Reason: "No permission to access this folder"
 ```
 
 ---
 
-## كيف يشتغل الـ Middleware
+## How the Middleware Works
 
 ```
 User Request
@@ -151,30 +151,30 @@ If endpoint = documents/folders
 
 ---
 
-## Endpoints بدون Authentication Required
+## Endpoints Without Authentication Required
 
 ```
-GET  /health               ← صحة النظام
-GET  /api/test             ← اختبار الـ API
-GET  /api/miniotest/*      ← اختبار MinIO
-GET  /api/databasetest/*   ← اختبار Database
+GET  /health               ← system health
+GET  /api/test             ← API test
+GET  /api/miniotest/*      ← MinIO test
+GET  /api/databasetest/*   ← Database test
 ```
 
 ---
 
-## ملاحظات أمنية
+## Security Notes
 
-⚠️ **تذكر:**
-- دائماً أرسل `X-User-Id` header في كل request
-- المستخدم يجب أن يكون `IsActive = true`
-- الصلاحيات على مستوى **المجلد** (Folder-level)
-- المستندات ترث صلاحيات المجلد اللي فيها
+⚠️ **Remember:**
+- Always send the `X-User-Id` header on every request
+- The user must have `IsActive = true`
+- Permissions are at the **folder** level (Folder-level)
+- Documents inherit the permissions of the folder they're in
 
 ---
 
-## الخطوة التالية
+## Next Step
 
-بعد تجربة RBAC، المقبل هو **Audit Logging**:
-- تسجيل كل عملية Create/Update/Delete
+After trying out RBAC, the next step is **Audit Logging**:
+- Log every Create/Update/Delete operation
 - WORM compliance
-- تتبع من عمل إيش
+- Track who did what

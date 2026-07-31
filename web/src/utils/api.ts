@@ -64,6 +64,11 @@ class APIClient {
     return data;
   }
 
+  async loginWithGoogle(idToken: string) {
+    const { data } = await this.client.post<ApiResponse>('/auth/google', { idToken });
+    return data;
+  }
+
   async getCurrentSessionUser() {
     const { data } = await this.client.get<ApiResponse>('/auth/me');
     return data;

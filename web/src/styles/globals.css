@@ -71,6 +71,20 @@ button, input, select, textarea { font: inherit; }
 
 ::selection { background: #cfe7f8; color: #17213a; }
 
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #17213a;
+  -webkit-box-shadow: 0 0 0px 1000px #fff inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: 0 0 0px 1000px #020617 inset;
+}
+
 .page-heading { @apply text-[22px] leading-7 text-[#283a7a] dark:text-white; }
 .page-subtitle { @apply mt-0.5 text-sm text-[#697b97] dark:text-slate-400; }
 .section-heading { @apply text-[16px] font-semibold text-[#283a7a] dark:text-white; }

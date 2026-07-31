@@ -3,13 +3,62 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-07-30
+**Current Date:** 2026-07-31
 
 **Working Directory:** `C:\Users\user\Desktop\DMS`
 
 **Active Branch:** `Main`
 
-**Status:** Session 20 — the C-Doc approval workflow is restored end to end. Existing databases now receive the missing approval schema, submitted uploads are returned and rendered in the correct review queue, cyclic EF responses are eliminated, and the exact upload-to-QA workflow passes against the live Docker stack. **Known follow-up:** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 21 — real Google Sign-In (domain-restricted to @si-ware.com) is live end to end, the login page got a full visual redesign, and the entire codebase's Arabic-language comments/strings were translated to English. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 21 (2026-07-31) — Google Sign-In, Login Page Redesign, Docker/Branch Recovery, Arabic→English Sweep
+
+**Status:** ✅ Complete and live-verified against the running Docker stack (real Google sign-in with a real si-ware.com account, not just curl checks).
+
+**Context:** Session started from a fresh clone — `git clone` defaulted to the stale `main` (lowercase) branch instead of the actual default `Main` (capital), a GitHub case-collision that was diagnosed and corrected before any feature work began.
+
+### 1. Environment recovery (clone, branch, Docker)
+- Diagnosed a case-sensitivity branch split on GitHub: `origin/main` (lowercase, stale, 22 commits behind) vs. `origin/Main` (capital, the real default). Verified `main` is a pure ancestor subset of `Main` (zero unique commits) before recommending PR #19 be closed as a no-op. Re-cloned onto `origin/Main` (local branch `main-capital`, since Windows' case-insensitive filesystem won't allow a literal `Main` branch alongside `main`).
+- `ocr-rag/Dockerfile` was pulling full GPU/CUDA-bundled PyTorch (~1.5 GB of unused `nvidia_*` wheels) despite the target deployment being a GPU-less Ubuntu VM. Fixed by installing `torch` from the CPU-only wheel index (`download.pytorch.org/whl/cpu`) before the rest of `requirements.txt`, cutting that build stage from ~1200s to ~300s.
+- The Postgres data volume from an earlier partial run predated migrations 004–029 (password auth, groups, role permissions, C-Doc approval tables, etc.) — `docker compose down -v` + fresh `up` re-ran every `infra/db/init/*.sql` script in order. Bootstrapped the seeded admin's password via the existing `POST /api/auth/set-initial-password` endpoint (`admin@si-ware.com` / `Admin@12345` — this exact value also happens to be hardcoded as the dev auto-login in `useAuth.tsx`).
+
+### 2. Login page — full redesign (several iterations, each per explicit feedback)
+Rewrote `web/src/components/pages/Login.tsx` from the original dark-navy split-panel design through several rounds to the final state: single centered composition (no left/right split, no divider line) on a light navy/cyan dot-grid mesh background with soft blurred corner accents; centered `si-ware-logo.png` (the colored/dark-text variant — the earlier white-text `si-ware-logo-dark.png` was correct for a dark panel but wrong once the background went light); password visibility toggle; global Chrome/Edge autofill color override added to `globals.css` (the default yellow/blue autofill tint clashed with the design). Final copy: "Sign in securely" / "Authorized Si-Ware Employees only. Please use your Corporate Account to continue."; footer reads "Operated by IT Team — ithelpdesk@si-ware.com" instead of the earlier "Contact your System Admin" line.
+
+### 3. Real Google Sign-In, restricted to @si-ware.com
+- Backend: added `Google.Apis.Auth` (ID-token verification only — no client secret needed or stored anywhere). `AuthController` gained a shared `VerifyGoogleIdTokenAndUpsertUserAsync` helper (verifies signature/audience via Google's own keys, rejects any email not ending in `@si-ware.com` even if `email_verified` is true, auto-provisions a new `dms_users` row with no folder permissions on first sign-in — an admin still has to grant access) used by two endpoints:
+  - `POST /api/auth/google` — JSON, ID token in body, for a JS popup-style flow.
+  - `POST /api/auth/google/callback` — form-urlencoded, for Google Identity Services' `ux_mode: 'redirect'` flow (chosen over the popup per explicit request to avoid a popup window). Google POSTs the ID token here as a real top-level navigation (not a fetch), so the response is a same-origin HTML shim that writes the JWT into the SPA's own `localStorage` key (`dms_session_token`) before `location.replace("/")` — this keeps one bearer-token session model instead of introducing a second cookie-based one. Implements Google's documented double-submit-cookie CSRF check (`g_csrf_token` cookie vs. form field).
+- **Two real bugs found and fixed**: both `/api/auth/google` and `/api/auth/google/callback` were being blocked *before* reaching the controller by two separate, independent allowlists — `JwtAuthMiddleware.PublicEndpoints` and `RBACMiddleware.ShouldSkipAuth` — neither of which had been updated for the new routes. Both now allow the `/api/auth/google` prefix (covers both endpoints).
+- Frontend: Google Identity Services script loaded in `index.html`; `Login.tsx` renders Google's own button via `google.accounts.id.renderButton`, configured with `ux_mode: 'redirect'` and `login_uri` pointed at `${origin}/api/auth/google/callback` (same-origin via nginx's existing `/api/` proxy, so no hardcoded host per environment). A `?error=...` query param landing back on `/login` after a failed callback surfaces the existing red error banner.
+- Config: `GOOGLE_CLIENT_ID` env var → `Google__ClientId` (API) and build-arg `VITE_GOOGLE_CLIENT_ID` baked into the Vite build (`docker-compose.yml`, `web/Dockerfile`, `.env`/`.env.example`). Required Google Cloud Console setup (done live with the user): Authorized JavaScript origins for both the Docker (`:5174`) and Vite-dev (`:3000`) ports, plus an Authorized redirect URI for the exact callback path.
+
+### 4. Google avatar support
+- Migration `030_add_avatar_url.sql`: nullable `avatar_url` on `dms_users`. Captured from the ID token's `picture` claim, refreshed on every Google login (not just first sign-in). Returned from `/login`, `/google`, `/google/callback`'s implicit session, `/me`, and both `GET /api/users` projections.
+- **Bug found and fixed**: initially only added `AvatarUrl` to the *first* of two `.Select()` projections in `UsersController.GetUsers` — the final response-shaping projection silently dropped it, so the Users admin table kept showing initials even though the login response had the real photo. Caught by directly curling the endpoint rather than assuming the fix worked.
+- `Navbar.tsx` and `UserManagement.tsx` (Users admin table) both render the real photo (`referrerPolicy="no-referrer"`, since Google's photo URLs can reject default referrer headers) when `avatarUrl` is present, falling back to the existing initials-circle otherwise.
+
+### 5. Arabic → English translation sweep (explicit, unrelated-to-features request)
+Full-repo scan for the Arabic Unicode range found 18 files (12 `.cs`, 6 `.md`, all under `api/`; `web/src` had none). Fanned out 4 parallel agents to translate every Arabic comment and user-facing JSON error/success string to natural English, preserving exact meaning and all code logic/identifiers/JSON casing unchanged. ~134 items translated across `AuthController`/`UsersController`/`RBACMiddleware`/`Program.cs`/`DocumentsController`/`RemindersController`/`TasksController`/`FolderPermissionsController`/`FoldersController`/`GoogleCalendarController`/`BackgroundJobsController`/`AuditCalendarController`/`AuditTrailsController`, plus full translation of `TASKS_API.md`, `RBAC_USAGE.md`, `AUDIT_LOGGING.md`, `BACKGROUND_JOBS.md`, `CHECKOUT.md`, `APPROVAL_WORKFLOW.md` (including transliterating Arabic sample names in JSON examples, e.g. `محمد أحمد` → "Mohamed Ahmed"). Verified zero Arabic characters remain anywhere in the repo, both per-group and with a final full-repo regex sweep. API rebuilt and confirmed healthy afterward.
+
+### Files created
+`infra/db/init/030_add_avatar_url.sql`, `web/src/vite-env.d.ts`
+
+### Files modified
+`api/DMS.Api.csproj`, `api/Program.cs`, `api/Models/DmsUser.cs`, `api/Controllers/{AuthController,UsersController,DocumentsController,RemindersController,TasksController,FolderPermissionsController,FoldersController,GoogleCalendarController,BackgroundJobsController,AuditCalendarController,AuditTrailsController}.cs`, `api/Middleware/{JwtAuthMiddleware,RBACMiddleware}.cs`, `api/{TASKS_API,RBAC_USAGE,AUDIT_LOGGING,BACKGROUND_JOBS,CHECKOUT,APPROVAL_WORKFLOW}.md`, `ocr-rag/Dockerfile`, `web/Dockerfile`, `web/index.html`, `web/src/components/pages/Login.tsx`, `web/src/hooks/useAuth.tsx`, `web/src/utils/api.ts`, `web/src/types/index.ts`, `web/src/styles/globals.css`, `web/src/components/layout/Navbar.tsx`, `web/src/components/custom/UserManagement.tsx`, `web/src/components/pages/{Dashboard,Documents}.test.tsx` (added `loginWithGoogle` to the mock `AuthContextValue`), `docker-compose.yml`, `.env.example`
+
+### Verification
+- All 6 Docker services confirmed `healthy` after every rebuild across the session.
+- Real end-to-end Google sign-in completed with a live `@si-ware.com` account (not just a curl check with a fake token) — confirmed correct user auto-provisioning, avatar capture, and Navbar/Users-table rendering.
+- Full-repo Arabic Unicode regex sweep returned zero matches after the translation pass.
+
+### Known follow-ups
+- New Google sign-ins auto-provision with **no folder permissions** ("No Access") — an admin must manually grant roles; worth deciding whether a default role makes sense for `@si-ware.com` accounts.
+- `GOOGLE_CLIENT_ID`'s Authorized JavaScript origins / redirect URI only cover local dev ports so far — add the eventual Ubuntu VM / Cloudflare Tunnel production origin before deploying there.
+- The stale `origin/main` (lowercase) and `origin/old-UI` branches, and the now-redundant PR #19, are still on GitHub — recommended for cleanup but not touched (remote/shared-state change, left for explicit approval).
+- Persisted PPTX preview bug from Session 20 remains open.
 
 ---
 

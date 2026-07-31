@@ -16,6 +16,7 @@ public class JwtAuthMiddleware(RequestDelegate next, JwtTokenService jwtTokenSer
         "/api/databasetest",
         "/api/auth/login",
         "/api/auth/set-initial-password",
+        "/api/auth/google",
         // Google redirects the user's browser here directly after OAuth consent —
         // there is no Authorization header on that request.
         "/api/googlecalendar/callback",

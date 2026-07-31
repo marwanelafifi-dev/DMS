@@ -1,11 +1,11 @@
 # Background Jobs — Hangfire Integration
 
-## نظرة عامة
-نظام معالجة الـ background jobs باستخدام Hangfire. يقوم بتنفيذ مهام دورية (recurring jobs) بدون تدخل يدوي.
+## Overview
+A background job processing system using Hangfire. It executes recurring jobs without manual intervention.
 
 ---
 
-## Jobs المُنفَّذة
+## Implemented Jobs
 
 ### 1️⃣ Auto-Unlock Expired Checkouts
 **Runs every 5 minutes**

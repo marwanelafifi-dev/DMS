@@ -22,6 +22,7 @@ const authContextValue: AuthContextValue = {
   isLoading: false,
   error: null,
   login: vi.fn(),
+  loginWithGoogle: vi.fn(),
   logout: vi.fn(),
 };
 

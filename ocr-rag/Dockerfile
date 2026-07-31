@@ -19,6 +19,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
+# CPU-only torch (no NVIDIA/CUDA deps) — this stack runs on a GPU-less Ubuntu VM.
+# Installed first so docling's own torch requirement is already satisfied.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 RUN docling-tools models download
 

@@ -17,6 +17,7 @@ interface User {
   authType: 'Google' | 'Local';
   isOnline: boolean;
   accessLevel: string;
+  avatarUrl?: string | null;
 }
 
 const accessBadgeStyles: Record<string, string> = {
@@ -293,9 +294,18 @@ export function UserManagement() {
               >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-navy-700 flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0">
-                      {user.fullName?.charAt(0).toUpperCase()}
-                    </div>
+                    {user.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt={user.fullName}
+                        referrerPolicy="no-referrer"
+                        className="w-9 h-9 rounded-full object-cover shadow-sm flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-navy-700 flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0">
+                        {user.fullName?.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div className="min-w-0">
                       {editingId === user.userId ? (
                         <input

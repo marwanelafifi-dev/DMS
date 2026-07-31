@@ -18,7 +18,7 @@ public class DocumentsController(
     ApprovalService approvalService,
     ILogger<DocumentsController> logger) : BaseController
 {
-    // GET /api/documents — قائمة المستندات
+    // GET /api/documents — list of documents
     [HttpGet]
     public async Task<ActionResult<object>> GetDocuments(
         [FromQuery] Guid? folderId,
@@ -82,7 +82,7 @@ public class DocumentsController(
         }
     }
 
-    // GET /api/documents/{id} — تفاصيل مستند
+    // GET /api/documents/{id} — document details
     [HttpGet("{id}")]
     public async Task<ActionResult<object>> GetDocument(Guid id)
     {
@@ -92,7 +92,7 @@ public class DocumentsController(
                 .FirstOrDefaultAsync(d => d.DocumentId == id);
 
             if (document == null)
-                return NotFound(new { success = false, error = "المستند غير موجود" });
+                return NotFound(new { success = false, error = "Document not found" });
 
             var versions = await context.DocumentVersions
                 .Where(v => v.DocumentId == id)
@@ -158,7 +158,7 @@ public class DocumentsController(
         }
     }
 
-    // POST /api/documents — إنشاء مستند بدون ملف
+    // POST /api/documents — create a document without a file
     [HttpPost]
     public async Task<ActionResult<object>> CreateDocument([FromBody] CreateDocumentRequest req)
     {
@@ -166,18 +166,18 @@ public class DocumentsController(
         {
             var userId = GetCurrentUserId();
 
-            // التحقق من المدخلات
+            // Validate input
             if (string.IsNullOrWhiteSpace(req.Title))
-                return BadRequest(new { success = false, error = "عنوان المستند مطلوب" });
+                return BadRequest(new { success = false, error = "Document title is required" });
 
-            // التحقق من وجود المجلد
+            // Verify the folder exists
             var folderExists = await context.Folders
                 .AnyAsync(f => f.FolderId == req.FolderId);
 
             if (!folderExists)
-                return BadRequest(new { success = false, error = "المجلد غير موجود" });
+                return BadRequest(new { success = false, error = "Folder not found" });
 
-            // التحقق من وجود المالك
+            // Verify the owner exists
             var folderPermission = await context.FolderPermissions
                 .FirstOrDefaultAsync(p => p.FolderId == req.FolderId && p.UserId == userId);
 
@@ -195,7 +195,7 @@ public class DocumentsController(
                 .AnyAsync(u => u.UserId == req.OwnerId && u.IsActive);
 
             if (!ownerExists)
-                return BadRequest(new { success = false, error = "المالك غير موجود" });
+                return BadRequest(new { success = false, error = "Owner not found" });
 
             // Document ID at upload time is System Admin only — QA only gets access to
             // it later, at First Review (see ApprovalsController.RequireQaOrAdminForApprovalAsync).
@@ -410,23 +410,23 @@ public class DocumentsController(
         return null;
     }
 
-    // POST /api/documents/{id}/upload — تحميل ملف
+    // POST /api/documents/{id}/upload — upload a file
     [HttpPost("{id}/upload")]
     public async Task<ActionResult<object>> UploadVersion(Guid id, IFormFile file)
     {
         try
         {
             if (file == null || file.Length == 0)
-                return BadRequest(new { success = false, error = "الملف مطلوب" });
+                return BadRequest(new { success = false, error = "File is required" });
 
-            // التحقق من وجود المستند
+            // Verify the document exists
             var document = await context.Documents
                 .FirstOrDefaultAsync(d => d.DocumentId == id);
 
             if (document == null)
-                return NotFound(new { success = false, error = "المستند غير موجود" });
+                return NotFound(new { success = false, error = "Document not found" });
 
-            // حساب SHA256 للملف
+            // Compute the SHA256 hash of the file
             string sha256Hash;
             using (var sha256 = SHA256.Create())
             {
@@ -434,10 +434,10 @@ public class DocumentsController(
                 sha256Hash = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
             }
 
-            // إعادة تعيين الـ stream
+            // Reset the stream
             file.OpenReadStream().Seek(0, SeekOrigin.Begin);
 
-            // إنشاء نسخة جديدة
+            // Create a new version
             var version = new DmsDocumentVersion
             {
                 VersionId = Guid.NewGuid(),
@@ -452,7 +452,7 @@ public class DocumentsController(
                 UpdatedAt = DateTime.UtcNow
             };
 
-            // تحميل الملف إلى MinIO
+            // Upload the file to MinIO
             var objectKey = $"documents/{id}/{version.VersionId}/{file.FileName}";
             await minioService.UploadAsync(
                 objectKey,
@@ -461,7 +461,7 @@ public class DocumentsController(
 
             version.S3ObjectKey = objectKey;
 
-            // حفظ في قاعدة البيانات
+            // Save to the database
             context.DocumentVersions.Add(version);
             document.CurrentVersionId = version.VersionId;
             document.UpdatedAt = DateTime.UtcNow;
@@ -503,27 +503,27 @@ public class DocumentsController(
         }
     }
 
-    // GET /api/documents/{id}/download — تحميل ملف
+    // GET /api/documents/{id}/download — download a file
     [HttpGet("{id}/versions/{versionId}/download")]
     public async Task<ActionResult> DownloadVersion(Guid id, Guid versionId)
     {
         try
         {
-            // التحقق من وجود النسخة
+            // Verify the version exists
             var version = await context.DocumentVersions
                 .FirstOrDefaultAsync(dv => dv.VersionId == versionId && dv.DocumentId == id);
 
             if (version == null)
-                return NotFound(new { success = false, error = "النسخة غير موجودة" });
+                return NotFound(new { success = false, error = "Version not found" });
 
             if (string.IsNullOrEmpty(version.S3ObjectKey))
-                return BadRequest(new { success = false, error = "الملف غير محمّل بعد" });
+                return BadRequest(new { success = false, error = "File has not been uploaded yet" });
 
-            // الحصول على بيانات المستند
+            // Get the document data
             var document = await context.Documents
                 .FirstOrDefaultAsync(d => d.DocumentId == id);
 
-            // تحميل من MinIO
+            // Download from MinIO
             var stream = await minioService.DownloadAsync(version.S3ObjectKey);
 
             var currentUserId = GetCurrentUserId();
@@ -550,7 +550,7 @@ public class DocumentsController(
         }
     }
 
-    // PUT /api/documents/{id} — تعديل بيانات المستند
+    // PUT /api/documents/{id} — update document data
     [HttpPut("{id}")]
     public async Task<ActionResult<object>> UpdateDocument(Guid id, [FromBody] UpdateDocumentRequest req)
     {
@@ -560,7 +560,7 @@ public class DocumentsController(
                 .FirstOrDefaultAsync(d => d.DocumentId == id);
 
             if (document == null)
-                return NotFound(new { success = false, error = "المستند غير موجود" });
+                return NotFound(new { success = false, error = "Document not found" });
 
             if (!string.IsNullOrWhiteSpace(req.Title))
                 document.Title = req.Title.Trim();
@@ -615,7 +615,7 @@ public class DocumentsController(
         }
     }
 
-    // DELETE /api/documents/{id} — حذف مستند
+    // DELETE /api/documents/{id} — delete a document
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeleteDocument(Guid id)
     {
@@ -625,7 +625,7 @@ public class DocumentsController(
             if (!success)
                 return NotFound(new { success = false, error });
 
-            return Ok(new { success = true, message = "تم حذف المستند بنجاح" });
+            return Ok(new { success = true, message = "Document deleted successfully" });
         }
         catch (Exception ex)
         {
@@ -640,7 +640,7 @@ public class DocumentsController(
     {
         var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
         if (document == null)
-            return (false, "المستند غير موجود");
+            return (false, "Document not found");
 
         var versions = await context.DocumentVersions
             .Where(v => v.DocumentId == id)
@@ -692,7 +692,7 @@ public class DocumentsController(
         return (true, null);
     }
 
-    // POST /api/documents/{id}/versions/{versionId}/checkout — تأمين النسخة للتعديل
+    // POST /api/documents/{id}/versions/{versionId}/checkout — lock the version for editing
     [HttpPost("{id}/versions/{versionId}/checkout")]
     public async Task<ActionResult<object>> CheckoutVersion(Guid id, Guid versionId, [FromBody] CheckoutRequest req)
     {
@@ -722,7 +722,7 @@ public class DocumentsController(
         }
     }
 
-    // DELETE /api/documents/{id}/versions/{versionId}/checkout — إطلاق النسخة
+    // DELETE /api/documents/{id}/versions/{versionId}/checkout — release the version
     [HttpDelete("{id}/versions/{versionId}/checkout")]
     public async Task<ActionResult<object>> CheckinVersion(Guid id, Guid versionId)
     {
@@ -751,7 +751,7 @@ public class DocumentsController(
         }
     }
 
-    // GET /api/documents/{id}/versions/{versionId}/checkout — حالة التأمين
+    // GET /api/documents/{id}/versions/{versionId}/checkout — lock status
     [HttpGet("{id}/versions/{versionId}/checkout")]
     public async Task<ActionResult<object>> GetCheckoutStatus(Guid id, Guid versionId)
     {
@@ -760,7 +760,7 @@ public class DocumentsController(
             var status = await checkoutService.GetCheckoutStatusAsync(versionId);
 
             if (status == null)
-                return NotFound(new { success = false, error = "النسخة غير موجودة" });
+                return NotFound(new { success = false, error = "Version not found" });
 
             logger.LogInformation("Retrieved checkout status for version {VersionId}", versionId);
 
@@ -773,14 +773,14 @@ public class DocumentsController(
         }
     }
 
-    // POST /api/documents/{id}/submit — إرسال المستند لـ الموافقة
+    // POST /api/documents/{id}/submit — submit the document for approval
     [HttpPost("{id}/submit")]
     public async Task<ActionResult<object>> SubmitForApproval(Guid id, [FromBody] SubmitRequest req)
     {
         try
         {
             if (req.VersionId == Guid.Empty)
-                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+                return BadRequest(new { success = false, error = "VersionId is required" });
 
             var userId = GetCurrentUserId();
             var result = await approvalService.SubmitForApprovalAsync(id, req.VersionId, userId, req.Comment);
@@ -804,14 +804,14 @@ public class DocumentsController(
         }
     }
 
-    // POST /api/documents/{id}/approve — موافقة المدير
+    // POST /api/documents/{id}/approve — manager approval
     [HttpPost("{id}/approve")]
     public async Task<ActionResult<object>> ApproveDocument(Guid id, [FromBody] ApproveRequest req)
     {
         try
         {
             if (req.VersionId == Guid.Empty)
-                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+                return BadRequest(new { success = false, error = "VersionId is required" });
 
             var userId = GetCurrentUserId();
             var result = await approvalService.ApproveAsync(id, req.VersionId, userId, req.Comment);
@@ -835,17 +835,17 @@ public class DocumentsController(
         }
     }
 
-    // POST /api/documents/{id}/reject — رفض المدير
+    // POST /api/documents/{id}/reject — manager rejection
     [HttpPost("{id}/reject")]
     public async Task<ActionResult<object>> RejectDocument(Guid id, [FromBody] RejectRequest req)
     {
         try
         {
             if (req.VersionId == Guid.Empty)
-                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+                return BadRequest(new { success = false, error = "VersionId is required" });
 
             if (string.IsNullOrWhiteSpace(req.Reason))
-                return BadRequest(new { success = false, error = "سبب الرفض مطلوب" });
+                return BadRequest(new { success = false, error = "Rejection reason is required" });
 
             var userId = GetCurrentUserId();
             var result = await approvalService.RejectAsync(id, req.VersionId, userId, req.Reason);
@@ -869,19 +869,19 @@ public class DocumentsController(
         }
     }
 
-    // GET /api/documents/{id}/approval-status — حالة الموافقة
+    // GET /api/documents/{id}/approval-status — approval status
     [HttpGet("{id}/approval-status")]
     public async Task<ActionResult<object>> GetApprovalStatus(Guid id, [FromQuery] Guid? versionId)
     {
         try
         {
             if (!versionId.HasValue || versionId == Guid.Empty)
-                return BadRequest(new { success = false, error = "VersionId مطلوب" });
+                return BadRequest(new { success = false, error = "VersionId is required" });
 
             var status = await approvalService.GetApprovalStatusAsync(id, versionId.Value);
 
             if (status == null)
-                return NotFound(new { success = false, error = "النسخة غير موجودة" });
+                return NotFound(new { success = false, error = "Version not found" });
 
             return Ok(new { success = true, data = status });
         }
@@ -892,7 +892,7 @@ public class DocumentsController(
         }
     }
 
-    // GET /api/documents/pending-approvals — قائمة الانتظار
+    // GET /api/documents/pending-approvals — pending queue
     [HttpGet("pending-approvals/list")]
     public async Task<ActionResult<object>> GetPendingApprovals(
         [FromQuery] Guid? folderId,
@@ -924,12 +924,12 @@ public class DocumentsController(
         }
     }
 
-    // POST /api/documents/bulk-approve — موافقة على عدة مستندات دفعة واحدة
+    // POST /api/documents/bulk-approve — approve multiple documents in one batch
     [HttpPost("bulk-approve")]
     public async Task<ActionResult<object>> BulkApproveDocuments([FromBody] BulkApproveRequest req)
     {
         if (req.DocumentIds is not { Count: > 0 })
-            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+            return BadRequest(new { success = false, error = "documentIds is required" });
 
         var userId = GetCurrentUserId();
         var succeeded = new List<Guid>();
@@ -953,14 +953,14 @@ public class DocumentsController(
         return Ok(new { success = true, data = new { succeeded, failed } });
     }
 
-    // POST /api/documents/bulk-reject — رفض عدة مستندات دفعة واحدة
+    // POST /api/documents/bulk-reject — reject multiple documents in one batch
     [HttpPost("bulk-reject")]
     public async Task<ActionResult<object>> BulkRejectDocuments([FromBody] BulkRejectRequest req)
     {
         if (req.DocumentIds is not { Count: > 0 })
-            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+            return BadRequest(new { success = false, error = "documentIds is required" });
         if (string.IsNullOrWhiteSpace(req.Reason))
-            return BadRequest(new { success = false, error = "سبب الرفض مطلوب" });
+            return BadRequest(new { success = false, error = "Rejection reason is required" });
 
         var userId = GetCurrentUserId();
         var succeeded = new List<Guid>();
@@ -984,12 +984,12 @@ public class DocumentsController(
         return Ok(new { success = true, data = new { succeeded, failed } });
     }
 
-    // POST /api/documents/bulk-delete — حذف عدة مستندات دفعة واحدة
+    // POST /api/documents/bulk-delete — delete multiple documents in one batch
     [HttpPost("bulk-delete")]
     public async Task<ActionResult<object>> BulkDeleteDocuments([FromBody] BulkDeleteRequest req)
     {
         if (req.DocumentIds is not { Count: > 0 })
-            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+            return BadRequest(new { success = false, error = "documentIds is required" });
 
         var userId = GetCurrentUserId();
         var succeeded = new List<Guid>();
@@ -1006,12 +1006,12 @@ public class DocumentsController(
         return Ok(new { success = true, data = new { succeeded, failed } });
     }
 
-    // POST /api/documents/bulk-download — تحميل عدة مستندات كملف مضغوط واحد
+    // POST /api/documents/bulk-download — download multiple documents as a single zip file
     [HttpPost("bulk-download")]
     public async Task<ActionResult> BulkDownloadDocuments([FromBody] BulkDownloadRequest req)
     {
         if (req.DocumentIds is not { Count: > 0 })
-            return BadRequest(new { success = false, error = "documentIds مطلوب" });
+            return BadRequest(new { success = false, error = "documentIds is required" });
 
         var userId = GetCurrentUserId();
         var documents = await context.Documents

@@ -10,10 +10,11 @@ export interface AuthContextValue {
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
 }
 
-function toUser(data: { userId: string; email: string; fullName: string; isActive: boolean }): User {
+function toUser(data: { userId: string; email: string; fullName: string; isActive: boolean; avatarUrl?: string | null }): User {
   return {
     userId: data.userId,
     fullName: data.fullName,
@@ -22,6 +23,7 @@ function toUser(data: { userId: string; email: string; fullName: string; isActiv
     isActive: data.isActive,
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),
+    avatarUrl: data.avatarUrl,
   };
 }
 
@@ -110,6 +112,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate('/');
   };
 
+  const loginWithGoogle = async (idToken: string) => {
+    setError(null);
+    const res = await apiClient.loginWithGoogle(idToken);
+    if (!res.success) {
+      setError(res.error || 'Google sign-in failed');
+      throw new Error(res.error || 'Google sign-in failed');
+    }
+    setSessionToken(res.data.token);
+    setCurrentUserId(res.data.user.userId);
+    setUser(toUser(res.data.user));
+    startHeartbeat();
+    navigate('/');
+  };
+
   const logout = () => {
     stopHeartbeat();
     clearSessionToken();
@@ -118,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate('/login');
   };
 
-  const value: AuthContextValue = { user, isLoading, error, login, logout };
+  const value: AuthContextValue = { user, isLoading, error, login, loginWithGoogle, logout };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -1,13 +1,13 @@
 # Document Checkout System — Phase 2
 
-## نظرة عامة
-نظام قفل المستندات لمنع التعديل المتزامن. عندما يريد مستخدم تعديل مستند، يقفله (checkout) لمدة 60 دقيقة، ولا يمكن لأي مستخدم آخر تعديله خلال هذه المدة.
+## Overview
+A document locking system to prevent concurrent edits. When a user wants to edit a document, they lock it (checkout) for 60 minutes, and no other user can edit it during that time.
 
 ---
 
-## الآلية
+## Mechanism
 
-### الحالات
+### States
 
 ```
 ┌─────────────────┐
@@ -31,17 +31,17 @@
 └─────────────────┘
 ```
 
-### خطوات التعديل
+### Editing Steps
 
 ```
-1. المستخدم يشوف المستند: GET /api/documents/{id}
-2. يضغط "Edit" button
-3. System يعمل checkout: POST /api/documents/{id}/versions/{versionId}/checkout
+1. The user views the document: GET /api/documents/{id}
+2. Clicks the "Edit" button
+3. The system performs checkout: POST /api/documents/{id}/versions/{versionId}/checkout
    → Document locked (60 min timeout)
-   → يحصل على lock token في الـ response
-4. يعدّل المحتوى (في الـ Frontend)
-5. يحفظ (save): PUT /api/documents/{id} + upload new version
-6. ينهي التعديل: DELETE /api/documents/{id}/versions/{versionId}/checkout
+   → Receives a lock token in the response
+4. Edits the content (in the Frontend)
+5. Saves: PUT /api/documents/{id} + upload new version
+6. Ends the edit: DELETE /api/documents/{id}/versions/{versionId}/checkout
    → Document unlocked
 ```
 
@@ -174,7 +174,7 @@ curl -H "X-User-Id: user-123" \
   "success": true,
   "data": {
     "isCheckedOut": true,
-    "checkedOutBy": "محمد أحمد",
+    "checkedOutBy": "Mohamed Ahmed",
     "checkedOutByEmail": "m.ahmed@example.com",
     "checkedOutAt": "2026-07-16T14:00:00Z",
     "checkoutReason": "Editing content",
@@ -190,24 +190,24 @@ curl -H "X-User-Id: user-123" \
 ## Features
 
 ### ✅ Auto-Unlock (Timeout)
-- Default: 60 دقيقة
-- بعد الـ timeout تلقائياً يصير unlock
-- Background job يشتغل دوري عشان يحرّر الـ locks القديمة
+- Default: 60 minutes
+- After the timeout, it is automatically unlocked
+- A background job runs periodically to release old locks
 - Audit log: `DOCUMENT_CHECKOUT_EXPIRED`
 
 ### ✅ Same User Can Checkout Twice
-- إذا الـ user نفسه يحاول checkout مستند قفله هو، يصير allow
+- If the same user who locked the document tries to check it out again, it is allowed
 - Refreshes the timeout (resets to 60 min)
 
 ### ✅ Prevents Concurrent Edits
-- مستخدم آخر محاول checkout؟ → Error
-- معلومات عن من قفله ومتى
+- Another user tries to checkout? → Error
+- Information about who locked it and when
 
 ### ✅ Audit Logging
 ```
-DOCUMENT_CHECKOUT           → نجاح القفل
-DOCUMENT_CHECKIN            → نجاح الفتح
-DOCUMENT_CHECKOUT_EXPIRED   → انتهاء مهلة القفل
+DOCUMENT_CHECKOUT           → lock succeeded
+DOCUMENT_CHECKIN            → unlock succeeded
+DOCUMENT_CHECKOUT_EXPIRED   → lock timeout expired
 ```
 
 Metadata example:
@@ -225,10 +225,10 @@ Metadata example:
 
 ## Frontend Integration
 
-### الـ Document Viewer Component
+### The Document Viewer Component
 
 ```javascript
-// عرض زر "Edit"
+// Show the "Edit" button
 <button 
   onClick={handleCheckout}
   disabled={isCheckedOutByOther}
@@ -236,7 +236,7 @@ Metadata example:
   Edit Document
 </button>
 
-// عند الضغط
+// On click
 const handleCheckout = async () => {
   const response = await fetch(
     `/api/documents/${docId}/versions/${verId}/checkout`,
@@ -252,7 +252,7 @@ const handleCheckout = async () => {
   }
 };
 
-// عند الانتهاء من التعديل
+// When finishing the edit
 const handleSave = async () => {
   // 1. Upload new version
   await uploadNewVersion();

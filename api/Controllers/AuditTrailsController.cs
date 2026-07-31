@@ -9,7 +9,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class AuditTrailsController(DmsContext context, AuditService auditService, ILogger<AuditTrailsController> logger) : BaseController
 {
-    // GET /api/audittrails — قائمة جميع السجلات (paginated)
+    // GET /api/audittrails — list all logs (paginated)
     [HttpGet]
     public async Task<ActionResult<object>> GetAuditTrails(
         [FromQuery] Guid? userId,
@@ -46,7 +46,7 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
         }
     }
 
-    // GET /api/audittrails/{logId} — تفاصيل سجل واحد
+    // GET /api/audittrails/{logId} — details of a single log
     [HttpGet("{logId}")]
     public async Task<ActionResult<object>> GetAuditTrail(Guid logId)
     {
@@ -56,7 +56,7 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
                 .FirstOrDefaultAsync(a => a.LogId == logId);
 
             if (trail == null)
-                return NotFound(new { success = false, error = "السجل غير موجود" });
+                return NotFound(new { success = false, error = "Log not found" });
 
             logger.LogInformation("Retrieved audit trail {LogId}", logId);
 
@@ -80,16 +80,16 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
         }
     }
 
-    // GET /api/audittrails/user/{userId} — سجلات مستخدم معين
+    // GET /api/audittrails/user/{userId} — logs for a specific user
     [HttpGet("user/{userId}")]
     public async Task<ActionResult<object>> GetUserAuditTrails(Guid userId, [FromQuery] int limit = 100)
     {
         try
         {
-            // التحقق من وجود المستخدم
+            // Verify user exists
             var userExists = await context.Users.AnyAsync(u => u.UserId == userId);
             if (!userExists)
-                return NotFound(new { success = false, error = "المستخدم غير موجود" });
+                return NotFound(new { success = false, error = "User not found" });
 
             var trails = await auditService.GetAuditTrailAsync(userId, null, limit);
 
@@ -104,14 +104,14 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
         }
     }
 
-    // GET /api/audittrails/action/{action} — سجلات فعل معين
+    // GET /api/audittrails/action/{action} — logs for a specific action
     [HttpGet("action/{action}")]
     public async Task<ActionResult<object>> GetActionAuditTrails(string action, [FromQuery] int limit = 100)
     {
         try
         {
             if (string.IsNullOrEmpty(action))
-                return BadRequest(new { success = false, error = "اسم الفعل مطلوب" });
+                return BadRequest(new { success = false, error = "Action name is required" });
 
             var trails = await auditService.GetAuditTrailAsync(null, action, limit);
 

@@ -10,7 +10,7 @@ public class GoogleCalendarController(
     IConfiguration configuration,
     ILogger<GoogleCalendarController> logger) : BaseController
 {
-    // GET /api/googlecalendar/status — هل المستخدم الحالي رابط كالندره؟
+    // GET /api/googlecalendar/status — is the current user linked to a calendar?
     [HttpGet("status")]
     public async Task<ActionResult<object>> GetStatus()
     {
@@ -18,7 +18,7 @@ public class GoogleCalendarController(
         return Ok(new { success = true, data = status });
     }
 
-    // GET /api/googlecalendar/connect — يرجع رابط موافقة Google لبدء الربط
+    // GET /api/googlecalendar/connect — returns the Google consent URL to start linking
     [HttpGet("connect")]
     public ActionResult<object> Connect()
     {
@@ -33,9 +33,9 @@ public class GoogleCalendarController(
         return Ok(new { success = true, data = result.Data });
     }
 
-    // GET /api/googlecalendar/callback — Google بيرجّع المتصفح هنا بعد الموافقة.
-    // مفيش X-User-Id هنا (متصفح المستخدم بينده مباشرة) — الهوية جاية من state.
-    // RBACMiddleware.ShouldSkipAuth معفي المسار ده تحديدًا.
+    // GET /api/googlecalendar/callback — Google redirects the browser here after consent.
+    // There's no X-User-Id here (the user's browser calls this directly) — identity comes from state.
+    // RBACMiddleware.ShouldSkipAuth specifically exempts this route.
     [HttpGet("callback")]
     public async Task<IActionResult> Callback([FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error)
     {
@@ -62,7 +62,7 @@ public class GoogleCalendarController(
         return Ok(new { success = true, data = result.Data });
     }
 
-    // POST /api/googlecalendar/sync — زر "Sync Now"
+    // POST /api/googlecalendar/sync — "Sync Now" button
     [HttpPost("sync")]
     public async Task<ActionResult<object>> SyncNow()
     {

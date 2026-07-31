@@ -7,6 +7,7 @@ public class DmsUser
     public string FullName { get; set; } = string.Empty;
     public string? SsoSubject { get; set; }
     public string? PasswordHash { get; set; }
+    public string? AvatarUrl { get; set; }
     public byte[]? MfaSecret { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime? LastLoginAt { get; set; }
