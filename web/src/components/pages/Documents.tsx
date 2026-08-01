@@ -832,7 +832,11 @@ export function Documents() {
               uploadPreviewUrls.push(url);
             },
           );
-          if (nativePreview?.kind === 'image') {
+          if (nativePreview) {
+            // A dedicated parser (image/pdf/spreadsheet/word/presentation/text) always
+            // beats Docling's generic markdown dump — e.g. the xlsx parser preserves
+            // every sheet as its own switchable tab, while Docling flattens a workbook
+            // to a single crude markdown table and silently drops every sheet but one.
             uploadedDocument.preview = nativePreview;
             if (parsedContent) {
               uploadedDocument.fallbackDownload = {
@@ -846,8 +850,6 @@ export function Documents() {
               fileName: `${uploadFile.name.replace(/\.[^/.]+$/, '')}.md`,
               content: parsedContent,
             };
-          } else if (nativePreview) {
-            uploadedDocument.preview = nativePreview;
           }
           documentObjectUrlsRef.current.set(uploadedDocument.documentId, uploadPreviewUrls);
           touchPreviewCache(uploadedDocument.documentId);

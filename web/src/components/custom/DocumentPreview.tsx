@@ -4,22 +4,18 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
-  FileText,
   Lock,
-  Presentation,
   Printer,
   Search,
-  Sheet,
   X,
-  ZoomIn,
-  ZoomOut,
 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
 import { MarkdownViewer } from './MarkdownViewer';
 import { OcrPanel } from './OcrPanel';
-import { PdfJsViewer } from './PdfJsViewer';
+import { PdfJsViewer, type PdfJsViewerHandle, type PdfMatchInfo } from './PdfJsViewer';
+import { PreviewToolbar } from './PreviewToolbar';
 
 const ZOOM_STEP = 10;
 const MIN_ZOOM = 50;
@@ -64,7 +60,7 @@ interface SearchGroup {
 }
 
 const SEARCHABLE_KINDS = new Set(['text', 'word', 'presentation', 'spreadsheet', 'markdown']);
-const ZOOMABLE_KINDS = new Set(['word', 'presentation', 'spreadsheet', 'image', 'markdown']);
+const ZOOMABLE_KINDS = new Set(['word', 'presentation', 'spreadsheet', 'image', 'markdown', 'text']);
 
 function buildSearchGroups(preview: MockLibraryDocument['preview']): SearchGroup[] {
   switch (preview.kind) {
@@ -103,54 +99,6 @@ function buildSearchGroups(preview: MockLibraryDocument['preview']): SearchGroup
   }
 }
 
-interface PreviewToolbarProps {
-  icon: ReactNode;
-  label: string;
-  zoom: number;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onZoomReset: () => void;
-  pageLabel: string;
-  onPrev: () => void;
-  onNext: () => void;
-  canPrev: boolean;
-  canNext: boolean;
-}
-
-function PreviewToolbar({ icon, label, zoom, onZoomIn, onZoomOut, onZoomReset, pageLabel, onPrev, onNext, canPrev, canNext }: PreviewToolbarProps) {
-  return (
-    <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#e2e8f0] bg-[#f7fafc] px-4 py-2.5 dark:border-white/10 dark:bg-slate-800">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#3f8bca]">
-        {icon}
-        {label}
-      </div>
-      <div className="flex items-center gap-4">
-        <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
-          <button type="button" onClick={onZoomOut} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out" title="Zoom out (-)" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
-            <ZoomOut className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={onZoomReset} aria-label="Reset zoom" title="Reset zoom (0)" className="min-w-[3.25rem] border-x border-[#dbe2ec] px-1 py-1.5 text-xs font-medium text-[#34425b] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800">
-            {zoom}%
-          </button>
-          <button type="button" onClick={onZoomIn} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in" title="Zoom in (+)" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
-            <ZoomIn className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="whitespace-nowrap text-xs font-medium text-[#52627a] dark:text-slate-300">{pageLabel}</span>
-          <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
-            <button type="button" onClick={onPrev} disabled={!canPrev} aria-label="Previous" title="Previous (Up arrow / Home)" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
-              <ChevronUp className="h-4 w-4" />
-            </button>
-            <button type="button" onClick={onNext} disabled={!canNext} aria-label="Next" title="Next (Down arrow / End)" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800">
-              <ChevronDown className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function TruncationBanner({ shown, total, unit }: { shown: number; total: number; unit: string }) {
   if (total <= shown) return null;
@@ -225,15 +173,22 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
   const [retryKey, setRetryKey] = useState(0);
   const [mdActiveMatchIndex, setMdActiveMatchIndex] = useState(0);
   const [mdMatchCount, setMdMatchCount] = useState(0);
+  const [pdfMatchInfo, setPdfMatchInfo] = useState<PdfMatchInfo>({ total: 0, activeIndex: 0, isIndexing: false });
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const activeMatchRef = useRef<HTMLElement | null>(null);
   const pdfIframeRef = useRef<HTMLIFrameElement>(null);
   const markdownContainerRef = useRef<HTMLDivElement>(null);
+  const pdfViewerRef = useRef<PdfJsViewerHandle>(null);
 
   const isRetryableLoad = document.preview.kind === 'pdf' || document.preview.kind === 'image';
-  const isSearchable = SEARCHABLE_KINDS.has(document.preview.kind);
+  const isPdf = document.preview.kind === 'pdf';
+  // The PDF's own searchable text only exists inside PdfJsViewer (parsed via
+  // pdf.js), so its match navigation is delegated there via pdfViewerRef/
+  // onMatchInfoChange — but the search *input* itself still lives in this shared
+  // header, same as every other kind, for one consistent search location.
+  const isSearchable = SEARCHABLE_KINDS.has(document.preview.kind) || isPdf;
   const isZoomable = ZOOMABLE_KINDS.has(document.preview.kind);
   const isMarkdown = document.preview.kind === 'markdown';
   const canPaginate = document.preview.kind === 'word' || document.preview.kind === 'presentation' || document.preview.kind === 'spreadsheet';
@@ -251,6 +206,7 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
     setRetryKey(0);
     setMdActiveMatchIndex(0);
     setMdMatchCount(0);
+    setPdfMatchInfo({ total: 0, activeIndex: 0, isIndexing: false });
   }, [document]);
 
   // Markdown search: react-markdown renders arbitrary nested HTML, so the
@@ -518,13 +474,51 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
       case 'loading':
         return null;
       case 'markdown':
-        return <MarkdownViewer content={document.preview.content} />;
+        return (
+          <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
+            <PreviewToolbar
+              zoom={zoom}
+              onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
+              onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
+              onZoomReset={() => setZoom(100)}
+            />
+            <div className="min-h-0 flex-1 overflow-auto p-6">
+              <div ref={markdownContainerRef} style={getZoomStyle(zoom) as ZoomableStyle}>
+                <MarkdownViewer content={document.preview.content} />
+              </div>
+            </div>
+          </div>
+        );
       case 'text':
-        return <pre className="min-h-[420px] whitespace-pre-wrap rounded-[4px] border border-[#e2e8f0] bg-white p-6 font-mono text-sm leading-7 text-[#334155] shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">{renderSearchable('content', document.preview.content)}</pre>;
+        return (
+          <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
+            <PreviewToolbar
+              zoom={zoom}
+              onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
+              onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
+              onZoomReset={() => setZoom(100)}
+            />
+            <div className="min-h-0 flex-1 overflow-auto p-6">
+              <div style={getZoomStyle(zoom) as ZoomableStyle}>
+                <pre className="whitespace-pre-wrap rounded-[4px] border border-[#e2e8f0] bg-white p-6 font-mono text-sm leading-7 text-[#334155] shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">{renderSearchable('content', document.preview.content)}</pre>
+              </div>
+            </div>
+          </div>
+        );
       case 'image':
         return (
-          <div className="flex min-h-[420px] items-center justify-center rounded-[4px] bg-[#eef2f7] p-6 dark:bg-slate-950">
-            <img key={retryKey} src={document.preview.url} alt={document.preview.alt} className="max-h-[65vh] max-w-full rounded object-contain shadow-lg" onLoad={() => setIsLoading(false)} onError={() => { setIsLoading(false); setHasError(true); }} />
+          <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
+            <PreviewToolbar
+              zoom={zoom}
+              onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
+              onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
+              onZoomReset={() => setZoom(100)}
+            />
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[#eef2f7] p-6 dark:bg-slate-950">
+              <div style={getZoomStyle(zoom) as ZoomableStyle}>
+                <img key={retryKey} src={document.preview.url} alt={document.preview.alt} className="max-h-[65vh] max-w-full rounded object-contain shadow-lg" onLoad={() => setIsLoading(false)} onError={() => { setIsLoading(false); setHasError(true); }} />
+              </div>
+            </div>
           </div>
         );
       case 'pdf':
@@ -532,9 +526,12 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
           <>
             <PdfJsViewer
               key={retryKey}
+              ref={pdfViewerRef}
               url={document.preview.url}
+              searchQuery={searchQuery}
               onReady={() => setIsLoading(false)}
               onError={() => { setIsLoading(false); setHasError(true); }}
+              onMatchInfoChange={setPdfMatchInfo}
             />
             {/* Hidden — exists only so Print can trigger the browser's native PDF
                 print dialog via contentWindow.print(); the visible viewer above is
@@ -557,8 +554,6 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
         return (
           <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
             <PreviewToolbar
-              icon={<FileText className="h-4 w-4" />}
-              label="Read-only Word fallback"
               zoom={zoom}
               onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
               onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
@@ -597,8 +592,6 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
         return (
           <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
             <PreviewToolbar
-              icon={<Sheet className="h-4 w-4 text-emerald-600" />}
-              label="Read-only spreadsheet preview"
               zoom={zoom}
               onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
               onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
@@ -617,11 +610,35 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <div style={getZoomStyle(zoom) as ZoomableStyle}>
-                <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 bg-[#eff6f1] text-[#3f5e49] dark:bg-emerald-950/40 dark:text-emerald-100">
-                    <tr>{activeSheet.columns.map((column, columnIndex) => <th key={column} className="border-b border-r border-[#dbe2ec] px-4 py-3 font-semibold last:border-r-0 dark:border-white/10">{renderSearchable(`header-${safeSheetIndex}-${columnIndex}`, column)}</th>)}</tr>
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-[#eff6f1] text-[#3f5e49] dark:bg-emerald-950/40 dark:text-emerald-100">
+                    <tr>
+                      {activeSheet.rowNumbers && (
+                        <th className="sticky left-0 z-20 w-10 border-b border-r border-[#dbe2ec] bg-[#eff6f1] px-2 py-3 text-center font-semibold dark:border-white/10 dark:bg-emerald-950/40" />
+                      )}
+                      {activeSheet.columns.map((column, columnIndex) => (
+                        <th key={column} className={`border-b border-r border-[#dbe2ec] px-4 py-3 font-semibold last:border-r-0 dark:border-white/10 ${activeSheet.rowNumbers ? 'text-center' : ''}`}>
+                          {renderSearchable(`header-${safeSheetIndex}-${columnIndex}`, column)}
+                        </th>
+                      ))}
+                    </tr>
                   </thead>
-                  <tbody>{activeSheet.rows.map((row, rowIndex) => <tr key={row.join('-')} className={rowIndex % 2 ? 'bg-[#fbfcfe] dark:bg-slate-800/50' : ''}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`} className="border-b border-r border-[#edf1f5] px-4 py-3 text-[#52627a] last:border-r-0 dark:border-white/10 dark:text-slate-200">{renderSearchable(`cell-${safeSheetIndex}-${rowIndex}-${cellIndex}`, cell)}</td>)}</tr>)}</tbody>
+                  <tbody>
+                    {activeSheet.rows.map((row, rowIndex) => (
+                      <tr key={row.join('-') + rowIndex} className={rowIndex % 2 ? 'bg-[#fbfcfe] dark:bg-slate-800/50' : ''}>
+                        {activeSheet.rowNumbers && (
+                          <th scope="row" className="sticky left-0 z-10 w-10 border-b border-r border-[#dbe2ec] bg-[#eff6f1] px-2 py-3 text-center font-semibold text-[#3f5e49] dark:border-white/10 dark:bg-emerald-950/40 dark:text-emerald-100">
+                            {activeSheet.rowNumbers[rowIndex]}
+                          </th>
+                        )}
+                        {row.map((cell, cellIndex) => (
+                          <td key={`${cell}-${cellIndex}`} className="border-b border-r border-[#edf1f5] px-4 py-3 text-[#52627a] last:border-r-0 dark:border-white/10 dark:text-slate-200">
+                            {renderSearchable(`cell-${safeSheetIndex}-${rowIndex}-${cellIndex}`, cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
               </div>
             </div>
@@ -656,8 +673,6 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
         return (
           <div className="flex h-full w-full flex-col">
             <PreviewToolbar
-              icon={<Presentation className="h-4 w-4 text-orange-600" />}
-              label="Read-only slide fallback"
               zoom={zoom}
               onZoomIn={() => setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))}
               onZoomOut={() => setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))}
@@ -792,7 +807,9 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
                     if (event.key === 'Enter') {
                       event.preventDefault();
                       const direction = event.shiftKey ? -1 : 1;
-                      if (isMarkdown) goToMdMatch(direction); else goToMatch(direction);
+                      if (isPdf) pdfViewerRef.current?.goToMatch(direction);
+                      else if (isMarkdown) goToMdMatch(direction);
+                      else goToMatch(direction);
                     } else if (event.key === 'Escape' && searchQuery) {
                       event.stopPropagation();
                       setSearchQuery('');
@@ -803,14 +820,14 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
                   className="w-40 bg-transparent px-2 py-1.5 text-xs text-[#34425b] outline-none placeholder:text-[#9aa7ba] dark:text-slate-200"
                 />
                 {searchQuery && (() => {
-                  const totalMatches = isMarkdown ? mdMatchCount : searchIndex.totalMatches;
-                  const currentIndex = isMarkdown ? mdActiveMatchIndex : activeMatchIndex;
-                  const handlePrevMatch = () => (isMarkdown ? goToMdMatch(-1) : goToMatch(-1));
-                  const handleNextMatch = () => (isMarkdown ? goToMdMatch(1) : goToMatch(1));
+                  const totalMatches = isPdf ? pdfMatchInfo.total : isMarkdown ? mdMatchCount : searchIndex.totalMatches;
+                  const currentIndex = isPdf ? pdfMatchInfo.activeIndex : isMarkdown ? mdActiveMatchIndex : activeMatchIndex;
+                  const handlePrevMatch = () => (isPdf ? pdfViewerRef.current?.goToMatch(-1) : isMarkdown ? goToMdMatch(-1) : goToMatch(-1));
+                  const handleNextMatch = () => (isPdf ? pdfViewerRef.current?.goToMatch(1) : isMarkdown ? goToMdMatch(1) : goToMatch(1));
                   return (
                     <>
                       <span className="whitespace-nowrap px-1 text-xs text-[#718198] dark:text-slate-400">
-                        {totalMatches > 0 ? `${Math.min(currentIndex, totalMatches - 1) + 1}/${totalMatches}` : '0/0'}
+                        {isPdf && pdfMatchInfo.isIndexing ? 'Indexing…' : totalMatches > 0 ? `${Math.min(currentIndex, totalMatches - 1) + 1}/${totalMatches}` : '0/0'}
                       </span>
                       <button type="button" onClick={handlePrevMatch} disabled={totalMatches === 0} aria-label="Previous match" title="Previous match (Shift+Enter)" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-900">
                         <ChevronUp className="h-3.5 w-3.5" />
@@ -841,7 +858,7 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
           </div>
         </header>
 
-        <div data-testid="document-preview-body" className={`relative min-h-0 flex-1 overflow-hidden ${['pdf', 'word', 'presentation', 'spreadsheet', 'image', 'markdown'].includes(document.preview.kind) ? '' : 'p-6'}`}>
+        <div data-testid="document-preview-body" className={`relative min-h-0 flex-1 overflow-hidden ${['pdf', 'word', 'presentation', 'spreadsheet', 'image', 'markdown', 'text'].includes(document.preview.kind) ? '' : 'p-6'}`}>
           {isLoading && hasTimedOut && isRetryableLoad && (
             <div className="absolute inset-6 z-10 flex items-center justify-center rounded-[4px] bg-white/95 dark:bg-slate-900/95" role="status">
               <div className="flex flex-col items-center gap-3 px-6 text-center">
@@ -859,7 +876,7 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
               <div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#3f8bca]" /><p className="mt-3 text-sm text-[#718198]">{document.preview.kind === 'loading' ? document.preview.message : 'Loading preview...'}</p></div>
             </div>
           )}
-          <div id="dms-printable-preview" className={`h-full w-full ${['pdf', 'word', 'presentation', 'spreadsheet', 'image', 'markdown'].includes(document.preview.kind) ? '' : 'overflow-auto'}`}>
+          <div id="dms-printable-preview" className={`h-full w-full ${['pdf', 'word', 'presentation', 'spreadsheet', 'image', 'markdown', 'text'].includes(document.preview.kind) ? '' : 'overflow-auto'}`}>
             {renderPreview()}
           </div>
         </div>

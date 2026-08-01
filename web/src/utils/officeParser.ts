@@ -76,40 +76,42 @@ export async function parseExcelDocument(blob: Blob, _sourceUrl: string): Promis
       const worksheet = workbook.Sheets[sheetName];
       if (!worksheet) return null;
 
-      const rows = xlsxUtils.sheet_to_json(worksheet) as Array<Record<string, unknown>>;
-      if (rows.length === 0) return null;
+      if (!worksheet['!ref']) return null;
+      const range = xlsxUtils.decode_range(worksheet['!ref']);
 
-      // `sheet_to_json` omits a key entirely for a row when that cell is blank, so
-      // deriving columns from row 0 alone can silently drop columns that only have
-      // data further down. Union the keys (in first-seen order) across all rows.
-      const columnOrder: string[] = [];
-      const seenColumns = new Set<string>();
-      for (const row of rows) {
-        for (const key of Object.keys(row)) {
-          if (!seenColumns.has(key)) {
-            seenColumns.add(key);
-            columnOrder.push(key);
-          }
-        }
-      }
+      // Render like an actual spreadsheet grid — column letters (A, B, C…) as the
+      // header row and real row numbers down the side, cells read by absolute
+      // address starting from column A / row 1 — rather than treating row 1 as
+      // semantic column headers. That older approach silently dropped any sheet
+      // whose only content didn't leave a "data row" beneath an inferred header
+      // (e.g. a single populated cell, or content starting several rows down),
+      // and mislabeled columns once it did work since sheet_to_json trims blank
+      // leading rows/columns instead of keeping them at their real position.
+      const totalColumns = range.e.c + 1;
+      const totalRows = range.e.r + 1;
+      const lastColumn = Math.min(range.e.c, SPREADSHEET_COLUMN_LIMIT - 1);
+      const lastRow = Math.min(range.e.r, SPREADSHEET_ROW_LIMIT - 1);
 
-      const totalColumns = columnOrder.length;
-      const columns = columnOrder.slice(0, SPREADSHEET_COLUMN_LIMIT);
-      const tableRows = rows.slice(0, SPREADSHEET_ROW_LIMIT).map((row) =>
-        columns.map((col) => {
-          const value = row[col];
-          return value === null || value === undefined ? '' : String(value);
-        }),
-      );
+      const columns = Array.from({ length: lastColumn + 1 }, (_, columnIndex) => xlsxUtils.encode_col(columnIndex));
+      const rowNumbers = Array.from({ length: lastRow + 1 }, (_, rowIndex) => rowIndex + 1);
+      const tableRows = rowNumbers.map((_, rowIndex) => columns.map((_, columnIndex) => {
+        const cell = worksheet[xlsxUtils.encode_cell({ r: rowIndex, c: columnIndex })];
+        return cell ? xlsxUtils.format_cell(cell) : '';
+      }));
+
+      // A sheet with no populated cells at all (a blank tab) still has a 1x1
+      // range from decode_range's fallback — skip it rather than show one empty row.
+      if (tableRows.every((row) => row.every((cell) => cell === ''))) return null;
 
       return {
         name: sheetName,
         columns,
+        rowNumbers,
         rows: tableRows,
-        totalRows: rows.length,
+        totalRows,
         totalColumns,
       };
-    }).filter((sheet): sheet is { name: string; columns: string[]; rows: string[][]; totalRows: number; totalColumns: number } => sheet !== null);
+    }).filter((sheet): sheet is { name: string; columns: string[]; rowNumbers: number[]; rows: string[][]; totalRows: number; totalColumns: number } => sheet !== null);
 
     if (sheets.length === 0) return null;
 

@@ -126,6 +126,16 @@ input:-webkit-autofill:focus {
   border-radius: 2px;
 }
 
+/* Markdown in-app search highlights via the CSS Custom Highlight API (Chrome/Edge
+   105+, Safari 17.2+) — no-ops gracefully on browsers without support. */
+::highlight(dms-md-match) {
+  background-color: rgba(253, 224, 71, 0.7);
+}
+::highlight(dms-md-match-active) {
+  background-color: #fb923c;
+  color: #1f2937;
+}
+
 /* Animations */
 @keyframes spin-slow {
   from {

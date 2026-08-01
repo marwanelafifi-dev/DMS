@@ -8,7 +8,12 @@ export type LibraryFileExtension = RequiredLibraryFileExtension | 'jpg' | 'jpeg'
 type TextPreview = { kind: 'text'; content: string };
 type MarkdownPreview = { kind: 'markdown'; content: string };
 type WordPreview = { kind: 'word'; title: string; paragraphs: string[]; totalParagraphs?: number; renderNotice?: string };
-export type SpreadsheetSheet = { name: string; columns: string[]; rows: string[][]; totalRows?: number; totalColumns?: number };
+// `rowNumbers` is only present for sheets parsed from a real uploaded workbook
+// (see officeParser's parseExcelDocument) — it renders as a real spreadsheet grid
+// (column-letter headers, row-number gutter, cells at their real position).
+// Curated fixture sheets below use semantic column names instead and omit it,
+// rendering as a plain labeled table.
+export type SpreadsheetSheet = { name: string; columns: string[]; rowNumbers?: number[]; rows: string[][]; totalRows?: number; totalColumns?: number };
 type SpreadsheetPreview = { kind: 'spreadsheet'; sheets: SpreadsheetSheet[] };
 type PresentationPreview = { kind: 'presentation'; slides: Array<{ title: string; bullets: string[] }>; totalSlides?: number; renderNotice?: string };
 type PdfPreview = { kind: 'pdf'; url: string };

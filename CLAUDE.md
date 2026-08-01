@@ -3,13 +3,62 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-07-31
+**Current Date:** 2026-08-01
 
 **Working Directory:** `C:\Users\user\Desktop\DMS`
 
 **Active Branch:** `Main`
 
-**Status:** Session 21 — real Google Sign-In (domain-restricted to @si-ware.com) is live end to end, the login page got a full visual redesign, and the entire codebase's Arabic-language comments/strings were translated to English. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 22 — real, reproducible preview-rendering bugs found and fixed across PDF/Office/Excel previews (canvas race condition, text-layer scale mismatch, Docling silently overriding the dedicated Excel parser, sparse-sheet data loss), plus a full toolbar/search consistency pass across every preview kind. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 22 (2026-08-01) — Document Preview: Real Rendering Bugs, Excel Grid Rewrite, Toolbar/Search Consistency
+
+**Status:** ✅ Complete — every fix reproduced live against the running Docker stack (headless-browser automation driving the real app, not just code review) before and after each change, then confirmed by the user in their own browser.
+
+**Context:** User reported a `.docx` preview stuck on "Preview unavailable" with no search/zoom controls. Investigation uncovered a chain of independent, real bugs rather than one root cause — each was isolated with a live repro (headless Edge via the Chrome DevTools Protocol, driving the actual app at `localhost:5174`) before being fixed and re-verified.
+
+### 1. PDF/Office preview totally broken (canvas race condition)
+`PdfJsViewer.tsx` (a new, not-yet-committed component from a prior session — see item 6) had two `useEffect`s both calling `page.render()` onto the same `<canvas>`: one for the initial fit-to-width scale calculation, another for the actual page render. When a document first opened, the scale calculation completed and triggered a second render before the first had a chance to finish/cancel, and pdf.js throws `"Cannot use the same canvas during multiple render() operations"`. The error was swallowed by a silent `catch`, leaving the page blank and dropping to the generic "Preview unavailable" fallback — which explains the missing search/zoom too, since that toolbar lives inside the component that failed to render. **Fixed** by tracking the in-flight `RenderTask` in a ref and calling `.cancel()` on it before starting a new render, and on effect cleanup; a cancelled task's `RenderingCancelledException` is now recognized and not logged as a real error.
+
+### 2. Search highlight rendering in the wrong place/size on PDFs
+Once #1 was fixed, searching inside a converted Word/PowerPoint (rendered as PDF via LibreOffice) highlighted the right word but drew it undersized and visually offset from the real text. Root cause: the code set a CSS custom property named `--total-scale-factor` on the text layer container, but pdf.js's `TextLayer` actually reads `--scale-factor` (confirmed by grepping `pdf.mjs` — every text-span's `font-size` is `calc(var(--scale-factor) * ...)`). The typo meant the variable was never actually read, so every text span silently rendered at the CSS default of `1` regardless of the real zoom/fit-to-width scale. **Fixed** by setting the correct property name.
+
+### 3. Multi-sheet Excel workbooks silently collapsed to broken text (real data-loss bug)
+On upload, the code always let Docling's generic markdown-table extraction override the dedicated Excel parser's result whenever *both* succeeded — Docling can parse `.xlsx` too, but flattens it to one crude, malformed markdown table and drops every sheet but one. Reproduced live: a real 2-sheet upload showed only mangled pipe-table text with no sheet tabs. **Fixed** in `Documents.tsx`'s upload handler: a dedicated parser result (image/PDF/spreadsheet/word/presentation/text) now always wins over the Docling markdown fallback; Docling's extracted text is still kept as a `.md` download option either way. The separate reload path (`loadPersistedPreview`) already had this priority correct and was untouched.
+
+### 4. Sparse spreadsheets silently dropped entirely (second Excel bug, found via user follow-up)
+Even after fix #3, a workbook whose sheets had very sparse content (e.g. a single cell in `A1`, or content starting at `B5` with nothing above/left of it) still fell through to the broken Docling path. Root cause: `parseExcelDocument` called `sheet_to_json(worksheet)` in its default mode, which treats the first populated row as column headers — a sheet with only one populated row (or one that starts several rows down) then has zero "data rows" left to report, so the sheet (and often the whole workbook) was discarded as if empty. Reproduced with a workbook shaped exactly like the user's repro file.
+
+### 5. Excel preview rewritten to a real spreadsheet grid (user request, not just a fix)
+Once the sparse-sheet crash was fixed with a raw-cell fallback, the user pointed out two more issues live: (a) they wanted the preview to actually look like Excel/Google Sheets — column letters (A, B, C…) as a fixed header row and real row numbers down the side, not a compacted "only populated columns" table; (b) a value in real column `B` was being mislabeled column `A` because `sheet_to_json`'s `header: 1` mode returns each row trimmed to the sheet's *used range*, not absolute column A. **Rewrote `parseExcelDocument`** to always read cells by their real absolute address (`xlsxUtils.encode_cell`/`decode_range`) starting from column A / row 1, so column letters and row numbers always match what a real spreadsheet would show. `DocumentPreview.tsx`'s spreadsheet table gained a sticky row-number gutter and column-letter header row (only for real parsed workbooks — curated fixture/demo sheets with semantic column names are unaffected, gated by the new optional `SpreadsheetSheet.rowNumbers` field).
+
+### 6. Toolbar/search consistency pass across every preview kind (user request)
+User wanted one consistent layout everywhere: search box in the top header (next to Print), zoom + prev/next arrows always on the right in a second-row toolbar. Before this pass: PDF-rendered documents (converted Word/PowerPoint) had their *own*, independently-implemented toolbar with search on the right of a second row and zoom/page-nav on the left — inconsistent with every other kind, which already used a shared `PreviewToolbar` in the top-header pattern. Plain `.txt` files had no toolbar or zoom at all.
+- Extracted the inline `PreviewToolbar` component (previously private to `DocumentPreview.tsx`) into its own file, `web/src/components/custom/PreviewToolbar.tsx`, and reused it inside `PdfJsViewer.tsx` for pixel-identical zoom/page-nav styling.
+- `PdfJsViewer` converted to `forwardRef`, exposing an imperative `goToMatch(direction)` handle and reporting match count/active index/indexing state via an `onMatchInfoChange` callback, so the *search input itself* now lives in `DocumentPreview`'s shared header (like every other kind) while the actual page-text search/indexing logic stays inside `PdfJsViewer` (it's the only place pdf.js's parsed text exists). `searchQuery` is now a controlled prop instead of `PdfJsViewer`'s own state.
+- Added a toolbar (with zoom, no page-nav) to the previously bare `text` preview kind.
+- Per explicit user follow-up ("I didn't need these words in any file type, let it empty"), removed the format label text ("PDF", "Document", "Image", "Text", "Read-only Word fallback", "Read-only spreadsheet preview", "Read-only slide fallback") from every toolbar — `PreviewToolbar` no longer takes `icon`/`label` props at all, and the row is right-aligned zoom/page-nav only.
+
+### 7. Housekeeping: `PdfJsViewer.tsx` was never actually committed
+Discovered while investigating bug #1: the previous session's commit (`0820ed7`) added the `import { PdfJsViewer } from './PdfJsViewer'` line and wired it into `DocumentPreview.tsx`'s `'pdf'` case, but never `git add`ed the new `PdfJsViewer.tsx` file itself — it only ever existed as an untracked file on disk. A fresh clone before this session would have failed to build. Committed properly as part of this session.
+
+### Verification
+- Every fix was reproduced against the actually-running Docker containers via headless Edge (Chrome DevTools Protocol over a raw WebSocket, no Playwright/Puppeteer dependency needed — driven directly with Node's built-in `fetch`/`WebSocket`), not just read from source: real login, real navigation, real file upload (including `DOM.setFileInputFiles`), real preview open, real search typed into the real input — before and after each fix, to confirm the exact before/after behavior change.
+- `npx tsc --noEmit` clean after every edit.
+- `docker compose build web` + `docker compose up -d web` after every change; confirmed `healthy` each time.
+- User independently confirmed the final state ("Perfect job") after their own manual testing in-browser.
+
+### Files created
+`web/src/components/custom/PreviewToolbar.tsx`, `web/src/components/custom/PdfJsViewer.tsx` (existed on disk from a prior session but committed to git for the first time this session)
+
+### Files modified
+`web/src/components/custom/DocumentPreview.tsx`, `web/src/components/pages/Documents.tsx`, `web/src/utils/officeParser.ts`, `web/src/fixtures/documentLibrary.ts` (added optional `SpreadsheetSheet.rowNumbers`), `web/nginx.conf` (`.mjs` MIME type fix for pdf.js's module worker — also pre-existing/uncommitted, carried over from before this session), `web/src/styles/globals.css` (CSS Custom Highlight API styles for markdown search, same origin as the nginx fix)
+
+### Known follow-ups
+- Persisted PPTX preview bug (styled slide view lost on reload, falls back to plain text) remains open — unrelated to this session's fixes, which targeted freshly-converted PDF rendering and Excel parsing specifically.
+- No automated regression test added for the canvas-race, scale-factor, or sparse-sheet bugs — all verification this session was live/manual (headless browser + user confirmation). Worth adding a Vitest/jsdom or Playwright coverage pass for the preview pipeline given how many real bugs slipped through here undetected.
 
 ---
 
