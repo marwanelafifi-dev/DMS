@@ -8,7 +8,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/approvals")]
-public class ApprovalsController(DmsContext context, AuditService auditService) : BaseController
+public class ApprovalsController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService) : BaseController
 {
     /// <summary>
     /// Submit documents for approval batch (C-Doc Stage 1)
@@ -30,6 +30,19 @@ public class ApprovalsController(DmsContext context, AuditService auditService) 
 
             if (documents.Any(d => d.OwnerId != userId))
                 return BadRequest(new { success = false, error = "All documents must belong to the current user" });
+
+            // Previously unchecked beyond ownership — any authenticated user,
+            // including Reader, could submit a document into the approval
+            // workflow. Now requires SubmitForApproval on the effective role
+            // for every document (folder-level role, narrowed/widened by any
+            // applicable File/Folder Permission override).
+            foreach (var document in documents)
+            {
+                var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+                var roleAllows = await HasRolePermissionAsync(context, effectiveRole, rp => rp.SubmitForApproval);
+                if (!await accessOverrideService.ResolveAsync(userId, document.DocumentId, document.FolderId, AccessOverrideActions.SubmitForApproval, roleAllows))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Submit for Approval permission" });
+            }
 
             // Get latest versions
             var versions = await context.DocumentVersions

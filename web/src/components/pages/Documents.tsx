@@ -7,13 +7,14 @@ import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 import { DocumentPreview } from '../custom/DocumentPreview';
+import { AccessOverrideModal } from '../custom/AccessOverrideModal';
 import { BulkOperationsModal } from '../custom/BulkOperationsModal';
 import { UploadApprovalModal } from '../custom/UploadApprovalModal';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
-import { apiClient, DEV_USER_ID } from '../../utils/api';
+import { apiClient, DEV_USER_ID, type RolePermissionFlags } from '../../utils/api';
 import {
   createUnavailableLibraryDocument,
   mockLibraryDocuments,
@@ -150,6 +151,20 @@ export function Documents() {
   const [uploadOriginalDocumentId, setUploadOriginalDocumentId] = useState('');
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [canSetDocIdOnUpload, setCanSetDocIdOnUpload] = useState(false);
+  const [myPermissions, setMyPermissions] = useState<RolePermissionFlags | null>(null);
+  // Permissions for folders OTHER than the one currently being browsed (e.g.
+  // a subfolder shown in the sidebar tree) — fetched lazily the first time
+  // that folder's own action menu is opened, since the tree can show many
+  // folders whose overrides differ from the currently-viewed one.
+  const [otherFolderPermissions, setOtherFolderPermissions] = useState<Record<string, RolePermissionFlags | null>>({});
+  const loadingFolderPermissionIds = useRef<Set<string>>(new Set());
+  const [accessOverrideTarget, setAccessOverrideTarget] = useState<{
+    scope: { folderId?: string; documentId?: string };
+    resourceName: string;
+    resourceKind: 'file' | 'folder';
+  } | null>(null);
+  const [newFolderRequest, setNewFolderRequest] = useState<{ parentFolderId: string | null; name: string } | null>(null);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -218,6 +233,18 @@ export function Documents() {
   const renameFolder = selectedFolderIds.size === 1 && selectedDocumentIds.size === 0
     ? folders.find((folder) => selectedFolderIds.has(folder.folderId))
     : undefined;
+  // Gates the Rename/Delete menu items on what the current user's role can
+  // actually do in the folder being browsed, instead of only finding out
+  // from a 403 after clicking. Approximates permission on selected folders
+  // using the currently-viewed folder's effective role (folders selected
+  // here are always shown within that folder's listing).
+  const canRenameSelection = Boolean(renameDocument ? myPermissions?.updateFile : renameFolder ? myPermissions?.updateFolder : false);
+  const canDeleteSelection = selectedItemCount > 0
+    && (selectedDocumentIds.size === 0 || Boolean(myPermissions?.deleteFile))
+    && [...selectedFolderIds].every((folderId) => {
+      const folder = folders.find((f) => f.folderId === folderId);
+      return Boolean(folder?.parentFolderId == null ? myPermissions?.deleteParentFolder : myPermissions?.deleteSubfolder);
+    });
   const librarySelection = { folderIds: selectedFolderIds, documentIds: selectedDocumentIds };
   // Approve/Reject/Delete/Download hit the real .NET API, so only documents with a
   // real GUID (not a bundled sample-fixture id like "folder-1-txt") are eligible —
@@ -297,6 +324,7 @@ export function Documents() {
   useEffect(() => {
     if (!selectedFolderId) {
       setCanSetDocIdOnUpload(false);
+      setMyPermissions(null);
       return;
     }
     apiClient.getFolderPermissions(selectedFolderId)
@@ -305,6 +333,12 @@ export function Documents() {
         setCanSetDocIdOnUpload(mine?.role === 'Admin');
       })
       .catch(() => setCanSetDocIdOnUpload(false));
+
+    // Drives which action buttons (Upload, Rename, Delete) are shown as
+    // disabled instead of only failing with a 403 after the user clicks them.
+    apiClient.getMyEffectivePermissions(selectedFolderId)
+      .then((res) => setMyPermissions(res.data ?? null))
+      .catch(() => setMyPermissions(null));
   }, [selectedFolderId]);
 
   useEffect(() => {
@@ -587,49 +621,114 @@ export function Documents() {
     }); // Don't use replace:true so browser back button works correctly
   };
 
+  // Resolves and triggers the actual file download without any toast — shared
+  // by the read-only download and the Download-for-Editing checkout flow,
+  // which each need a different success message.
+  const triggerFileDownload = async (libraryDocument: MockLibraryDocument) => {
+    let href: string | undefined;
+    let fileName = libraryDocument.fileName;
+    let shouldRevoke = false;
+
+    if (libraryDocument.sourceUrl) {
+      href = libraryDocument.sourceUrl;
+    } else if (libraryDocument.preview.kind === 'image' || libraryDocument.preview.kind === 'pdf') {
+      href = libraryDocument.preview.url;
+    } else if (libraryDocument.fallbackDownload) {
+      href = URL.createObjectURL(new Blob([libraryDocument.fallbackDownload.content], { type: 'text/plain;charset=utf-8' }));
+      fileName = libraryDocument.fallbackDownload.fileName;
+      shouldRevoke = true;
+    } else if (libraryDocument.preview.kind === 'spreadsheet') {
+      const csv = libraryDocument.preview.sheets
+        .map((sheet) => [
+          `# Sheet: ${sheet.name}`,
+          [sheet.columns, ...sheet.rows]
+            .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
+            .join('\n'),
+        ].join('\n'))
+        .join('\n\n');
+      href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      fileName = `${libraryDocument.fileName}-preview.csv`;
+      shouldRevoke = true;
+    }
+
+    if (!href && libraryDocument.currentVersionId) {
+      await apiClient.downloadDocument(libraryDocument.documentId, libraryDocument.currentVersionId);
+      return;
+    }
+    if (!href) throw new Error('No download source is available');
+    const link = window.document.createElement('a');
+    link.href = href;
+    link.download = fileName;
+    link.click();
+    if (shouldRevoke) window.setTimeout(() => URL.revokeObjectURL(href), 0);
+  };
+
   const downloadMockDocument = async (libraryDocument: MockLibraryDocument) => {
     try {
-      let href: string | undefined;
-      let fileName = libraryDocument.fileName;
-      let shouldRevoke = false;
-
-      if (libraryDocument.sourceUrl) {
-        href = libraryDocument.sourceUrl;
-      } else if (libraryDocument.preview.kind === 'image' || libraryDocument.preview.kind === 'pdf') {
-        href = libraryDocument.preview.url;
-      } else if (libraryDocument.fallbackDownload) {
-        href = URL.createObjectURL(new Blob([libraryDocument.fallbackDownload.content], { type: 'text/plain;charset=utf-8' }));
-        fileName = libraryDocument.fallbackDownload.fileName;
-        shouldRevoke = true;
-      } else if (libraryDocument.preview.kind === 'spreadsheet') {
-        const csv = libraryDocument.preview.sheets
-          .map((sheet) => [
-            `# Sheet: ${sheet.name}`,
-            [sheet.columns, ...sheet.rows]
-              .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
-              .join('\n'),
-          ].join('\n'))
-          .join('\n\n');
-        href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-        fileName = `${libraryDocument.fileName}-preview.csv`;
-        shouldRevoke = true;
-      }
-
-      if (!href && libraryDocument.currentVersionId) {
-        await apiClient.downloadDocument(libraryDocument.documentId, libraryDocument.currentVersionId);
-        showSuccess('Read-only download started');
-        return;
-      }
-      if (!href) throw new Error('No download source is available');
-      const link = window.document.createElement('a');
-      link.href = href;
-      link.download = fileName;
-      link.click();
-      if (shouldRevoke) window.setTimeout(() => URL.revokeObjectURL(href), 0);
+      await triggerFileDownload(libraryDocument);
       showSuccess('Read-only download started');
     } catch (error) {
       console.error(error);
       showError('This sample is not available for download');
+    }
+  };
+
+  // Checks the document out (60-minute lock, same as the checkout system used
+  // elsewhere) before downloading, so a "Download for Editing" click actually
+  // locks the document against concurrent edits rather than just being a
+  // relabeled regular download.
+  const downloadForEditingDocument = async (libraryDocument: MockLibraryDocument) => {
+    if (!libraryDocument.currentVersionId) {
+      showError('This document has no version available to check out');
+      return;
+    }
+    try {
+      const res = await apiClient.checkoutDocument(libraryDocument.documentId, libraryDocument.currentVersionId);
+      if (!res.success) {
+        showError(res.error || 'Failed to check out this document for editing');
+        return;
+      }
+      await triggerFileDownload(libraryDocument);
+      showSuccess(`"${libraryDocument.fileName}" has been locked by you for editing for 1 hour. Upload the updated file to unlock it sooner.`);
+      void refreshServerDocuments(folders);
+    } catch (error: any) {
+      console.error(error);
+      showError(error.response?.data?.error || 'Failed to check out this document for editing');
+    }
+  };
+
+  const handleForceUnlock = async (libraryDocument: MockLibraryDocument) => {
+    if (!libraryDocument.currentVersionId) return;
+    try {
+      const res = await apiClient.forceUnlockCheckout(libraryDocument.documentId, libraryDocument.currentVersionId);
+      if (!res.success) {
+        showError(res.error || 'Failed to force-unlock this document');
+        return;
+      }
+      showSuccess(`"${libraryDocument.fileName}" has been unlocked.`);
+      void refreshServerDocuments(folders);
+    } catch (error: any) {
+      console.error(error);
+      showError(error.response?.data?.error || 'Failed to force-unlock this document');
+    }
+  };
+
+  // Uploading a new version becomes the document's current version, which is
+  // what actually releases a lock created by "Download for Editing" — the
+  // checkout is tracked per-version, so once the current version changes the
+  // document reads as checked-in again.
+  const handleUploadNewVersion = async (libraryDocument: MockLibraryDocument, file: File) => {
+    try {
+      const res = await apiClient.uploadDocument(libraryDocument.documentId, file);
+      if (!res.success) {
+        showError(res.error || 'Failed to upload the updated file');
+        return;
+      }
+      showSuccess(`Uploaded the updated file for "${libraryDocument.fileName}" — it is unlocked.`);
+      void refreshServerDocuments(folders);
+    } catch (error: any) {
+      console.error(error);
+      showError(error.response?.data?.error || 'Failed to upload the updated file');
     }
   };
 
@@ -638,12 +737,90 @@ export function Documents() {
     if (libraryDocument) void downloadMockDocument(libraryDocument);
   };
 
+  const handleDownloadForEditing = (docId: string) => {
+    const libraryDocument = findLibraryDocument(docId);
+    if (libraryDocument) void downloadForEditingDocument(libraryDocument);
+  };
+
+  const handleFilePermissions = (docId: string) => {
+    if (!isServerDocumentId(docId)) {
+      showError('File Permissions are only available for real uploaded documents.');
+      return;
+    }
+    const libraryDocument = findLibraryDocument(docId);
+    setAccessOverrideTarget({
+      scope: { documentId: docId },
+      resourceName: libraryDocument?.fileName ?? docId,
+      resourceKind: 'file',
+    });
+  };
+
+  const handleFolderPermissions = (folderId: string) => {
+    const folder = folders.find((f) => f.folderId === folderId);
+    setAccessOverrideTarget({
+      scope: { folderId },
+      resourceName: folder?.name ?? folderId,
+      resourceKind: 'folder',
+    });
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderRequest || !newFolderRequest.name.trim()) {
+      showError('Folder name is required');
+      return;
+    }
+    setIsCreatingFolder(true);
+    try {
+      const res = await apiClient.createFolder({
+        name: newFolderRequest.name.trim(),
+        parentFolderId: newFolderRequest.parentFolderId ?? undefined,
+        ownerId: DEV_USER_ID,
+      });
+      if (!res.data?.folderId) throw new Error(res.error || 'Failed to create folder');
+
+      const foldersRes = await apiClient.getFolders();
+      setFolders(foldersRes.data || []);
+      setSelectedFolderId(res.data.folderId);
+      showSuccess(`Folder "${newFolderRequest.name.trim()}" created`);
+      setNewFolderRequest(null);
+    } catch (error: any) {
+      showError(error.response?.data?.error || error.message || 'Failed to create folder');
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
+
   const clearSelection = () => {
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set());
   };
 
-  const requestFolderAction = (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download', folderId: string) => {
+  // The folder tree shows every folder, not just the one currently browsed,
+  // and each one's action menu (Rename/Copy/Cut/Delete/Download as ZIP/...)
+  // needs that specific folder's own effective permissions — not the
+  // currently-viewed folder's — since overrides can differ folder to folder.
+  const getFolderPermissions = useCallback((folderId: string): RolePermissionFlags | null | undefined => {
+    if (folderId === selectedFolderId) return myPermissions;
+    return otherFolderPermissions[folderId];
+  }, [selectedFolderId, myPermissions, otherFolderPermissions]);
+
+  const ensureFolderPermissionsLoaded = useCallback((folderId: string) => {
+    if (folderId === selectedFolderId) return;
+    if (folderId in otherFolderPermissions) return;
+    if (loadingFolderPermissionIds.current.has(folderId)) return;
+    loadingFolderPermissionIds.current.add(folderId);
+    apiClient.getMyEffectivePermissions(folderId)
+      .then((res) => setOtherFolderPermissions((prev) => ({ ...prev, [folderId]: res.data ?? null })))
+      .catch(() => setOtherFolderPermissions((prev) => ({ ...prev, [folderId]: null })))
+      .finally(() => loadingFolderPermissionIds.current.delete(folderId));
+  }, [selectedFolderId, otherFolderPermissions]);
+
+  const requestFolderAction = (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => {
+    if (action === 'permissions') {
+      handleFolderPermissions(folderId);
+      return;
+    }
+
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set([folderId]));
 
@@ -651,8 +828,12 @@ export function Documents() {
       const folder = folders.find((f) => f.folderId === folderId);
       if (folder) {
         downloadFolderAsZip(folder, allDocuments, folder.name)
-          .then(() => {
-            showSuccess(`Folder "${folder.name}" downloaded successfully`);
+          .then(({ zipped, skipped }) => {
+            showSuccess(
+              skipped > 0
+                ? `Folder "${folder.name}" downloaded — ${zipped} file(s) included, ${skipped} skipped (not permitted).`
+                : `Folder "${folder.name}" downloaded successfully`,
+            );
           })
           .catch((error) => {
             showError(error instanceof Error ? error.message : 'Failed to download folder');
@@ -661,6 +842,16 @@ export function Documents() {
       return;
     }
 
+    setRequestedFolderAction(action === 'cut' ? 'move' : action);
+  };
+
+  // Mirrors requestFolderAction so a single document can be copied, moved,
+  // renamed, or deleted directly from its own row menu instead of requiring
+  // the checkbox-based bulk-selection flow first — the underlying dialog and
+  // permission checks (LibraryBulkActions) are shared either way.
+  const requestDocumentAction = (action: 'copy' | 'cut' | 'rename' | 'delete', documentId: string) => {
+    setSelectedFolderIds(new Set());
+    setSelectedDocumentIds(new Set([documentId]));
     setRequestedFolderAction(action === 'cut' ? 'move' : action);
   };
 
@@ -990,6 +1181,9 @@ export function Documents() {
           selectedFolderId={selectedFolderId}
           onSelectFolder={handleFolderSelect}
           onFolderAction={requestFolderAction}
+          onCreateFolder={(parentFolderId) => setNewFolderRequest({ parentFolderId, name: '' })}
+          getFolderPermissions={getFolderPermissions}
+          onRequestFolderPermissions={ensureFolderPermissionsLoaded}
         />
       )}
 
@@ -1028,8 +1222,14 @@ export function Documents() {
             <button
               type="button"
               aria-label="Upload files"
-              disabled={!selectedFolder}
-              title={selectedFolder ? 'Upload files to the selected folder' : 'A folder is required before uploading'}
+              disabled={!selectedFolder || !myPermissions?.upload}
+              title={
+                !selectedFolder
+                  ? 'A folder is required before uploading'
+                  : !myPermissions?.upload
+                    ? 'Your role does not have Upload permission in this folder'
+                    : 'Upload files to the selected folder'
+              }
               onClick={() => fileInputRef.current?.click()}
               className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:w-auto sm:px-4"
             >
@@ -1055,7 +1255,8 @@ export function Documents() {
                 <LibraryBulkActions
                   selectedCount={selectedItemCount}
                   selectedNames={selectedNames}
-                  canRename={selectedItemCount === 1}
+                  canRename={selectedItemCount === 1 && canRenameSelection}
+                  canDelete={canDeleteSelection}
                   renameCurrentName={renameDocument?.fileName ?? renameFolder?.name}
                   renameIsFile={Boolean(renameDocument)}
                   folders={folders}
@@ -1087,6 +1288,11 @@ export function Documents() {
                 onSelectedDocumentIdsChange={setSelectedDocumentIds}
                 onDocumentClick={openDocumentPreview}
                 onDownload={handleDownloadDocument}
+                onDownloadForEditing={handleDownloadForEditing}
+                onFilePermissions={handleFilePermissions}
+                onDocumentAction={requestDocumentAction}
+                canDownloadForEditing={Boolean(myPermissions?.downloadForEditing)}
+                permissions={myPermissions}
               />
             )}
           </Card>
@@ -1098,6 +1304,10 @@ export function Documents() {
           document={previewDocument}
           onClose={closePreview}
           onDownload={downloadMockDocument}
+          onDownloadForEditing={downloadForEditingDocument}
+          onForceUnlock={handleForceUnlock}
+          onUploadNewVersion={handleUploadNewVersion}
+          permissions={myPermissions}
           onSubmitForApproval={(doc) => {
             closePreview();
             setPendingApprovalFiles([
@@ -1139,6 +1349,52 @@ export function Documents() {
             setPendingApprovalCategory('');
           }}
         />
+      )}
+
+      {accessOverrideTarget && (
+        <AccessOverrideModal
+          scope={accessOverrideTarget.scope}
+          resourceName={accessOverrideTarget.resourceName}
+          resourceKind={accessOverrideTarget.resourceKind}
+          onClose={() => setAccessOverrideTarget(null)}
+        />
+      )}
+
+      {newFolderRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between border-b border-[#e2e8f0] p-4 dark:border-white/10">
+              <h3 className="section-heading">{newFolderRequest.parentFolderId ? 'New Subfolder' : 'New Folder'}</h3>
+              <button type="button" onClick={() => setNewFolderRequest(null)} className="text-slate-500 hover:text-slate-700 dark:text-slate-400" aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <CardBody className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">Folder Name</label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={newFolderRequest.name}
+                  onChange={(e) => setNewFolderRequest({ ...newFolderRequest, name: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void handleCreateFolder(); }}
+                  className="field-control h-9 w-full"
+                  placeholder="e.g. Quality Records"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewFolderRequest(null)}
+                  className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-300 dark:bg-navy-700 dark:text-white dark:hover:bg-navy-600"
+                >
+                  Cancel
+                </button>
+                <Button variant="primary" onClick={handleCreateFolder} isLoading={isCreatingFolder}>Create</Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
       )}
 
       <Dialog.Root open={showUploadModal} onOpenChange={(open) => open ? setShowUploadModal(true) : closeUploadModal()}>

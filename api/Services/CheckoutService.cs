@@ -116,6 +116,60 @@ public class CheckoutService(DmsContext context, AuditService auditService, ILog
         }
     }
 
+    // Unlocks a version regardless of who checked it out — gated by the
+    // AdminForceUnlock permission flag in DocumentsController, not by
+    // ownership like CheckinAsync.
+    public async Task<CheckoutResult> ForceUnlockAsync(Guid versionId, Guid adminUserId)
+    {
+        try
+        {
+            var version = await context.DocumentVersions
+                .FirstOrDefaultAsync(v => v.VersionId == versionId);
+
+            if (version == null)
+                return CheckoutResult.NotFound("Version not found");
+
+            if (!version.IsCheckedOut)
+                return CheckoutResult.Invalid("Document is not checked out");
+
+            var previousOwnerId = version.CheckedOutById;
+
+            version.IsCheckedOut = false;
+            version.CheckedOutById = null;
+            version.CheckedOutAt = null;
+            version.CheckoutReason = null;
+            version.UpdatedAt = DateTime.UtcNow;
+
+            context.DocumentVersions.Update(version);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(adminUserId, AuditActions.DOCUMENT_CHECKOUT_FORCE_UNLOCKED, new
+            {
+                version.VersionId,
+                version.DocumentId,
+                version.VersionNumber,
+                PreviousOwnerId = previousOwnerId,
+                ForceUnlockedAt = DateTime.UtcNow
+            });
+
+            logger.LogInformation("Document version {VersionId} force-unlocked by {AdminUserId} (was checked out by {PreviousOwnerId})", versionId, adminUserId, previousOwnerId);
+
+            return CheckoutResult.Ok(new
+            {
+                version.VersionId,
+                version.DocumentId,
+                version.VersionNumber,
+                version.Status,
+                Message = "Document force-unlocked successfully"
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error force-unlocking version {VersionId}", versionId);
+            return CheckoutResult.Fail(ex.Message);
+        }
+    }
+
     public async Task<object?> GetCheckoutStatusAsync(Guid versionId)
     {
         try

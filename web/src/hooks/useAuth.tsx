@@ -14,12 +14,12 @@ export interface AuthContextValue {
   logout: () => void;
 }
 
-function toUser(data: { userId: string; email: string; fullName: string; isActive: boolean; avatarUrl?: string | null }): User {
+function toUser(data: { userId: string; email: string; fullName: string; isActive: boolean; avatarUrl?: string | null; role?: string | null }): User {
   return {
     userId: data.userId,
     fullName: data.fullName,
     email: data.email,
-    role: 'Admin',
+    role: data.role ?? null,
     isActive: data.isActive,
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),

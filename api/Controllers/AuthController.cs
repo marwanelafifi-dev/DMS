@@ -58,7 +58,7 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
                 data = new
                 {
                     token,
-                    user = new { user.UserId, user.Email, user.FullName, user.IsActive, user.AvatarUrl },
+                    user = new { user.UserId, user.Email, user.FullName, user.IsActive, user.AvatarUrl, user.Role },
                 },
             });
         }
@@ -126,7 +126,7 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
                 data = new
                 {
                     token,
-                    user = new { user.UserId, user.Email, user.FullName, user.IsActive, user.AvatarUrl },
+                    user = new { user.UserId, user.Email, user.FullName, user.IsActive, user.AvatarUrl, user.Role },
                 },
             });
         }
@@ -270,7 +270,7 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
             return Ok(new
             {
                 success = true,
-                data = new { user.UserId, user.Email, user.FullName, user.IsActive, user.AvatarUrl },
+                data = new { user.UserId, user.Email, user.FullName, user.IsActive, user.AvatarUrl, user.Role },
             });
         }
         catch (Exception ex)

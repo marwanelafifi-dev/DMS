@@ -7,6 +7,7 @@ import { useSearchSuggestions } from '../../hooks/useSearchSuggestions';
 import { useAllDmsDocuments } from '../../hooks/useAllDmsDocuments';
 import { SearchSuggestionsDropdown } from '../custom/SearchSuggestionsDropdown';
 import type { ParsedDocument } from '../../services/doclingApi';
+import { roleLabel } from '../../utils/roleLabels';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -121,7 +122,7 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
         <div className="hidden items-center gap-2 text-sm text-[#64748b] md:flex">
           <span>Role</span>
           <div className="flex h-10 min-w-[96px] items-center justify-center rounded-[5px] border border-[#cbd5e3] bg-white px-3 text-[#17213a] dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <span>{user?.role || 'Manager'}</span>
+            <span>{roleLabel(user?.role ?? 'No Access')}</span>
           </div>
         </div>
 
@@ -162,7 +163,7 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
             )}
             <div className="hidden min-w-[92px] sm:block">
               <div className="truncate text-sm font-semibold leading-5 text-[#17213a] dark:text-white">{user?.fullName}</div>
-              <div className="text-xs leading-4 text-[#718198]">{user?.role || 'Full Access'}</div>
+              <div className="text-xs leading-4 text-[#718198]">{roleLabel(user?.role ?? 'No Access')}</div>
             </div>
           </div>
 

@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Card, CardBody, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
 import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, ChevronLeft, ChevronRight, Circle } from 'lucide-react';
-import { apiClient, DEV_USER_ID } from '../../utils/api';
+import { apiClient, DEV_USER_ID, type PageAccessRole } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+import { roleLabel } from '../../utils/roleLabels';
 
 const PAGE_SIZE = 10;
 
@@ -16,7 +17,7 @@ interface User {
   createdAt: string;
   authType: 'Google' | 'Local';
   isOnline: boolean;
-  accessLevel: string;
+  role: string | null;
   avatarUrl?: string | null;
 }
 
@@ -37,9 +38,11 @@ export function UserManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [roles, setRoles] = useState<PageAccessRole[]>([]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editData, setEditData] = useState<{ fullName: string; isActive: boolean }>({ fullName: '', isActive: true });
+  const [editData, setEditData] = useState<{ fullName: string; isActive: boolean; role: string }>({ fullName: '', isActive: true, role: '' });
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '' });
@@ -58,14 +61,16 @@ export function UserManagement() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [pageRes, allRes] = await Promise.all([
+      const [pageRes, allRes, rolesRes] = await Promise.all([
         apiClient.getUsers({ activeOnly: false, page: targetPage, pageSize: PAGE_SIZE }),
         apiClient.getUsers({ activeOnly: false }),
+        apiClient.getPageAccessRoles(),
       ]);
       setUsers(pageRes.data || []);
       setTotalCount(pageRes.totalCount ?? pageRes.data?.length ?? 0);
       setTotalPages(pageRes.totalPages ?? 1);
       setAllUsers(allRes.data || []);
+      setRoles(rolesRes.data || []);
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API. Is the backend running?');
     } finally {
@@ -90,13 +95,17 @@ export function UserManagement() {
 
   const handleEdit = (user: User) => {
     setEditingId(user.userId);
-    setEditData({ fullName: user.fullName, isActive: user.isActive });
+    setEditData({ fullName: user.fullName, isActive: user.isActive, role: user.role ?? '' });
   };
 
   const handleSave = async () => {
     if (!editingId) return;
+    const user = users.find(u => u.userId === editingId);
     try {
-      await apiClient.updateUser(editingId, editData);
+      await apiClient.updateUser(editingId, { fullName: editData.fullName, isActive: editData.isActive });
+      if (editData.role !== (user?.role ?? '')) {
+        await apiClient.updateUserRole(editingId, editData.role || null);
+      }
       showSuccess('User updated');
       setEditingId(null);
       loadUsers();
@@ -322,9 +331,31 @@ export function UserManagement() {
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${accessBadgeStyles[user.accessLevel] ?? accessBadgeStyles['No Access']}`}>
-                    {user.accessLevel}
-                  </span>
+                  {editingId === user.userId ? (
+                    user.userId === DEV_USER_ID ? (
+                      <span
+                        className="text-sm text-gray-400 dark:text-navy-500 cursor-not-allowed"
+                        title="You cannot change your own role"
+                      >
+                        {roleLabel(user.role ?? 'No Access')}
+                      </span>
+                    ) : (
+                      <select
+                        value={editData.role}
+                        onChange={(e) => setEditData({ ...editData, role: e.target.value })}
+                        className="px-2 py-1 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-950 text-navy-900 dark:text-white text-sm"
+                      >
+                        <option value="">No Access</option>
+                        {roles.map(r => (
+                          <option key={r.role} value={r.role}>{roleLabel(r.role)}</option>
+                        ))}
+                      </select>
+                    )
+                  ) : (
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${accessBadgeStyles[user.role ?? 'No Access'] ?? accessBadgeStyles['No Access']}`}>
+                      {roleLabel(user.role ?? 'No Access')}
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-4">
                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
@@ -652,6 +683,7 @@ export function UserManagement() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

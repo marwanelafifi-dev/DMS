@@ -1,4 +1,6 @@
 using DMS.Api.Data;
+using DMS.Api.Models;
+using DMS.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Middleware;
@@ -14,7 +16,7 @@ public class RBACMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, DmsContext dbContext)
+    public async Task InvokeAsync(HttpContext context, DmsContext dbContext, AccessOverrideService accessOverrideService)
     {
         // Read request information
         var method = context.Request.Method;
@@ -65,14 +67,14 @@ public class RBACMiddleware
         // Check permissions based on the endpoint and method
         if (IsDocumentEndpoint(path))
         {
-            var handled = await CheckDocumentPermissions(context, dbContext, userId, method, path);
+            var handled = await CheckDocumentPermissions(context, dbContext, accessOverrideService, user, method, path);
             if (handled)
                 return;
         }
 
         if (IsFolderEndpoint(path))
         {
-            var handled = await CheckFolderPermissions(context, dbContext, userId, method, path);
+            var handled = await CheckFolderPermissions(context, dbContext, accessOverrideService, user, method, path);
             if (handled)
                 return;
         }
@@ -109,7 +111,7 @@ public class RBACMiddleware
     private bool IsFolderEndpoint(string path) => path.StartsWith("/api/folders", StringComparison.OrdinalIgnoreCase);
 
     // Returns true if the request has already been handled (don't call _next afterwards)
-    private async Task<bool> CheckDocumentPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
+    private async Task<bool> CheckDocumentPermissions(HttpContext context, DmsContext dbContext, AccessOverrideService accessOverrideService, DmsUser user, string method, string path)
     {
         // Extract the document ID from the path
         var segments = path.Split('/');
@@ -136,41 +138,53 @@ public class RBACMiddleware
 
         // Get the user's permissions on the folder containing the document
         var permission = await dbContext.FolderPermissions
-            .FirstOrDefaultAsync(p => p.FolderId == document.FolderId && p.UserId == userId);
+            .FirstOrDefaultAsync(p => p.FolderId == document.FolderId && p.UserId == user.UserId);
 
-        if (permission == null)
+        // A folder-specific grant always takes precedence; the user's global
+        // role (dms_users.role) is page/feature access only and no longer a
+        // folder-role fallback — except a role with BypassFolderPermissions
+        // ("Full Access"), which acts as Admin everywhere.
+        var effectiveRole = await ResolveEffectiveFolderRoleAsync(dbContext, permission, user);
+
+        // With no role at all, there's nothing for a File Permission override
+        // to layer on top of — a lone "allow" override with no role can't
+        // grant access on its own in this pass (only role-holders get the
+        // override treatment). This matches "override narrows or widens a
+        // role's access", not "override is a substitute for having one".
+        bool roleAllowed;
+        string action;
+        if (effectiveRole == null)
         {
-            _logger.LogWarning("User {UserId} has no permission on folder {FolderId}", userId, document.FolderId);
-            context.Response.StatusCode = 403;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                success = false,
-                error = "No permission to access this document"
-            });
-            return true;
+            roleAllowed = false;
+            action = ActionForMethod(method, path, isFolder: false);
+        }
+        else
+        {
+            (roleAllowed, action) = await HasPermissionForMethodAsync(dbContext, method, path, effectiveRole, isFolder: false, isRootFolder: false);
         }
 
-        // Check permissions based on the method
-        if (!await HasPermissionForMethodAsync(dbContext, method, path, permission.Role))
+        var finalAllowed = await accessOverrideService.ResolveAsync(user.UserId, documentId, document.FolderId, action, roleAllowed);
+
+        if (!finalAllowed)
         {
-            _logger.LogWarning("User {UserId} with role {Role} cannot {Method} document", userId, permission.Role, method);
+            _logger.LogWarning("User {UserId} with role {Role} cannot {Method} document", user.UserId, effectiveRole, method);
             context.Response.StatusCode = 403;
             await context.Response.WriteAsJsonAsync(new
             {
                 success = false,
-                error = $"Role '{permission.Role}' cannot {method.ToLower()} documents"
+                error = effectiveRole == null ? "No permission to access this document" : $"Role '{effectiveRole}' cannot {method.ToLower()} documents"
             });
             return true;
         }
 
         context.Items["FolderId"] = document.FolderId;
         context.Items["DocumentId"] = documentId;
-        context.Items["UserRole"] = permission.Role;
+        context.Items["UserRole"] = effectiveRole;
         return false;
     }
 
     // Returns true if the request has already been handled (don't call _next afterwards)
-    private async Task<bool> CheckFolderPermissions(HttpContext context, DmsContext dbContext, Guid userId, string method, string path)
+    private async Task<bool> CheckFolderPermissions(HttpContext context, DmsContext dbContext, AccessOverrideService accessOverrideService, DmsUser user, string method, string path)
     {
         // Extract the folder ID from the path
         var segments = path.Split('/');
@@ -197,59 +211,120 @@ public class RBACMiddleware
 
         // Get the user's permissions
         var permission = await dbContext.FolderPermissions
-            .FirstOrDefaultAsync(p => p.FolderId == folderId && p.UserId == userId);
+            .FirstOrDefaultAsync(p => p.FolderId == folderId && p.UserId == user.UserId);
 
-        if (permission == null)
+        // Folder-specific grant wins; otherwise only a BypassFolderPermissions
+        // ("Full Access") role acts as Admin here — the global role itself is
+        // page/feature access only, not a folder-role fallback.
+        var effectiveRole = await ResolveEffectiveFolderRoleAsync(dbContext, permission, user);
+
+        bool roleAllowed;
+        string action;
+        if (effectiveRole == null)
         {
-            _logger.LogWarning("User {UserId} has no permission on folder {FolderId}", userId, folderId);
-            context.Response.StatusCode = 403;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                success = false,
-                error = "No permission to access this folder"
-            });
-            return true;
+            roleAllowed = false;
+            action = ActionForMethod(method, path, isFolder: true);
+        }
+        else
+        {
+            (roleAllowed, action) = await HasPermissionForMethodAsync(dbContext, method, path, effectiveRole, isFolder: true, isRootFolder: folder.ParentFolderId == null);
         }
 
-        // Check permissions
-        if (!await HasPermissionForMethodAsync(dbContext, method, path, permission.Role))
+        var finalAllowed = await accessOverrideService.ResolveAsync(user.UserId, null, folderId, action, roleAllowed);
+
+        if (!finalAllowed)
         {
-            _logger.LogWarning("User {UserId} with role {Role} cannot {Method} folder", userId, permission.Role, method);
+            _logger.LogWarning("User {UserId} with role {Role} cannot {Method} folder", user.UserId, effectiveRole, method);
             context.Response.StatusCode = 403;
             await context.Response.WriteAsJsonAsync(new
             {
                 success = false,
-                error = $"Role '{permission.Role}' cannot {method.ToLower()} folders"
+                error = effectiveRole == null ? "No permission to access this folder" : $"Role '{effectiveRole}' cannot {method.ToLower()} folders"
             });
             return true;
         }
 
         context.Items["FolderId"] = folderId;
-        context.Items["UserRole"] = permission.Role;
+        context.Items["UserRole"] = effectiveRole;
         return false;
     }
+
+    // A folder-specific grant always wins. With none, only a page-access role
+    // whose BypassFolderPermissions flag is set ("Full Access") gets treated
+    // as Admin — every other role has zero folder-content access by default,
+    // matching "managed by each folder permission using users or groups".
+    private static async Task<string?> ResolveEffectiveFolderRoleAsync(DmsContext dbContext, DmsFolderPermission? permission, DmsUser user)
+    {
+        if (permission != null)
+            return permission.Role;
+
+        if (user.Role == null)
+            return null;
+
+        var pageAccessRole = await dbContext.PageAccessRoles.FirstOrDefaultAsync(r => r.Role == user.Role);
+        return pageAccessRole?.BypassFolderPermissions == true ? FolderRoles.Admin : null;
+    }
+
+    // Maps an HTTP method (+ path shape, + entity kind) to the File/Folder
+    // Permission action name it corresponds to, independent of role lookup —
+    // used both to resolve the role's default and to know which override
+    // flag to check. Read/Rename/Delete are split by entity kind (Read vs
+    // FileRead, Rename vs FileRename, Delete vs FileDelete) since "can see
+    // this folder" and "can open/delete a file inside it" are different
+    // questions — see DmsAccessOverride.
+    private static string ActionForMethod(string method, string path, bool isFolder) => method.ToUpper() switch
+    {
+        "GET" => path.Contains("/download", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.Download
+            : isFolder ? AccessOverrideActions.Read : AccessOverrideActions.FileRead,
+        "POST" => path.EndsWith("/submit", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.SubmitForApproval
+            : path.EndsWith("/force-unlock", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.Unlock
+            : path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.UploadUpdatedFile
+            : AccessOverrideActions.Write,
+        "PUT" => isFolder ? AccessOverrideActions.Rename : AccessOverrideActions.FileRename,
+        "DELETE" => isFolder ? AccessOverrideActions.Delete : AccessOverrideActions.FileDelete,
+        _ => "none" // no override support for anything else — role default only
+    };
 
     // Reads the editable dms_role_permissions table (see RolePermissionsController)
     // instead of a hardcoded role list — editing a role's permissions on the Roles
     // admin page changes what actually happens here, not just what's displayed.
     // GET is split between "view" and "download" by path since both use the same
-    // HTTP method.
-    private async Task<bool> HasPermissionForMethodAsync(DmsContext dbContext, string method, string path, string role)
+    // HTTP method. POST (creating a new document/folder) is gated by Upload; PUT
+    // (editing an existing one) is split by entity kind into UpdateFile/UpdateFolder
+    // so those can be granted independently. DownloadForEditing is a distinct,
+    // separately-tracked flag for downloading the real/original file (vs. the
+    // read-only copy covered by DownloadReadOnly); it isn't wired to a distinct
+    // download route yet since the API only has one document-download endpoint
+    // today. DELETE is split by entity kind: a document delete always checks
+    // DeleteFile; a folder delete checks DeleteParentFolder or DeleteSubfolder
+    // depending on whether it has a parent. Folder/task *creation* has no ID in
+    // the path yet (nothing to look up here), so CreateSubfolder/CreateParentFolder/
+    // AddTask are instead checked directly in FoldersController/TasksController.
+    //
+    // Returns (roleAllows, action) — action is the File/Folder Permission
+    // override key this request maps to, resolved by the caller against
+    // AccessOverrideService alongside the role's own default.
+    private async Task<(bool RoleAllows, string Action)> HasPermissionForMethodAsync(DmsContext dbContext, string method, string path, string role, bool isFolder, bool isRootFolder)
     {
+        var action = ActionForMethod(method, path, isFolder);
         var permission = await dbContext.RolePermissions.FirstOrDefaultAsync(rp => rp.Role == role);
         if (permission == null)
         {
             _logger.LogWarning("No role permission row found for role {Role} — denying by default", role);
-            return false;
+            return (false, action);
         }
 
-        return method.ToUpper() switch
+        var allowed = method.ToUpper() switch
         {
             "GET" => path.Contains("/download", StringComparison.OrdinalIgnoreCase) ? permission.DownloadReadOnly : permission.ViewOnly,
-            "POST" => permission.Upload,
-            "PUT" => permission.UpdatePermission,
-            "DELETE" => permission.AdminForceUnlock,
+            "POST" => path.EndsWith("/submit", StringComparison.OrdinalIgnoreCase) ? permission.SubmitForApproval
+                : path.EndsWith("/force-unlock", StringComparison.OrdinalIgnoreCase) ? permission.AdminForceUnlock
+                : permission.Upload,
+            "PUT" => isFolder ? permission.UpdateFolder : permission.UpdateFile,
+            "DELETE" => isFolder ? (isRootFolder ? permission.DeleteParentFolder : permission.DeleteSubfolder) : permission.DeleteFile,
             _ => false
         };
+
+        return (allowed, action);
     }
 }

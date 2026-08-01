@@ -16,6 +16,7 @@ public class DocumentsController(
     AuditService auditService,
     CheckoutService checkoutService,
     ApprovalService approvalService,
+    AccessOverrideService accessOverrideService,
     ILogger<DocumentsController> logger) : BaseController
 {
     // GET /api/documents — list of documents
@@ -26,7 +27,11 @@ public class DocumentsController(
     {
         try
         {
+            var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, GetCurrentUserId(), accessOverrideService);
+
             var query = context.Documents.AsQueryable();
+            if (accessibleFolderIds != null)
+                query = query.Where(d => accessibleFolderIds.Contains(d.FolderId));
 
             if (folderId.HasValue)
                 query = query.Where(d => d.FolderId == folderId);
@@ -42,6 +47,9 @@ public class DocumentsController(
                 join version in context.DocumentVersions
                     on document.CurrentVersionId equals (Guid?)version.VersionId into currentVersions
                 from currentVersion in currentVersions.DefaultIfEmpty()
+                join checkedOutUser in context.Users
+                    on currentVersion.CheckedOutById equals (Guid?)checkedOutUser.UserId into checkedOutUsers
+                from checkedOutUser in checkedOutUsers.DefaultIfEmpty()
                 orderby document.Title
                 select new
                 {
@@ -65,6 +73,7 @@ public class DocumentsController(
                     ContentType = currentVersion == null ? null : currentVersion.MimeType,
                     CheckoutStatus = currentVersion != null && currentVersion.IsCheckedOut ? "checked_out" : "checked_in",
                     CheckedOutBy = currentVersion == null ? null : currentVersion.CheckedOutById,
+                    CheckedOutByName = checkedOutUser == null ? null : checkedOutUser.FullName,
                     CheckedOutAt = currentVersion == null ? null : currentVersion.CheckedOutAt,
                     UploadedAt = document.CreatedAt,
                     document.CreatedAt,
@@ -115,6 +124,15 @@ public class DocumentsController(
             var currentVersion = versions.FirstOrDefault(v => v.VersionId == document.CurrentVersionId)
                 ?? versions.FirstOrDefault();
 
+            string? checkedOutByName = null;
+            if (currentVersion?.CheckedOutById != null)
+            {
+                checkedOutByName = await context.Users
+                    .Where(u => u.UserId == currentVersion.CheckedOutById)
+                    .Select(u => u.FullName)
+                    .FirstOrDefaultAsync();
+            }
+
             logger.LogInformation("Retrieved document {DocumentId}", id);
 
             return Ok(new
@@ -142,6 +160,7 @@ public class DocumentsController(
                     ContentType = currentVersion?.MimeType,
                     CheckoutStatus = currentVersion?.IsCheckedOut == true ? "checked_out" : "checked_in",
                     CheckedOutBy = currentVersion?.CheckedOutById,
+                    CheckedOutByName = checkedOutByName,
                     CheckedOutAt = currentVersion?.CheckedOutAt,
                     UploadedAt = document.CreatedAt,
                     Versions = versions,
@@ -177,17 +196,21 @@ public class DocumentsController(
             if (!folderExists)
                 return BadRequest(new { success = false, error = "Folder not found" });
 
-            // Verify the owner exists
+            // POST /api/documents has no document ID in the path yet (nothing to
+            // exist to gate on), so RBACMiddleware never sees this request —
+            // check the dynamic Upload flag here instead, same pattern as
+            // FoldersController.CreateFolder / TasksController.CreateTask.
             var folderPermission = await context.FolderPermissions
                 .FirstOrDefaultAsync(p => p.FolderId == req.FolderId && p.UserId == userId);
+            var effectiveRole = folderPermission?.Role ?? await GetEffectiveRoleAsync(context, userId, req.FolderId);
+            var roleAllowsUpload = await HasRolePermissionAsync(context, effectiveRole, rp => rp.Upload);
 
-            if (folderPermission == null ||
-                folderPermission.Role is not (FolderRoles.Writer or FolderRoles.Manager or FolderRoles.QA or FolderRoles.Admin))
+            if (!await accessOverrideService.ResolveAsync(userId, null, req.FolderId, AccessOverrideActions.Write, roleAllowsUpload))
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new
                 {
                     success = false,
-                    error = "Write permission is required to create documents in this folder"
+                    error = "Your role does not have Upload permission in this folder"
                 });
             }
 
@@ -199,7 +222,7 @@ public class DocumentsController(
 
             // Document ID at upload time is System Admin only — QA only gets access to
             // it later, at First Review (see ApprovalsController.RequireQaOrAdminForApprovalAsync).
-            var isAdmin = folderPermission.Role is FolderRoles.Admin;
+            var isAdmin = effectiveRole is FolderRoles.Admin;
             if (!string.IsNullOrWhiteSpace(req.OriginalDocumentId) && !isAdmin)
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new
@@ -426,6 +449,36 @@ public class DocumentsController(
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
 
+            // Critical gap found in production: this endpoint let ANY user
+            // upload a new version even while another user had the document
+            // checked out, silently overwriting the locked edit and defeating
+            // the whole point of the checkout lock. A user may only replace
+            // the file while it's locked if they're the one holding the lock,
+            // or their role has AdminForceUnlock (mirrors who's allowed to
+            // force-unlock in the first place).
+            var userId = GetCurrentUserId();
+            var currentVersion = document.CurrentVersionId.HasValue
+                ? await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId)
+                : null;
+
+            if (currentVersion is { IsCheckedOut: true } && currentVersion.CheckedOutById != userId)
+            {
+                var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+                var roleAllowsForceUnlock = await HasRolePermissionAsync(context, effectiveRole, rp => rp.AdminForceUnlock);
+                if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.Unlock, roleAllowsForceUnlock))
+                {
+                    var lockedByName = await context.Users
+                        .Where(u => u.UserId == currentVersion.CheckedOutById)
+                        .Select(u => u.FullName)
+                        .FirstOrDefaultAsync();
+                    return StatusCode(StatusCodes.Status423Locked, new
+                    {
+                        success = false,
+                        error = $"This document is locked for editing by {lockedByName ?? "another user"} — you can't upload a new version until they release it."
+                    });
+                }
+            }
+
             // Compute the SHA256 hash of the file
             string sha256Hash;
             using (var sha256 = SHA256.Create())
@@ -437,12 +490,25 @@ public class DocumentsController(
             // Reset the stream
             file.OpenReadStream().Seek(0, SeekOrigin.Begin);
 
+            // dms_document_versions has a unique (document_id, version_number)
+            // constraint — hardcoding "1.0" only worked because this endpoint
+            // was previously only ever called once per document, at creation.
+            // Now that re-uploading a new version of an existing document is a
+            // real action (releases a checkout lock), each call must bump the
+            // version number instead of colliding with the first upload.
+            var nextMajorVersion = 1 + await context.DocumentVersions
+                .Where(v => v.DocumentId == id)
+                .Select(v => (int?)v.MajorVersion)
+                .MaxAsync() ?? 1;
+
             // Create a new version
             var version = new DmsDocumentVersion
             {
                 VersionId = Guid.NewGuid(),
                 DocumentId = id,
-                VersionNumber = "1.0",
+                VersionNumber = $"{nextMajorVersion}.0",
+                MajorVersion = nextMajorVersion,
+                MinorVersion = 0,
                 FileName = file.FileName,
                 FileSizeBytes = file.Length,
                 MimeType = file.ContentType,
@@ -468,8 +534,7 @@ public class DocumentsController(
 
             await context.SaveChangesAsync();
 
-            var currentUserId = GetCurrentUserId();
-            await auditService.LogAsync(currentUserId, DOCUMENT_UPLOADED, new
+            await auditService.LogAsync(userId, DOCUMENT_UPLOADED, new
             {
                 version.VersionId,
                 document.DocumentId,
@@ -692,14 +757,16 @@ public class DocumentsController(
         return (true, null);
     }
 
-    // POST /api/documents/{id}/versions/{versionId}/checkout — lock the version for editing
+    // POST /api/documents/{id}/versions/{versionId}/checkout — lock the version for editing.
+    // Body is optional — the "Download for Editing" button checks a document out
+    // with no reason given, so an empty/absent body must not 400.
     [HttpPost("{id}/versions/{versionId}/checkout")]
-    public async Task<ActionResult<object>> CheckoutVersion(Guid id, Guid versionId, [FromBody] CheckoutRequest req)
+    public async Task<ActionResult<object>> CheckoutVersion(Guid id, Guid versionId, [FromBody] CheckoutRequest? req = null)
     {
         try
         {
             var userId = GetCurrentUserId();
-            var result = await checkoutService.CheckoutAsync(versionId, userId, req.Reason);
+            var result = await checkoutService.CheckoutAsync(versionId, userId, req?.Reason);
 
             if (!result.Success)
             {
@@ -747,6 +814,36 @@ public class DocumentsController(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error checking in version {VersionId}", versionId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/documents/{id}/versions/{versionId}/force-unlock — unlock
+    // someone else's checkout. Gated by AdminForceUnlock via RBACMiddleware
+    // (path-based special case, same pattern as /submit).
+    [HttpPost("{id}/versions/{versionId}/force-unlock")]
+    public async Task<ActionResult<object>> ForceUnlockVersion(Guid id, Guid versionId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var result = await checkoutService.ForceUnlockAsync(versionId, userId);
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "Invalid" => BadRequest(new { success = false, error = result.Message }),
+                    _ => StatusCode(500, new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error force-unlocking version {VersionId}", versionId);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
@@ -995,8 +1092,28 @@ public class DocumentsController(
         var succeeded = new List<Guid>();
         var failed = new List<object>();
 
+        // Bulk delete has no per-document ID in this endpoint's own path for
+        // RBACMiddleware to gate (unlike the single-document DELETE
+        // endpoint), so the same DeleteFile role check + FileDelete override
+        // this action maps to elsewhere is applied explicitly here per item.
         foreach (var documentId in req.DocumentIds.Distinct())
         {
+            var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.DocumentId == documentId);
+            if (document == null)
+            {
+                failed.Add(new { documentId, error = "Document not found" });
+                continue;
+            }
+
+            var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+            var roleAllows = await HasRolePermissionAsync(context, effectiveRole, rp => rp.DeleteFile);
+            var allowed = await accessOverrideService.ResolveAsync(userId, documentId, document.FolderId, AccessOverrideActions.FileDelete, roleAllows);
+            if (!allowed)
+            {
+                failed.Add(new { documentId, error = "You don't have permission to delete this document" });
+                continue;
+            }
+
             var (success, error) = await DeleteDocumentInternalAsync(documentId, userId);
             if (success) succeeded.Add(documentId);
             else failed.Add(new { documentId, error });

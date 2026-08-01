@@ -96,6 +96,7 @@ public static class AuditActions
     public const string DOCUMENT_CHECKOUT = "DOCUMENT_CHECKOUT";
     public const string DOCUMENT_CHECKIN = "DOCUMENT_CHECKIN";
     public const string DOCUMENT_CHECKOUT_EXPIRED = "DOCUMENT_CHECKOUT_EXPIRED";
+    public const string DOCUMENT_CHECKOUT_FORCE_UNLOCKED = "DOCUMENT_CHECKOUT_FORCE_UNLOCKED";
     public const string DOCUMENT_SUBMITTED = "DOCUMENT_SUBMITTED";
     public const string DOCUMENT_APPROVED = "DOCUMENT_APPROVED";
     public const string DOCUMENT_REJECTED = "DOCUMENT_REJECTED";
@@ -131,4 +132,11 @@ public static class AuditActions
     public const string GROUP_SUBGROUP_REMOVED = "GROUP_SUBGROUP_REMOVED";
 
     public const string ROLE_PERMISSIONS_UPDATED = "ROLE_PERMISSIONS_UPDATED";
+    public const string ROLE_CREATED = "ROLE_CREATED";
+    public const string ROLE_DELETED = "ROLE_DELETED";
+    public const string USER_ROLE_UPDATED = "USER_ROLE_UPDATED";
+
+    public const string ACCESS_OVERRIDE_CREATED = "ACCESS_OVERRIDE_CREATED";
+    public const string ACCESS_OVERRIDE_UPDATED = "ACCESS_OVERRIDE_UPDATED";
+    public const string ACCESS_OVERRIDE_DELETED = "ACCESS_OVERRIDE_DELETED";
 }

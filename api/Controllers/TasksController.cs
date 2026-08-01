@@ -100,6 +100,13 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
                 return BadRequest(new { success = false, error = "Title is required" });
 
             var managerId = GetCurrentUserId();
+
+            // Tasks aren't folder-scoped, so this checks the creator's global
+            // role (dms_users.role) rather than a per-folder grant.
+            var effectiveRole = await GetEffectiveRoleAsync(context, managerId, null);
+            if (!await HasRolePermissionAsync(context, effectiveRole, rp => rp.AddTask))
+                return StatusCode(403, new { success = false, error = "Your role does not have Add Task permission" });
+
             var result = await taskService.CreateTaskAsync(
                 managerId,
                 req.DocumentId,

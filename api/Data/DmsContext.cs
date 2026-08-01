@@ -31,6 +31,8 @@ public class DmsContext : DbContext
     public DbSet<DmsGroupMember> GroupMembers => Set<DmsGroupMember>();
     public DbSet<DmsGroupSubgroup> GroupSubgroups => Set<DmsGroupSubgroup>();
     public DbSet<DmsRolePermission> RolePermissions => Set<DmsRolePermission>();
+    public DbSet<DmsAccessOverride> AccessOverrides => Set<DmsAccessOverride>();
+    public DbSet<DmsPageAccessRole> PageAccessRoles => Set<DmsPageAccessRole>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -91,6 +93,8 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsGroupMember>().ToTable("dms_group_members").HasKey(gm => gm.GroupMemberId);
         modelBuilder.Entity<DmsGroupSubgroup>().ToTable("dms_group_subgroups").HasKey(gs => gs.GroupSubgroupId);
         modelBuilder.Entity<DmsRolePermission>().ToTable("dms_role_permissions").HasKey(rp => rp.Role);
+        modelBuilder.Entity<DmsAccessOverride>().ToTable("dms_access_overrides").HasKey(o => o.OverrideId);
+        modelBuilder.Entity<DmsPageAccessRole>().ToTable("dms_page_access_roles").HasKey(r => r.Role);
         modelBuilder.Entity<DmsApproval>().ToTable("dms_approvals").HasKey(a => a.ApprovalId);
         modelBuilder.Entity<DmsApprovalDocument>().ToTable("dms_approval_documents").HasKey(ad => ad.ApprovalDocumentId);
 

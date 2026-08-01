@@ -9,7 +9,69 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Active Branch:** `Main`
 
-**Status:** Session 22 — real, reproducible preview-rendering bugs found and fixed across PDF/Office/Excel previews (canvas race condition, text-layer scale mismatch, Docling silently overriding the dedicated Excel parser, sparse-sheet data loss), plus a full toolbar/search consistency pass across every preview kind. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 23 — full RBAC/ACL redesign: split global page-access roles from per-folder role grants from a new File/Folder Permission override (ACL) system; fixed a critical multi-user checkout-lock bypass; rebuilt the folder tree as a real expandable hierarchy; found and fixed a real permission-bypass bug where denied Delete/Rename actions could still execute from the folder tree's own context menu; added Delete as an override action at both folder and file scope; and gated every Document Library / folder-tree action button on the user's actual resolved permissions instead of only erroring after the click. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 23 (2026-08-01) — RBAC/ACL Redesign: Page-Access Roles, Per-Folder Grants, File/Folder Permission Overrides, Real Button Gating
+
+**Status:** ✅ Complete — every backend change compiled and applied to the running Docker stack; every fix live-verified against real HTTP requests (including a real JWT crafted for a live non-admin account) before being considered done, not just type-checked.
+
+**Context:** Started from a simple ask (let admins edit a user's role and create new roles) and escalated, through many rounds of the user directly testing their own account's permissions and reporting exactly what should/shouldn't have been possible, into a full redesign of how access control works in the app.
+
+### 1. Architecture pivot — three independent layers instead of one role field
+Per explicit user direction, `dms_users.role` was redefined as **page/feature visibility only** (Dashboard / Document Library / Reminders / Approvals / PCAR / Admin Panel — five roles: User, Manager, Quality, Auditor, Full Access), completely decoupled from **file/folder content access**, which is now governed exclusively by two other layers:
+- **Per-folder role grants** (`dms_folder_permissions`, pre-existing) — a user explicitly granted Reader/Writer/Manager/QA/Admin on a specific folder.
+- **File/Folder Permission overrides** (`dms_access_overrides`, new) — a per-user-or-group Allow/Deny/Inherit exception layered on top, targeting either a folder (cascading to every subfolder/file beneath it) or a single document.
+Only the "Full Access" role bypasses folder grants entirely (treated as Admin everywhere); every other role has **zero** content access without an explicit grant or override — "managed by each folder permission using users or groups," not a global role.
+
+New tables/migrations `031`–`041`: `dms_page_access_roles` (5 editable page-visibility roles), `dms_access_overrides` (16 tri-state action flags: Read/Write/Rename/Copy/Cut/DownloadZip/CreateSubfolder at folder scope; FileRead/FileRename/FileCopy/FileCut/Unlock/SubmitForApproval/Download/DownloadForEditing/UploadUpdatedFile at file scope, cascading). Resolution rule (`AccessOverrideService`): a direct per-user override always wins over a conflicting group override; deny always wins over allow from the same source; with no override at all, the role's own default stands.
+
+### 2. Critical bug found by direct user testing: multi-user checkout-lock bypass
+User locked a file via "Download for Editing" as one account, logged in as a different account, and successfully uploaded a new version anyway — completely defeating the lock. `UploadVersion` had no check at all for whether the current version was checked out by someone else. Fixed: if locked by another user, the caller now needs `AdminForceUnlock`/`Unlock` (role or override) or the upload is rejected with 423 Locked.
+
+### 3. Document List / folder context menu redesign
+Row actions moved into a three-dot menu (Download / Download for Editing / File Permissions, later extended with Copy/Move/Rename/Delete — see §6); folders gained their own three-dot menu (New Subfolder / Download as ZIP / Rename / Copy / Cut / Delete / Folder Permissions) instead of no per-folder actions at all.
+
+### 4. Folder tree rewritten as a real expandable hierarchy
+User reported a newly-created subfolder rendering as a flat sibling instead of nested under its parent. `FolderTree.tsx` was a flat `folders.map()` with no parent/child grouping at all. Rewrote it to group by `parentFolderId` into a real recursive tree with expand/collapse chevrons, folders expanded by default (so a new/copied subfolder is immediately visible), and the selected folder's ancestor chain always force-expanded.
+
+### 5. Real bug: override-granted folders invisible in the Document Library
+User had "Allow Read" via an override with zero folder-role grant, and the Document Library showed "No folders available." Root cause: `GetAccessibleFolderIdsAsync` (used by the folder/document *list* endpoints, since RBACMiddleware only gates single-ID routes) only ever checked `dms_folder_permissions` grants — override-based access was never folded in, even though `AccessOverrideService.GetOverrideVisibleFolderIdsAsync` existed for exactly this and was simply never called. Wired it in. Also fixed a related gap in `GetMyEffectivePermissions`: with no role at all it returned `null` outright instead of falling through to a false baseline and letting an Allow override still grant specific actions.
+
+### 6. Delete added as an override action (both levels) — previously deliberately excluded
+Earlier in this session's design pass, Delete was deliberately left out of the override system ("keep it fully independent, no Delete override"); the user later asked to add it back in both the Folder Level and File Level sections of the permissions modal. Added `Delete`/`FileDelete` columns (migration `042`), wired through `AccessOverrideService`, `RBACMiddleware` (DELETE requests now resolve through the override system instead of always falling through to the role default), and `GetMyEffectivePermissions`. While wiring this, found and fixed a real, unrelated gap: **`POST /documents/bulk-delete` had zero permission check of any kind** — any authenticated user could bulk-delete any document regardless of role. Added the same DeleteFile-role + FileDelete-override check the single-document delete path already had.
+
+### 7. Real bug: denied Delete/Rename could still execute from the folder tree's context menu
+User set an explicit **Deny Delete** override (both folder and file level) on their own test account, then successfully deleted a folder anyway via the sidebar's three-dot "Delete" item. Root cause: the "Actions for selected items" bulk toolbar's `disabled={!canDelete}` only gated its *own* dropdown-triggered path. The folder tree's per-folder context-menu items set a separate `requestedFolderAction` state that `LibraryMenus.tsx` picked up in a `useEffect` and opened the confirmation dialog directly — with no permission check at all, since that check only lived on the disabled dropdown item, not on the shared state effect. Fixed by re-checking `canDelete`/`canRename` inside that effect too, showing an error toast and refusing to open the dialog if denied — closing the exact bypass the user found.
+
+### 8. Every action button now gated on real, resolved permissions (not just erroring after the click)
+Per explicit instruction ("if any user dont have permission to a specific button, it should be unable to press it"):
+- `GetMyEffectivePermissions` extended with `Copy`/`Cut`/`DownloadZip`/`FileCopy`/`FileCut` — these have no role-level flag at all (governed purely by override, baseline `true` only for the Admin/Full-Access bypass role, `false` otherwise).
+- `FolderTree.tsx`: every menu item (New Subfolder, Download as ZIP, Rename, Copy, Cut, Delete, Folder Permissions) is now disabled unless the specific folder being acted on actually grants it. Since the tree shows many folders whose overrides can differ from whichever folder is currently being browsed, permissions for a non-selected folder are fetched lazily the first time that folder's own menu is opened (and cached), rather than reusing the currently-viewed folder's permissions or requiring a bulk pre-fetch for the whole tree. Until that fetch resolves, the safe default is disabled — a button is never enabled before the server has actually confirmed it's allowed.
+- `DocumentList.tsx`: added Copy/Move/Rename/Delete directly to each row's own three-dot menu (previously only reachable via checkbox multi-select), gated on the already-available currently-viewed-folder permissions (every row in the table belongs to that same folder, so no extra fetch is needed).
+- Live-verified end to end with a real JWT crafted for a live non-admin account holding an explicit Deny-Copy/Deny-Cut/Deny-Delete/Deny-DownloadZip override: `GET /api/folders/my-permissions` correctly returned `false` for every denied action and `true` for every explicitly allowed one, matching the override exactly.
+- **Follow-up bug caught by the user immediately after deploying this**: the file row's three-dot menu correctly grayed out denied items, but the folder tree's menu didn't — items were already functionally blocked (Radix's `disabled` prop stops `onSelect` from firing either way), but visually indistinguishable from allowed ones, which reads exactly like having a permission you don't. Root cause: `FolderTree.tsx`'s `menuItemClass` was missing the `data-[disabled]:opacity-45 data-[disabled]:cursor-not-allowed` styles that `DocumentList.tsx`'s equivalent class already had. Added the matching styles.
+
+### 9. File/Folder Permissions modal — edit support added
+Existing overrides could previously only be deleted and recreated from scratch. Added an Edit (pencil) button that pre-fills the form from the existing override and re-saves through the same upsert endpoint (`POST /access-overrides` already updates in place when the target matches), instead of requiring delete-then-recreate.
+
+### Files created
+`api/Controllers/AccessOverridesController.cs`, `api/Controllers/PageAccessRolesController.cs`, `api/Models/DmsAccessOverride.cs`, `api/Models/DmsPageAccessRole.cs`, `api/Services/AccessOverrideService.cs`, `infra/db/init/031`–`042_*.sql`, `web/src/components/custom/AccessOverrideModal.tsx`, `web/src/hooks/usePageAccess.ts`, `web/src/utils/roleLabels.ts`
+
+### Files modified (highlights)
+`api/Controllers/{BaseController,FoldersController,DocumentsController,ApprovalsController,UsersController}.cs`, `api/Middleware/RBACMiddleware.cs`, `api/Models/{DmsRolePermission,DmsUser,DmsFolderPermission,DmsDocumentVersion,DmsTask,DmsReminder}.cs`, `web/src/components/custom/{FolderTree,DocumentList,LibraryMenus,RolePermissions,UserManagement}.tsx`, `web/src/components/pages/Documents.tsx`, `web/src/utils/{api,folderDownload}.ts`, `web/src/App.tsx`, `web/src/components/layout/Sidebar.tsx`
+
+### Verification
+- `npx tsc --noEmit` clean after every change.
+- `docker compose build api`/`web` clean after every change; both containers rebuilt, restarted, and confirmed `healthy` repeatedly throughout.
+- Full Vitest suite stayed at the same pre-existing baseline (6–7 failures, all unrelated PDF/Docling-preview tests predating this session) after every round of changes — no regressions introduced.
+- Every backend permission change was verified against the **live** running API, not just compiled — including crafting a real JWT for a live non-admin user account and confirming `GET /api/folders`, `GET /api/folders/my-permissions`, and the folder-visibility fix behaved exactly as the override data said they should.
+
+### Known follow-ups
+- The Document Library's bulk Copy/Cut/Move/Rename/Delete operations (`handleBulkAction` → `documentLibraryOperations.ts`) are still entirely client-side/mock — they mutate local React state only and never call the real backend. The new permission gating correctly stops a denied user from *triggering* them in the UI, but no real backend enforcement exists for Copy/Cut specifically (Delete and Rename do have real backend endpoints and enforcement now).
+- The root-level "New folder" button (create a folder with no parent) is not yet gated on `CreateParentFolder` — only per-existing-folder actions (New Subfolder, Rename, Delete, etc.) were in scope for this session's button-gating pass.
+- Persisted PPTX preview bug from earlier sessions remains open.
 
 ---
 

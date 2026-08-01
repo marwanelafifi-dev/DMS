@@ -8,24 +8,103 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class FoldersController(DmsContext context, AuditService auditService, ILogger<FoldersController> logger) : BaseController
+public class FoldersController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService, ILogger<FoldersController> logger) : BaseController
 {
     private static readonly Guid DevSystemAdminId = Guid.Parse("00000000-0000-0000-0000-000000000001");
-    private static readonly string[] FolderWriteRoles =
-    [
-        FolderRoles.Writer,
-        FolderRoles.Manager,
-        FolderRoles.QA,
-        FolderRoles.Admin
-    ];
 
-    // GET /api/folders — list all folders
+    // GET /api/folders/my-permissions?folderId={id} — the current user's
+    // effective permission flags, so the frontend can disable/hide actions
+    // (Upload, rename, delete, etc.) the user can't perform instead of only
+    // finding out from a 403 after they click. Omit folderId to get the
+    // user's global-role flags (e.g. for "Create Parent Folder" at the root).
+    // Uses the exact same effective-role resolution RBACMiddleware/controllers
+    // enforce with, so the UI and the server can never disagree.
+    [HttpGet("my-permissions")]
+    public async Task<ActionResult<object>> GetMyEffectivePermissions([FromQuery] Guid? folderId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+
+            DmsRolePermission? permission;
+            if (userId == DevSystemAdminId)
+            {
+                permission = await context.RolePermissions.AsNoTracking().FirstOrDefaultAsync(rp => rp.Role == FolderRoles.Admin);
+            }
+            else
+            {
+                var effectiveRole = await GetEffectiveRoleAsync(context, userId, folderId);
+                permission = effectiveRole == null
+                    ? null
+                    : await context.RolePermissions.AsNoTracking().FirstOrDefaultAsync(rp => rp.Role == effectiveRole);
+            }
+
+            // A File/Folder Permission override can grant access on its own,
+            // with no folder-role grant at all — so even with no role/no
+            // permission row, fall through to a false baseline and let
+            // ResolveAsync fold in any Allow override instead of returning
+            // "no access" outright.
+            var role = permission?.Role;
+            bool Baseline(Func<DmsRolePermission, bool> selector) => permission != null && selector(permission);
+            // Copy/Cut/DownloadZip (and their file-scope equivalents) have no
+            // role flag at all — they're governed exclusively by File/Folder
+            // Permission overrides, with the sole exception of the
+            // BypassFolderPermissions role ("Full Access"), which acts as
+            // Admin everywhere with no override needed.
+            var adminBaseline = role == FolderRoles.Admin;
+
+            // Fold in any applicable File/Folder Permission override so the
+            // buttons the UI shows/hides match what the server will actually
+            // enforce (deny always wins; an allow can widen the role's default).
+            var data = new
+            {
+                Role = role,
+                ViewOnly = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileRead, Baseline(p => p.ViewOnly)),
+                DownloadReadOnly = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Download, Baseline(p => p.DownloadReadOnly)),
+                DownloadForEditing = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.DownloadForEditing, Baseline(p => p.DownloadForEditing)),
+                Upload = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Write, Baseline(p => p.Upload)),
+                UpdateFile = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileRename, Baseline(p => p.UpdateFile)),
+                UpdateFolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Rename, Baseline(p => p.UpdateFolder)),
+                CreateSubfolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.CreateSubfolder, Baseline(p => p.CreateSubfolder)),
+                CreateParentFolder = Baseline(p => p.CreateParentFolder),
+                AddTask = Baseline(p => p.AddTask),
+                DeleteParentFolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteParentFolder)),
+                DeleteSubfolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteSubfolder)),
+                DeleteFile = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileDelete, Baseline(p => p.DeleteFile)),
+                SubmitForApproval = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.SubmitForApproval, Baseline(p => p.SubmitForApproval)),
+                Approve = Baseline(p => p.Approve),
+                Reject = Baseline(p => p.Reject),
+                AdminForceUnlock = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Unlock, Baseline(p => p.AdminForceUnlock)),
+                Copy = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Copy, adminBaseline),
+                Cut = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Cut, adminBaseline),
+                DownloadZip = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.DownloadZip, adminBaseline),
+                FileCopy = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileCopy, adminBaseline),
+                FileCut = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileCut, adminBaseline),
+                UpdatedAt = permission?.UpdatedAt,
+            };
+
+            return Ok(new { success = true, data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error resolving effective permissions");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/folders — list folders the current user has access to
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetFolders()
     {
         try
         {
-            var folders = await context.Folders
+            var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, GetCurrentUserId(), accessOverrideService);
+
+            var query = context.Folders.AsQueryable();
+            if (accessibleFolderIds != null)
+                query = query.Where(f => accessibleFolderIds.Contains(f.FolderId));
+
+            var folders = await query
                 .Select(f => new
                 {
                     f.FolderId,
@@ -135,20 +214,27 @@ public class FoldersController(DmsContext context, AuditService auditService, IL
                 if (!parentExists)
                     return BadRequest(new { success = false, error = "Parent folder not found" });
 
-                canCreateFolder = await context.FolderPermissions.AnyAsync(permission =>
-                    permission.FolderId == req.ParentFolderId &&
-                    permission.UserId == userId &&
-                    FolderWriteRoles.Contains(permission.Role));
+                if (!canCreateFolder)
+                {
+                    var effectiveRole = await GetEffectiveRoleAsync(context, userId, req.ParentFolderId);
+                    var roleAllows = await HasRolePermissionAsync(context, effectiveRole, rp => rp.CreateSubfolder);
+                    canCreateFolder = await accessOverrideService.ResolveAsync(userId, null, req.ParentFolderId, AccessOverrideActions.CreateSubfolder, roleAllows);
+                }
             }
             else if (!canCreateFolder)
             {
-                canCreateFolder = await context.FolderPermissions.AnyAsync(permission =>
-                    permission.UserId == userId &&
-                    FolderWriteRoles.Contains(permission.Role));
+                var effectiveRole = await GetEffectiveRoleAsync(context, userId, null);
+                canCreateFolder = await HasRolePermissionAsync(context, effectiveRole, rp => rp.CreateParentFolder);
             }
 
             if (!canCreateFolder)
-                return StatusCode(403, new { success = false, error = "Writer permission is required to create a folder" });
+                return StatusCode(403, new
+                {
+                    success = false,
+                    error = req.ParentFolderId.HasValue
+                        ? "Your role does not have Create Subfolder permission"
+                        : "Your role does not have Create Parent Folder permission"
+                });
 
             await using var transaction = await context.Database.BeginTransactionAsync();
 

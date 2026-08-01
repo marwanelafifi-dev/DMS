@@ -52,25 +52,10 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                     u.LastLoginAt,
                     u.LastHeartbeatAt,
                     u.AvatarUrl,
+                    u.Role,
                     AuthType = u.SsoSubject != null ? "Google" : "Local"
                 })
                 .ToListAsync();
-
-            var userIds = pagedUsers.Select(u => u.UserId).ToList();
-            var accessByUser = await context.FolderPermissions
-                .Where(p => userIds.Contains(p.UserId))
-                .Select(p => new { p.UserId, p.Role })
-                .ToListAsync();
-
-            // Folder permissions are per-folder, not a global role — this is the
-            // highest one a user holds on any folder, shown as a quick-glance
-            // access summary (not a fabricated global "role").
-            string[] roleRank = { "Admin", "QA", "Manager", "Writer", "Reader" };
-            var highestAccessByUser = accessByUser
-                .GroupBy(p => p.UserId)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Select(p => p.Role).OrderBy(role => Array.IndexOf(roleRank, role) is var idx && idx >= 0 ? idx : int.MaxValue).FirstOrDefault());
 
             var onlineThreshold = DateTime.UtcNow.AddMinutes(-3);
             var users = pagedUsers.Select(u => new
@@ -84,7 +69,10 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                 u.AuthType,
                 u.AvatarUrl,
                 IsOnline = u.LastHeartbeatAt.HasValue && u.LastHeartbeatAt.Value >= onlineThreshold,
-                AccessLevel = highestAccessByUser.GetValueOrDefault(u.UserId, "No Access"),
+                // The user's directly-assigned global role (see PUT /{id}/role),
+                // shown as-is on the Users admin page; null means "No Access".
+                Role = u.Role,
+                AccessLevel = u.Role ?? "No Access",
             }).ToList();
 
             logger.LogInformation("Retrieved {Count} users", users.Count);
@@ -148,6 +136,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                     user.AvatarUrl,
                     Permissions = permissions,
                     PendingTasks = taskCount,
+                    user.Role,
                     user.CreatedAt,
                     user.LastLoginAt,
                     user.UpdatedAt
@@ -285,6 +274,48 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
+    // PUT /api/users/{id}/role — assign (or clear) a user's global role
+    [HttpPut("{id}/role")]
+    public async Task<ActionResult<object>> UpdateUserRole(Guid id, [FromBody] UpdateUserRoleRequest req)
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (id == currentUserId)
+                return BadRequest(new { success = false, error = "You cannot change your own role" });
+
+            var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == id);
+            if (user == null)
+                return NotFound(new { success = false, error = "User not found" });
+
+            var role = string.IsNullOrWhiteSpace(req.Role) ? null : req.Role.Trim();
+            if (role != null && !await context.PageAccessRoles.AnyAsync(r => r.Role == role))
+                return BadRequest(new { success = false, error = $"Unknown role '{role}'" });
+
+            user.Role = role;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            context.Users.Update(user);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(currentUserId, USER_ROLE_UPDATED, new
+            {
+                user.UserId,
+                user.Email,
+                NewRole = role,
+            });
+
+            logger.LogInformation("Updated role for user {UserId} to {Role}", id, role ?? "(none)");
+
+            return Ok(new { success = true, data = new { user.UserId, Role = role } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error updating role for user {UserId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     // DELETE /api/users/{id} — deactivate user (soft delete, not a real delete)
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeactivateUser(Guid id)
@@ -411,4 +442,5 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
 
 public record CreateUserRequest(string Email, string FullName, string? SsoSubject = null, string? Password = null);
 public record UpdateUserRequest(string? FullName = null, bool? IsActive = null);
+public record UpdateUserRoleRequest(string? Role);
 public record ResetPasswordRequest(string NewPassword);

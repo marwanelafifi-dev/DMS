@@ -5,6 +5,7 @@ import { AlertTriangle, Check, Columns3, Copy, FolderInput, MoreVertical, Pencil
 import type { Folder } from '../../types';
 import { Button } from '../ui';
 import type { OptionalDocumentColumn } from './DocumentList';
+import { useToast } from '../../hooks/useToast';
 
 const columnOptions: Array<{ id: OptionalDocumentColumn; label: string }> = [
   { id: 'department', label: 'Department' },
@@ -62,6 +63,7 @@ interface LibraryBulkActionsProps {
   selectedCount: number;
   selectedNames: string[];
   canRename: boolean;
+  canDelete?: boolean;
   renameCurrentName?: string;
   renameIsFile?: boolean;
   folders: Folder[];
@@ -82,6 +84,7 @@ export function LibraryBulkActions({
   selectedCount,
   selectedNames,
   canRename,
+  canDelete = true,
   renameCurrentName,
   renameIsFile = false,
   folders,
@@ -97,13 +100,31 @@ export function LibraryBulkActions({
   const [error, setError] = useState('');
   const [extensionConfirmed, setExtensionConfirmed] = useState(false);
   const [isRequestedAction, setIsRequestedAction] = useState(false);
+  const { showError } = useToast();
 
+  // A requested action can arrive from outside this menu (e.g. the folder
+  // tree's own "Delete"/"Rename" context-menu item), which never passed
+  // through the disabled dropdown item above — so the permission check has
+  // to be re-applied here too, or a Deny override/role could be silently
+  // bypassed just by triggering the action from a different entry point.
   useEffect(() => {
     if (!requestedAction || selectedCount === 0) return;
+    if (requestedAction === 'delete' && !canDelete) {
+      showError('You do not have permission to delete this.');
+      onRequestedActionHandled?.();
+      onRequestedActionDismissed?.();
+      return;
+    }
+    if (requestedAction === 'rename' && !canRename) {
+      showError('You do not have permission to rename this.');
+      onRequestedActionHandled?.();
+      onRequestedActionDismissed?.();
+      return;
+    }
     setIsRequestedAction(true);
     setAction(requestedAction);
     onRequestedActionHandled?.();
-  }, [onRequestedActionHandled, requestedAction, selectedCount]);
+  }, [canDelete, canRename, onRequestedActionDismissed, onRequestedActionHandled, requestedAction, selectedCount, showError]);
 
   useEffect(() => {
     if (action === 'rename') setValue(renameCurrentName ?? '');
@@ -160,7 +181,15 @@ export function LibraryBulkActions({
         <DropdownMenu.Portal>
           <DropdownMenu.Content className={menuContentClass} sideOffset={6} align="end">
             <DropdownMenu.Item className={menuItemClass} onSelect={() => setAction('copy')}><Copy className="h-4 w-4" /> Copy</DropdownMenu.Item>
-            <DropdownMenu.Item className={`${menuItemClass} text-[#c73c44]`} onSelect={() => setAction('delete')}><Trash2 className="h-4 w-4" /> Delete</DropdownMenu.Item>
+            <DropdownMenu.Item
+              className={`${menuItemClass} text-[#c73c44]`}
+              disabled={!canDelete}
+              aria-label="Delete"
+              title={!canDelete ? 'Your role does not have permission to delete this' : undefined}
+              onSelect={() => setAction('delete')}
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </DropdownMenu.Item>
             <DropdownMenu.Item className={menuItemClass} onSelect={() => setAction('move')}><FolderInput className="h-4 w-4" /> Move</DropdownMenu.Item>
             <DropdownMenu.Item
               className={menuItemClass}

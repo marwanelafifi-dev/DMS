@@ -9,6 +9,7 @@ public class DmsUser
     public string? PasswordHash { get; set; }
     public string? AvatarUrl { get; set; }
     public byte[]? MfaSecret { get; set; }
+    public string? Role { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime? LastLoginAt { get; set; }
     public DateTime? LastHeartbeatAt { get; set; }

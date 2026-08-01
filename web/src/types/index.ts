@@ -3,7 +3,7 @@ export interface User {
   userId: string;
   fullName: string;
   email: string;
-  role: 'Admin' | 'Manager' | 'Writer' | 'Reader' | 'QA';
+  role: string | null;
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;
@@ -50,6 +50,7 @@ export interface Document {
   modifiedAt?: string; // Display-friendly alias for updatedAt
   checkoutStatus?: 'checked_out' | 'checked_in';
   checkedOutBy?: string;
+  checkedOutByName?: string;
   checkedOutAt?: string;
   checkedOutExpires?: string;
   approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected';

@@ -1,5 +1,8 @@
+using DMS.Api.Data;
 using DMS.Api.Models;
+using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Controllers;
 
@@ -35,5 +38,72 @@ public class BaseController : ControllerBase
             return guid;
 
         return null;
+    }
+
+    // Used for actions RBACMiddleware can't gate itself (folder/task creation
+    // has no entity ID in the path yet to look up a permission row for). A
+    // folder-specific grant on `folderId` wins. The user's global role
+    // (dms_users.role) is page/feature access only, NOT a folder-role
+    // fallback — the one exception is a role with BypassFolderPermissions
+    // ("Full Access"), which is treated as Admin everywhere with no explicit
+    // grant needed. With neither, there is no access.
+    protected static async Task<string?> GetEffectiveRoleAsync(DmsContext context, Guid userId, Guid? folderId)
+    {
+        if (folderId.HasValue)
+        {
+            var grant = await context.FolderPermissions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.FolderId == folderId.Value && p.UserId == userId);
+            if (grant != null)
+                return grant.Role;
+        }
+
+        var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user?.Role == null)
+            return null;
+
+        var pageAccessRole = await context.PageAccessRoles.AsNoTracking().FirstOrDefaultAsync(r => r.Role == user.Role);
+        return pageAccessRole?.BypassFolderPermissions == true ? FolderRoles.Admin : null;
+    }
+
+    protected static async Task<bool> HasRolePermissionAsync(DmsContext context, string? role, Func<DmsRolePermission, bool> selector)
+    {
+        if (role == null)
+            return false;
+
+        var permission = await context.RolePermissions.AsNoTracking().FirstOrDefaultAsync(rp => rp.Role == role);
+        return permission != null && selector(permission);
+    }
+
+    // Used by folder/document *list* endpoints (GET /api/folders, GET
+    // /api/documents) — those have no single ID for RBACMiddleware to gate,
+    // so without this a "User"-role account with zero folder grants could
+    // still browse every folder/document in the system. Returns null to mean
+    // "no filtering needed" (BypassFolderPermissions role), or the exact set
+    // of folder IDs the caller may see.
+    protected static async Task<HashSet<Guid>?> GetAccessibleFolderIdsAsync(DmsContext context, Guid userId, AccessOverrideService accessOverrideService)
+    {
+        var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user?.Role != null)
+        {
+            var pageAccessRole = await context.PageAccessRoles.AsNoTracking().FirstOrDefaultAsync(r => r.Role == user.Role);
+            if (pageAccessRole?.BypassFolderPermissions == true)
+                return null;
+        }
+
+        var folderIdList = await context.FolderPermissions
+            .AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .Select(p => p.FolderId)
+            .ToListAsync();
+        var folderIds = folderIdList.ToHashSet();
+
+        // A Read-allow File/Folder Permission override can also grant list
+        // visibility on its own, with no folder-role grant at all — otherwise
+        // a "User"-role account with only an override sees an empty library.
+        var overrideVisibleFolderIds = await accessOverrideService.GetOverrideVisibleFolderIdsAsync(userId);
+        folderIds.UnionWith(overrideVisibleFolderIds);
+
+        return folderIds;
     }
 }

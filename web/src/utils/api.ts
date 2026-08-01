@@ -4,6 +4,91 @@ import type { ApiResponse } from '../types';
 const API_BASE = '/api';
 const TOKEN_STORAGE_KEY = 'dms_session_token';
 
+// Flags for a per-folder permission role (Reader/Writer/Manager/QA/Admin, or
+// a custom one) — what a folder-level grant lets its holder do to content.
+// Returned by GET /api/folders/my-permissions. Distinct from a user's global
+// role (see PageAccessRoleFlags below), which is page/feature visibility only.
+export interface RolePermissionFlags {
+  viewOnly: boolean;
+  downloadReadOnly: boolean;
+  downloadForEditing: boolean;
+  upload: boolean;
+  updateFile: boolean;
+  updateFolder: boolean;
+  createSubfolder: boolean;
+  createParentFolder: boolean;
+  addTask: boolean;
+  deleteParentFolder: boolean;
+  deleteSubfolder: boolean;
+  deleteFile: boolean;
+  submitForApproval: boolean;
+  approve: boolean;
+  reject: boolean;
+  adminForceUnlock: boolean;
+  copy: boolean;
+  cut: boolean;
+  downloadZip: boolean;
+  fileCopy: boolean;
+  fileCut: boolean;
+}
+
+// Flags for a user's global role — page/feature visibility only. File/folder
+// actions are governed exclusively by RolePermissionFlags (per-folder grants)
+// and AccessOverrideFlags (File/Folder Permission overrides), never by this.
+export interface PageAccessRoleFlags {
+  canViewDashboard: boolean;
+  canViewDocumentLibrary: boolean;
+  canViewReminders: boolean;
+  canViewApprovals: boolean;
+  canViewPcar: boolean;
+  canViewAdminPanel: boolean;
+  bypassFolderPermissions: boolean;
+}
+
+export interface PageAccessRole extends PageAccessRoleFlags {
+  role: string;
+  updatedAt: string;
+}
+
+// The actions a File/Folder Permission override can grant or deny — each is
+// a tri-state: true = allow, false = deny, null/undefined = inherit (no
+// opinion, fall back to the role). Mirrors AccessOverrideActions in the API.
+// Read/rename/copy/cut are split into folder-scope (read/rename/copy/cut)
+// and file-scope (fileRead/fileRename/fileCopy/fileCut) variants since "can
+// see this folder" and "can open a file inside it" are different questions.
+// Write is deliberately shared between both scopes (Folder Level "Write" and
+// File Level "Upload" are the same real capability by design).
+export interface AccessOverrideFlags {
+  read?: boolean | null;
+  write?: boolean | null;
+  rename?: boolean | null;
+  copy?: boolean | null;
+  cut?: boolean | null;
+  downloadZip?: boolean | null;
+  createSubfolder?: boolean | null;
+  delete?: boolean | null;
+  fileRead?: boolean | null;
+  fileRename?: boolean | null;
+  fileCopy?: boolean | null;
+  fileCut?: boolean | null;
+  unlock?: boolean | null;
+  submitForApproval?: boolean | null;
+  download?: boolean | null;
+  downloadForEditing?: boolean | null;
+  uploadUpdatedFile?: boolean | null;
+  fileDelete?: boolean | null;
+}
+
+export interface AccessOverride extends AccessOverrideFlags {
+  overrideId: string;
+  folderId?: string | null;
+  documentId?: string | null;
+  targetType: 'User' | 'Group';
+  targetId: string;
+  targetName: string;
+  createdAt: string;
+}
+
 // The id of whoever is currently logged in. Many components reference this
 // directly (as "my user id" for permission checks, default owner, etc.) —
 // it starts empty and is populated by useAuth after a successful login/me
@@ -126,6 +211,13 @@ class APIClient {
     return data;
   }
 
+  // Current user's effective permission flags (folder-specific grant if any,
+  // else their global role) — omit folderId for the global-role flags.
+  async getMyEffectivePermissions(folderId?: string) {
+    const { data } = await this.client.get<ApiResponse>('/folders/my-permissions', { params: folderId ? { folderId } : undefined });
+    return data;
+  }
+
   async createFolder(folderData: any) {
     const { data } = await this.client.post<ApiResponse>('/folders', folderData);
     return data;
@@ -198,6 +290,11 @@ class APIClient {
 
   async getCheckoutStatus(documentId: string, versionId: string) {
     const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}/versions/${versionId}/checkout`);
+    return data;
+  }
+
+  async forceUnlockCheckout(documentId: string, versionId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/force-unlock`);
     return data;
   }
 
@@ -509,14 +606,47 @@ class APIClient {
     return data;
   }
 
-  // Role Permissions
-  async getRolePermissions() {
-    const { data } = await this.client.get<ApiResponse>('/role-permissions');
+  // Page Access Roles (global user role — page/feature visibility only)
+  async getPageAccessRoles() {
+    const { data } = await this.client.get<ApiResponse>('/page-access-roles');
     return data;
   }
 
-  async updateRolePermission(role: string, permissions: { viewOnly: boolean; downloadReadOnly: boolean; upload: boolean; updatePermission: boolean; approve: boolean; reject: boolean; adminForceUnlock: boolean }) {
-    const { data } = await this.client.put<ApiResponse>(`/role-permissions/${role}`, permissions);
+  async updatePageAccessRole(role: string, flags: PageAccessRoleFlags) {
+    const { data } = await this.client.put<ApiResponse>(`/page-access-roles/${role}`, flags);
+    return data;
+  }
+
+  async createPageAccessRole(payload: { role: string } & PageAccessRoleFlags) {
+    const { data } = await this.client.post<ApiResponse>('/page-access-roles', payload);
+    return data;
+  }
+
+  async deletePageAccessRole(role: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/page-access-roles/${role}`);
+    return data;
+  }
+
+  async updateUserRole(userId: string, role: string | null) {
+    const { data } = await this.client.put<ApiResponse>(`/users/${userId}/role`, { role });
+    return data;
+  }
+
+  // File Permissions / Folder Permissions (per-user/group access overrides)
+  async getAccessOverrides(scope: { folderId?: string; documentId?: string }) {
+    const { data } = await this.client.get<ApiResponse>('/access-overrides', { params: scope });
+    return data;
+  }
+
+  async createAccessOverride(payload: {
+    folderId?: string; documentId?: string; targetType: 'User' | 'Group'; targetId: string;
+  } & AccessOverrideFlags) {
+    const { data } = await this.client.post<ApiResponse>('/access-overrides', payload);
+    return data;
+  }
+
+  async deleteAccessOverride(overrideId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/access-overrides/${overrideId}`);
     return data;
   }
 

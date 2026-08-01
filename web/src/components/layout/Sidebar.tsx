@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { usePageAccess } from '../../hooks/usePageAccess';
+import type { PageAccessRoleFlags } from '../../utils/api';
 import {
   Bell,
   BellRing,
@@ -24,12 +26,12 @@ interface SidebarProps {
   onToggleExpand?: () => void;
 }
 
-const navItems = [
-  { label: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true },
-  { label: 'Document Library', path: '/documents', icon: Folder },
-  { label: 'C-Doc Workflow', path: '/approvals', icon: ClipboardCheck },
-  { label: 'PCAR / Corrective Action', path: '/tasks', icon: FileWarning },
-  { label: 'Reminders', path: '/reminders', icon: BellRing },
+const navItems: Array<{ label: string; path: string; icon: typeof LayoutDashboard; exact?: boolean; visibleWhen: keyof PageAccessRoleFlags }> = [
+  { label: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true, visibleWhen: 'canViewDashboard' },
+  { label: 'Document Library', path: '/documents', icon: Folder, visibleWhen: 'canViewDocumentLibrary' },
+  { label: 'C-Doc Workflow', path: '/approvals', icon: ClipboardCheck, visibleWhen: 'canViewApprovals' },
+  { label: 'PCAR / Corrective Action', path: '/tasks', icon: FileWarning, visibleWhen: 'canViewPcar' },
+  { label: 'Reminders', path: '/reminders', icon: BellRing, visibleWhen: 'canViewReminders' },
 ];
 
 const adminItems = [
@@ -46,6 +48,8 @@ const adminItems = [
 export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const pageAccess = usePageAccess();
+  const visibleNavItems = navItems.filter((item) => pageAccess?.[item.visibleWhen] !== false);
   const isAdminRoute = location.pathname.startsWith('/admin') || location.pathname.startsWith('/settings');
   const [adminOpen, setAdminOpen] = useState(isAdminRoute);
 
@@ -90,7 +94,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-3">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item);
             return (
@@ -109,6 +113,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
             );
           })}
 
+          {pageAccess?.canViewAdminPanel !== false && (
           <button
             onClick={() => setAdminOpen((open) => !open)}
             className={`flex h-[43px] w-full items-center gap-3 border-l-[3px] px-5 text-left text-[15px] transition-colors ${
@@ -121,7 +126,8 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
             <span className="flex-1">Admin Panel</span>
             <ChevronDown className={`h-4 w-4 flex-shrink-0 text-white/60 transition-transform ${adminOpen ? 'rotate-180' : ''}`} />
           </button>
-          {adminOpen && (
+          )}
+          {pageAccess?.canViewAdminPanel !== false && adminOpen && (
             <div className="pb-1 pt-1">
               {adminItems.map((item) => {
                 const Icon = item.icon;

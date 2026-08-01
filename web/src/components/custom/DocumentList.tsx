@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Eye, FileText } from 'lucide-react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { Copy, Download, Eye, FileText, FolderInput, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
+import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
 import { statusLabels } from '../../utils/documentStatus';
+
+const rowMenuContentClass = 'z-[95] min-w-[210px] rounded-[5px] border border-[#dbe2ec] bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900';
+const rowMenuItemClass = 'flex h-9 select-none items-center gap-2 rounded-[4px] px-2.5 text-sm text-[#34425b] outline-none data-[highlighted]:bg-[#edf2f8] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 dark:text-slate-200 dark:data-[highlighted]:bg-slate-800';
 
 export type OptionalDocumentColumn = 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
 
@@ -23,6 +28,13 @@ interface DocumentListProps {
   onSelectedDocumentIdsChange?: (ids: Set<string>) => void;
   onDocumentClick: (docId: string) => void;
   onDownload?: (docId: string) => void;
+  onDownloadForEditing?: (docId: string) => void;
+  onFilePermissions?: (docId: string) => void;
+  onDocumentAction?: (action: 'copy' | 'cut' | 'rename' | 'delete', docId: string) => void;
+  canDownloadForEditing?: boolean;
+  // The effective permissions for the folder currently being browsed — every
+  // row here belongs to that same folder, so one fetch covers all of them.
+  permissions?: RolePermissionFlags | null;
 }
 
 type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
@@ -82,6 +94,11 @@ export function DocumentList({
   onSelectedDocumentIdsChange,
   onDocumentClick,
   onDownload,
+  onDownloadForEditing,
+  onFilePermissions,
+  onDocumentAction,
+  canDownloadForEditing = false,
+  permissions,
 }: DocumentListProps) {
   const [sortBy, setSortBy] = useState<SortKey>('fileName');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -223,9 +240,71 @@ export function DocumentList({
                   <button type="button" title="Preview file" onClick={(event) => { event.stopPropagation(); onDocumentClick(document.documentId); }} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#2f3e83] text-white hover:bg-[#263472] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Preview ${document.fileName}`}>
                     <Eye className="h-5 w-5" />
                   </button>
-                  <button type="button" title="Download file" onClick={(event) => { event.stopPropagation(); onDownload?.(document.documentId); }} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#f1f4f8] text-[#52627a] hover:bg-[#e7ecf2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" aria-label={`Download ${document.fileName}`}>
-                    <Download className="h-4 w-4" />
-                  </button>
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger asChild>
+                      <button
+                        type="button"
+                        title="More actions"
+                        onClick={(event) => event.stopPropagation()}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#f1f4f8] text-[#52627a] hover:bg-[#e7ecf2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        aria-label={`More actions for ${document.fileName}`}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Portal>
+                      <DropdownMenu.Content className={rowMenuContentClass} sideOffset={6} align="end" onClick={(event) => event.stopPropagation()}>
+                        <DropdownMenu.Item className={rowMenuItemClass} onSelect={() => onDownload?.(document.documentId)}>
+                          <Download className="h-4 w-4" /> Download
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!canDownloadForEditing}
+                          title={!canDownloadForEditing ? 'Your role does not have Download for Editing permission' : undefined}
+                          onSelect={() => onDownloadForEditing?.(document.documentId)}
+                        >
+                          <PencilLine className="h-4 w-4" /> Download for Editing
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!permissions?.fileCopy}
+                          title={!permissions?.fileCopy ? 'Your role does not have permission to copy this' : undefined}
+                          onSelect={() => onDocumentAction?.('copy', document.documentId)}
+                        >
+                          <Copy className="h-4 w-4" /> Copy
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!permissions?.fileCut}
+                          title={!permissions?.fileCut ? 'Your role does not have permission to move this' : undefined}
+                          onSelect={() => onDocumentAction?.('cut', document.documentId)}
+                        >
+                          <FolderInput className="h-4 w-4" /> Move
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!permissions?.updateFile}
+                          title={!permissions?.updateFile ? 'Your role does not have permission to rename this' : undefined}
+                          onSelect={() => onDocumentAction?.('rename', document.documentId)}
+                        >
+                          <Pencil className="h-4 w-4" /> Rename
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          className={`${rowMenuItemClass} text-[#c73c44]`}
+                          disabled={!permissions?.deleteFile}
+                          title={!permissions?.deleteFile ? 'Your role does not have permission to delete this' : undefined}
+                          onSelect={() => onDocumentAction?.('delete', document.documentId)}
+                        >
+                          <Trash2 className="h-4 w-4" /> Delete
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
+                        <DropdownMenu.Item className={rowMenuItemClass} onSelect={() => onFilePermissions?.(document.documentId)}>
+                          <ShieldCheck className="h-4 w-4" /> File Permissions
+                        </DropdownMenu.Item>
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Portal>
+                  </DropdownMenu.Root>
                 </div>
               </td>
             </tr>

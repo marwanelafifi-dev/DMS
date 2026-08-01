@@ -57,6 +57,21 @@ describe('Document Library', () => {
       success: true,
       data: [],
     });
+    // These tests act as the seeded System Admin — grant every permission flag
+    // so Upload/Rename/Delete/Submit-for-Approval stay enabled like they were
+    // before per-permission UI gating existed, unless a test overrides this.
+    vi.spyOn(apiClient, 'getMyEffectivePermissions').mockResolvedValue({
+      success: true,
+      data: {
+        role: 'Admin',
+        viewOnly: true, downloadReadOnly: true, downloadForEditing: true,
+        upload: true, updateFile: true, updateFolder: true,
+        createSubfolder: true, createParentFolder: true, addTask: true,
+        deleteParentFolder: true, deleteSubfolder: true, deleteFile: true,
+        submitForApproval: true, approve: true, reject: true, adminForceUnlock: true,
+        copy: true, cut: true, downloadZip: true, fileCopy: true, fileCut: true,
+      },
+    });
     vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
       id: file.name.length,
       filename: file.name,
@@ -192,20 +207,20 @@ describe('Document Library', () => {
     expect(within(table).queryByRole('columnheader', { name: 'Size' })).not.toBeInTheDocument();
   });
 
-  it('renders icon-only Preview and Download actions for every visible file', async () => {
+  it('renders icon-only Preview and a row actions menu for every visible file', async () => {
     renderDocumentLibrary();
     const table = await screen.findByRole('table', { name: 'Documents' });
     const previewButtons = within(table).getAllByRole('button', { name: /^Preview / });
-    const downloadButtons = within(table).getAllByRole('button', { name: /^Download / });
+    const rowMenuButtons = within(table).getAllByRole('button', { name: /^More actions for / });
 
     expect(previewButtons).toHaveLength(7);
-    expect(downloadButtons).toHaveLength(7);
+    expect(rowMenuButtons).toHaveLength(7);
     previewButtons.forEach((button) => {
       expect(button).toHaveAttribute('title', 'Preview file');
       expect(button).toHaveTextContent('');
     });
-    downloadButtons.forEach((button) => {
-      expect(button).toHaveAttribute('title', 'Download file');
+    rowMenuButtons.forEach((button) => {
+      expect(button).toHaveAttribute('title', 'More actions');
       expect(button).toHaveTextContent('');
     });
     expect(within(table).queryByText('View Only')).not.toBeInTheDocument();
@@ -707,7 +722,8 @@ describe('Document Library', () => {
     });
     renderDocumentLibrary();
 
-    await user.click(await screen.findByRole('button', { name: 'Download Calibration Procedure SOP-204.pdf' }));
+    await user.click(await screen.findByRole('button', { name: 'More actions for Calibration Procedure SOP-204.pdf' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
 
     expect(downloadClick).toHaveBeenCalledOnce();
     expect(downloadedFileName).toBe('Calibration Procedure SOP-204.pdf');
@@ -719,7 +735,8 @@ describe('Document Library', () => {
     renderDocumentLibrary();
     const checkbox = await screen.findByRole('checkbox', { name: 'Select Production Shift Handover.txt' });
 
-    await user.click(screen.getByRole('button', { name: 'Download Production Shift Handover.txt' }));
+    await user.click(screen.getByRole('button', { name: 'More actions for Production Shift Handover.txt' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
     expect(checkbox).not.toBeChecked();
     await user.click(screen.getByRole('button', { name: 'Preview Production Shift Handover.txt' }));
     await user.click(screen.getByRole('button', { name: 'Close document preview' }));

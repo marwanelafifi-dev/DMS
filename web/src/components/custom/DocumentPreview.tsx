@@ -5,11 +5,13 @@ import {
   ChevronUp,
   Download,
   Lock,
+  PencilLine,
   Printer,
   Search,
   X,
 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
+import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
 import { MarkdownViewer } from './MarkdownViewer';
@@ -122,7 +124,19 @@ interface DocumentPreviewProps {
   document: MockLibraryDocument;
   onClose: () => void;
   onDownload: (document: MockLibraryDocument) => void;
+  onDownloadForEditing?: (document: MockLibraryDocument) => void;
   onSubmitForApproval?: (document: MockLibraryDocument) => void;
+  onForceUnlock?: (document: MockLibraryDocument) => void;
+  // Uploading a new version becomes the document's current version, so the
+  // lock (which is tracked per-version) is implicitly released — this is
+  // "upload the updated file to unlock" from the user's perspective.
+  onUploadNewVersion?: (document: MockLibraryDocument, file: File) => void;
+  // The current user's effective permission flags for this document's
+  // folder — gates Submit for Approval / Download for Editing so those
+  // buttons are hidden/disabled instead of only failing after a click.
+  // Omitted (undefined) means "unknown yet"; both stay hidden/disabled
+  // until it resolves, same fail-closed default used elsewhere.
+  permissions?: RolePermissionFlags | null;
 }
 
 const statusStyles: Record<string, string> = {
@@ -160,7 +174,8 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, onClose, onDownload, onSubmitForApproval }: DocumentPreviewProps) {
+export function DocumentPreview({ document, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onUploadNewVersion, permissions }: DocumentPreviewProps) {
+  const newVersionInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(
     document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
   );
@@ -758,6 +773,47 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
                   <p className="font-medium text-[#34425b] dark:text-slate-200">Status</p>
                   <p><span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></p>
                 </div>
+                {document.checkoutStatus === 'checked_out' && (
+                  <div>
+                    <p className="font-medium text-[#34425b] dark:text-slate-200">Lock</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded bg-[#fde1e2] px-2 py-0.5 text-xs font-medium text-[#c73c44] dark:bg-red-500/15 dark:text-red-300">
+                        <Lock className="h-3 w-3" /> Locked for editing{document.checkedOutByName ? ` by ${document.checkedOutByName}` : ''}
+                      </span>
+                      {permissions?.upload && onUploadNewVersion && (
+                        <>
+                          <input
+                            ref={newVersionInputRef}
+                            type="file"
+                            className="hidden"
+                            aria-label="Upload updated file"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) onUploadNewVersion(document, file);
+                              event.target.value = '';
+                            }}
+                          />
+                          <button
+                            onClick={() => newVersionInputRef.current?.click()}
+                            className="text-xs font-medium text-[#3f8bca] underline hover:text-[#2f6f9f]"
+                            title="Uploading the updated file replaces this version and unlocks it"
+                          >
+                            Upload Updated File to Unlock
+                          </button>
+                        </>
+                      )}
+                      {permissions?.adminForceUnlock && onForceUnlock && (
+                        <button
+                          onClick={() => onForceUnlock(document)}
+                          className="text-xs font-medium text-[#3f8bca] underline hover:text-[#2f6f9f]"
+                          title="Unlock this document even though someone else checked it out"
+                        >
+                          Force Unlock
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3">
                 <div>
@@ -847,8 +903,19 @@ export function DocumentPreview({ document, onClose, onDownload, onSubmitForAppr
               <Printer className="h-4 w-4" /> Print
             </button>
             {document.status === 'draft' && onSubmitForApproval && (
-              <button onClick={() => onSubmitForApproval(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#399a68] px-3 text-xs font-medium text-white hover:bg-[#2f895b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#399a68]" aria-label={`Submit ${document.fileName} for approval`}>
+              <button
+                onClick={() => onSubmitForApproval(document)}
+                disabled={!permissions?.submitForApproval}
+                title={!permissions?.submitForApproval ? 'Your role does not have Submit for Approval permission' : undefined}
+                className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#399a68] px-3 text-xs font-medium text-white hover:bg-[#2f895b] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#399a68]"
+                aria-label={`Submit ${document.fileName} for approval`}
+              >
                 Submit for Approval
+              </button>
+            )}
+            {permissions?.downloadForEditing && onDownloadForEditing && (
+              <button onClick={() => onDownloadForEditing(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download ${document.fileName} for editing`} title="Download the original file for editing — locks it for you for 1 hour">
+                <PencilLine className="h-4 w-4" /> Download for Editing
               </button>
             )}
             <button onClick={() => onDownload(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-xs font-medium text-white hover:bg-[#2f6f9f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download ${document.fileName}`}>
