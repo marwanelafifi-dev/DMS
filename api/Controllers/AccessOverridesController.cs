@@ -12,7 +12,7 @@ namespace DMS.Api.Controllers;
 // resolved (folder scope cascades to subfolders/files; deny always wins).
 [ApiController]
 [Route("api/access-overrides")]
-public class AccessOverridesController(DmsContext context, AuditService auditService, ILogger<AccessOverridesController> logger) : BaseController
+public class AccessOverridesController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService, ILogger<AccessOverridesController> logger) : BaseController
 {
     // GET /api/access-overrides?folderId={id} or ?documentId={id}
     [HttpGet]
@@ -60,6 +60,9 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
                 o.DownloadForEditing,
                 o.UploadUpdatedFile,
                 o.FileDelete,
+                o.FileEdit,
+                o.ManagePermissions,
+                o.FileManagePermissions,
                 o.CreatedAt,
             });
 
@@ -86,11 +89,21 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
 
             var userId = GetCurrentUserId();
 
-            // Setting permissions is treated as an administrative action —
-            // requires the caller's own effective role on this resource to
-            // include AdminForceUnlock (matches who can already force-unlock).
-            var effectiveRole = await GetEffectiveRoleAsync(context, userId, req.FolderId ?? await ResolveFolderIdAsync(req.DocumentId));
-            if (!await HasRolePermissionAsync(context, effectiveRole, rp => rp.AdminForceUnlock))
+            // Managing permissions is its own delegatable action (ManagePermissions/
+            // FileManagePermissions), not hardcoded to AdminForceUnlock — an Admin can
+            // grant a non-admin user the ability to manage File/Folder Permissions
+            // without also handing them force-unlock. adminBaseline means only a real
+            // Admin has it by default; anyone else needs an explicit override (which
+            // only an Admin could have granted in the first place).
+            var resolvedFolderId = req.FolderId ?? await ResolveFolderIdAsync(req.DocumentId);
+            var effectiveRole = await GetEffectiveRoleAsync(context, userId, resolvedFolderId);
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            var isAdmin = effectiveRole == FolderRoles.Admin;
+            var manageBaseline = req.FolderId.HasValue
+                ? isAdmin || pageAccessRole?.CanManageFolderPermissions == true
+                : isAdmin || pageAccessRole?.CanManageFilePermissions == true;
+            var manageAction = req.FolderId.HasValue ? AccessOverrideActions.ManagePermissions : AccessOverrideActions.FileManagePermissions;
+            if (!await accessOverrideService.ResolveAsync(userId, req.FolderId.HasValue ? null : req.DocumentId, resolvedFolderId, manageAction, manageBaseline))
                 return StatusCode(403, new { success = false, error = "You don't have permission to manage File/Folder Permissions here" });
 
             if (req.TargetType == "User" && !await context.Users.AnyAsync(u => u.UserId == req.TargetId))
@@ -131,6 +144,9 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
             entity.DownloadForEditing = req.DownloadForEditing;
             entity.UploadUpdatedFile = req.UploadUpdatedFile;
             entity.FileDelete = req.FileDelete;
+            entity.FileEdit = req.FileEdit;
+            entity.ManagePermissions = req.ManagePermissions;
+            entity.FileManagePermissions = req.FileManagePermissions;
             entity.UpdatedAt = DateTime.UtcNow;
 
             if (existing == null)
@@ -162,8 +178,15 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
                 return NotFound(new { success = false, error = "Override not found" });
 
             var userId = GetCurrentUserId();
-            var effectiveRole = await GetEffectiveRoleAsync(context, userId, entity.FolderId ?? await ResolveFolderIdAsync(entity.DocumentId));
-            if (!await HasRolePermissionAsync(context, effectiveRole, rp => rp.AdminForceUnlock))
+            var resolvedFolderId = entity.FolderId ?? await ResolveFolderIdAsync(entity.DocumentId);
+            var effectiveRole = await GetEffectiveRoleAsync(context, userId, resolvedFolderId);
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            var isAdmin = effectiveRole == FolderRoles.Admin;
+            var manageBaseline = entity.FolderId.HasValue
+                ? isAdmin || pageAccessRole?.CanManageFolderPermissions == true
+                : isAdmin || pageAccessRole?.CanManageFilePermissions == true;
+            var manageAction = entity.FolderId.HasValue ? AccessOverrideActions.ManagePermissions : AccessOverrideActions.FileManagePermissions;
+            if (!await accessOverrideService.ResolveAsync(userId, entity.FolderId.HasValue ? null : entity.DocumentId, resolvedFolderId, manageAction, manageBaseline))
                 return StatusCode(403, new { success = false, error = "You don't have permission to manage File/Folder Permissions here" });
 
             context.AccessOverrides.Remove(entity);
@@ -191,4 +214,5 @@ public record CreateAccessOverrideRequest(
     Guid? FolderId, Guid? DocumentId, string TargetType, Guid TargetId,
     bool? Read, bool? Write, bool? Rename, bool? Copy, bool? Cut, bool? DownloadZip, bool? CreateSubfolder, bool? Delete,
     bool? FileRead, bool? FileRename, bool? FileCopy, bool? FileCut,
-    bool? Unlock, bool? SubmitForApproval, bool? Download, bool? DownloadForEditing, bool? UploadUpdatedFile, bool? FileDelete);
+    bool? Unlock, bool? SubmitForApproval, bool? Download, bool? DownloadForEditing, bool? UploadUpdatedFile, bool? FileDelete,
+    bool? FileEdit, bool? ManagePermissions, bool? FileManagePermissions);

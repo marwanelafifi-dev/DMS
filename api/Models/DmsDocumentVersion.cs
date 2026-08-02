@@ -5,6 +5,10 @@ public class DmsDocumentVersion
     public Guid VersionId { get; set; }
     public Guid DocumentId { get; set; }
     public string VersionNumber { get; set; } = string.Empty;
+    // User-supplied version label (e.g. "v2.1", "Rev A"), typed at upload time —
+    // separate from VersionNumber/MajorVersion/MinorVersion, which the system
+    // manages itself for checkout/approval and must never be hand-edited.
+    public string? VersionLabel { get; set; }
     public string FileName { get; set; } = string.Empty;
     public long? FileSizeBytes { get; set; }
     public string? MimeType { get; set; }

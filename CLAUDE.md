@@ -9,7 +9,67 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Active Branch:** `Main`
 
-**Status:** Session 24 — full local Docker rebuild from `origin/Main` (RBAC/ACL redesign + Google Sign-In + preview fixes all pulled in), fixed two post-rebuild migration/runtime bugs (missing `avatar_url` column, RBAC double-invocation-era columns never applied to the existing volume), then rebuilt the C-Doc Workflow's "Review" screen from a non-functional stub into a real inline modal, completed every stage of the approval workflow per the PRD (manager self-correction, atomic tracking-code generation, per-document SHA-256 hash logging), and fixed the Document ID auto-detection pipeline end-to-end (extraction regex, upload-time field visibility, First Review resolution UI). **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 25 — Document Library table layout hardened (Excel-style click-to-expand cells, dynamic column-width redistribution, header overflow fix), User management extended (role + multi-group assignment on creation, per-user "Manage Groups" action), Document versioning/metadata expanded (required `Version` field, real Edit Document flow reachable from three places, file renaming), a brand-new Edit / Manage-Permissions action pair added to the File/Folder Permission override system (and independently as blanket per-role flags), a full Company Data admin page for managing dropdown lists (Department/Category/Tags) with Excel import/export, and a real per-user Notifications system (approvals, edits, lock/unlock) replacing the previously dead bell icon. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 25 (2026-08-02) — Table UX Fixes, User/Group Admin, Document Editing, Granular Permissions, Company Data, Notifications
+
+**Status:** ✅ Complete — every backend endpoint verified live via curl with real multi-user scenarios (not just compiled); every frontend change rebuilt and redeployed to the running containers.
+
+**Context:** A long, request-by-request session driven directly by user screenshots — each fix or feature was scoped from a specific UI screenshot showing what was wrong or wanted, verified live, then the next request built on top of it.
+
+### 1. Document Library table — real layout bugs, not just polish
+- **Root cause of column bleed/overlap** (`DocumentList.tsx`): `table-layout:fixed` with literal px column widths meant the moment several optional columns were visible at once, their total exceeded the container's actual width — the browser then scaled *every* column down proportionally, including the unspecified File Name column, straight to ~0 width. Fixed by computing every column's width as a percentage of a shared weight total, recomputed against only the currently-visible columns so they always sum to exactly 100%.
+- Table headers had no `overflow-hidden`/`truncate` at all — "Document ID" wrapped to two lines and visually collided with "File Name" next to it. Added truncation globally to `.data-table th`, shortened the label to "Doc ID".
+- Added an Excel-style click-to-expand `ExpandableCellText` component (Radix Popover) to every truncatable cell (Doc ID, Folder, Department, Owner, Creation/Modified date) — click a cut-off cell to see the full value in a small popover, since a hover tooltip doesn't work on touch and disappears too easily.
+- Removed the **Type** column entirely per explicit request; its weight was redistributed to File Name.
+
+### 2. Add User — role + group assignment at creation time
+`UserManagement.tsx`'s "Add User" modal gained a Role dropdown (Page Access Roles) and a multi-select Groups checklist, applied right after user creation via `updateUserRole` + `addGroupMember` calls (a partial failure here leaves a real, usable account behind rather than blocking creation). Also added a standalone **"Manage Groups"** action (between Edit and Reset Password in the row actions) opening a modal with live checkboxes for every group — toggling saves immediately via a new `GET /api/groups/for-user/{userId}` endpoint (added since no existing endpoint could answer "which groups does this user belong to").
+
+### 3. Document versioning, metadata editing, and renaming
+- Added a required **Version** field (free-text, e.g. "v1.0", "Rev A") to the upload form, stored on `DmsDocumentVersion.VersionLabel` (migration `043`) — shown in the document preview's metadata row.
+- Built a real **Edit Document** modal (`EditDocumentModal.tsx`) reachable from three places: the Document Library row's three-dot menu, the document preview's toolbar, and the Approval review modal — letting Description, Tags, Version, Category, Department, Owner, and now **File Name** all be edited against the real `PUT /api/documents/{id}` endpoint (extended to also update the current version's `FileName`, which downloads/previews already read from the immutable `S3ObjectKey`-addressed object, so a rename never touches the actual stored file). All fields became required per explicit follow-up.
+- **Real security gap found and fixed:** `UpdateDocument` had *no permission check at all* before this session — any authenticated user could edit any document's metadata. Closed by requiring a new dedicated **Edit** action (see below), not just role membership.
+- Tags converted from a free-text comma field to a dropdown (matching Category's UX) sourced from the new Company Data list, with an "Other" trailing option for ad-hoc custom tags — applied to both the upload form and the Edit modal.
+
+### 4. Edit and Manage-Permissions as first-class, independently-grantable actions
+Per explicit request that "Edit" and "who can manage File/Folder Permissions" should be invisible by default and only usable once explicitly granted — not bundled into any existing flag:
+- Added three new File/Folder Permission override actions (migration `044`): `FileEdit`, `ManagePermissions` (folder scope), `FileManagePermissions` (file scope) — all `adminBaseline`-only by default (hidden unless the caller is a true folder-Admin), resolvable per user/group from the existing Access Override modal.
+- Added two more blanket, role-wide flags on the Page Access Role editor (migrations `045`/`046`, later split into separate folder/file flags per explicit follow-up): **Manage Folder Permissions** and **Manage File Permissions** — a role can be granted these everywhere with no per-folder override needed, the same pattern `BypassFolderPermissions` already used. An **Edit Files** role-wide flag was added, then explicitly removed again from the Roles UI per a later follow-up (confirmed live that no role had it enabled, so the removal has zero side effect on saved data).
+- Fixed a second real gap: the **File Permissions** menu item in `DocumentList.tsx` had *zero* permission gating client-side (unlike the equivalent **Folder Permissions** item in `FolderTree.tsx`, which was already correctly gated) — any user could open the modal even though the backend would reject their actual changes. Both now gate on the new dedicated actions.
+- Per a final follow-up, the granular per-folder/per-file "Manage Permissions" toggle was removed from the Access Override modal itself (both Folder Level and File Level sections) — the capability still exists via the role-wide blanket flags, just no longer independently overridable per specific resource from that modal.
+- Live-verified the full delegation chain with a real non-Admin test account: zero access by default → Admin grants `FileEdit` alone (Edit works, Manage Permissions still blocked) → Admin also grants `ManagePermissions` (now the test user can manage overrides themselves) → granting `CanManageFilePermissions` at the role level alone does **not** also grant `CanManageFolderPermissions` (confirmed independently controllable).
+
+### 5. Company Data admin page — real, backend-driven dropdown lists
+Replaced the `/admin/company-data` "Coming Soon" stub with `CompanyData.tsx`: one card per manageable list (Department, Category, Tags) styled to match the DMS's own visual language, each with Add/Search/Show-all/per-item Delete, plus **Import** (`.csv`/`.xlsx`/`.xls`, first column as the item name, own-export "Name" header round-trips cleanly) and **Export** (real `.xlsx` via the new `ClosedXML` NuGet dependency) buttons.
+- New table `dms_dropdown_items` (migration `047`), seeded with the values that were previously hardcoded in the upload form so nothing changed for existing users on cutover.
+- `DropdownListsController`: `GET` (read, open to any authenticated user since the upload form needs it), `POST/DELETE items`, `POST import`, `GET export` — all mutations gated on the caller's page-access role having `CanViewAdminPanel`.
+- The upload form and Edit Document modal both now fetch Category/Department/Tag options from this API instead of a hardcoded array — an admin adding/removing an item here immediately changes what every user sees in those dropdowns app-wide.
+- Live-verified: add/reject-duplicate, CSV import (correctly skipped a "Name" header row), and a real downloadable `.xlsx` export opened as a genuine Excel file (confirmed via `file` command, not just a successful HTTP response).
+
+### 6. Real per-user Notifications (replacing a dead bell icon)
+The Navbar's notification bell was entirely fake — a hardcoded "3" badge with no click handler, no dropdown, no backing data at all. Built a complete system:
+- New table `dms_notifications` (migration `048`), `NotificationService.NotifyAsync`/`NotifyDocumentOwnerAsync` (never notifies the actor about their own action), `NotificationsController` (list, unread count, mark-one-read, mark-all-read).
+- Wired into every approval-stage transition (QA Accept/Request-Correction, Manager Approve/Reject/Self-Correct, Final Release — notifying every document owner in a multi-document batch, not just one), document metadata edits, and all three lock/unlock paths (checkout, checkin, force-unlock, and the implicit unlock from uploading a new version over a locked one).
+- `NotificationsBell.tsx`: a real Radix Popover dropdown replacing the dead button — unread-count badge polling every 30s, click a notification to mark it read and jump to the document, "View all notifications" expands to the last 100.
+- Live-verified end-to-end with two real accounts: locked, edited, then unlocked a document as the Admin while a separate non-Admin owner account received exactly those three notifications (and the Admin, as the actor throughout, received zero self-notifications).
+
+### Files created
+`api/Controllers/{DropdownListsController,NotificationsController}.cs`, `api/Models/{DmsDropdownItem,DmsNotification}.cs`, `api/Services/NotificationService.cs`, `infra/db/init/043`–`048_*.sql`, `web/src/components/custom/{CompanyData,EditDocumentModal,NotificationsBell}.tsx`
+
+### Files modified (highlights)
+`api/Controllers/{AccessOverridesController,ApprovalsController,BaseController,DocumentsController,FoldersController,GroupsController,PageAccessRolesController}.cs`, `api/Data/DmsContext.cs`, `api/Models/{DmsAccessOverride,DmsDocumentVersion,DmsPageAccessRole}.cs`, `api/Services/{AccessOverrideService,AuditService}.cs`, `api/DMS.Api.csproj` (added `ClosedXML`), `web/src/components/custom/{AccessOverrideModal,ApprovalDetailView,DocumentList,DocumentPreview,FolderTree,RolePermissions,UserManagement}.tsx`, `web/src/components/layout/Navbar.tsx`, `web/src/components/pages/{Documents,Settings}.tsx`, `web/src/styles/globals.css`, `web/src/utils/api.ts`, `web/src/types/index.ts`
+
+### Verification
+- `docker compose build --pull=false api web` clean after every change (the session hit one transient Docker-Hub TLS/registry error mid-session — resolved by building from the already-cached base image layers rather than re-pulling).
+- Every backend change verified against the **live** running API with real curl round-trips, including multi-account scenarios (a real non-Admin test user for the permission-delegation chain, a separate owner account for the notifications chain) — not just the seeded Admin.
+- Migrations `043`–`048` all applied manually to the existing Postgres volume (same "only auto-runs on a brand-new volume" caveat as every prior session's migrations).
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- `CanEditFiles` (page-access-role-wide blanket Edit flag) still exists as a backend column/DTO field but has no UI control anymore after the explicit removal from the Roles page — harmless (defaults false, no role has it set), but dead from the admin's perspective unless a future session re-exposes it or removes it outright.
 
 ---
 

@@ -11,6 +11,7 @@ import { AccessOverrideModal } from '../custom/AccessOverrideModal';
 import { BulkOperationsModal } from '../custom/BulkOperationsModal';
 import { UploadApprovalModal } from '../custom/UploadApprovalModal';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
+import { EditDocumentModal } from '../custom/EditDocumentModal';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
@@ -142,6 +143,8 @@ export function Documents() {
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadTags, setUploadTags] = useState('');
+  const [uploadCustomTags, setUploadCustomTags] = useState('');
+  const [uploadVersionLabel, setUploadVersionLabel] = useState('');
   const [uploadCategory, setUploadCategory] = useState('');
   const [uploadCustomCategory, setUploadCustomCategory] = useState('');
   const [uploadOwnerId, setUploadOwnerId] = useState(DEV_USER_ID);
@@ -150,6 +153,10 @@ export function Documents() {
   const [uploadApprovalNotes, setUploadApprovalNotes] = useState('');
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [myPermissions, setMyPermissions] = useState<RolePermissionFlags | null>(null);
+  const [editDocumentId, setEditDocumentId] = useState<string | null>(null);
+  // Admin-managed via the Company Data page — fetched once, refreshed if the
+  // upload modal is reopened so a just-added item shows up without a reload.
+  const [dropdownOptions, setDropdownOptions] = useState<{ department: string[]; category: string[]; tag: string[] }>({ department: [], category: [], tag: [] });
   // Permissions for folders OTHER than the one currently being browsed (e.g.
   // a subfolder shown in the sidebar tree) — fetched lazily the first time
   // that folder's own action menu is opened, since the tree can show many
@@ -313,6 +320,16 @@ export function Documents() {
     apiClient.getUsers()
       .then((res) => setAllUsers(res.data || []))
       .catch(() => setAllUsers([]));
+  }, []);
+
+  useEffect(() => {
+    apiClient.getDropdownLists()
+      .then((res) => setDropdownOptions({
+        department: (res.data?.department || []).map((i: { label: string }) => i.label),
+        category: (res.data?.category || []).map((i: { label: string }) => i.label),
+        tag: (res.data?.tag || []).map((i: { label: string }) => i.label),
+      }))
+      .catch(() => setDropdownOptions({ department: [], category: [], tag: [] }));
   }, []);
 
   // Drives which action buttons (Upload, Rename, Delete) are shown as
@@ -867,32 +884,24 @@ export function Documents() {
     }
   };
 
-  const uploadCategoryOptions = [
-    { value: 'POLICY', label: 'Policy' },
-    { value: 'PROCESS', label: 'Process' },
-    { value: 'STANDARD', label: 'Standard' },
-    { value: 'TEMPLATE', label: 'Template' },
-    { value: 'WORKING_DOCUMENT', label: 'Working Document' },
-    { value: 'OTHER', label: 'Other' },
-  ];
-  const uploadDepartmentOptions = [
-    'Quality Assurance',
-    'Information Security',
-    'Operations',
-    'Human Resources',
-    'IT',
-    'Finance',
-    'Management',
-    'Other',
-  ];
+  // Company Data admin-managed options — fetched once below and always end
+  // with a client-only "Other" sentinel that reveals a free-text input,
+  // rather than storing "Other" itself as a real list item.
+  const uploadCategoryOptions = [...dropdownOptions.category.map((label) => ({ value: label, label })), { value: 'OTHER', label: 'Other' }];
+  const uploadDepartmentOptions = [...dropdownOptions.department, 'Other'];
+  const uploadTagOptions = [...dropdownOptions.tag.map((label) => ({ value: label, label })), { value: 'OTHER', label: 'Other' }];
   const uploadIsOtherCategory = uploadCategory === 'OTHER';
   const effectiveUploadCategory = uploadIsOtherCategory ? uploadCustomCategory.trim() : uploadCategory;
   const uploadIsOtherDepartment = uploadDepartment === 'Other';
   const effectiveUploadDepartment = uploadIsOtherDepartment ? uploadCustomDepartment.trim() : uploadDepartment;
-  const uploadTagList = uploadTags.split(',').map((t) => t.trim()).filter(Boolean);
+  const uploadIsOtherTag = uploadTags === 'OTHER';
+  const uploadTagList = uploadIsOtherTag
+    ? uploadCustomTags.split(',').map((t) => t.trim()).filter(Boolean)
+    : (uploadTags ? [uploadTags] : []);
   const isUploadFormValid = Boolean(
     uploadDescription.trim()
     && uploadTagList.length > 0
+    && uploadVersionLabel.trim()
     && uploadCategory
     && (!uploadIsOtherCategory || uploadCustomCategory.trim())
     && uploadOwnerId
@@ -910,7 +919,7 @@ export function Documents() {
       return;
     }
     if (!isUploadFormValid) {
-      showError('Please fill in description, tags, category, owner, and department');
+      showError('Please fill in description, tags, version, category, owner, and department');
       return;
     }
 
@@ -950,7 +959,7 @@ export function Documents() {
           const createdDocument = docRes.data;
           if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
 
-          const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile);
+          const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile, uploadVersionLabel);
           setActiveUploadStage('parsing');
           let parsedContent: string | undefined;
           try {
@@ -981,6 +990,7 @@ export function Documents() {
             fileName: uploadFile.name,
             fileSize: uploadFile.size,
             contentType: uploadFile.type || 'application/octet-stream',
+            versionLabel: uploadVersionLabel.trim() || null,
             status: createdDocument.status ?? 'draft',
             department: effectiveUploadDepartment,
             category: effectiveUploadCategory,
@@ -1068,6 +1078,8 @@ export function Documents() {
         setShowUploadModal(false);
         setUploadFiles([]);
         setUploadTags('');
+        setUploadCustomTags('');
+        setUploadVersionLabel('');
         setUploadCategory('');
         setUploadCustomCategory('');
         setUploadDepartment('');
@@ -1142,6 +1154,8 @@ export function Documents() {
     setUploadDescription('');
     setUploadFileName('');
     setUploadTags('');
+    setUploadCustomTags('');
+    setUploadVersionLabel('');
     setUploadCategory('');
     setUploadCustomCategory('');
     setUploadDepartment('');
@@ -1273,6 +1287,7 @@ export function Documents() {
                 onDownload={handleDownloadDocument}
                 onDownloadForEditing={handleDownloadForEditing}
                 onFilePermissions={handleFilePermissions}
+                onEdit={setEditDocumentId}
                 onDocumentAction={requestDocumentAction}
                 canDownloadForEditing={Boolean(myPermissions?.downloadForEditing)}
                 permissions={myPermissions}
@@ -1291,6 +1306,7 @@ export function Documents() {
           onForceUnlock={handleForceUnlock}
           onUploadNewVersion={handleUploadNewVersion}
           permissions={myPermissions}
+          onDocumentUpdated={() => void refreshServerDocuments(folders)}
           onSubmitForApproval={(doc) => {
             closePreview();
             setPendingApprovalFiles([
@@ -1340,6 +1356,15 @@ export function Documents() {
           resourceName={accessOverrideTarget.resourceName}
           resourceKind={accessOverrideTarget.resourceKind}
           onClose={() => setAccessOverrideTarget(null)}
+        />
+      )}
+
+      {editDocumentId && (
+        <EditDocumentModal
+          documentId={editDocumentId}
+          fileName={allDocuments.find((d) => d.documentId === editDocumentId)?.fileName ?? ''}
+          onClose={() => setEditDocumentId(null)}
+          onSaved={() => void refreshServerDocuments(folders)}
         />
       )}
 
@@ -1438,20 +1463,50 @@ export function Documents() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="upload-tags" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
-                  Tags <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="upload-tags"
-                  type="text"
-                  value={uploadTags}
-                  onChange={(e) => setUploadTags(e.target.value)}
-                  placeholder="e.g. iso9001, quality, procedure"
-                  disabled={isUploading}
-                  className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
-                />
-                <p className="text-xs text-[#718198]">Comma-separated.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label htmlFor="upload-tags" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                    Tags <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="upload-tags"
+                    value={uploadTags}
+                    onChange={(e) => setUploadTags(e.target.value)}
+                    disabled={isUploading}
+                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">Select a tag...</option>
+                    {uploadTagOptions.map((tag) => (
+                      <option key={tag.value} value={tag.value}>{tag.label}</option>
+                    ))}
+                  </select>
+                  {uploadIsOtherTag && (
+                    <input
+                      type="text"
+                      value={uploadCustomTags}
+                      onChange={(e) => setUploadCustomTags(e.target.value)}
+                      placeholder="Specify tags, comma-separated..."
+                      autoFocus
+                      disabled={isUploading}
+                      className="mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="upload-version" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                    Version <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="upload-version"
+                    type="text"
+                    value={uploadVersionLabel}
+                    onChange={(e) => setUploadVersionLabel(e.target.value)}
+                    placeholder="e.g. v1.0, Rev A"
+                    disabled={isUploading}
+                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                  />
+                  <p className="text-xs text-[#718198]">Shown when viewing the file.</p>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1569,7 +1624,7 @@ export function Documents() {
                   variant="secondary"
                   onClick={() => handleUploadDocument('draft')}
                   disabled={uploadFiles.length === 0 || !isUploadFormValid || isUploading}
-                  title={!isUploadFormValid ? 'Please fill in description, tags, category, owner, and department' : ''}
+                  title={!isUploadFormValid ? 'Please fill in description, tags, version, category, owner, and department' : ''}
                   className="flex-1"
                 >
                   {isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Saving...') : 'Save as Draft'}
@@ -1577,7 +1632,7 @@ export function Documents() {
                 <Button
                   onClick={() => handleUploadDocument('submit')}
                   disabled={uploadFiles.length === 0 || !isUploadFormValid || isUploading}
-                  title={!isUploadFormValid ? 'Please fill in description, tags, category, owner, and department' : ''}
+                  title={!isUploadFormValid ? 'Please fill in description, tags, version, category, owner, and department' : ''}
                   className="flex-1"
                 >
                   {isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : 'Submit'}

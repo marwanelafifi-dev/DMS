@@ -9,7 +9,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/approvals")]
-public class ApprovalsController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService, MinioService minioService) : BaseController
+public class ApprovalsController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService, MinioService minioService, NotificationService notificationService) : BaseController
 {
     /// <summary>
     /// Every document in the approval batch must belong to a folder where the
@@ -32,6 +32,20 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         }
 
         return true;
+    }
+
+    // Notifies every document owner in the batch that its approval status
+    // changed — a batch can span multiple documents/owners, so this can't
+    // just look at a single "the" owner.
+    private async Task NotifyBatchOwnersAsync(Guid approvalId, Guid actorUserId, string title, string? body = null)
+    {
+        var documentIds = await context.ApprovalDocuments
+            .Where(ad => ad.ApprovalId == approvalId)
+            .Select(ad => ad.DocumentId)
+            .ToListAsync();
+
+        foreach (var documentId in documentIds)
+            await notificationService.NotifyDocumentOwnerAsync(documentId, actorUserId, title, body);
     }
 
     private async Task<string> GenerateTrackingCodeAsync(DmsDocument document, string? deptOverride, string? categoryOverride)
@@ -376,6 +390,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 notes = request.Notes,
             });
 
+            await NotifyBatchOwnersAsync(approvalId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
+
             return Ok(new
             {
                 success = true,
@@ -438,6 +454,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 notes = request.Notes,
             });
 
+            await NotifyBatchOwnersAsync(approvalId, userId, "QA requested a correction on your document", request.Notes);
+
             return Ok(new
             {
                 success = true,
@@ -491,6 +509,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 approvalId = approval.ApprovalId,
                 notes = request.Notes,
             });
+
+            await NotifyBatchOwnersAsync(approvalId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
 
             return Ok(new
             {
@@ -554,6 +574,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 taskId = task.TaskId,
                 reason = request.RejectionReason,
             });
+
+            await NotifyBatchOwnersAsync(approvalId, userId, "Your document was rejected by the Manager", request.RejectionReason);
 
             return Ok(new
             {
@@ -669,6 +691,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 reason = rejectionReason,
             });
 
+            await notificationService.NotifyDocumentOwnerAsync(document.DocumentId, userId, "The Manager corrected your document directly", "Now moving to Final Release.");
+
             return Ok(new
             {
                 success = true,
@@ -753,6 +777,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 releasedDocuments = documents.Select(d => new { d.DocumentId, d.TrackingCode }),
                 sha256Hashes = versionHashes,
             });
+
+            foreach (var released in documents)
+                await notificationService.NotifyDocumentOwnerAsync(released.DocumentId, userId, "Your document was released", $"Tracking code: {released.TrackingCode}");
 
             return Ok(new
             {

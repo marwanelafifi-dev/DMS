@@ -90,6 +90,28 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
         }
     }
 
+    // GET /api/groups/for-user/{userId} — which groups a given user currently belongs to
+    // (used by the Users admin page's "Manage Groups" action, so it doesn't have to
+    // fetch every group's full member list just to figure out which ones already match).
+    [HttpGet("for-user/{userId}")]
+    public async Task<ActionResult<object>> GetGroupsForUser(Guid userId)
+    {
+        try
+        {
+            var groupIds = await context.GroupMembers
+                .Where(gm => gm.UserId == userId)
+                .Select(gm => gm.GroupId)
+                .ToListAsync();
+
+            return Ok(new { success = true, data = groupIds });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving groups for user {UserId}", userId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     // POST /api/groups — create a group
     [HttpPost]
     public async Task<ActionResult<object>> CreateGroup([FromBody] CreateGroupRequest req)

@@ -35,6 +35,7 @@ const FILE_LEVEL_FIELDS: FieldDef[] = [
   { key: 'downloadForEditing', label: 'Download for Editing' },
   { key: 'download', label: 'Download' },
   { key: 'fileDelete', label: 'Delete' },
+  { key: 'fileEdit', label: 'Edit' },
 ];
 
 // Tri-state control: Inherit (no opinion, fall back to the role) / Allow / Deny.

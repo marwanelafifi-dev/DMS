@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardBody, Button, Badge } from '../ui';
 import { Spinner } from '../ui/Skeleton';
-import { X, AlertCircle, Eye, Download, FileCheck2, FileX2, Upload, Loader2, Sparkles } from 'lucide-react';
+import { X, AlertCircle, Eye, Download, FileCheck2, FileX2, Upload, Loader2, Sparkles, FilePen } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { doclingApi } from '../../services/doclingApi';
+import { EditDocumentModal } from './EditDocumentModal';
 
 interface ApprovalDocument {
   documentId: string;
@@ -81,6 +82,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
   const [releaseNotes, setReleaseNotes] = useState('');
   const [deptOverride, setDeptOverride] = useState('');
   const [categoryOverride, setCategoryOverride] = useState('');
+  const [editDocumentId, setEditDocumentId] = useState<string | null>(null);
 
   // First Review (QA) requirement: every document needs a Document ID before
   // QA can accept. Regular uploaders never see this field at upload time — this
@@ -311,6 +313,13 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                           >
                             <Download className="h-4 w-4" />
                           </button>
+                          <button
+                            onClick={() => setEditDocumentId(doc.documentId)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            title="Edit"
+                          >
+                            <FilePen className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-slate-400">
@@ -485,6 +494,15 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
           )}
         </div>
       </div>
+
+      {editDocumentId && (
+        <EditDocumentModal
+          documentId={editDocumentId}
+          fileName={approval?.documents.find((d) => d.documentId === editDocumentId)?.fileName ?? ''}
+          onClose={() => setEditDocumentId(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }

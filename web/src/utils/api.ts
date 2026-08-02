@@ -30,6 +30,9 @@ export interface RolePermissionFlags {
   downloadZip: boolean;
   fileCopy: boolean;
   fileCut: boolean;
+  edit: boolean;
+  managePermissions: boolean;
+  fileManagePermissions: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -43,6 +46,9 @@ export interface PageAccessRoleFlags {
   canViewPcar: boolean;
   canViewAdminPanel: boolean;
   bypassFolderPermissions: boolean;
+  canEditFiles: boolean;
+  canManageFolderPermissions: boolean;
+  canManageFilePermissions: boolean;
 }
 
 export interface PageAccessRole extends PageAccessRoleFlags {
@@ -77,6 +83,9 @@ export interface AccessOverrideFlags {
   downloadForEditing?: boolean | null;
   uploadUpdatedFile?: boolean | null;
   fileDelete?: boolean | null;
+  fileEdit?: boolean | null;
+  managePermissions?: boolean | null;
+  fileManagePermissions?: boolean | null;
 }
 
 export interface AccessOverride extends AccessOverrideFlags {
@@ -299,9 +308,10 @@ class APIClient {
   }
 
   // Document Upload/Download
-  async uploadDocument(documentId: string, file: File) {
+  async uploadDocument(documentId: string, file: File, versionLabel?: string) {
     const formData = new FormData();
     formData.append('file', file);
+    if (versionLabel?.trim()) formData.append('versionLabel', versionLabel.trim());
 
     const { data } = await this.client.post<ApiResponse>(
       `/documents/${documentId}/upload`,
@@ -561,6 +571,11 @@ class APIClient {
     return data;
   }
 
+  async getGroupsForUser(userId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/groups/for-user/${userId}`);
+    return data;
+  }
+
   async getGroup(groupId: string) {
     const { data } = await this.client.get<ApiResponse>(`/groups/${groupId}`);
     return data;
@@ -599,6 +614,67 @@ class APIClient {
   async removeSubgroup(parentGroupId: string, childGroupId: string) {
     const { data } = await this.client.delete<ApiResponse>(`/groups/${parentGroupId}/subgroups/${childGroupId}`);
     return data;
+  }
+
+  // Notifications
+  async getNotifications(limit = 20) {
+    const { data } = await this.client.get<ApiResponse>('/notifications', { params: { limit } });
+    return data;
+  }
+
+  async getUnreadNotificationCount() {
+    const { data } = await this.client.get<ApiResponse>('/notifications/unread-count');
+    return data;
+  }
+
+  async markNotificationRead(notificationId: string) {
+    const { data } = await this.client.put<ApiResponse>(`/notifications/${notificationId}/read`);
+    return data;
+  }
+
+  async markAllNotificationsRead() {
+    const { data } = await this.client.put<ApiResponse>('/notifications/read-all');
+    return data;
+  }
+
+  // Dropdown Lists (Company Data admin page — Department/Category/Tags, etc.)
+  async getDropdownLists() {
+    const { data } = await this.client.get<ApiResponse>('/dropdown-lists');
+    return data;
+  }
+
+  async getDropdownList(key: string) {
+    const { data } = await this.client.get<ApiResponse>(`/dropdown-lists/${key}`);
+    return data;
+  }
+
+  async addDropdownItem(key: string, label: string) {
+    const { data } = await this.client.post<ApiResponse>(`/dropdown-lists/${key}/items`, { label });
+    return data;
+  }
+
+  async deleteDropdownItem(key: string, itemId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/dropdown-lists/${key}/items/${itemId}`);
+    return data;
+  }
+
+  async importDropdownList(key: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post<ApiResponse>(`/dropdown-lists/${key}/import`, formData);
+    return data;
+  }
+
+  async exportDropdownList(key: string) {
+    const response = await this.client.get(`/dropdown-lists/${key}/export`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${key}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   // Page Access Roles (global user role — page/feature visibility only)

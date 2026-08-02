@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Copy, Download, Eye, FileText, FolderInput, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
+import * as Popover from '@radix-ui/react-popover';
+import { Copy, Download, Eye, FilePen, FileText, FolderInput, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
@@ -8,6 +9,40 @@ import { statusLabels } from '../../utils/documentStatus';
 
 const rowMenuContentClass = 'z-[95] min-w-[210px] rounded-[5px] border border-[#dbe2ec] bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900';
 const rowMenuItemClass = 'flex h-9 select-none items-center gap-2 rounded-[4px] px-2.5 text-sm text-[#34425b] outline-none data-[highlighted]:bg-[#edf2f8] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 dark:text-slate-200 dark:data-[highlighted]:bg-slate-800';
+
+// Excel-style "click a cell to see what got cut off" — every truncated cell in this
+// table is one of these instead of a plain <span title="...">, since a hover tooltip
+// disappears the moment the mouse moves and doesn't work at all on touch devices.
+function ExpandableCellText({ value, monospace }: { value?: string | null; monospace?: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (!value) return <span className="text-[#93a4bd]">—</span>;
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          onClick={(event) => event.stopPropagation()}
+          className={`block w-full truncate text-left hover:underline ${monospace ? 'font-mono text-xs' : ''}`}
+        >
+          {value}
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onClick={(event) => event.stopPropagation()}
+          className={`z-[100] max-w-sm rounded-[5px] border border-[#dbe2ec] bg-white px-3 py-2 text-sm text-[#26334d] shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-white ${monospace ? 'font-mono text-xs' : ''}`}
+        >
+          <p className="whitespace-pre-wrap break-words">{value}</p>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
 
 export type OptionalDocumentColumn = 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
 
@@ -30,6 +65,7 @@ interface DocumentListProps {
   onDownload?: (docId: string) => void;
   onDownloadForEditing?: (docId: string) => void;
   onFilePermissions?: (docId: string) => void;
+  onEdit?: (docId: string) => void;
   onDocumentAction?: (action: 'copy' | 'cut' | 'rename' | 'delete', docId: string) => void;
   canDownloadForEditing?: boolean;
   // The effective permissions for the folder currently being browsed — every
@@ -96,6 +132,7 @@ export function DocumentList({
   onDownload,
   onDownloadForEditing,
   onFilePermissions,
+  onEdit,
   onDocumentAction,
   canDownloadForEditing = false,
   permissions,
@@ -155,30 +192,47 @@ export function DocumentList({
     </button>
   );
 
+  // table-layout:fixed distributes width strictly by these ratios. Fixed px widths
+  // would let the sum exceed the container the moment several optional columns are
+  // shown at once, which forces the browser to scale every column down proportionally
+  // — including the file name column straight to ~0. Weights recomputed against only
+  // the currently-visible columns always sum to exactly 100%, so file name keeps a
+  // guaranteed generous share no matter how many optional columns are toggled on.
+  const columnWidthPercents = useMemo(() => {
+    const weights: Record<string, number> = {
+      checkbox: 3, documentId: 6, fileName: 25, folder: 8, actions: 9,
+      department: 8, owner: 8, createdAt: 10, modifiedAt: 10, tags: 8, status: 5,
+    };
+    const activeKeys = ['checkbox', 'documentId', 'fileName', 'folder',
+      ...(['department', 'owner', 'createdAt', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
+      'actions'];
+    const totalWeight = activeKeys.reduce((sum, key) => sum + weights[key], 0);
+    return Object.fromEntries(activeKeys.map((key) => [key, (weights[key] / totalWeight) * 100]));
+  }, [visibleColumns]);
+
   if (isLoading) {
     return <div className="space-y-2 p-4">{[1, 2, 3, 4].map((item) => <div key={item} className="h-14 animate-pulse rounded bg-slate-100" />)}</div>;
   }
 
   return (
-    <div className="w-full overflow-x-auto">
-      <table className="data-table library-document-table w-full" aria-label="Documents">
+    <div className="w-full overflow-x-hidden">
+      <table className="data-table library-document-table w-full table-fixed" aria-label="Documents">
         <colgroup>
-          <col className="w-10" />
-          <col className="w-[120px]" />
-          <col />
-          <col className="w-[60px]" />
-          <col className="w-[76px]" />
-          {visibleColumns.has('department') && <col className="w-[105px]" />}
-          {visibleColumns.has('owner') && <col className="w-[100px]" />}
-          {visibleColumns.has('createdAt') && <col className="w-[132px]" />}
-          {visibleColumns.has('modifiedAt') && <col className="w-[132px]" />}
-          {visibleColumns.has('tags') && <col className="w-[120px]" />}
-          {visibleColumns.has('status') && <col className="w-[90px]" />}
-          <col className="w-[96px]" />
+          <col style={{ width: `${columnWidthPercents.checkbox}%` }} />
+          <col style={{ width: `${columnWidthPercents.documentId}%` }} />
+          <col style={{ width: `${columnWidthPercents.fileName}%` }} />
+          <col style={{ width: `${columnWidthPercents.folder}%` }} />
+          {visibleColumns.has('department') && <col style={{ width: `${columnWidthPercents.department}%` }} />}
+          {visibleColumns.has('owner') && <col style={{ width: `${columnWidthPercents.owner}%` }} />}
+          {visibleColumns.has('createdAt') && <col style={{ width: `${columnWidthPercents.createdAt}%` }} />}
+          {visibleColumns.has('modifiedAt') && <col style={{ width: `${columnWidthPercents.modifiedAt}%` }} />}
+          {visibleColumns.has('tags') && <col style={{ width: `${columnWidthPercents.tags}%` }} />}
+          {visibleColumns.has('status') && <col style={{ width: `${columnWidthPercents.status}%` }} />}
+          <col style={{ width: `${columnWidthPercents.actions}%` }} />
         </colgroup>
         <thead className="sticky top-0 z-10">
           <tr>
-            <th className="w-10 px-3">
+            <th className="px-3">
               <SelectionCheckbox
                 checked={allVisibleSelected}
                 indeterminate={selectedVisibleCount > 0 && !allVisibleSelected}
@@ -186,9 +240,8 @@ export function DocumentList({
                 label="Select all visible documents"
               />
             </th>
-            <th>Document ID</th>
+            <th>Doc ID</th>
             <th>{header('File name', 'fileName')}</th>
-            <th>{header('Type', 'extension')}</th>
             <th>{header('Folder', 'folderName')}</th>
             {visibleColumns.has('department') && <th>{header('Department', 'department')}</th>}
             {visibleColumns.has('owner') && <th>{header('Owner', 'owner')}</th>}
@@ -205,12 +258,8 @@ export function DocumentList({
               <td className="px-3">
                 <SelectionCheckbox checked={selectedDocumentIds.has(document.documentId)} onChange={() => toggleSelected(document.documentId)} label={`Select ${document.fileName}`} />
               </td>
-              <td className="whitespace-nowrap text-[#52627a] dark:text-slate-200">
-                {document.originalDocumentId ? (
-                  <span className="font-mono text-xs" title={document.originalDocumentId}>{document.originalDocumentId}</span>
-                ) : (
-                  <span className="text-[#93a4bd]">—</span>
-                )}
+              <td className="text-[#52627a] dark:text-slate-200">
+                <ExpandableCellText value={document.originalDocumentId} monospace />
               </td>
               <td className="min-w-0">
                 <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}`}>
@@ -221,12 +270,11 @@ export function DocumentList({
                   </span>
                 </button>
               </td>
-              <td><span className={`rounded px-2 py-1 text-[11px] font-semibold uppercase ${extensionStyles[document.extension]}`}>{document.extension}</span></td>
-              <td className="whitespace-nowrap text-[#52627a] dark:text-slate-200">{document.folderName}</td>
-              {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><span className="block max-h-10 overflow-hidden leading-5" title={document.department}>{document.department}</span></td>}
-              {visibleColumns.has('owner') && <td className="truncate text-[#52627a] dark:text-slate-200" title={document.owner.fullName}>{document.owner.fullName}</td>}
-              {visibleColumns.has('createdAt') && <td className="whitespace-nowrap text-[11px] text-[#718198]" title={new Date(document.createdAt).toLocaleString()}>{formatDateTime(document.createdAt)}</td>}
-              {visibleColumns.has('modifiedAt') && <td className="whitespace-nowrap text-[11px] text-[#718198]" title={new Date(document.modifiedAt).toLocaleString()}>{formatDateTime(document.modifiedAt)}</td>}
+              <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.folderName} /></td>
+              {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.department} /></td>}
+              {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.owner.fullName} /></td>}
+              {visibleColumns.has('createdAt') && <td className="text-[11px] text-[#718198]"><ExpandableCellText value={formatDateTime(document.createdAt)} /></td>}
+              {visibleColumns.has('modifiedAt') && <td className="text-[11px] text-[#718198]"><ExpandableCellText value={formatDateTime(document.modifiedAt)} /></td>}
               {visibleColumns.has('tags') && (
                 <td>
                   {document.tags.length ? (
@@ -265,6 +313,14 @@ export function DocumentList({
                         >
                           <PencilLine className="h-4 w-4" /> Download for Editing
                         </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!permissions?.edit}
+                          title={!permissions?.edit ? 'Your role does not have permission to edit this' : undefined}
+                          onSelect={() => onEdit?.(document.documentId)}
+                        >
+                          <FilePen className="h-4 w-4" /> Edit
+                        </DropdownMenu.Item>
                         <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
                         <DropdownMenu.Item
                           className={rowMenuItemClass}
@@ -299,7 +355,12 @@ export function DocumentList({
                           <Trash2 className="h-4 w-4" /> Delete
                         </DropdownMenu.Item>
                         <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
-                        <DropdownMenu.Item className={rowMenuItemClass} onSelect={() => onFilePermissions?.(document.documentId)}>
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!permissions?.fileManagePermissions}
+                          title={!permissions?.fileManagePermissions ? 'Your role does not have permission to manage File Permissions here' : undefined}
+                          onSelect={() => onFilePermissions?.(document.documentId)}
+                        >
                           <ShieldCheck className="h-4 w-4" /> File Permissions
                         </DropdownMenu.Item>
                       </DropdownMenu.Content>

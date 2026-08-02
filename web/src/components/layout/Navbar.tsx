@@ -1,11 +1,12 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useDarkMode } from '../../hooks/useDarkMode';
 import { useSearchSuggestions } from '../../hooks/useSearchSuggestions';
 import { useAllDmsDocuments } from '../../hooks/useAllDmsDocuments';
 import { SearchSuggestionsDropdown } from '../custom/SearchSuggestionsDropdown';
+import { NotificationsBell } from '../custom/NotificationsBell';
 import type { ParsedDocument } from '../../services/doclingApi';
 import { roleLabel } from '../../utils/roleLabels';
 
@@ -119,13 +120,6 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
       </form>
 
       <div className="ml-auto flex items-center gap-3 sm:gap-4">
-        <div className="hidden items-center gap-2 text-sm text-[#64748b] md:flex">
-          <span>Role</span>
-          <div className="flex h-10 min-w-[96px] items-center justify-center rounded-[5px] border border-[#cbd5e3] bg-white px-3 text-[#17213a] dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-            <span>{roleLabel(user?.role ?? 'No Access')}</span>
-          </div>
-        </div>
-
         <div className="h-8 w-px bg-[#e2e8f0]" />
 
         <div className="flex items-center gap-2">
@@ -138,13 +132,7 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
 
-          <button
-            className="relative rounded-md p-2 text-[#52627a] hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-0.5 top-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e34d55] px-1 text-[10px] font-bold text-white ring-2 ring-white">3</span>
-          </button>
+          <NotificationsBell />
 
           <div className="hidden h-9 w-px bg-[#e2e8f0] sm:block" />
 

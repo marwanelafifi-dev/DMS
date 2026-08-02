@@ -17,6 +17,7 @@ public class DocumentsController(
     CheckoutService checkoutService,
     ApprovalService approvalService,
     AccessOverrideService accessOverrideService,
+    NotificationService notificationService,
     ILogger<DocumentsController> logger) : BaseController
 {
     // GET /api/documents — list of documents
@@ -71,6 +72,7 @@ public class DocumentsController(
                     FileName = currentVersion == null ? string.Empty : currentVersion.FileName,
                     FileSize = currentVersion == null ? 0 : currentVersion.FileSizeBytes,
                     ContentType = currentVersion == null ? null : currentVersion.MimeType,
+                    VersionLabel = currentVersion == null ? null : currentVersion.VersionLabel,
                     CheckoutStatus = currentVersion != null && currentVersion.IsCheckedOut ? "checked_out" : "checked_in",
                     CheckedOutBy = currentVersion == null ? null : currentVersion.CheckedOutById,
                     CheckedOutByName = checkedOutUser == null ? null : checkedOutUser.FullName,
@@ -109,6 +111,7 @@ public class DocumentsController(
                 {
                     v.VersionId,
                     v.VersionNumber,
+                    v.VersionLabel,
                     v.Status,
                     v.FileName,
                     v.FileSizeBytes,
@@ -158,6 +161,7 @@ public class DocumentsController(
                     FileName = currentVersion?.FileName ?? string.Empty,
                     FileSize = currentVersion?.FileSizeBytes ?? 0,
                     ContentType = currentVersion?.MimeType,
+                    VersionLabel = currentVersion?.VersionLabel,
                     CheckoutStatus = currentVersion?.IsCheckedOut == true ? "checked_out" : "checked_in",
                     CheckedOutBy = currentVersion?.CheckedOutById,
                     CheckedOutByName = checkedOutByName,
@@ -435,7 +439,7 @@ public class DocumentsController(
 
     // POST /api/documents/{id}/upload — upload a file
     [HttpPost("{id}/upload")]
-    public async Task<ActionResult<object>> UploadVersion(Guid id, IFormFile file)
+    public async Task<ActionResult<object>> UploadVersion(Guid id, IFormFile file, [FromForm] string? versionLabel = null)
     {
         try
         {
@@ -507,6 +511,7 @@ public class DocumentsController(
                 VersionId = Guid.NewGuid(),
                 DocumentId = id,
                 VersionNumber = $"{nextMajorVersion}.0",
+                VersionLabel = string.IsNullOrWhiteSpace(versionLabel) ? null : versionLabel.Trim(),
                 MajorVersion = nextMajorVersion,
                 MinorVersion = 0,
                 FileName = file.FileName,
@@ -546,6 +551,9 @@ public class DocumentsController(
             });
 
             logger.LogInformation("Uploaded file to document {DocumentId}", id);
+
+            if (currentVersion is { IsCheckedOut: true })
+                await notificationService.NotifyDocumentOwnerAsync(id, userId, "Your document was unlocked", "The updated file was uploaded, releasing the editing lock.");
 
             return Ok(new
             {
@@ -627,6 +635,18 @@ public class DocumentsController(
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
 
+            // This previously had no permission check at all — any authenticated user
+            // could edit any document's metadata regardless of role. Edit is its own
+            // dedicated action (distinct from Rename), hidden from everyone by default
+            // — either an Admin grants it per user/group via an override, or the
+            // caller's global page-access role carries the blanket CanEditFiles flag.
+            var userId = GetCurrentUserId();
+            var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            var editBaseline = effectiveRole == FolderRoles.Admin || pageAccessRole?.CanEditFiles == true;
+            if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.FileEdit, editBaseline))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to edit this document" });
+
             if (!string.IsNullOrWhiteSpace(req.Title))
                 document.Title = req.Title.Trim();
 
@@ -642,13 +662,47 @@ public class DocumentsController(
             if (req.Department != null)
                 document.Department = string.IsNullOrWhiteSpace(req.Department) ? null : req.Department.Trim();
 
+            if (req.Category != null)
+                document.Category = string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim();
+
+            if (req.OwnerId.HasValue)
+            {
+                var ownerExists = await context.Users.AnyAsync(u => u.UserId == req.OwnerId && u.IsActive);
+                if (!ownerExists)
+                    return BadRequest(new { success = false, error = "Owner not found" });
+                document.OwnerId = req.OwnerId.Value;
+            }
+
+            // VersionLabel and FileName both live on the current version row, not the
+            // document itself. Renaming only touches this metadata column — the actual
+            // MinIO object is addressed by the immutable S3ObjectKey (set once at
+            // upload), so a rename never needs to move/re-key the stored file.
+            if ((req.VersionLabel != null || req.FileName != null) && document.CurrentVersionId.HasValue)
+            {
+                var currentVersion = await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId);
+                if (currentVersion != null)
+                {
+                    if (req.VersionLabel != null)
+                        currentVersion.VersionLabel = string.IsNullOrWhiteSpace(req.VersionLabel) ? null : req.VersionLabel.Trim();
+
+                    if (!string.IsNullOrWhiteSpace(req.FileName))
+                    {
+                        var newFileName = req.FileName.Trim();
+                        if (newFileName.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) >= 0)
+                            return BadRequest(new { success = false, error = "File name contains invalid characters" });
+                        currentVersion.FileName = newFileName;
+                    }
+
+                    currentVersion.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
             document.UpdatedAt = DateTime.UtcNow;
 
             context.Documents.Update(document);
             await context.SaveChangesAsync();
 
-            var currentUserId = GetCurrentUserId();
-            await auditService.LogAsync(currentUserId, DOCUMENT_UPDATED, new
+            await auditService.LogAsync(userId, DOCUMENT_UPDATED, new
             {
                 document.DocumentId,
                 document.Title,
@@ -659,6 +713,8 @@ public class DocumentsController(
 
             logger.LogInformation("Updated document {DocumentId}", id);
 
+            await notificationService.NotifyAsync(document.OwnerId, userId, "Your document was edited", $"\"{document.Title}\" was updated.", document.DocumentId);
+
             return Ok(new
             {
                 success = true,
@@ -667,8 +723,13 @@ public class DocumentsController(
                     document.DocumentId,
                     document.Title,
                     document.Status,
+                    document.Description,
                     document.Tags,
                     document.Department,
+                    document.Category,
+                    document.OwnerId,
+                    versionLabel = req.VersionLabel,
+                    fileName = req.FileName,
                     document.UpdatedAt
                 }
             });
@@ -780,6 +841,8 @@ public class DocumentsController(
                 };
             }
 
+            await notificationService.NotifyDocumentOwnerAsync(id, userId, "Your document was locked for editing", "Someone checked it out for editing.");
+
             return Ok(new { success = true, data = result.Data });
         }
         catch (Exception ex)
@@ -808,6 +871,8 @@ public class DocumentsController(
                     _ => StatusCode(500, new { success = false, error = result.Message })
                 };
             }
+
+            await notificationService.NotifyDocumentOwnerAsync(id, userId, "Your document was unlocked", "The editing lock was released.");
 
             return Ok(new { success = true, data = result.Data });
         }
@@ -838,6 +903,8 @@ public class DocumentsController(
                     _ => StatusCode(500, new { success = false, error = result.Message })
                 };
             }
+
+            await notificationService.NotifyDocumentOwnerAsync(id, userId, "Your document was unlocked", "An administrator force-unlocked it.");
 
             return Ok(new { success = true, data = result.Data });
         }
@@ -1182,7 +1249,7 @@ public class DocumentsController(
 }
 
 public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, string? OriginalDocumentId = null);
-public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null, string[]? Tags = null, string? Department = null);
+public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, Guid? OwnerId = null, string? VersionLabel = null, string? FileName = null);
 public record CheckoutRequest(string? Reason = null);
 public record SubmitRequest(Guid VersionId, string? Comment = null);
 public record ApproveRequest(Guid VersionId, string? Comment = null);

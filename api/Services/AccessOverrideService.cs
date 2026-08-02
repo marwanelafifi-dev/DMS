@@ -39,6 +39,9 @@ public class AccessOverrideService(DmsContext context)
         AccessOverrideActions.DownloadForEditing => o => o.DownloadForEditing,
         AccessOverrideActions.UploadUpdatedFile => o => o.UploadUpdatedFile,
         AccessOverrideActions.FileDelete => o => o.FileDelete,
+        AccessOverrideActions.FileEdit => o => o.FileEdit,
+        AccessOverrideActions.ManagePermissions => o => o.ManagePermissions,
+        AccessOverrideActions.FileManagePermissions => o => o.FileManagePermissions,
         _ => NoSelector
     };
 

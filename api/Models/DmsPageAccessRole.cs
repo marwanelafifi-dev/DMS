@@ -18,5 +18,11 @@ public class DmsPageAccessRole
     public bool CanViewPcar { get; set; }
     public bool CanViewAdminPanel { get; set; }
     public bool BypassFolderPermissions { get; set; }
+    // Blanket, role-wide flags — every user assigned this role can Edit
+    // document metadata / manage File and Folder Permissions everywhere,
+    // without needing a per-folder Access Override grant.
+    public bool CanEditFiles { get; set; }
+    public bool CanManageFolderPermissions { get; set; }
+    public bool CanManageFilePermissions { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

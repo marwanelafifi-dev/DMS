@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardBody, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, ChevronLeft, ChevronRight, Circle } from 'lucide-react';
+import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, ChevronLeft, ChevronRight, Circle, Users as UsersIcon } from 'lucide-react';
 import { apiClient, DEV_USER_ID, type PageAccessRole } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { roleLabel } from '../../utils/roleLabels';
@@ -19,6 +19,12 @@ interface User {
   isOnline: boolean;
   role: string | null;
   avatarUrl?: string | null;
+}
+
+interface Group {
+  groupId: string;
+  name: string;
+  description: string | null;
 }
 
 const accessBadgeStyles: Record<string, string> = {
@@ -39,19 +45,25 @@ export function UserManagement() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [roles, setRoles] = useState<PageAccessRole[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<{ fullName: string; isActive: boolean; role: string }>({ fullName: '', isActive: true, role: '' });
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '' });
+  const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '', role: '', groupIds: [] as string[] });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [deactivateConfirm, setDeactivateConfirm] = useState<{ userId?: string; fullName?: string }>({});
   const [deleteConfirm, setDeleteConfirm] = useState<{ userId?: string; fullName?: string }>({});
   const [resetPasswordFor, setResetPasswordFor] = useState<{ userId?: string; fullName?: string }>({});
   const [newPassword, setNewPassword] = useState('');
+
+  const [manageGroupsFor, setManageGroupsFor] = useState<{ userId?: string; fullName?: string }>({});
+  const [manageGroupsIds, setManageGroupsIds] = useState<Set<string>>(new Set());
+  const [manageGroupsLoading, setManageGroupsLoading] = useState(false);
+  const [manageGroupsBusyId, setManageGroupsBusyId] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -61,16 +73,18 @@ export function UserManagement() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [pageRes, allRes, rolesRes] = await Promise.all([
+      const [pageRes, allRes, rolesRes, groupsRes] = await Promise.all([
         apiClient.getUsers({ activeOnly: false, page: targetPage, pageSize: PAGE_SIZE }),
         apiClient.getUsers({ activeOnly: false }),
         apiClient.getPageAccessRoles(),
+        apiClient.getGroups(),
       ]);
       setUsers(pageRes.data || []);
       setTotalCount(pageRes.totalCount ?? pageRes.data?.length ?? 0);
       setTotalPages(pageRes.totalPages ?? 1);
       setAllUsers(allRes.data || []);
       setRoles(rolesRes.data || []);
+      setGroups(groupsRes.data || []);
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API. Is the backend running?');
     } finally {
@@ -125,15 +139,71 @@ export function UserManagement() {
     }
     setIsSubmitting(true);
     try {
-      await apiClient.createUser(newUser);
-      showSuccess('User created');
+      const res = await apiClient.createUser({ fullName: newUser.fullName, email: newUser.email, password: newUser.password });
+      const createdUserId = res.data?.userId;
+
+      // Role and group membership are separate resources from user creation itself
+      // (role lives on dms_users but has its own endpoint; groups are a many-to-many
+      // join table) — apply both right after creation instead of blocking it on them,
+      // so a partial failure here still leaves a real, usable account behind.
+      const followUpErrors: string[] = [];
+      if (createdUserId && newUser.role) {
+        try {
+          await apiClient.updateUserRole(createdUserId, newUser.role);
+        } catch {
+          followUpErrors.push('role assignment');
+        }
+      }
+      if (createdUserId && newUser.groupIds.length > 0) {
+        const results = await Promise.allSettled(newUser.groupIds.map((groupId) => apiClient.addGroupMember(groupId, createdUserId)));
+        if (results.some((r) => r.status === 'rejected')) followUpErrors.push('group membership');
+      }
+
+      showSuccess(followUpErrors.length > 0 ? `User created, but failed to apply: ${followUpErrors.join(', ')}` : 'User created');
       setShowAddForm(false);
-      setNewUser({ fullName: '', email: '', password: '' });
+      setNewUser({ fullName: '', email: '', password: '', role: '', groupIds: [] });
       loadUsers();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create user');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openManageGroups = async (user: User) => {
+    setManageGroupsFor({ userId: user.userId, fullName: user.fullName });
+    setManageGroupsLoading(true);
+    try {
+      const res = await apiClient.getGroupsForUser(user.userId);
+      setManageGroupsIds(new Set(res.data || []));
+    } catch {
+      showError('Failed to load this user\'s group membership');
+      setManageGroupsIds(new Set());
+    } finally {
+      setManageGroupsLoading(false);
+    }
+  };
+
+  const toggleGroupMembership = async (groupId: string) => {
+    if (!manageGroupsFor.userId) return;
+    const userId = manageGroupsFor.userId;
+    const isMember = manageGroupsIds.has(groupId);
+    setManageGroupsBusyId(groupId);
+    try {
+      if (isMember) {
+        await apiClient.removeGroupMember(groupId, userId);
+      } else {
+        await apiClient.addGroupMember(groupId, userId);
+      }
+      setManageGroupsIds((prev) => {
+        const next = new Set(prev);
+        if (isMember) next.delete(groupId); else next.add(groupId);
+        return next;
+      });
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to update group membership');
+    } finally {
+      setManageGroupsBusyId(null);
     }
   };
 
@@ -432,6 +502,13 @@ export function UserManagement() {
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
+                        <button
+                          onClick={() => openManageGroups(user)}
+                          className="p-2 hover:bg-gray-200 dark:hover:bg-navy-700 rounded-lg transition-colors text-amber-600 dark:text-amber-400"
+                          title="Manage groups"
+                        >
+                          <UsersIcon className="w-4 h-4" />
+                        </button>
                         {user.authType !== 'Google' && (
                           <button
                             onClick={() => setResetPasswordFor({ userId: user.userId, fullName: user.fullName })}
@@ -560,10 +637,49 @@ export function UserManagement() {
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-navy-400">This user will log in with this email and password on the DMS login page.</p>
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Role (page access)</label>
+                <select
+                  value={newUser.role}
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                >
+                  <option value="">No Access (assign later)</option>
+                  {roles.map((r) => (
+                    <option key={r.role} value={r.role}>{roleLabel(r.role)}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-navy-400">Only controls which pages/features are visible — file/folder access still comes from folder permissions or groups.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Groups</label>
+                {groups.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-navy-400">No groups exist yet.</p>
+                ) : (
+                  <div className="max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-gray-300 dark:border-navy-600 p-2">
+                    {groups.map((g) => (
+                      <label key={g.groupId} className="flex items-center gap-2 text-sm text-navy-900 dark:text-white">
+                        <input
+                          type="checkbox"
+                          checked={newUser.groupIds.includes(g.groupId)}
+                          onChange={(e) => setNewUser({
+                            ...newUser,
+                            groupIds: e.target.checked
+                              ? [...newUser.groupIds, g.groupId]
+                              : newUser.groupIds.filter((id) => id !== g.groupId),
+                          })}
+                          className="rounded border-gray-300 dark:border-navy-600"
+                        />
+                        {g.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
               <button
-                onClick={() => setShowAddForm(false)}
+                onClick={() => { setShowAddForm(false); setNewUser({ fullName: '', email: '', password: '', role: '', groupIds: [] }); }}
                 className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-700 transition-colors"
               >
                 Cancel
@@ -679,6 +795,53 @@ export function UserManagement() {
               <Button variant="primary" className="flex-1" onClick={handleConfirmResetPassword}>
                 Reset Password
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Groups Modal */}
+      {manageGroupsFor.userId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
+            <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
+              <h3 className="text-lg font-serif font-bold tracking-tight text-white">Manage Groups</h3>
+              <button onClick={() => setManageGroupsFor({})} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              <p className="text-gray-700 dark:text-gray-300 text-sm">
+                Groups <span className="font-semibold text-navy-900 dark:text-blue-300">"{manageGroupsFor.fullName}"</span> belongs to. Toggling a checkbox saves immediately.
+              </p>
+              {manageGroupsLoading ? (
+                <p className="text-sm text-gray-500 dark:text-navy-400">Loading…</p>
+              ) : groups.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-navy-400">No groups exist yet — create one from the Groups tab first.</p>
+              ) : (
+                <div className="max-h-72 space-y-1.5 overflow-y-auto rounded-lg border border-gray-300 dark:border-navy-600 p-2">
+                  {groups.map((g) => (
+                    <label key={g.groupId} className="flex items-center gap-2 px-1 py-1 text-sm text-navy-900 dark:text-white">
+                      <input
+                        type="checkbox"
+                        checked={manageGroupsIds.has(g.groupId)}
+                        disabled={manageGroupsBusyId === g.groupId}
+                        onChange={() => toggleGroupMembership(g.groupId)}
+                        className="rounded border-gray-300 dark:border-navy-600"
+                      />
+                      {g.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
+              <button
+                onClick={() => setManageGroupsFor({})}
+                className="flex-1 px-4 py-2 bg-navy-900 dark:bg-blue-600 text-white rounded-lg font-semibold hover:bg-navy-800 dark:hover:bg-blue-700 transition-colors"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

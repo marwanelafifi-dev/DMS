@@ -52,6 +52,9 @@ public class DmsAccessOverride
     public bool? DownloadForEditing { get; set; }
     public bool? UploadUpdatedFile { get; set; }
     public bool? FileDelete { get; set; }
+    public bool? FileEdit { get; set; }
+    public bool? ManagePermissions { get; set; }
+    public bool? FileManagePermissions { get; set; }
 
     public Guid CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -80,4 +83,7 @@ public static class AccessOverrideActions
     public const string DownloadForEditing = "download_for_editing";
     public const string UploadUpdatedFile = "upload_updated_file";
     public const string FileDelete = "file_delete";
+    public const string FileEdit = "file_edit";
+    public const string ManagePermissions = "manage_permissions";
+    public const string FileManagePermissions = "file_manage_permissions";
 }

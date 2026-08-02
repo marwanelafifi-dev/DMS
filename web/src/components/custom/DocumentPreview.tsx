@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  FilePen,
   Lock,
   PencilLine,
   Printer,
@@ -14,6 +15,7 @@ import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
+import { EditDocumentModal } from './EditDocumentModal';
 import { MarkdownViewer } from './MarkdownViewer';
 import { OcrPanel } from './OcrPanel';
 import { PdfJsViewer, type PdfJsViewerHandle, type PdfMatchInfo } from './PdfJsViewer';
@@ -137,6 +139,7 @@ interface DocumentPreviewProps {
   // Omitted (undefined) means "unknown yet"; both stay hidden/disabled
   // until it resolves, same fail-closed default used elsewhere.
   permissions?: RolePermissionFlags | null;
+  onDocumentUpdated?: () => void;
 }
 
 const statusStyles: Record<string, string> = {
@@ -174,8 +177,9 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onUploadNewVersion, permissions }: DocumentPreviewProps) {
+export function DocumentPreview({ document, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onUploadNewVersion, permissions, onDocumentUpdated }: DocumentPreviewProps) {
   const newVersionInputRef = useRef<HTMLInputElement>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [isLoading, setIsLoading] = useState(
     document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
   );
@@ -773,6 +777,12 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                   <p className="font-medium text-[#34425b] dark:text-slate-200">Status</p>
                   <p><span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></p>
                 </div>
+                {document.versionLabel && (
+                  <div>
+                    <p className="font-medium text-[#34425b] dark:text-slate-200">Version</p>
+                    <p className="truncate">{document.versionLabel}</p>
+                  </div>
+                )}
                 {document.checkoutStatus === 'checked_out' && (
                   <div>
                     <p className="font-medium text-[#34425b] dark:text-slate-200">Lock</p>
@@ -913,6 +923,15 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                 Submit for Approval
               </button>
             )}
+            <button
+              onClick={() => setShowEditModal(true)}
+              disabled={!permissions?.edit}
+              title={!permissions?.edit ? 'Your role does not have permission to edit this document' : 'Edit description, tags, version, category, department, owner'}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              aria-label={`Edit ${document.fileName}`}
+            >
+              <FilePen className="h-4 w-4" /> Edit
+            </button>
             {permissions?.downloadForEditing && onDownloadForEditing && (
               <button onClick={() => onDownloadForEditing(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download ${document.fileName} for editing`} title="Download the original file for editing — locks it for you for 1 hour">
                 <PencilLine className="h-4 w-4" /> Download for Editing
@@ -948,6 +967,15 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
           </div>
         </div>
       </section>
+
+      {showEditModal && (
+        <EditDocumentModal
+          documentId={document.documentId}
+          fileName={document.fileName}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => onDocumentUpdated?.()}
+        />
+      )}
     </div>
   );
 }
