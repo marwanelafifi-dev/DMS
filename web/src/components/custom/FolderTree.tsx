@@ -95,7 +95,7 @@ export function FolderTree({
     const canCopy = Boolean(permissions?.copy);
     const canCut = Boolean(permissions?.cut);
     const canDelete = Boolean(isRoot ? permissions?.deleteParentFolder : permissions?.deleteSubfolder);
-    const canManagePermissions = Boolean(permissions?.adminForceUnlock);
+    const canManagePermissions = Boolean(permissions?.managePermissions);
     const deniedTitle = 'Your role does not have permission to do this';
 
     return (

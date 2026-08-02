@@ -33,6 +33,8 @@ public class DmsContext : DbContext
     public DbSet<DmsRolePermission> RolePermissions => Set<DmsRolePermission>();
     public DbSet<DmsAccessOverride> AccessOverrides => Set<DmsAccessOverride>();
     public DbSet<DmsPageAccessRole> PageAccessRoles => Set<DmsPageAccessRole>();
+    public DbSet<DmsDropdownItem> DropdownItems => Set<DmsDropdownItem>();
+    public DbSet<DmsNotification> Notifications => Set<DmsNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -95,6 +97,8 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsRolePermission>().ToTable("dms_role_permissions").HasKey(rp => rp.Role);
         modelBuilder.Entity<DmsAccessOverride>().ToTable("dms_access_overrides").HasKey(o => o.OverrideId);
         modelBuilder.Entity<DmsPageAccessRole>().ToTable("dms_page_access_roles").HasKey(r => r.Role);
+        modelBuilder.Entity<DmsDropdownItem>().ToTable("dms_dropdown_items").HasKey(i => i.ItemId);
+        modelBuilder.Entity<DmsNotification>().ToTable("dms_notifications").HasKey(n => n.NotificationId);
         modelBuilder.Entity<DmsApproval>().ToTable("dms_approvals").HasKey(a => a.ApprovalId);
         modelBuilder.Entity<DmsApprovalDocument>().ToTable("dms_approval_documents").HasKey(ad => ad.ApprovalDocumentId);
 

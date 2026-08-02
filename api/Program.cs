@@ -44,6 +44,7 @@ builder.Services.AddScoped<ReminderService>();
 builder.Services.AddScoped<AuditCalendarService>();
 builder.Services.AddScoped<UserGoogleCalendarService>();
 builder.Services.AddScoped<AccessOverrideService>();
+builder.Services.AddScoped<NotificationService>();
 // Swap for a real implementation once Google OAuth is configured — see
 // IGoogleOAuthCalendarClient.cs for what that involves.
 builder.Services.AddSingleton<IGoogleOAuthCalendarClient, NotConfiguredGoogleOAuthCalendarClient>();

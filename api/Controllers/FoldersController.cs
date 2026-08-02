@@ -53,6 +53,14 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             // Admin everywhere with no override needed.
             var adminBaseline = role == FolderRoles.Admin;
 
+            // Edit/ManagePermissions can also be granted role-wide (blanket, every
+            // folder) via the user's global page-access role, same as
+            // BypassFolderPermissions — not just per-folder via an Access Override.
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            var editBaseline = adminBaseline || pageAccessRole?.CanEditFiles == true;
+            var manageFolderPermissionsBaseline = adminBaseline || pageAccessRole?.CanManageFolderPermissions == true;
+            var manageFilePermissionsBaseline = adminBaseline || pageAccessRole?.CanManageFilePermissions == true;
+
             // Fold in any applicable File/Folder Permission override so the
             // buttons the UI shows/hides match what the server will actually
             // enforce (deny always wins; an allow can widen the role's default).
@@ -80,6 +88,13 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 DownloadZip = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.DownloadZip, adminBaseline),
                 FileCopy = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileCopy, adminBaseline),
                 FileCut = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileCut, adminBaseline),
+                // Edit (document metadata) and managing File/Folder Permissions are
+                // hidden from everyone by default (adminBaseline) — an Admin must
+                // explicitly grant them per user/group via an override, same as
+                // Copy/Cut/DownloadZip above.
+                Edit = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileEdit, editBaseline),
+                ManagePermissions = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ManagePermissions, manageFolderPermissionsBaseline),
+                FileManagePermissions = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileManagePermissions, manageFilePermissionsBaseline),
                 UpdatedAt = permission?.UpdatedAt,
             };
 

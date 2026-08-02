@@ -66,6 +66,20 @@ public class BaseController : ControllerBase
         return pageAccessRole?.BypassFolderPermissions == true ? FolderRoles.Admin : null;
     }
 
+    // The user's global page-access role can carry blanket, role-wide flags
+    // (CanEditFiles, CanManageFilePermissions) that apply everywhere, the same
+    // coarse-grained pattern as BypassFolderPermissions — used to widen the
+    // Edit/ManagePermissions baseline in DocumentsController and
+    // AccessOverridesController without requiring a per-folder Access Override.
+    protected static async Task<DmsPageAccessRole?> GetPageAccessRoleAsync(DmsContext context, Guid userId)
+    {
+        var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user?.Role == null)
+            return null;
+
+        return await context.PageAccessRoles.AsNoTracking().FirstOrDefaultAsync(r => r.Role == user.Role);
+    }
+
     protected static async Task<bool> HasRolePermissionAsync(DmsContext context, string? role, Func<DmsRolePermission, bool> selector)
     {
         if (role == null)

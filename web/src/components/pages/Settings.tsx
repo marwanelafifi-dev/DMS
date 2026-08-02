@@ -4,6 +4,7 @@ import { RolePermissions } from '../custom/RolePermissions';
 import { UserManagement } from '../custom/UserManagement';
 import { GroupManagement } from '../custom/GroupManagement';
 import { AuditTrail } from '../custom/AuditTrail';
+import { CompanyData } from '../custom/CompanyData';
 import { Card, CardBody } from '../ui';
 import { apiClient } from '../../utils/api';
 import type { Document } from '../../types';
@@ -93,7 +94,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
 
   return (
     <div className="space-y-5">
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && (
         <>
           <div>
             <h1 className="page-heading">Admin Panel</h1>
@@ -183,7 +184,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
         {activeTab === 'audit' && <AuditTrail />}
         {activeTab === 'settings' && <ComingSoonPanel title="Settings" />}
         {activeTab === 'notifications' && <ComingSoonPanel title="Notifications" />}
-        {activeTab === 'company-data' && <ComingSoonPanel title="Company Data" />}
+        {activeTab === 'company-data' && <CompanyData />}
         {activeTab === 'database' && <ComingSoonPanel title="Database" />}
       </div>
     </div>

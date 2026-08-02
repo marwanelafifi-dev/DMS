@@ -40,6 +40,7 @@ export interface Document {
   description?: string;
   fileName: string;
   fileSize: number;
+  versionLabel?: string | null;
   contentType: string;
   status: 'draft' | 'pending_approval' | 'qa_review' | 'manager_review' | 'correction_in_progress' | 'qa_final_review' | 'released' | 'rejected' | 'archived';
   uploadedBy: string;

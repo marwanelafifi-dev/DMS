@@ -139,4 +139,8 @@ public static class AuditActions
     public const string ACCESS_OVERRIDE_CREATED = "ACCESS_OVERRIDE_CREATED";
     public const string ACCESS_OVERRIDE_UPDATED = "ACCESS_OVERRIDE_UPDATED";
     public const string ACCESS_OVERRIDE_DELETED = "ACCESS_OVERRIDE_DELETED";
+
+    public const string DROPDOWN_ITEM_CREATED = "DROPDOWN_ITEM_CREATED";
+    public const string DROPDOWN_ITEM_DELETED = "DROPDOWN_ITEM_DELETED";
+    public const string DROPDOWN_ITEMS_IMPORTED = "DROPDOWN_ITEMS_IMPORTED";
 }
