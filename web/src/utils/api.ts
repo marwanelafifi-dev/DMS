@@ -405,12 +405,13 @@ class APIClient {
     return data;
   }
 
-  async qaRequestCorrection(approvalId: string, qaNotesComments: string, taskDescription: string, assignToUserId: string, dueDate: string) {
+  async qaRequestCorrection(approvalId: string, taskTitle: string, taskDescription: string, assignToUserId: string, dueDate: string, notes?: string) {
     const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-request-correction`, {
-      qaNotesComments,
+      taskTitle,
       taskDescription,
       assignToUserId,
       dueDate,
+      notes,
     });
     return data;
   }
@@ -422,9 +423,10 @@ class APIClient {
     return data;
   }
 
-  async managerRejectWithCorrection(approvalId: string, rejectionReason: string, taskDescription: string, assignToUserId: string, dueDate: string) {
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-reject-correction-task`, {
+  async managerRejectWithCorrection(approvalId: string, rejectionReason: string, taskTitle: string, taskDescription: string, assignToUserId: string, dueDate: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-reject`, {
       rejectionReason,
+      taskTitle,
       taskDescription,
       assignToUserId,
       dueDate,
@@ -445,18 +447,11 @@ class APIClient {
     return data;
   }
 
-  async generateTrackingCode(approvalId: string, deptCode?: string, category?: string) {
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/generate-tracking-code`, {
-      deptCode,
-      category,
-    });
-    return data;
-  }
-
-  async qaFinalRelease(approvalId: string, deptCode?: string, category?: string, releaseNotes?: string) {
+  async qaFinalRelease(approvalId: string, trackingCode?: string, deptCodeOverride?: string, categoryOverride?: string, releaseNotes?: string) {
     const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-final-release`, {
-      deptCode,
-      category,
+      trackingCode,
+      deptCodeOverride,
+      categoryOverride,
       releaseNotes,
     });
     return data;

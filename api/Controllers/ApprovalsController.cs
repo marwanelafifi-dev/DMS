@@ -3,13 +3,55 @@ using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 
 namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/approvals")]
-public class ApprovalsController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService) : BaseController
+public class ApprovalsController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService, MinioService minioService) : BaseController
 {
+    /// <summary>
+    /// Every document in the approval batch must belong to a folder where the
+    /// current user's effective role grants the given permission (Approve/Reject) —
+    /// mirrors the same per-folder-role check SubmitForApproval already used.
+    /// </summary>
+    private async Task<bool> CurrentUserHasApprovalPermissionAsync(Guid approvalId, Guid userId, Func<DmsRolePermission, bool> selector)
+    {
+        var folderIds = await context.ApprovalDocuments
+            .Where(ad => ad.ApprovalId == approvalId)
+            .Join(context.Documents, ad => ad.DocumentId, d => d.DocumentId, (ad, d) => d.FolderId)
+            .Distinct()
+            .ToListAsync();
+
+        foreach (var folderId in folderIds)
+        {
+            var effectiveRole = await GetEffectiveRoleAsync(context, userId, folderId);
+            if (!await HasRolePermissionAsync(context, effectiveRole, selector))
+                return false;
+        }
+
+        return true;
+    }
+
+    private async Task<string> GenerateTrackingCodeAsync(DmsDocument document, string? deptOverride, string? categoryOverride)
+    {
+        static string Shorten(string? raw, string fallback)
+        {
+            var cleaned = new string((raw ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+            if (cleaned.Length == 0) return fallback;
+            return cleaned.Length > 4 ? cleaned[..4] : cleaned;
+        }
+
+        var deptCode = Shorten(deptOverride ?? document.Department, "GEN");
+        var catCode = Shorten(categoryOverride ?? document.Category, "DOC");
+        var year = DateTime.UtcNow.Year;
+        var prefix = $"{deptCode}-{year}-{catCode}-";
+
+        var existingCount = await context.Documents.CountAsync(d => d.TrackingCode != null && d.TrackingCode.StartsWith(prefix));
+        return $"{prefix}{(existingCount + 1):D4}";
+    }
+
     /// <summary>
     /// Submit documents for approval batch (C-Doc Stage 1)
     /// </summary>
@@ -93,6 +135,62 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     approval.CurrentStage,
                     approval.Status,
                     documentIds = approval.Documents.Select(ad => ad.DocumentId),
+                },
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Get full detail for a single approval batch (used by the review modal)
+    /// </summary>
+    [HttpGet("{approvalId}")]
+    public async Task<ActionResult<object>> GetApprovalAsync(Guid approvalId)
+    {
+        try
+        {
+            var approval = await context.Approvals
+                .Include(a => a.CreatedByUser)
+                .Include(a => a.Documents).ThenInclude(ad => ad.Document).ThenInclude(d => d!.Owner)
+                .Include(a => a.Documents).ThenInclude(ad => ad.Version)
+                .FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+
+            if (approval == null)
+                return NotFound(new { success = false, error = "Approval not found" });
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    approval.ApprovalId,
+                    approval.CreatedBy,
+                    createdByUserName = approval.CreatedByUser?.FullName,
+                    approval.CreatedAt,
+                    approval.CurrentStage,
+                    approval.Status,
+                    approval.QaNotes,
+                    approval.ManagerNotes,
+                    approval.TrackingCode,
+                    approval.ReleaseNotes,
+                    documents = approval.Documents.Select(ad => new
+                    {
+                        ad.DocumentId,
+                        ad.VersionId,
+                        fileName = ad.Version?.FileName ?? ad.Document?.Title ?? "Untitled document",
+                        ownerName = ad.Document?.Owner?.FullName ?? "Unknown owner",
+                        department = ad.Document?.Department,
+                        category = ad.Document?.Category,
+                        originalDocumentId = ad.Document?.OriginalDocumentId,
+                        trackingCode = ad.Document?.TrackingCode,
+                        status = ad.Document?.Status,
+                        versionNumber = ad.Version?.VersionNumber,
+                        fileSizeBytes = ad.Version?.FileSizeBytes,
+                        sha256Hash = ad.Version?.Sha256Hash,
+                    }),
                 },
             });
         }
@@ -260,6 +358,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approval == null)
                 return NotFound(new { success = false, error = "Approval not found" });
 
+            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Approve))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
+
             if (approval.CurrentStage != "qa_review")
                 return BadRequest(new { success = false, error = "Approval is not in QA review stage" });
 
@@ -307,6 +408,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approval == null)
                 return NotFound(new { success = false, error = "Approval not found" });
 
+            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Reject))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
+
             approval.QaNotes = request.Notes;
             approval.Status = "correction_requested";
 
@@ -334,7 +438,21 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 notes = request.Notes,
             });
 
-            return Ok(new { success = true, data = new { approval, task } });
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    approval.ApprovalId,
+                    approval.CurrentStage,
+                    approval.Status,
+                    approval.QaNotes,
+                    taskId = task.TaskId,
+                    taskTitle = task.Title,
+                    assignedToId = task.AssignedToId,
+                    dueDate = task.DueDate,
+                },
+            });
         }
         catch (Exception ex)
         {
@@ -355,6 +473,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approval == null)
                 return NotFound(new { success = false, error = "Approval not found" });
+
+            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Approve))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
             if (approval.CurrentStage != "manager_review")
                 return BadRequest(new { success = false, error = "Approval is not in manager review stage" });
@@ -403,6 +524,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approval == null)
                 return NotFound(new { success = false, error = "Approval not found" });
 
+            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Reject))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
+
             approval.CurrentStage = "manager_review";
             approval.Status = "correction_requested";
             approval.ManagerNotes = request.RejectionReason;
@@ -431,7 +555,21 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 reason = request.RejectionReason,
             });
 
-            return Ok(new { success = true, data = new { approval, task } });
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    approval.ApprovalId,
+                    approval.CurrentStage,
+                    approval.Status,
+                    approval.ManagerNotes,
+                    taskId = task.TaskId,
+                    taskTitle = task.Title,
+                    assignedToId = task.AssignedToId,
+                    dueDate = task.DueDate,
+                },
+            });
         }
         catch (Exception ex)
         {
@@ -440,7 +578,118 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     }
 
     /// <summary>
-    /// QA Final Release - Generate tracking code and release document
+    /// Manager Self-Correction (PRD Option 2) - the manager uploads the fixed
+    /// file directly instead of routing a correction task back to the team
+    /// member. Bumps the document's minor version and sends the batch straight
+    /// to Final Release, bypassing Stage 2's normal manager-approve step.
+    /// Only supported for single-document batches — a multi-document batch
+    /// can't unambiguously say which document the uploaded file replaces, so
+    /// those must go through the correction-task path instead.
+    /// </summary>
+    [HttpPost("{approvalId}/manager-self-correct")]
+    public async Task<ActionResult<object>> ManagerSelfCorrectAsync(Guid approvalId, IFormFile file, [FromForm] string rejectionReason)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { success = false, error = "File is required" });
+
+            var userId = GetCurrentUserId();
+            var approval = await context.Approvals
+                .Include(a => a.Documents)
+                .FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+
+            if (approval == null)
+                return NotFound(new { success = false, error = "Approval not found" });
+
+            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Reject))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
+
+            if (approval.CurrentStage != "manager_review")
+                return BadRequest(new { success = false, error = "Approval is not in manager review stage" });
+
+            if (approval.Documents.Count != 1)
+                return BadRequest(new { success = false, error = "Self-correction only supports single-document batches — use a correction task for multi-document batches" });
+
+            var approvalDocument = approval.Documents.First();
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == approvalDocument.DocumentId);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            var currentVersion = await context.DocumentVersions.FindAsync(approvalDocument.VersionId);
+
+            string sha256Hash;
+            using (var sha256 = SHA256.Create())
+            {
+                var hash = await sha256.ComputeHashAsync(file.OpenReadStream());
+                sha256Hash = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            }
+            file.OpenReadStream().Seek(0, SeekOrigin.Begin);
+
+            var majorVersion = currentVersion?.MajorVersion ?? 1;
+            var minorVersion = (currentVersion?.MinorVersion ?? 0) + 1;
+
+            var newVersion = new DmsDocumentVersion
+            {
+                VersionId = Guid.NewGuid(),
+                DocumentId = document.DocumentId,
+                VersionNumber = $"{majorVersion}.{minorVersion}",
+                MajorVersion = majorVersion,
+                MinorVersion = minorVersion,
+                FileName = file.FileName,
+                FileSizeBytes = file.Length,
+                MimeType = file.ContentType,
+                Sha256Hash = sha256Hash,
+                Status = "draft",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+
+            var objectKey = $"documents/{document.DocumentId}/{newVersion.VersionId}/{file.FileName}";
+            await minioService.UploadAsync(objectKey, file.OpenReadStream(), file.ContentType ?? "application/octet-stream");
+            newVersion.S3ObjectKey = objectKey;
+
+            context.DocumentVersions.Add(newVersion);
+            document.CurrentVersionId = newVersion.VersionId;
+            document.UpdatedAt = DateTime.UtcNow;
+            approvalDocument.VersionId = newVersion.VersionId;
+
+            approval.CurrentStage = "final_release";
+            approval.Status = "pending";
+            approval.ManagerNotes = rejectionReason;
+
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, "MANAGER_SELF_CORRECTED", new
+            {
+                approvalId = approval.ApprovalId,
+                documentId = document.DocumentId,
+                newVersionId = newVersion.VersionId,
+                versionNumber = newVersion.VersionNumber,
+                reason = rejectionReason,
+            });
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    approval.ApprovalId,
+                    approval.CurrentStage,
+                    approval.Status,
+                    newVersion.VersionId,
+                    newVersion.VersionNumber,
+                },
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// QA Final Release - Generate tracking code(s) and release document(s)
     /// </summary>
     [HttpPost("{approvalId}/qa-final-release")]
     public async Task<ActionResult<object>> QaFinalReleaseAsync(Guid approvalId, [FromBody] FinalReleaseRequest request)
@@ -455,37 +704,54 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approval == null)
                 return NotFound(new { success = false, error = "Approval not found" });
 
+            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Approve))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
+
             if (approval.CurrentStage != "final_release")
                 return BadRequest(new { success = false, error = "Approval is not in final release stage" });
 
-            // Generate tracking code if provided
-            if (!string.IsNullOrEmpty(request.TrackingCode))
-            {
-                approval.TrackingCode = request.TrackingCode;
-            }
-
-            approval.CurrentStage = "released";
-            approval.Status = "approved";
-            approval.ReleaseNotes = request.ReleaseNotes;
-
-            // Update document status to RELEASED
             var documentIds = approval.Documents.Select(d => d.DocumentId).ToList();
             var documents = await context.Documents
                 .Where(d => documentIds.Contains(d.DocumentId))
                 .ToListAsync();
 
+            // Each document gets its own atomic tracking code ([DEPT]-[YEAR]-[CATEGORY]-[SEQ]),
+            // per the PRD's terminal compliance gate — a manually supplied TrackingCode
+            // only applies when the batch is a single document (otherwise it's ambiguous
+            // which document it's meant for, so every document auto-generates its own).
             foreach (var doc in documents)
             {
+                if (!string.IsNullOrWhiteSpace(doc.TrackingCode))
+                    continue;
+
+                doc.TrackingCode = documents.Count == 1 && !string.IsNullOrWhiteSpace(request.TrackingCode)
+                    ? request.TrackingCode!
+                    : await GenerateTrackingCodeAsync(doc, request.DeptCodeOverride, request.CategoryOverride);
+
                 doc.Status = "RELEASED";
             }
 
+            approval.TrackingCode = string.Join(", ", documents.Select(d => d.TrackingCode));
+            approval.CurrentStage = "released";
+            approval.Status = "approved";
+            approval.ReleaseNotes = request.ReleaseNotes;
+
             await context.SaveChangesAsync();
+
+            // The version's SHA-256 hash was captured at upload time; recording it here
+            // ties the permanent hash to the exact moment of release in the WORM-protected
+            // audit ledger (dms_audit_trails rejects UPDATE/DELETE at the DB level).
+            var releasedVersionIds = approval.Documents.Select(ad => ad.VersionId).ToList();
+            var versionHashes = await context.DocumentVersions
+                .Where(v => releasedVersionIds.Contains(v.VersionId))
+                .Select(v => new { v.DocumentId, v.Sha256Hash })
+                .ToListAsync();
 
             await auditService.LogAsync(userId, "QA_FINAL_RELEASE", new
             {
                 approvalId = approval.ApprovalId,
-                trackingCode = approval.TrackingCode,
-                documentCount = documents.Count,
+                releasedDocuments = documents.Select(d => new { d.DocumentId, d.TrackingCode }),
+                sha256Hashes = versionHashes,
             });
 
             return Ok(new
@@ -500,7 +766,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     approval.Status,
                     approval.TrackingCode,
                     approval.ReleaseNotes,
-                    documentIds,
+                    documents = documents.Select(d => new { d.DocumentId, d.TrackingCode }),
                 },
             });
         }
@@ -535,4 +801,4 @@ public record QaActionRequest(string? Notes = null);
 public record QaCorrectionRequest(string TaskTitle, string TaskDescription, Guid AssignToUserId, DateTime DueDate, string? Notes = null);
 public record ManagerActionRequest(string? Notes = null);
 public record ManagerRejectRequest(string RejectionReason, string TaskTitle, string TaskDescription, Guid AssignToUserId, DateTime DueDate);
-public record FinalReleaseRequest(string? TrackingCode = null, string? ReleaseNotes = null);
+public record FinalReleaseRequest(string? TrackingCode = null, string? DeptCodeOverride = null, string? CategoryOverride = null, string? ReleaseNotes = null);

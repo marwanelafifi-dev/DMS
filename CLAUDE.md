@@ -3,13 +3,74 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-08-01
+**Current Date:** 2026-08-02
 
 **Working Directory:** `C:\Users\user\Desktop\DMS`
 
 **Active Branch:** `Main`
 
-**Status:** Session 23 — full RBAC/ACL redesign: split global page-access roles from per-folder role grants from a new File/Folder Permission override (ACL) system; fixed a critical multi-user checkout-lock bypass; rebuilt the folder tree as a real expandable hierarchy; found and fixed a real permission-bypass bug where denied Delete/Rename actions could still execute from the folder tree's own context menu; added Delete as an override action at both folder and file scope; and gated every Document Library / folder-tree action button on the user's actual resolved permissions instead of only erroring after the click. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 24 — full local Docker rebuild from `origin/Main` (RBAC/ACL redesign + Google Sign-In + preview fixes all pulled in), fixed two post-rebuild migration/runtime bugs (missing `avatar_url` column, RBAC double-invocation-era columns never applied to the existing volume), then rebuilt the C-Doc Workflow's "Review" screen from a non-functional stub into a real inline modal, completed every stage of the approval workflow per the PRD (manager self-correction, atomic tracking-code generation, per-document SHA-256 hash logging), and fixed the Document ID auto-detection pipeline end-to-end (extraction regex, upload-time field visibility, First Review resolution UI). **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 24 (2026-08-02) — Docker Rebuild, C-Doc Review Modal Rebuilt, Document ID Auto-Detection Fixed
+
+**Status:** ✅ Complete — every backend endpoint verified against the live running API with real curl round-trips (not just compiled), every frontend change verified with a clean `docker compose build web`.
+
+**Context:** Session started from a fresh `docker compose down` + rebuild request to pick up several prior sessions' work (`main` branch pull) that had never actually been run locally. That surfaced two real environment bugs before any feature work could start. The user then reported the C-Doc Workflow's "Review" button opening what looked like an empty page with just Approve/Reject buttons and no document detail — investigation found the component behind it had never been finished. Finally, the user reported a real Document ID extraction failure on a test file, which led to fixing the underlying regex and completing the upload→First-Review Document ID pipeline the PRD calls for.
+
+### 1. Post-rebuild environment bugs (found via live login attempts, not assumed)
+- **Missing `avatar_url` column**: `POST /api/auth/login` threw `42703: column d.avatar_url does not exist`. The already-existing Postgres volume predated migration `030_add_avatar_url.sql` (and eleven more after it — `031`–`042`, covering global user roles, heartbeat timezone fix, the full role-permission-flags redesign, and the entire File/Folder Permission override system). Postgres only auto-runs `infra/db/init/*.sql` on a brand-new empty volume — applied all twelve manually against the running container.
+- Root-caused via `docker compose logs api`, not guesswork — same lesson as prior sessions' "check for a real migration gap before assuming the code is wrong."
+
+### 2. C-Doc Workflow "Review" screen — was a non-functional stub, rebuilt as a real modal
+Investigation found `ApprovalDetailView.tsx` had never actually been finished: it loaded nothing, and its Approve/Reject buttons only called `onChanged()`/`onClose()` with a `// Call appropriate approval API` comment — no request was ever sent. This explains the "blank page with two buttons" the user saw.
+
+Rebuilt from scratch as a modal overlay (`fixed inset-0` on top of the queue table, which stays visible/dimmed behind it — the queue list is no longer swapped out and replaced, per explicit user request: "لما ادوس review مش يفتح بيدج جديده... عايزهم يظهرو علي الشاشه علطول"). The modal is fully stage-aware and wired to real endpoints:
+- **QA Review (Stage 1):** Accept & Send to Manager, or Request Correction (creates a real task).
+- **Manager Review (Stage 2):** Approve, Reject with a correction task, or **Reject — Fix It Myself** (PRD Option 2: manager uploads the corrected file directly in the modal, bypassing Stage 2 entirely).
+- **Final Release (Stage 3):** generates a real atomic tracking code and releases.
+
+### 3. Backend gaps found and closed while wiring the modal
+The frontend's `api.ts` already had method stubs for several of these actions from an earlier, never-finished pass — comparing them against the actual `ApprovalsController.cs` (which had been recreated from scratch in a prior session per that session's notes) turned up real mismatches and missing endpoints:
+- `GET /approvals/{id}` (single approval detail, needed by the modal) — **didn't exist at all.** Added it.
+- `POST /approvals/{id}/manager-self-correct` (PRD Option 2) — **didn't exist at all.** Added it: computes SHA-256, uploads to MinIO, bumps the document's minor version (`1.0` → `1.1`), and moves the batch straight to `final_release`, skipping Stage 2 — exactly as the PRD describes. Only supported for single-document batches (multi-document self-correction is ambiguous about which file the upload replaces).
+- `POST /approvals/{id}/manager-reject` — frontend was calling `/manager-reject-correction-task`, a route that never existed; fixed to call the real route.
+- `POST /approvals/{id}/qa-request-correction` — frontend was sending `qaNotesComments` where the backend expected `taskTitle`/`notes` as separate fields; aligned both sides.
+- **Final release tracking codes were batch-wide, not per-document.** The PRD calls for each document to get its own atomic `[DEPT]-[YEAR]-[CATEGORY]-[SEQ]` code. Rewrote `qa-final-release` to generate one per document (falling back to the document's own `Department`/`Category`, with optional override params), with a manually-supplied code only honored for true single-document batches.
+- **Real security bug found and fixed:** `qa-request-correction` and `manager-reject` were both returning the raw EF `DmsApproval`/`DmsTask` entity graph in the JSON response — which, through the `CreatedByUser`/`AssignedTo` navigation properties, serialized the affected users' **password hashes** straight into the API response. Verified live with a real request before and after the fix. Replaced both with hand-built DTOs.
+- **Real LINQ bug found and fixed:** the new per-document SHA-256 audit logging in `qa-final-release` referenced `approval.Documents` (an in-memory collection) inside an EF Core query against `DocumentVersions`, which EF can't translate to SQL (`could not be translated` at runtime, confirmed live — the release itself had already committed by the time the exception hit, so the first live test partially succeeded before the fix). Fixed by materializing the version-ID list client-side first.
+- Added role-permission gating (`Approve`/`Reject` flags, same per-folder-role pattern used by `SubmitForApproval`) to every stage-transition endpoint — the recreated controller had shipped with zero authorization checks on any of them.
+
+Verified the entire chain live end-to-end with real curl requests against the running API: QA Accept → Manager Approve → Final Release generated `QUAL-2026-POLI-0001`; a separate batch through Manager Self-Correct → Final Release generated `QUAL-2026-POLI-0002` (sequence correctly incremented within the same dept/year/category prefix).
+
+### 4. Dead code found and removed
+`QaDecisionModal.tsx` — a fully-built, never-wired-in component from an earlier session that already implemented the Document ID resolution UI for QA review (extract/type/generate) — was defined but had zero references anywhere in the app. Its Document-ID logic was ported into the new `ApprovalDetailView.tsx` (see below) and the dead file deleted rather than left to rot.
+
+### 5. Document ID — upload-time visibility and auto-detection, per explicit spec
+User's requirement, stated twice with a real failing test file (`ID : SWS-1000001`) the second time:
+- **No one sees a Document ID field at upload time — not even Admin.** An earlier pass in this same session had added an Admin-only field back in; the user explicitly reversed that ("مش عايز خانه document id تبان في ال uplaod") — removed it again, along with the now-dead `uploadOriginalDocumentId`/`canSetDocIdOnUpload` state and the folder-permission fetch that only existed to compute it.
+- **Auto-detection runs on every upload, unconditionally**, scanning the file's own Docling-parsed text for a "Doc ID"/"Doc No" label (`DocIdExtractor.cs`) and awaited (not fire-and-forget) so the ID is already set by the time QA opens First Review.
+- **Real extraction bug found and fixed:** the regex only matched labels with a "Doc"/"Document" prefix ("Doc No.:", "Document ID:"), so a file whose ID line just read `ID : SWS-1000001` (no "Doc" prefix) was never detected — reproduced with the user's exact file content. Extended the regex to also match a bare `ID` label, but only when immediately followed by `:` or `|` (not just whitespace), so ordinary prose containing the word "id" doesn't false-positive. Verified live: the bare-`ID` file now extracts `SWS-1000001`; the original `Doc No.:` format still extracts correctly (regression check); and a plain sentence containing the word "id" correctly extracts nothing.
+- **First Review (QA) always shows the Document ID resolution panel**, for every document in the batch, regardless of whether auto-detection found one — matching the explicit requirement that QA can review/correct an auto-detected ID, not just fill in a missing one. Ported from the deleted `QaDecisionModal.tsx` into the new `ApprovalDetailView.tsx`: each document row shows Save/Correct (manual entry) and Generate from System (re-scans the file, falling back to a sequential `SWS-{n}` if nothing is found) side by side, and the Accept button is disabled until every document in the batch has a resolved ID.
+
+### Files created
+(none — all changes were to existing files)
+
+### Files modified
+`api/Controllers/ApprovalsController.cs`, `api/Services/DocIdExtractor.cs`, `web/src/components/custom/ApprovalDetailView.tsx`, `web/src/components/pages/{Approvals,Documents}.tsx`, `web/src/utils/api.ts`
+
+### Files deleted
+`web/src/components/custom/QaDecisionModal.tsx` (dead code, logic ported into `ApprovalDetailView.tsx`)
+
+### Verification
+- `docker compose build api` / `build web` clean after every change; all 6 containers rebuilt and confirmed `healthy` repeatedly throughout.
+- Every backend change verified against the **live** running API with real curl requests and a real JWT for the seeded admin account — not just compiled: login, full QA→Manager→Release chain, manager self-correction chain, Document ID extraction (both patterns, plus a false-positive guard), QA manual entry, and system-generated sequential IDs were all exercised against the actual database, not mocked.
+- No automated test suite run this session (backend has none; frontend Vitest suite unchanged by these edits) — all verification was live/manual, consistent with how prior sessions verified permission and workflow changes.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- The non-admin rejection path for setting a Document ID at upload time (`CreateDocument`'s `isAdmin` check) was not re-verified live this session since the only account seeded in this environment is the System Admin — no second, lower-privileged test user existed to exercise the 403 path against. The check itself was not modified.
 
 ---
 

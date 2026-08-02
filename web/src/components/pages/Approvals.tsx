@@ -141,17 +141,6 @@ export function Approvals() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, qaPage, managerPage, releasePage]);
 
-  if (selectedApprovalId) {
-    return (
-      <ApprovalDetailView
-        approvalId={selectedApprovalId}
-        users={allUsers}
-        onClose={() => setSelectedApprovalId(null)}
-        onChanged={refreshAllQueues}
-      />
-    );
-  }
-
   const tabs: Array<{ key: ApprovalTab; label: string; count: number }> = [
     { key: 'qa-queue', label: 'QA Review (Stage 1)', count: qaTotalCount },
     { key: 'manager-queue', label: 'Manager Review (Stage 2)', count: managerTotalCount },
@@ -232,6 +221,15 @@ export function Approvals() {
           onPageChange={setReleasePage}
           actionLabel="Release"
           onAction={setSelectedApprovalId}
+        />
+      )}
+
+      {selectedApprovalId && (
+        <ApprovalDetailView
+          approvalId={selectedApprovalId}
+          users={allUsers}
+          onClose={() => setSelectedApprovalId(null)}
+          onChanged={refreshAllQueues}
         />
       )}
     </div>

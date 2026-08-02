@@ -148,9 +148,7 @@ export function Documents() {
   const [uploadDepartment, setUploadDepartment] = useState('');
   const [uploadCustomDepartment, setUploadCustomDepartment] = useState('');
   const [uploadApprovalNotes, setUploadApprovalNotes] = useState('');
-  const [uploadOriginalDocumentId, setUploadOriginalDocumentId] = useState('');
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [canSetDocIdOnUpload, setCanSetDocIdOnUpload] = useState(false);
   const [myPermissions, setMyPermissions] = useState<RolePermissionFlags | null>(null);
   // Permissions for folders OTHER than the one currently being browsed (e.g.
   // a subfolder shown in the sidebar tree) — fetched lazily the first time
@@ -317,25 +315,13 @@ export function Documents() {
       .catch(() => setAllUsers([]));
   }, []);
 
-  // Document ID at upload time is System Admin only (QA only gets access to it
-  // later, at First Review). This app has no global user role — roles are
-  // granted per folder — so check the current user's role on whichever folder
-  // the upload dialog is currently targeting.
+  // Drives which action buttons (Upload, Rename, Delete) are shown as
+  // disabled instead of only failing with a 403 after the user clicks them.
   useEffect(() => {
     if (!selectedFolderId) {
-      setCanSetDocIdOnUpload(false);
       setMyPermissions(null);
       return;
     }
-    apiClient.getFolderPermissions(selectedFolderId)
-      .then((res) => {
-        const mine = (res.data || []).find((p: any) => p.userId === DEV_USER_ID);
-        setCanSetDocIdOnUpload(mine?.role === 'Admin');
-      })
-      .catch(() => setCanSetDocIdOnUpload(false));
-
-    // Drives which action buttons (Upload, Rename, Delete) are shown as
-    // disabled instead of only failing with a 403 after the user clicks them.
     apiClient.getMyEffectivePermissions(selectedFolderId)
       .then((res) => setMyPermissions(res.data ?? null))
       .catch(() => setMyPermissions(null));
@@ -960,7 +946,6 @@ export function Documents() {
             tags: uploadTagList,
             department: effectiveUploadDepartment,
             category: effectiveUploadCategory,
-            originalDocumentId: canSetDocIdOnUpload && uploadOriginalDocumentId.trim() ? uploadOriginalDocumentId.trim() : undefined,
           });
           const createdDocument = docRes.data;
           if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
@@ -976,11 +961,11 @@ export function Documents() {
             parseErrors.push(`${uploadFile.name}: ${message}`);
           }
 
-          // Auto-extraction (Requirement 2): scan the file's own parsed text for a
-          // "Doc ID"/"Doc No" label. Only attempted when QA/Admin didn't already set
-          // one directly in the upload form above.
-          if (parsedContent && (!canSetDocIdOnUpload || !uploadOriginalDocumentId.trim())) {
-            void apiClient.extractDocId(createdDocument.documentId, parsedContent).catch(() => {});
+          // No one sets a Document ID at upload time — the system scans the file's own
+          // parsed text for a "Doc ID"/"Doc No" label. Awaited (not fire-and-forget) so
+          // the ID is already on the document by the time QA opens First Review.
+          if (parsedContent) {
+            await apiClient.extractDocId(createdDocument.documentId, parsedContent).catch(() => {});
           }
 
           const sourceUrl = URL.createObjectURL(uploadFile);
@@ -1088,7 +1073,6 @@ export function Documents() {
         setUploadDepartment('');
         setUploadCustomDepartment('');
         setUploadApprovalNotes('');
-        setUploadOriginalDocumentId('');
         void refreshServerDocuments(folders);
       }
     } finally {
@@ -1163,7 +1147,6 @@ export function Documents() {
     setUploadDepartment('');
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
-    setUploadOriginalDocumentId('');
   };
 
   return (
@@ -1549,7 +1532,9 @@ export function Documents() {
                 </select>
               </div>
 
-              {/* Document ID hidden for now - auto-detection enabled by default */}
+              {/* No Document ID field here at all, for anyone including Admin — the system
+                  auto-detects it from the file's own content on upload (see extractDocId
+                  below), and QA/Admin resolve or review it afterward at First Review. */}
 
               <div className="space-y-2">
                 <label htmlFor="upload-approval-notes" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
