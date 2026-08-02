@@ -14,8 +14,12 @@ public static partial class DocIdExtractor
     // punctuation characters (".:") rather than a single colon — the separator here
     // allows any mix of punctuation, whitespace, and "|" between the two.
     // Captures IDs like SWS-13100002, QM-2026-0042, ABC-123
+    //
+    // Also matches a bare "ID :" label with no "Doc"/"Document" prefix (e.g. a plain
+    // "ID : SWS-1000001" line) — but only when followed immediately by ":" or "|"
+    // (not just whitespace), so a stray word "id" in ordinary prose can't misfire.
     [GeneratedRegex(
-        @"doc(?:ument)?\.?\s*(?:no|id)\.?\s*[:\-\|\s]*([A-Za-z0-9][A-Za-z0-9\-\./]{2,40})",
+        @"(?:doc(?:ument)?\.?\s*(?:no|id)\.?\s*[:\-\|\s]*|\bid\b\s*[:\|]\s*)([A-Za-z0-9][A-Za-z0-9\-\./]{2,40})",
         RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex DocIdPattern();
 
