@@ -107,7 +107,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         }
     }
 
-    public async Task<TaskResult> CompleteTaskAsync(Guid taskId, Guid userId, string? comment = null)
+    public async Task<TaskResult> CompleteTaskAsync(Guid taskId, Guid userId, string? comment = null, bool canManageAllTasks = false)
     {
         try
         {
@@ -116,7 +116,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
             if (task == null)
                 return TaskResult.NotFound("Task not found");
 
-            if (task.AssignedToId != userId)
+            if (task.AssignedToId != userId && !canManageAllTasks)
                 return TaskResult.Forbidden("Only assigned user can complete this task");
 
             if (task.Status == "completed")

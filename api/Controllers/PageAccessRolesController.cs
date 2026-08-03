@@ -67,6 +67,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanEditFiles = req.CanEditFiles,
                 CanManageFolderPermissions = req.CanManageFolderPermissions,
                 CanManageFilePermissions = req.CanManageFilePermissions,
+                CanManageAllTasks = req.CanManageAllTasks,
+                CanCreateTasks = req.CanCreateTasks,
                 UpdatedAt = DateTime.UtcNow,
             };
 
@@ -105,6 +107,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanEditFiles = req.CanEditFiles;
             entity.CanManageFolderPermissions = req.CanManageFolderPermissions;
             entity.CanManageFilePermissions = req.CanManageFilePermissions;
+            entity.CanManageAllTasks = req.CanManageAllTasks;
+            entity.CanCreateTasks = req.CanCreateTasks;
             entity.UpdatedAt = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
@@ -157,10 +161,12 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
 public record UpdatePageAccessRoleRequest(
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
-    bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false);
+    bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
+    bool CanManageAllTasks = false, bool CanCreateTasks = false);
 
 public record CreatePageAccessRoleRequest(
     string Role,
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
-    bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false);
+    bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
+    bool CanManageAllTasks = false, bool CanCreateTasks = false);

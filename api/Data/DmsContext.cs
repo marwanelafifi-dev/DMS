@@ -35,6 +35,7 @@ public class DmsContext : DbContext
     public DbSet<DmsPageAccessRole> PageAccessRoles => Set<DmsPageAccessRole>();
     public DbSet<DmsDropdownItem> DropdownItems => Set<DmsDropdownItem>();
     public DbSet<DmsNotification> Notifications => Set<DmsNotification>();
+    public DbSet<DmsTaskAttachment> TaskAttachments => Set<DmsTaskAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -99,6 +100,8 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsPageAccessRole>().ToTable("dms_page_access_roles").HasKey(r => r.Role);
         modelBuilder.Entity<DmsDropdownItem>().ToTable("dms_dropdown_items").HasKey(i => i.ItemId);
         modelBuilder.Entity<DmsNotification>().ToTable("dms_notifications").HasKey(n => n.NotificationId);
+        modelBuilder.Entity<DmsTaskAttachment>().ToTable("dms_task_attachments").HasKey(a => a.AttachmentId);
+        modelBuilder.Entity<DmsTaskAttachment>().HasOne(a => a.UploadedByUser).WithMany().HasForeignKey(a => a.UploadedBy);
         modelBuilder.Entity<DmsApproval>().ToTable("dms_approvals").HasKey(a => a.ApprovalId);
         modelBuilder.Entity<DmsApprovalDocument>().ToTable("dms_approval_documents").HasKey(ad => ad.ApprovalDocumentId);
 

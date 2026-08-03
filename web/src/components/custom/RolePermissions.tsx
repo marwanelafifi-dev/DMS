@@ -15,7 +15,7 @@ import { isBuiltInRole } from '../../utils/roleLabels';
 const PERMISSION_KEYS = [
   'canViewDashboard', 'canViewDocumentLibrary', 'canViewReminders',
   'canViewApprovals', 'canViewPcar', 'canViewAdminPanel', 'bypassFolderPermissions',
-  'canManageFolderPermissions', 'canManageFilePermissions',
+  'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
@@ -27,6 +27,8 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   bypassFolderPermissions: 'Full Access to All Folders',
   canManageFolderPermissions: 'Manage Folder Permissions',
   canManageFilePermissions: 'Manage File Permissions',
+  canManageAllTasks: 'Manage All Tasks / PCARs',
+  canCreateTasks: 'Create New PCAR',
 };
 
 const ROLE_CARD_DESCRIPTIONS: Record<string, string> = {

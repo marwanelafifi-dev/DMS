@@ -24,5 +24,14 @@ public class DmsPageAccessRole
     public bool CanEditFiles { get; set; }
     public bool CanManageFolderPermissions { get; set; }
     public bool CanManageFilePermissions { get; set; }
+    // Blanket ability to edit, complete, or delete ANY task/PCAR — without it,
+    // a user can still open and work on tasks assigned to them, but the
+    // management action icons (edit/complete/delete) on the register table
+    // stay hidden and the API rejects the underlying requests.
+    public bool CanManageAllTasks { get; set; }
+    // Independent from CanManageAllTasks — lets a role see the "New PCAR"
+    // button and assign a task to anyone, without also granting the ability
+    // to edit/complete/delete tasks that already belong to other people.
+    public bool CanCreateTasks { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

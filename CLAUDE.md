@@ -3,13 +3,73 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-08-02
+**Current Date:** 2026-08-03
 
 **Working Directory:** `C:\Users\user\Desktop\DMS`
 
 **Active Branch:** `Main`
 
-**Status:** Session 25 — Document Library table layout hardened (Excel-style click-to-expand cells, dynamic column-width redistribution, header overflow fix), User management extended (role + multi-group assignment on creation, per-user "Manage Groups" action), Document versioning/metadata expanded (required `Version` field, real Edit Document flow reachable from three places, file renaming), a brand-new Edit / Manage-Permissions action pair added to the File/Folder Permission override system (and independently as blanket per-role flags), a full Company Data admin page for managing dropdown lists (Department/Category/Tags) with Excel import/export, and a real per-user Notifications system (approvals, edits, lock/unlock) replacing the previously dead bell icon. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 26 — Task/notification linking fixed (correction tasks now carry a real `DocumentId`/`ManagerId`/`ApprovalId`), a "Linked Document" panel added to PCAR tasks (View/Download/Download for Editing/Upload Updated File), Upload Updated File now resubmits the approval batch back to whichever stage (QA/Manager) requested the correction, document version control (upload-new-version dialog, version history with revert), task attachments, two new independently-grantable PCAR permissions (`Manage All Tasks`, `Create New PCAR`) with full UI/API gating, a searchable document picker for task creation, Document ID enforced unique app-wide, and Tracking Code removed entirely from Final Release per explicit request. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 26 (2026-08-03) — Task/Approval Linking, Version Control, Task Attachments, Granular PCAR Permissions, Doc ID Uniqueness, Tracking Code Removal
+
+**Status:** ✅ Complete — every backend endpoint verified live via curl (including real non-admin test accounts for every new permission check), every frontend change rebuilt and redeployed to the running containers.
+
+**Context:** Another long, screenshot-driven session on the PCAR/Corrective Action and C-Doc Workflow areas — started from "clicking a notification does nothing" and unspooled into task/approval data-model gaps, a full task-attachment and document-version-control feature, and a granular permission split for who can create/manage PCARs.
+
+### 1. Real bug: correction tasks were created with no `DocumentId`, no `ManagerId`, no link back to their approval
+`QaRequestCorrectionAsync`/`ManagerRejectAsync` in `ApprovalsController.cs` built their `DmsTask` from scratch and never set `DocumentId` (so the assignee had no linked file to work on) or `ManagerId` (so `GetMyTasksAsync`'s "tasks I delegated" view silently excluded them). Fixed by `.Include(a => a.Documents)` on the approval fetch and setting both fields, plus a new `ApprovalId` column (migration `052`) so a task can be traced straight back to the approval batch that spawned it — needed for the resubmit flow below. Backfilled the same fields on 4 pre-existing tasks using their original `QA_CORRECTION_REQUESTED` audit-trail entry (`{approvalId, taskId}` metadata) to trace back to the real document.
+
+### 2. Notification click did nothing
+`NotificationsBell.tsx`'s click handler only closed the popover/navigated inside `if (item.taskId)`/`else if (item.documentId)` branches — a notification predating either link (most of them, before fix #1) had neither, so clicking did nothing at all, popover included. Made close+navigate unconditional with a `/tasks` fallback. Added `TaskId` to `DmsNotification` (migration `051`) and `NotificationService.NotifyAsync`'s signature; wired into task-assignment notifications (`CreateTask`, the two correction paths above) and the new resubmit flow (#4).
+
+### 3. Linked Document panel + real click-to-open
+`Tasks.tsx`'s PCAR detail view now shows a "Linked Document" card (View/Download/Download for Editing/Upload Updated File) whenever the focused task has a `documentId` — previously nothing rendered at all if `documentId` was falsy, which is exactly what the old backfilled tasks hit. Clicking any register-table row now loads that task into the focused panel (`selectedTaskId`), not just whatever the auto-picked "critical or first" task happened to be.
+
+### 4. Upload Updated File now actually resubmits for review
+`POST /api/tasks/{id}/resubmit-for-review` (new): when the assignee uploads the corrected file, this flips the originating approval's `Status` back to `pending` at whichever `CurrentStage` (QA or Manager) requested the correction — so it reappears in that reviewer's queue instead of staying stuck at `correction_requested` forever (verified live: a real submit → correction-request → resubmit round-trip put the batch back in the QA queue). Idempotent (a second resubmit on an already-pending approval is rejected). "Submit for approval" (the RCA/root-cause form) is now disabled until this upload has actually happened for tasks with a linked document — closing a real gap where the corrective-action paperwork could be closed out without the file ever being fixed.
+
+### 5. Document version control
+New `UploadNewVersionModal.tsx` (set a version label + edit metadata on upload) and `VersionHistoryModal.tsx` (Review/Download/Revert per version) plus `POST /api/documents/{id}/versions/{versionId}/revert`, which reuses the target version's `S3ObjectKey` — required dropping the `dms_document_versions_s3_object_key_key` unique constraint (migration `049`), since a revert legitimately point two version rows at the same object.
+
+### 6. Task attachments
+Full attachment CRUD on tasks (`dms_task_attachments`, migration `050`) — upload/list/download/delete, stored in MinIO under `tasks/{taskId}/{attachmentId}/{fileName}`. Wired into both the "Create New Task" modal (attach evidence at filing time) and a per-task "Attachments" modal on the register table.
+
+### 7. Two new independently-grantable PCAR permissions
+Per explicit request that a regular user should see and work their *own* assigned PCARs but never manage anyone else's, and that "New PCAR" should be a separately-controllable capability:
+- **`CanManageAllTasks`** (migration `053`) — blanket ability to edit/complete/delete *any* task. Without it, the register table's Actions column, the per-row "Attachments" link, and the "New PCAR" button all disappear entirely (not just disabled) for that role. Enforced server-side too — `PUT /api/tasks/{id}` and `POST /api/tasks/{id}/complete` previously had **zero authorization check at all** (any authenticated user could edit/complete any task via a direct API call); now require `AssignedToId == userId || ManagerId == userId || CanManageAllTasks`.
+- **`CanCreateTasks`** (migration `054`) — split out from the above: lets a role see "New PCAR" and assign it to *anyone*, without also granting edit/delete power over other people's existing tasks. Self-filing a PCAR (assigned to yourself) needs neither flag — `POST /api/tasks` was previously gated behind `AddTask`, a flag on a completely different, orphaned permission table (`dms_role_permissions`) with no editor UI left anywhere in the app, so **no non-Full-Access role could ever create a task at all** until this fix.
+- Both added to the Roles admin editor (`RolePermissions.tsx`) as ordinary checkboxes, off by default except "Full Access".
+- Live-verified all three edges with a real non-admin throwaway test account: self-filed PCAR + attachment succeeds, assigning a task to someone else is rejected, editing/completing someone else's task is rejected, editing/completing your *own* task succeeds.
+
+### 8. Searchable document picker for task creation
+The "Document" field in "Create New Task" was a flat `<select>` of bare titles — replaced with a type-to-filter combobox matching on file name *or* full folder path (`Folder A / Folder B / file.pdf`), built from `GET /api/folders` client-side (no new endpoint needed).
+
+### 9. Document ID uniqueness
+`OriginalDocumentId` ("Doc ID") had no uniqueness check anywhere — manual QA entry, auto-extraction from file content, and system-generation (`SWS-{n}`) could each independently collide with an existing one. Added a case-insensitive DB-level unique index (migration `055`, after nulling out 2 sets of real pre-existing duplicates found in the data — all leftover test documents from this session's own earlier verification passes) plus friendly per-endpoint checks: manual `set-doc-id` rejects with a clear 400, auto-extraction silently skips a colliding guess (leaves it blank for QA to resolve), and `generate-doc-id` loops past any collision as a safety net.
+
+### 10. Tracking Code removed from Final Release
+Per explicit follow-up after explaining the Doc-ID-vs-Tracking-Code distinction — the user decided Tracking Code added no value on top of a now-unique Doc ID and asked for it to be dropped entirely. Removed the `[DEPT]-[YEAR]-[CATEGORY]-[SEQ]` generation (`GenerateTrackingCodeAsync`, now-dead, deleted), the Dept/Category override inputs, and every `TrackingCode` field from the Final Release request/response and the `ApprovalDetailView.tsx` modal. Live-verified a full QA → Manager → Final Release round-trip still completes cleanly with no tracking-code fields anywhere in the response.
+
+### 11. Smaller fixes
+- Removed the "Severity Matrix" card from the PCAR detail view entirely, per explicit request (was previously shown to everyone including Admin).
+
+### Files created
+`web/src/components/custom/{UploadNewVersionModal,VersionHistoryModal,TaskAttachmentsModal}.tsx`, `api/Models/DmsTaskAttachment.cs`, `infra/db/init/049`–`055_*.sql`
+
+### Files modified (highlights)
+`api/Controllers/{ApprovalsController,DocumentsController,TasksController,NotificationsController,PageAccessRolesController}.cs`, `api/Data/DmsContext.cs`, `api/Models/{DmsNotification,DmsPageAccessRole,DmsTask}.cs`, `api/Services/{AuditService,NotificationService,TaskService}.cs`, `web/src/components/custom/{ApprovalDetailView,DocumentPreview,NotificationsBell,RolePermissions}.tsx`, `web/src/components/pages/{Documents,Tasks}.tsx`, `web/src/hooks/usePageAccess.ts`, `web/src/utils/api.ts`
+
+### Verification
+- Every backend change verified against the **live** running API with real curl round-trips, including crafting a real throwaway non-admin test account for every new permission check (self-file + attach succeeds, cross-assign rejected, edit/complete someone else's task rejected, own task succeeds) — not just assumed from code review.
+- `docker compose build --pull=false api web` clean after every change; both containers rebuilt and confirmed `healthy` repeatedly throughout.
+- Migrations `049`–`055` all applied manually to the existing Postgres volume (same "only auto-runs on a brand-new volume" caveat as every prior session).
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- `DmsDocument.TrackingCode` / `DmsApproval.TrackingCode` columns still exist in the schema (harmless, always null going forward) — not dropped, since removing columns is a one-way migration and nothing currently depends on them being gone.
 
 ---
 

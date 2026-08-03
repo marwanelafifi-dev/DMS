@@ -716,24 +716,6 @@ export function Documents() {
     }
   };
 
-  // Uploading a new version becomes the document's current version, which is
-  // what actually releases a lock created by "Download for Editing" — the
-  // checkout is tracked per-version, so once the current version changes the
-  // document reads as checked-in again.
-  const handleUploadNewVersion = async (libraryDocument: MockLibraryDocument, file: File) => {
-    try {
-      const res = await apiClient.uploadDocument(libraryDocument.documentId, file);
-      if (!res.success) {
-        showError(res.error || 'Failed to upload the updated file');
-        return;
-      }
-      showSuccess(`Uploaded the updated file for "${libraryDocument.fileName}" — it is unlocked.`);
-      void refreshServerDocuments(folders);
-    } catch (error: any) {
-      console.error(error);
-      showError(error.response?.data?.error || 'Failed to upload the updated file');
-    }
-  };
 
   const handleDownloadDocument = (docId: string) => {
     const libraryDocument = findLibraryDocument(docId);
@@ -1304,7 +1286,6 @@ export function Documents() {
           onDownload={downloadMockDocument}
           onDownloadForEditing={downloadForEditingDocument}
           onForceUnlock={handleForceUnlock}
-          onUploadNewVersion={handleUploadNewVersion}
           permissions={myPermissions}
           onDocumentUpdated={() => void refreshServerDocuments(folders)}
           onSubmitForApproval={(doc) => {

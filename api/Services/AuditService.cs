@@ -92,6 +92,7 @@ public static class AuditActions
     public const string DOCUMENT_UPDATED = "DOCUMENT_UPDATED";
     public const string DOCUMENT_DELETED = "DOCUMENT_DELETED";
     public const string DOCUMENT_UPLOADED = "DOCUMENT_UPLOADED";
+    public const string DOCUMENT_VERSION_REVERTED = "DOCUMENT_VERSION_REVERTED";
     public const string DOCUMENT_DOWNLOADED = "DOCUMENT_DOWNLOADED";
     public const string DOCUMENT_CHECKOUT = "DOCUMENT_CHECKOUT";
     public const string DOCUMENT_CHECKIN = "DOCUMENT_CHECKIN";
@@ -103,6 +104,8 @@ public static class AuditActions
 
     public const string TASK_COMPLETED = "TASK_COMPLETED";
     public const string CORRECTION_TASK_COMPLETED = "CORRECTION_TASK_COMPLETED";
+    public const string TASK_ATTACHMENT_UPLOADED = "TASK_ATTACHMENT_UPLOADED";
+    public const string TASK_ATTACHMENT_DELETED = "TASK_ATTACHMENT_DELETED";
 
     public const string PERMISSION_GRANTED = "PERMISSION_GRANTED";
     public const string PERMISSION_REVOKED = "PERMISSION_REVOKED";
