@@ -13,6 +13,11 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canViewPcar: false,
   canViewAdminPanel: false,
   bypassFolderPermissions: false,
+  canEditFiles: false,
+  canManageFolderPermissions: false,
+  canManageFilePermissions: false,
+  canManageAllTasks: false,
+  canCreateTasks: false,
 };
 
 // Fetches the current user's page/feature access flags (their global role —

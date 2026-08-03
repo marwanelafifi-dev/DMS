@@ -236,6 +236,9 @@ public class DocumentsController(
                 });
             }
 
+            if (isAdmin && !string.IsNullOrWhiteSpace(req.OriginalDocumentId) && await IsDocIdTakenAsync(req.OriginalDocumentId))
+                return BadRequest(new { success = false, error = $"Document ID \"{req.OriginalDocumentId.Trim()}\" is already used by another document" });
+
             var document = new DmsDocument
             {
                 DocumentId = Guid.NewGuid(),
@@ -309,6 +312,14 @@ public class DocumentsController(
             }
 
             var extracted = DocIdExtractor.Extract(req.Text);
+
+            // A value already used by another document is treated the same as
+            // "nothing found" — this is a low-stakes automatic guess, so rather
+            // than error out, leave the field blank and let QA resolve it
+            // manually (enter a different ID or generate a fresh sequential one).
+            if (extracted != null && await IsDocIdTakenAsync(extracted, id))
+                extracted = null;
+
             if (extracted != null)
             {
                 document.OriginalDocumentId = extracted;
@@ -348,6 +359,9 @@ public class DocumentsController(
 
             var roleCheck = await RequireQaOrAdminAsync(document.FolderId);
             if (roleCheck != null) return roleCheck;
+
+            if (await IsDocIdTakenAsync(req.OriginalDocumentId, id))
+                return BadRequest(new { success = false, error = $"Document ID \"{req.OriginalDocumentId.Trim()}\" is already used by another document" });
 
             document.OriginalDocumentId = req.OriginalDocumentId.Trim();
             document.UpdatedAt = DateTime.UtcNow;
@@ -398,7 +412,17 @@ public class DocumentsController(
                 .DefaultIfEmpty(0)
                 .Max();
 
-            var generated = $"SWS-{lastNumber + 1}";
+            // The sequence is derived from existing SWS-{n} IDs, so it's normally
+            // unique by construction — this loop is just a safety net against a
+            // gap (e.g. a manually-entered non-sequential "SWS-{n}" value, or a
+            // race with a concurrent request) rather than the expected path.
+            var candidateNumber = lastNumber + 1;
+            var generated = $"SWS-{candidateNumber}";
+            while (await IsDocIdTakenAsync(generated, id))
+            {
+                candidateNumber += 1;
+                generated = $"SWS-{candidateNumber}";
+            }
 
             document.OriginalDocumentId = generated;
             document.UpdatedAt = DateTime.UtcNow;
@@ -435,6 +459,19 @@ public class DocumentsController(
         }
 
         return null;
+    }
+
+    // Doc ID must be unique across every document (case-insensitive) — backed by
+    // a DB-level unique index (migration 055) as the hard guarantee; this is the
+    // friendly pre-check so a collision surfaces as a clear 400, not a raw
+    // Postgres constraint-violation exception.
+    private async Task<bool> IsDocIdTakenAsync(string docId, Guid? excludeDocumentId = null)
+    {
+        var normalized = docId.Trim();
+        return await context.Documents.AnyAsync(d =>
+            d.OriginalDocumentId != null &&
+            d.OriginalDocumentId.ToLower() == normalized.ToLower() &&
+            d.DocumentId != excludeDocumentId);
     }
 
     // POST /api/documents/{id}/upload — upload a file
@@ -572,6 +609,104 @@ public class DocumentsController(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error uploading file to document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/documents/{id}/versions/{versionId}/revert — make an older
+    // version current again. This never rewrites or deletes history — it
+    // creates a brand-new version row that reuses the target version's
+    // already-uploaded file (same S3ObjectKey, so no re-upload/copy needed)
+    // and becomes the new current version, exactly like uploading that same
+    // file again would.
+    [HttpPost("{id}/versions/{versionId}/revert")]
+    public async Task<ActionResult<object>> RevertToVersion(Guid id, Guid versionId)
+    {
+        try
+        {
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            var targetVersion = await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == versionId && v.DocumentId == id);
+            if (targetVersion == null)
+                return NotFound(new { success = false, error = "Version not found" });
+
+            if (targetVersion.VersionId == document.CurrentVersionId)
+                return BadRequest(new { success = false, error = "This is already the current version" });
+
+            // Same lock check as uploading a new version — reverting replaces
+            // the current version's content just like a fresh upload would.
+            var userId = GetCurrentUserId();
+            var currentVersion = document.CurrentVersionId.HasValue
+                ? await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId)
+                : null;
+
+            if (currentVersion is { IsCheckedOut: true } && currentVersion.CheckedOutById != userId)
+            {
+                var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+                var roleAllowsForceUnlock = await HasRolePermissionAsync(context, effectiveRole, rp => rp.AdminForceUnlock);
+                if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.Unlock, roleAllowsForceUnlock))
+                    return StatusCode(StatusCodes.Status423Locked, new { success = false, error = "This document is locked for editing by another user — you can't revert until they release it." });
+            }
+
+            var nextMajorVersion = 1 + await context.DocumentVersions
+                .Where(v => v.DocumentId == id)
+                .Select(v => (int?)v.MajorVersion)
+                .MaxAsync() ?? 1;
+
+            var revertedVersion = new DmsDocumentVersion
+            {
+                VersionId = Guid.NewGuid(),
+                DocumentId = id,
+                VersionNumber = $"{nextMajorVersion}.0",
+                VersionLabel = targetVersion.VersionLabel,
+                MajorVersion = nextMajorVersion,
+                MinorVersion = 0,
+                FileName = targetVersion.FileName,
+                FileSizeBytes = targetVersion.FileSizeBytes,
+                MimeType = targetVersion.MimeType,
+                S3ObjectKey = targetVersion.S3ObjectKey,
+                Sha256Hash = targetVersion.Sha256Hash,
+                Status = "draft",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+
+            context.DocumentVersions.Add(revertedVersion);
+            document.CurrentVersionId = revertedVersion.VersionId;
+            document.UpdatedAt = DateTime.UtcNow;
+
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, DOCUMENT_VERSION_REVERTED, new
+            {
+                document.DocumentId,
+                RevertedFromVersionId = targetVersion.VersionId,
+                RevertedFromVersionNumber = targetVersion.VersionNumber,
+                NewVersionId = revertedVersion.VersionId,
+                NewVersionNumber = revertedVersion.VersionNumber,
+            });
+
+            logger.LogInformation("Reverted document {DocumentId} to version {VersionNumber}", id, targetVersion.VersionNumber);
+
+            await notificationService.NotifyDocumentOwnerAsync(id, userId, "Your document was reverted", $"Reverted to version {targetVersion.VersionNumber}.");
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    revertedVersion.VersionId,
+                    revertedVersion.VersionNumber,
+                    revertedVersion.FileName,
+                    revertedVersion.CreatedAt,
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error reverting document {DocumentId} to version {VersionId}", id, versionId);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }

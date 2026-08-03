@@ -1,4 +1,5 @@
 using DMS.Api.Data;
+using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +9,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class TasksController(DmsContext context, TaskService taskService, ILogger<TasksController> logger) : BaseController
+public class TasksController(DmsContext context, TaskService taskService, MinioService minioService, AuditService auditService, NotificationService notificationService, ILogger<TasksController> logger) : BaseController
 {
     // GET /api/tasks — my tasks
     [HttpGet]
@@ -68,6 +69,7 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
                 {
                     task.TaskId,
                     task.DocumentId,
+                    task.ApprovalId,
                     Document = task.Document == null ? null : new { task.Document.DocumentId, task.Document.Title },
                     task.Title,
                     task.Description,
@@ -101,11 +103,18 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
 
             var managerId = GetCurrentUserId();
 
-            // Tasks aren't folder-scoped, so this checks the creator's global
-            // role (dms_users.role) rather than a per-folder grant.
-            var effectiveRole = await GetEffectiveRoleAsync(context, managerId, null);
-            if (!await HasRolePermissionAsync(context, effectiveRole, rp => rp.AddTask))
-                return StatusCode(403, new { success = false, error = "Your role does not have Add Task permission" });
+            // Tasks aren't folder-scoped, so there's no per-folder grant to
+            // check here — anyone who can see the PCAR page can self-file a
+            // PCAR (assign it to themselves). Assigning it to someone ELSE
+            // (the "New PCAR" form lets you pick any assignee) needs either
+            // the dedicated CanCreateTasks flag or the broader
+            // CanManageAllTasks flag (which already implies it).
+            if (req.AssignedToId != managerId)
+            {
+                var pageAccessRole = await GetPageAccessRoleAsync(context, managerId);
+                if (pageAccessRole?.CanCreateTasks != true && pageAccessRole?.CanManageAllTasks != true)
+                    return StatusCode(403, new { success = false, error = "You can only create a PCAR assigned to yourself" });
+            }
 
             var result = await taskService.CreateTaskAsync(
                 managerId,
@@ -132,6 +141,8 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
                 return StatusCode(500, new { success = false, error = "Task was created but its ID was not returned" });
             }
 
+            await notificationService.NotifyAsync(req.AssignedToId, managerId, "New task assigned to you", req.Title, taskId: result.ResourceId.Value);
+
             return CreatedAtAction(nameof(GetTask), new { id = result.ResourceId.Value }, new { success = true, data = result.Data });
         }
         catch (Exception ex)
@@ -148,7 +159,8 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         try
         {
             var userId = GetCurrentUserId();
-            var result = await taskService.CompleteTaskAsync(id, userId, req.Comment);
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            var result = await taskService.CompleteTaskAsync(id, userId, req.Comment, pageAccessRole?.CanManageAllTasks == true);
 
             if (!result.Success)
             {
@@ -176,6 +188,23 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
     {
         try
         {
+            var userId = GetCurrentUserId();
+            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.TaskId == id);
+            if (task == null)
+                return NotFound(new { success = false, error = "Task not found" });
+
+            // The assignee can work their own PCAR (fill in RCA, submit for
+            // approval) and the manager/QA who created it can track/adjust it,
+            // same as GetMyTasksAsync's visibility rule — anyone else needs
+            // the blanket CanManageAllTasks flag (Admin-equivalent).
+            var isOwnTask = task.AssignedToId == userId || task.ManagerId == userId;
+            if (!isOwnTask)
+            {
+                var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+                if (pageAccessRole?.CanManageAllTasks != true)
+                    return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+            }
+
             var result = await taskService.UpdateTaskAsync(
                 id,
                 req.Title,
@@ -238,6 +267,203 @@ public class TasksController(DmsContext context, TaskService taskService, ILogge
         catch (Exception ex)
         {
             logger.LogError(ex, "Error retrieving tasks for document {DocumentId}", documentId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/tasks/{id}/resubmit-for-review — the assignee re-uploaded the
+    // corrected file; send the approval batch that spawned this task back to
+    // whichever stage (QA or Manager) requested the correction, so it
+    // reappears in that reviewer's queue instead of staying stuck.
+    [HttpPost("{id}/resubmit-for-review")]
+    public async Task<ActionResult<object>> ResubmitForReview(Guid id)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == id);
+            if (task == null)
+                return NotFound(new { success = false, error = "Task not found" });
+
+            if (task.AssignedToId != userId)
+                return StatusCode(403, new { success = false, error = "Only the assignee can resubmit this task" });
+
+            if (task.ApprovalId == null)
+                return BadRequest(new { success = false, error = "This task is not linked to an approval workflow" });
+
+            var approval = await context.Approvals.FirstOrDefaultAsync(a => a.ApprovalId == task.ApprovalId.Value);
+            if (approval == null)
+                return NotFound(new { success = false, error = "Linked approval batch not found" });
+
+            if (approval.Status != "correction_requested")
+                return BadRequest(new { success = false, error = "This correction has already been resubmitted" });
+
+            approval.Status = "pending";
+            task.Status = "done";
+            task.CompletedById = userId;
+            task.CompletedAt = DateTime.UtcNow;
+            task.UpdatedAt = DateTime.UtcNow;
+
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, "TASK_CORRECTION_RESUBMITTED", new
+            {
+                TaskId = id,
+                approval.ApprovalId,
+                approval.CurrentStage,
+            });
+
+            if (task.ManagerId.HasValue)
+            {
+                var reviewerLabel = approval.CurrentStage == "manager_review" ? "Manager" : "QA";
+                await notificationService.NotifyAsync(
+                    task.ManagerId.Value,
+                    userId,
+                    $"Correction resubmitted — back in the {reviewerLabel} queue",
+                    task.Title,
+                    documentId: task.DocumentId,
+                    taskId: task.TaskId);
+            }
+
+            return Ok(new
+            {
+                success = true,
+                data = new { approval.ApprovalId, approval.CurrentStage, ApprovalStatus = approval.Status, task.TaskId, TaskStatus = task.Status },
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error resubmitting task {TaskId} for review", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/tasks/{id}/attachments — attach a file to a task
+    [HttpPost("{id}/attachments")]
+    public async Task<ActionResult<object>> UploadAttachment(Guid id, IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { success = false, error = "File is required" });
+
+            var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == id);
+            if (task == null)
+                return NotFound(new { success = false, error = "Task not found" });
+
+            var userId = GetCurrentUserId();
+            var attachment = new DmsTaskAttachment
+            {
+                AttachmentId = Guid.NewGuid(),
+                TaskId = id,
+                FileName = file.FileName,
+                FileSizeBytes = file.Length,
+                MimeType = file.ContentType,
+                UploadedBy = userId,
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            var objectKey = $"tasks/{id}/{attachment.AttachmentId}/{file.FileName}";
+            await minioService.UploadAsync(objectKey, file.OpenReadStream(), file.ContentType ?? "application/octet-stream");
+            attachment.S3ObjectKey = objectKey;
+
+            context.TaskAttachments.Add(attachment);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, TASK_ATTACHMENT_UPLOADED, new { TaskId = id, attachment.AttachmentId, attachment.FileName });
+
+            return Ok(new
+            {
+                success = true,
+                data = new { attachment.AttachmentId, attachment.FileName, attachment.FileSizeBytes, attachment.MimeType, attachment.CreatedAt },
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error uploading attachment to task {TaskId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/tasks/{id}/attachments — list attachments on a task
+    [HttpGet("{id}/attachments")]
+    public async Task<ActionResult<object>> GetAttachments(Guid id)
+    {
+        try
+        {
+            var attachments = await context.TaskAttachments
+                .Where(a => a.TaskId == id)
+                .Include(a => a.UploadedByUser)
+                .OrderByDescending(a => a.CreatedAt)
+                .Select(a => new
+                {
+                    a.AttachmentId,
+                    a.FileName,
+                    a.FileSizeBytes,
+                    a.MimeType,
+                    a.CreatedAt,
+                    UploadedByName = a.UploadedByUser!.FullName,
+                })
+                .ToListAsync();
+
+            return Ok(new { success = true, data = attachments, count = attachments.Count });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving attachments for task {TaskId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/tasks/{id}/attachments/{attachmentId}/download
+    [HttpGet("{id}/attachments/{attachmentId}/download")]
+    public async Task<ActionResult> DownloadAttachment(Guid id, Guid attachmentId)
+    {
+        try
+        {
+            var attachment = await context.TaskAttachments.FirstOrDefaultAsync(a => a.AttachmentId == attachmentId && a.TaskId == id);
+            if (attachment == null)
+                return NotFound(new { success = false, error = "Attachment not found" });
+
+            var stream = await minioService.DownloadAsync(attachment.S3ObjectKey);
+            return File(stream, attachment.MimeType ?? "application/octet-stream", attachment.FileName);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error downloading attachment {AttachmentId}", attachmentId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // DELETE /api/tasks/{id}/attachments/{attachmentId}
+    [HttpDelete("{id}/attachments/{attachmentId}")]
+    public async Task<ActionResult<object>> DeleteAttachment(Guid id, Guid attachmentId)
+    {
+        try
+        {
+            var attachment = await context.TaskAttachments.FirstOrDefaultAsync(a => a.AttachmentId == attachmentId && a.TaskId == id);
+            if (attachment == null)
+                return NotFound(new { success = false, error = "Attachment not found" });
+
+            try
+            {
+                await minioService.DeleteAsync(attachment.S3ObjectKey);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", attachment.S3ObjectKey);
+            }
+
+            context.TaskAttachments.Remove(attachment);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(GetCurrentUserId(), TASK_ATTACHMENT_DELETED, new { TaskId = id, AttachmentId = attachmentId, attachment.FileName });
+
+            return Ok(new { success = true, message = "Attachment deleted" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error deleting attachment {AttachmentId}", attachmentId);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }

@@ -15,7 +15,6 @@ interface ApprovalDocument {
   department?: string | null;
   category?: string | null;
   originalDocumentId?: string | null;
-  trackingCode?: string | null;
   status?: string | null;
   versionNumber?: string | null;
   fileSizeBytes?: number | null;
@@ -31,7 +30,6 @@ interface ApprovalDetail {
   status: string;
   qaNotes?: string | null;
   managerNotes?: string | null;
-  trackingCode?: string | null;
   releaseNotes?: string | null;
   documents: ApprovalDocument[];
 }
@@ -80,8 +78,6 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
   const [dueDate, setDueDate] = useState('');
   const [correctionFile, setCorrectionFile] = useState<File | null>(null);
   const [releaseNotes, setReleaseNotes] = useState('');
-  const [deptOverride, setDeptOverride] = useState('');
-  const [categoryOverride, setCategoryOverride] = useState('');
   const [editDocumentId, setEditDocumentId] = useState<string | null>(null);
 
   // First Review (QA) requirement: every document needs a Document ID before
@@ -121,8 +117,6 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
     setDueDate('');
     setCorrectionFile(null);
     setReleaseNotes('');
-    setDeptOverride('');
-    setCategoryOverride('');
     setActionError(null);
   };
 
@@ -235,7 +229,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
     return runAction(() => apiClient.managerSelfCorrect(approvalId, correctionFile, notes || 'Corrected directly by manager'));
   };
 
-  const handleFinalRelease = () => runAction(() => apiClient.qaFinalRelease(approvalId, undefined, deptOverride || undefined, categoryOverride || undefined, releaseNotes || undefined));
+  const handleFinalRelease = () => runAction(() => apiClient.qaFinalRelease(approvalId, releaseNotes || undefined));
 
   const handlePreview = (documentId: string) => navigate(`/documents?preview=${encodeURIComponent(documentId)}`);
   const handleDownload = (documentId: string, versionId: string) => apiClient.downloadDocument(documentId, versionId).catch(() => {});
@@ -326,7 +320,6 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                         {doc.department && <Badge status="default" variant="outline">{doc.department}</Badge>}
                         {doc.category && <Badge status="default" variant="outline">{doc.category}</Badge>}
                         <span title={doc.documentId}>Doc ID: {doc.originalDocumentId || 'Not set'}</span>
-                        {doc.trackingCode && <span className="font-mono">Tracking: {doc.trackingCode}</span>}
                       </div>
                     </CardBody>
                   </Card>
@@ -462,7 +455,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
               {/* ---- Stage 3: Final Release ---- */}
               {approval.currentStage === 'final_release' && mode === 'view' && (
                 <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="w-full">
-                  <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Final Release &amp; Generate Tracking Code
+                  <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Final Release
                 </Button>
               )}
 
@@ -474,20 +467,13 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                   submitLabel="Release Document(s)"
                   isSubmitting={isSubmitting}
                 >
-                  <p className="text-sm text-gray-500 dark:text-slate-400">
-                    A permanent tracking code will be generated automatically for each document unless a department/category override is provided below.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <TextField label="Dept code override (optional)" value={deptOverride} onChange={setDeptOverride} />
-                    <TextField label="Category override (optional)" value={categoryOverride} onChange={setCategoryOverride} />
-                  </div>
                   <TextAreaField label="Release notes (optional)" value={releaseNotes} onChange={setReleaseNotes} />
                 </DecisionForm>
               )}
 
               {approval.currentStage === 'released' && (
                 <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-300">
-                  Released. Tracking code: <span className="font-mono">{approval.trackingCode}</span>
+                  Released.
                 </div>
               )}
             </>

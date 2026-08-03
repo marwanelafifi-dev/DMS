@@ -5,6 +5,7 @@ public class DmsTask
     public Guid TaskId { get; set; }
     public Guid? WorkflowStepId { get; set; }
     public Guid? DocumentId { get; set; }
+    public Guid? ApprovalId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string TaskType { get; set; } = string.Empty;

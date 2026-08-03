@@ -48,24 +48,6 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             await notificationService.NotifyDocumentOwnerAsync(documentId, actorUserId, title, body);
     }
 
-    private async Task<string> GenerateTrackingCodeAsync(DmsDocument document, string? deptOverride, string? categoryOverride)
-    {
-        static string Shorten(string? raw, string fallback)
-        {
-            var cleaned = new string((raw ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
-            if (cleaned.Length == 0) return fallback;
-            return cleaned.Length > 4 ? cleaned[..4] : cleaned;
-        }
-
-        var deptCode = Shorten(deptOverride ?? document.Department, "GEN");
-        var catCode = Shorten(categoryOverride ?? document.Category, "DOC");
-        var year = DateTime.UtcNow.Year;
-        var prefix = $"{deptCode}-{year}-{catCode}-";
-
-        var existingCount = await context.Documents.CountAsync(d => d.TrackingCode != null && d.TrackingCode.StartsWith(prefix));
-        return $"{prefix}{(existingCount + 1):D4}";
-    }
-
     /// <summary>
     /// Submit documents for approval batch (C-Doc Stage 1)
     /// </summary>
@@ -188,7 +170,6 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     approval.Status,
                     approval.QaNotes,
                     approval.ManagerNotes,
-                    approval.TrackingCode,
                     approval.ReleaseNotes,
                     documents = approval.Documents.Select(ad => new
                     {
@@ -199,7 +180,6 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                         department = ad.Document?.Department,
                         category = ad.Document?.Category,
                         originalDocumentId = ad.Document?.OriginalDocumentId,
-                        trackingCode = ad.Document?.TrackingCode,
                         status = ad.Document?.Status,
                         versionNumber = ad.Version?.VersionNumber,
                         fileSizeBytes = ad.Version?.FileSizeBytes,
@@ -342,7 +322,6 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     a.CreatedAt,
                     a.Status,
                     documentCount = a.Documents.Count,
-                    a.TrackingCode,
                     documents = a.Documents.Select(ToQueueDocument),
                 }),
                 count = approvals.Count,
@@ -419,7 +398,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         try
         {
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals.FindAsync(approvalId);
+            var approval = await context.Approvals.Include(a => a.Documents).FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
 
             if (approval == null)
                 return NotFound(new { success = false, error = "Approval not found" });
@@ -430,13 +409,18 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approval.QaNotes = request.Notes;
             approval.Status = "correction_requested";
 
-            // Create task for the assignee
+            // Create task for the assignee — links to the reviewed document
+            // (the first one for a multi-document batch) so the assignee can
+            // actually see/download/re-upload the file they're being asked to fix.
             var task = new DmsTask
             {
                 TaskId = Guid.NewGuid(),
+                DocumentId = approval.Documents.FirstOrDefault()?.DocumentId,
+                ApprovalId = approval.ApprovalId,
                 Title = request.TaskTitle,
                 Description = request.TaskDescription,
                 AssignedToId = request.AssignToUserId,
+                ManagerId = userId,
                 Status = "open",
                 RiskSeverity = "high",
                 DueDate = request.DueDate,
@@ -446,6 +430,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             context.Tasks.Add(task);
             await context.SaveChangesAsync();
+
+            await notificationService.NotifyAsync(task.AssignedToId, userId, "New correction task assigned to you", task.Title, taskId: task.TaskId);
 
             await auditService.LogAsync(userId, "QA_CORRECTION_REQUESTED", new
             {
@@ -539,7 +525,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         try
         {
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals.FindAsync(approvalId);
+            var approval = await context.Approvals.Include(a => a.Documents).FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
 
             if (approval == null)
                 return NotFound(new { success = false, error = "Approval not found" });
@@ -551,13 +537,18 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approval.Status = "correction_requested";
             approval.ManagerNotes = request.RejectionReason;
 
-            // Create correction task
+            // Create correction task — links to the reviewed document (the
+            // first one for a multi-document batch) so the assignee can
+            // actually see/download/re-upload the file they're being asked to fix.
             var task = new DmsTask
             {
                 TaskId = Guid.NewGuid(),
+                DocumentId = approval.Documents.FirstOrDefault()?.DocumentId,
+                ApprovalId = approval.ApprovalId,
                 Title = request.TaskTitle,
                 Description = request.TaskDescription,
                 AssignedToId = request.AssignToUserId,
+                ManagerId = userId,
                 Status = "open",
                 RiskSeverity = "high",
                 DueDate = request.DueDate,
@@ -567,6 +558,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             context.Tasks.Add(task);
             await context.SaveChangesAsync();
+
+            await notificationService.NotifyAsync(task.AssignedToId, userId, "New correction task assigned to you", task.Title, taskId: task.TaskId);
 
             await auditService.LogAsync(userId, "MANAGER_REJECTED", new
             {
@@ -739,23 +732,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 .Where(d => documentIds.Contains(d.DocumentId))
                 .ToListAsync();
 
-            // Each document gets its own atomic tracking code ([DEPT]-[YEAR]-[CATEGORY]-[SEQ]),
-            // per the PRD's terminal compliance gate — a manually supplied TrackingCode
-            // only applies when the batch is a single document (otherwise it's ambiguous
-            // which document it's meant for, so every document auto-generates its own).
             foreach (var doc in documents)
-            {
-                if (!string.IsNullOrWhiteSpace(doc.TrackingCode))
-                    continue;
-
-                doc.TrackingCode = documents.Count == 1 && !string.IsNullOrWhiteSpace(request.TrackingCode)
-                    ? request.TrackingCode!
-                    : await GenerateTrackingCodeAsync(doc, request.DeptCodeOverride, request.CategoryOverride);
-
                 doc.Status = "RELEASED";
-            }
 
-            approval.TrackingCode = string.Join(", ", documents.Select(d => d.TrackingCode));
             approval.CurrentStage = "released";
             approval.Status = "approved";
             approval.ReleaseNotes = request.ReleaseNotes;
@@ -774,12 +753,12 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             await auditService.LogAsync(userId, "QA_FINAL_RELEASE", new
             {
                 approvalId = approval.ApprovalId,
-                releasedDocuments = documents.Select(d => new { d.DocumentId, d.TrackingCode }),
+                releasedDocuments = documents.Select(d => d.DocumentId),
                 sha256Hashes = versionHashes,
             });
 
             foreach (var released in documents)
-                await notificationService.NotifyDocumentOwnerAsync(released.DocumentId, userId, "Your document was released", $"Tracking code: {released.TrackingCode}");
+                await notificationService.NotifyDocumentOwnerAsync(released.DocumentId, userId, "Your document was released");
 
             return Ok(new
             {
@@ -791,9 +770,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     approval.CreatedAt,
                     approval.CurrentStage,
                     approval.Status,
-                    approval.TrackingCode,
                     approval.ReleaseNotes,
-                    documents = documents.Select(d => new { d.DocumentId, d.TrackingCode }),
+                    documents = documents.Select(d => d.DocumentId),
                 },
             });
         }
@@ -828,4 +806,4 @@ public record QaActionRequest(string? Notes = null);
 public record QaCorrectionRequest(string TaskTitle, string TaskDescription, Guid AssignToUserId, DateTime DueDate, string? Notes = null);
 public record ManagerActionRequest(string? Notes = null);
 public record ManagerRejectRequest(string RejectionReason, string TaskTitle, string TaskDescription, Guid AssignToUserId, DateTime DueDate);
-public record FinalReleaseRequest(string? TrackingCode = null, string? DeptCodeOverride = null, string? CategoryOverride = null, string? ReleaseNotes = null);
+public record FinalReleaseRequest(string? ReleaseNotes = null);

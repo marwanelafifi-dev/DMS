@@ -49,6 +49,8 @@ export interface PageAccessRoleFlags {
   canEditFiles: boolean;
   canManageFolderPermissions: boolean;
   canManageFilePermissions: boolean;
+  canManageAllTasks: boolean;
+  canCreateTasks: boolean;
 }
 
 export interface PageAccessRole extends PageAccessRoleFlags {
@@ -320,6 +322,11 @@ class APIClient {
     return data;
   }
 
+  async revertDocumentVersion(documentId: string, versionId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/versions/${versionId}/revert`);
+    return data;
+  }
+
   async getDocumentFile(documentId: string, versionId: string, signal?: AbortSignal) {
     const response = await this.client.get(`/documents/${documentId}/versions/${versionId}/download`, {
       responseType: 'blob',
@@ -457,11 +464,8 @@ class APIClient {
     return data;
   }
 
-  async qaFinalRelease(approvalId: string, trackingCode?: string, deptCodeOverride?: string, categoryOverride?: string, releaseNotes?: string) {
+  async qaFinalRelease(approvalId: string, releaseNotes?: string) {
     const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-final-release`, {
-      trackingCode,
-      deptCodeOverride,
-      categoryOverride,
       releaseNotes,
     });
     return data;
@@ -493,6 +497,38 @@ class APIClient {
 
   async completeTask(taskId: string) {
     const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`, {});
+    return data;
+  }
+
+  async resubmitTaskForReview(taskId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/resubmit-for-review`, {});
+    return data;
+  }
+
+  async uploadTaskAttachment(taskId: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/attachments`, formData);
+    return data;
+  }
+
+  async getTaskAttachments(taskId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/tasks/${taskId}/attachments`);
+    return data;
+  }
+
+  async downloadTaskAttachment(taskId: string, attachmentId: string, fileName: string) {
+    const response = await this.client.get(`/tasks/${taskId}/attachments/${attachmentId}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async deleteTaskAttachment(taskId: string, attachmentId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/tasks/${taskId}/attachments/${attachmentId}`);
     return data;
   }
 

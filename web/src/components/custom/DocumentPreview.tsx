@@ -5,10 +5,12 @@ import {
   ChevronUp,
   Download,
   FilePen,
+  History,
   Lock,
   PencilLine,
   Printer,
   Search,
+  UploadCloud,
   X,
 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
@@ -20,6 +22,8 @@ import { MarkdownViewer } from './MarkdownViewer';
 import { OcrPanel } from './OcrPanel';
 import { PdfJsViewer, type PdfJsViewerHandle, type PdfMatchInfo } from './PdfJsViewer';
 import { PreviewToolbar } from './PreviewToolbar';
+import { UploadNewVersionModal } from './UploadNewVersionModal';
+import { VersionHistoryModal } from './VersionHistoryModal';
 
 const ZOOM_STEP = 10;
 const MIN_ZOOM = 50;
@@ -129,10 +133,6 @@ interface DocumentPreviewProps {
   onDownloadForEditing?: (document: MockLibraryDocument) => void;
   onSubmitForApproval?: (document: MockLibraryDocument) => void;
   onForceUnlock?: (document: MockLibraryDocument) => void;
-  // Uploading a new version becomes the document's current version, so the
-  // lock (which is tracked per-version) is implicitly released — this is
-  // "upload the updated file to unlock" from the user's perspective.
-  onUploadNewVersion?: (document: MockLibraryDocument, file: File) => void;
   // The current user's effective permission flags for this document's
   // folder — gates Submit for Approval / Download for Editing so those
   // buttons are hidden/disabled instead of only failing after a click.
@@ -177,9 +177,11 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onUploadNewVersion, permissions, onDocumentUpdated }: DocumentPreviewProps) {
+export function DocumentPreview({ document, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, permissions, onDocumentUpdated }: DocumentPreviewProps) {
   const newVersionInputRef = useRef<HTMLInputElement>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(
     document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
   );
@@ -753,114 +755,13 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
   return (
     <div data-testid="document-preview-overlay" className="fixed inset-y-0 right-0 left-0 top-0 z-[70] overflow-hidden lg:left-[286px]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
       <section ref={dialogRef} className="h-screen flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
-        <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+        <header className="flex flex-shrink-0 flex-col gap-2 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <h2 id="document-preview-title" className="text-base font-semibold text-[#283a7a] dark:text-white truncate">{document.fileName}</h2>
               <span className="inline-flex items-center gap-1 rounded bg-[#d8f5e4] px-2 py-0.5 text-xs font-medium text-[#27885a]"><Lock className="h-3 w-3" />View Only</span>
             </div>
-            <div className="mt-2 flex flex-wrap gap-4 text-xs text-[#52627a] dark:text-slate-300">
-              <div className="flex gap-3">
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Type</p>
-                  <p className="uppercase font-semibold text-[#3f8bca]">{document.extension}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Folder</p>
-                  <p className="truncate">{document.folderName}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Size</p>
-                  <p>{formatFileSize(document.fileSize)}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Status</p>
-                  <p><span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></p>
-                </div>
-                {document.versionLabel && (
-                  <div>
-                    <p className="font-medium text-[#34425b] dark:text-slate-200">Version</p>
-                    <p className="truncate">{document.versionLabel}</p>
-                  </div>
-                )}
-                {document.checkoutStatus === 'checked_out' && (
-                  <div>
-                    <p className="font-medium text-[#34425b] dark:text-slate-200">Lock</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded bg-[#fde1e2] px-2 py-0.5 text-xs font-medium text-[#c73c44] dark:bg-red-500/15 dark:text-red-300">
-                        <Lock className="h-3 w-3" /> Locked for editing{document.checkedOutByName ? ` by ${document.checkedOutByName}` : ''}
-                      </span>
-                      {permissions?.upload && onUploadNewVersion && (
-                        <>
-                          <input
-                            ref={newVersionInputRef}
-                            type="file"
-                            className="hidden"
-                            aria-label="Upload updated file"
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) onUploadNewVersion(document, file);
-                              event.target.value = '';
-                            }}
-                          />
-                          <button
-                            onClick={() => newVersionInputRef.current?.click()}
-                            className="text-xs font-medium text-[#3f8bca] underline hover:text-[#2f6f9f]"
-                            title="Uploading the updated file replaces this version and unlocks it"
-                          >
-                            Upload Updated File to Unlock
-                          </button>
-                        </>
-                      )}
-                      {permissions?.adminForceUnlock && onForceUnlock && (
-                        <button
-                          onClick={() => onForceUnlock(document)}
-                          className="text-xs font-medium text-[#3f8bca] underline hover:text-[#2f6f9f]"
-                          title="Unlock this document even though someone else checked it out"
-                        >
-                          Force Unlock
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-3">
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Department</p>
-                  <p className="truncate">{document.department}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Owner</p>
-                  <p className="truncate">{document.owner.fullName}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Created</p>
-                  <p className="whitespace-nowrap">{formatDateTime(document.createdAt)}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Modified</p>
-                  <p className="whitespace-nowrap">{formatDateTime(document.modifiedAt)}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-[#34425b] dark:text-slate-200">Description</p>
-                  <p className="truncate text-[#52627a] dark:text-slate-400">{document.description || '—'}</p>
-                </div>
-                {document.tags && document.tags.length > 0 && (
-                  <div>
-                    <p className="font-medium text-[#34425b] dark:text-slate-200">Tags</p>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {document.tags.slice(0, 2).map((tag) => (
-                        <span key={tag} className="rounded-full bg-[#edf2f8] px-2 py-0.5 text-xs font-medium text-[#52627a] dark:bg-slate-800 dark:text-slate-200">{tag}</span>
-                      ))}
-                      {document.tags.length > 2 && <span className="text-[#52627a] dark:text-slate-300">+{document.tags.length - 2}</span>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
             {isSearchable && (
               <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-[#f7fafc] dark:border-white/10 dark:bg-slate-800">
                 <Search className="ml-2 h-3.5 w-3.5 text-[#8494ac]" />
@@ -937,10 +838,124 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                 <PencilLine className="h-4 w-4" /> Download for Editing
               </button>
             )}
+            <input
+              ref={newVersionInputRef}
+              type="file"
+              className="hidden"
+              aria-label="Upload new version"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) setPendingVersionFile(file);
+                event.target.value = '';
+              }}
+            />
+            {permissions?.upload && (
+              <button
+                onClick={() => newVersionInputRef.current?.click()}
+                className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+                aria-label={`Upload updated file for ${document.fileName}`}
+                title={document.checkoutStatus === 'checked_out' ? 'Uploading the updated file replaces this version and unlocks it' : 'Upload the updated file as a new version'}
+              >
+                <UploadCloud className="h-4 w-4" /> {document.checkoutStatus === 'checked_out' ? 'Upload Updated File to Unlock' : 'Upload Updated File'}
+              </button>
+            )}
+            <button
+              onClick={() => setShowVersionHistory(true)}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              aria-label={`View version history of ${document.fileName}`}
+              title="Version history"
+            >
+              <History className="h-4 w-4" /> History
+            </button>
             <button onClick={() => onDownload(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-xs font-medium text-white hover:bg-[#2f6f9f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download ${document.fileName}`}>
               <Download className="h-4 w-4" /> Download
             </button>
             <button ref={closeButtonRef} onClick={onClose} className="rounded p-2 text-[#718198] hover:bg-[#eef2f7] hover:text-[#283a7a] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label="Close document preview"><X className="h-5 w-5" /></button>
+          </div>
+          </div>
+          <div className="flex flex-wrap gap-4 text-xs text-[#52627a] dark:text-slate-300">
+            <div className="flex flex-wrap gap-3">
+              {document.originalDocumentId && (
+                <div>
+                  <p className="font-medium text-[#34425b] dark:text-slate-200">Doc ID</p>
+                  <p className="truncate font-mono">{document.originalDocumentId}</p>
+                </div>
+              )}
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Type</p>
+                <p className="uppercase font-semibold text-[#3f8bca]">{document.extension}</p>
+              </div>
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Folder</p>
+                <p className="truncate">{document.folderName}</p>
+              </div>
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Size</p>
+                <p>{formatFileSize(document.fileSize)}</p>
+              </div>
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Status</p>
+                <p><span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></p>
+              </div>
+              {document.versionLabel && (
+                <div>
+                  <p className="font-medium text-[#34425b] dark:text-slate-200">Version</p>
+                  <p className="truncate">{document.versionLabel}</p>
+                </div>
+              )}
+              {document.checkoutStatus === 'checked_out' && (
+                <div>
+                  <p className="font-medium text-[#34425b] dark:text-slate-200">Lock</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded bg-[#fde1e2] px-2 py-0.5 text-xs font-medium text-[#c73c44] dark:bg-red-500/15 dark:text-red-300">
+                      <Lock className="h-3 w-3" /> Locked for editing{document.checkedOutByName ? ` by ${document.checkedOutByName}` : ''}
+                    </span>
+                    {permissions?.adminForceUnlock && onForceUnlock && (
+                      <button
+                        onClick={() => onForceUnlock(document)}
+                        className="text-xs font-medium text-[#3f8bca] underline hover:text-[#2f6f9f]"
+                        title="Unlock this document even though someone else checked it out"
+                      >
+                        Force Unlock
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Department</p>
+                <p className="truncate">{document.department}</p>
+              </div>
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Owner</p>
+                <p className="truncate">{document.owner.fullName}</p>
+              </div>
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Created</p>
+                <p className="whitespace-nowrap">{formatDateTime(document.createdAt)}</p>
+              </div>
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Modified</p>
+                <p className="whitespace-nowrap">{formatDateTime(document.modifiedAt)}</p>
+              </div>
+              {document.tags && document.tags.length > 0 && (
+                <div>
+                  <p className="font-medium text-[#34425b] dark:text-slate-200">Tags</p>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {document.tags.slice(0, 2).map((tag) => (
+                      <span key={tag} className="rounded-full bg-[#edf2f8] px-2 py-0.5 text-xs font-medium text-[#52627a] dark:bg-slate-800 dark:text-slate-200">{tag}</span>
+                    ))}
+                    {document.tags.length > 2 && <span className="text-[#52627a] dark:text-slate-300">+{document.tags.length - 2}</span>}
+                  </div>
+                </div>
+              )}
+              <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Description</p>
+                <p className="truncate text-[#52627a] dark:text-slate-400">{document.description || '—'}</p>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -974,6 +989,25 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
           fileName={document.fileName}
           onClose={() => setShowEditModal(false)}
           onSaved={() => onDocumentUpdated?.()}
+        />
+      )}
+
+      {pendingVersionFile && (
+        <UploadNewVersionModal
+          documentId={document.documentId}
+          file={pendingVersionFile}
+          onClose={() => setPendingVersionFile(null)}
+          onUploaded={() => onDocumentUpdated?.()}
+        />
+      )}
+
+      {showVersionHistory && (
+        <VersionHistoryModal
+          documentId={document.documentId}
+          fileName={document.fileName}
+          currentVersionId={document.currentVersionId}
+          onClose={() => setShowVersionHistory(false)}
+          onReverted={() => onDocumentUpdated?.()}
         />
       )}
     </div>

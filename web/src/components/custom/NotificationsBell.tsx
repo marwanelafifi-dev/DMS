@@ -9,6 +9,7 @@ interface NotificationItem {
   title: string;
   body?: string | null;
   documentId?: string | null;
+  taskId?: string | null;
   isRead: boolean;
   createdAt: string;
 }
@@ -68,16 +69,23 @@ export function NotificationsBell() {
   };
 
   const handleNotificationClick = async (item: NotificationItem) => {
+    // Close the popover and navigate unconditionally — a notification from
+    // before task/document links existed has neither ID, and previously that
+    // meant the click silently did nothing (the popover didn't even close).
+    setOpen(false);
+
     if (!item.isRead) {
-      try {
-        await apiClient.markNotificationRead(item.notificationId);
-        setNotifications((prev) => prev.map((n) => n.notificationId === item.notificationId ? { ...n, isRead: true } : n));
-        setUnreadCount((prev) => Math.max(0, prev - 1));
-      } catch { /* non-fatal */ }
+      apiClient.markNotificationRead(item.notificationId).catch(() => {});
+      setNotifications((prev) => prev.map((n) => n.notificationId === item.notificationId ? { ...n, isRead: true } : n));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     }
-    if (item.documentId) {
-      setOpen(false);
+
+    if (item.taskId) {
+      navigate(`/tasks?highlight=${encodeURIComponent(item.taskId)}`);
+    } else if (item.documentId) {
       navigate(`/documents?preview=${encodeURIComponent(item.documentId)}`);
+    } else {
+      navigate('/tasks');
     }
   };
 

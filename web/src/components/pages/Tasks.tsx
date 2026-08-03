@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardBody, Button, Badge } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
-import type { Document, Task } from '../../types';
+import { usePageAccess } from '../../hooks/usePageAccess';
+import type { Document, Folder, Task } from '../../types';
+import { TaskAttachmentsModal } from '../custom/TaskAttachmentsModal';
 
 const PAGE_SIZE = 10;
 
@@ -35,12 +38,25 @@ const PRIORITY_COLORS = {
 
 export function Tasks() {
   const { showSuccess, showError } = useToast();
+  const navigate = useNavigate();
+  const pageAccess = usePageAccess();
+  const canManageAllTasks = pageAccess?.canManageAllTasks ?? false;
+  const canCreateTasks = (pageAccess?.canCreateTasks || pageAccess?.canManageAllTasks) ?? false;
+  const linkedDocFileInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams] = useSearchParams();
+  const highlightTaskId = searchParams.get('highlight');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [fetchedHighlightTask, setFetchedHighlightTask] = useState<Task | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [docSearchQuery, setDocSearchQuery] = useState('');
+  const [showDocDropdown, setShowDocDropdown] = useState(false);
+  const docPickerRef = useRef<HTMLDivElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -57,6 +73,8 @@ export function Tasks() {
     documentId: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newTaskAttachment, setNewTaskAttachment] = useState<File | null>(null);
+  const [attachmentsFor, setAttachmentsFor] = useState<{ taskId: string; title: string } | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<TaskForm>>({});
@@ -104,10 +122,45 @@ export function Tasks() {
     }
   };
 
+  const loadFolders = async () => {
+    try {
+      const res = await apiClient.getFolders();
+      setFolders(res.data || []);
+    } catch {
+      // Folder path is only used to disambiguate documents in the picker —
+      // fall back to flat titles rather than blocking task creation on it.
+    }
+  };
+
+  // "Folder A / Folder B / file.pdf" — lets the picker match on path segments,
+  // not just the file name, and disambiguates same-named files in different folders.
+  const getFolderPath = (folderId?: string): string => {
+    const parts: string[] = [];
+    let current = folders.find((f) => f.folderId === folderId);
+    let guard = 0;
+    while (current && guard < 50) {
+      parts.unshift(current.name);
+      current = current.parentFolderId ? folders.find((f) => f.folderId === current!.parentFolderId) : undefined;
+      guard += 1;
+    }
+    return parts.join(' / ');
+  };
+
+  const getDocumentLabel = (doc: Document) => {
+    const path = getFolderPath(doc.folderId);
+    const name = doc.title || doc.name;
+    return path ? `${path} / ${name}` : name;
+  };
+
+  const filteredDocumentOptions = documents.filter((doc) =>
+    getDocumentLabel(doc).toLowerCase().includes(docSearchQuery.toLowerCase())
+  );
+
   useEffect(() => {
     loadTasks(page);
     loadUsers();
     loadDocuments();
+    loadFolders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -130,7 +183,118 @@ export function Tasks() {
     }).length,
   };
 
-  const focusedPcar = filteredTasks.find((task) => task.priority === 'critical') || filteredTasks[0];
+  const highlightedTask = (highlightTaskId ? tasks.find((task) => task.taskId === highlightTaskId) : undefined) ?? fetchedHighlightTask ?? undefined;
+  const selectedTask = selectedTaskId ? tasks.find((task) => task.taskId === selectedTaskId) : undefined;
+  const getAssignedToId = (task: Task) => (task as any).assignedToId as string | undefined;
+  const getAssignedToName = (task: Task) => {
+    const id = getAssignedToId(task);
+    if (!id) return null;
+    return users.find((u) => u.userId === id)?.fullName ?? null;
+  };
+  // My Tasks list includes both tasks assigned to me AND tasks I delegated
+  // as manager/QA (so I can track them) — but the focused card lets you
+  // *act* on a task (fill in RCA, submit for approval), so it should default
+  // to a task actually assigned to me, not one I merely handed off to someone else.
+  // A row click (selectedTask) always wins next, since that's an explicit choice.
+  const myAssignedTasks = filteredTasks.filter((task) => getAssignedToId(task) === DEV_USER_ID);
+  const focusedPcar = highlightedTask
+    || selectedTask
+    || myAssignedTasks.find((task) => task.priority === 'critical')
+    || myAssignedTasks[0]
+    || filteredTasks.find((task) => task.priority === 'critical')
+    || filteredTasks[0];
+  const focusedPcarIsMine = focusedPcar ? getAssignedToId(focusedPcar) === DEV_USER_ID : true;
+
+  useEffect(() => {
+    if (!showDocDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (docPickerRef.current && !docPickerRef.current.contains(e.target as Node)) {
+        setShowDocDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDocDropdown]);
+
+  // A notification's linked task may be on a different page of the paginated
+  // "My Tasks" list — fetch a wide, unpaginated slice just this once instead
+  // of forcing the whole page to load unpaginated by default.
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    if (tasks.some((t) => t.taskId === highlightTaskId)) return;
+    apiClient.getTasks({ limit: 500 })
+      .then((res) => {
+        const found = (res.data || []).find((t: Task) => t.taskId === highlightTaskId);
+        if (found) setFetchedHighlightTask(found);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightTaskId]);
+  const linkedDocument = focusedPcar?.documentId ? documents.find((d) => d.documentId === focusedPcar.documentId) : undefined;
+
+  const handleViewLinkedDocument = () => {
+    if (!linkedDocument) return;
+    navigate(`/documents?preview=${encodeURIComponent(linkedDocument.documentId)}`);
+  };
+
+  const handleDownloadLinkedDocument = async () => {
+    if (!linkedDocument?.currentVersionId) return;
+    try {
+      await apiClient.downloadDocument(linkedDocument.documentId, linkedDocument.currentVersionId);
+    } catch {
+      showError('Failed to download the linked document');
+    }
+  };
+
+  const handleDownloadLinkedDocumentForEditing = async () => {
+    if (!linkedDocument?.currentVersionId) return;
+    try {
+      await apiClient.checkoutDocument(linkedDocument.documentId, linkedDocument.currentVersionId);
+      await apiClient.downloadDocument(linkedDocument.documentId, linkedDocument.currentVersionId);
+      showSuccess(`"${linkedDocument.fileName}" is locked for you for editing.`);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to check out the linked document');
+    }
+  };
+
+  // A PCAR can't be submitted for approval until the actual corrected file
+  // has been re-uploaded — tracks which task that's already happened for
+  // (keyed by taskId since only one PCAR is focused/worked on at a time).
+  const [correctionUploadedTaskId, setCorrectionUploadedTaskId] = useState<string | null>(null);
+
+  const handleUploadUpdatedLinkedDocument = async (file: File) => {
+    if (!linkedDocument || !focusedPcar) return;
+    try {
+      const res = await apiClient.uploadDocument(linkedDocument.documentId, file);
+      if (!res.success) {
+        showError(res.error || 'Failed to upload the updated file');
+        return;
+      }
+
+      setCorrectionUploadedTaskId(focusedPcar.taskId);
+
+      // If this task came from a QA/Manager correction request, send the
+      // approval batch back to that reviewer's queue. Tasks created the
+      // regular way (not tied to an approval) simply skip this — the
+      // backend rejects it with a 400 we treat as a no-op, not an error.
+      try {
+        const resubmitRes = await apiClient.resubmitTaskForReview(focusedPcar.taskId);
+        if (resubmitRes.success) {
+          showSuccess(`Uploaded the updated file — sent back to ${resubmitRes.data?.currentStage === 'manager_review' ? 'the Manager' : 'QA'} for review.`);
+          loadDocuments();
+          loadTasks();
+          return;
+        }
+      } catch {
+        // not linked to an approval workflow — fall through to the plain upload message
+      }
+
+      showSuccess(`Uploaded the updated file for "${linkedDocument.fileName}".`);
+      loadDocuments();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to upload the updated file');
+    }
+  };
 
   useEffect(() => {
     if (!focusedPcar) return;
@@ -140,7 +304,13 @@ export function Tasks() {
       preventiveAction: '',
       targetDate: focusedPcar.dueDate.slice(0, 10),
     });
+    setCorrectionUploadedTaskId(null);
   }, [focusedPcar?.taskId]);
+
+  // If there's a linked document to fix, the corrected file must actually be
+  // re-uploaded before the PCAR can be submitted — filling in RCA text alone
+  // isn't enough to close out a correction.
+  const needsCorrectionUpload = !!focusedPcar?.documentId && correctionUploadedTaskId !== focusedPcar?.taskId;
 
   const handlePcarSubmit = async () => {
     if (!focusedPcar) return;
@@ -191,7 +361,7 @@ export function Tasks() {
 
     setIsSubmitting(true);
     try {
-      await apiClient.createTask({
+      const res = await apiClient.createTask({
         title: newTask.title,
         description: newTask.description,
         taskType: newTask.taskType,
@@ -200,6 +370,16 @@ export function Tasks() {
         assignedToId: newTask.assignedTo,
         dueDate: newTask.dueDate,
       });
+
+      const newTaskId = res.data?.taskId;
+      if (newTaskId && newTaskAttachment) {
+        try {
+          await apiClient.uploadTaskAttachment(newTaskId, newTaskAttachment);
+        } catch {
+          showError('Task created, but the attachment failed to upload');
+        }
+      }
+
       showSuccess('Task created successfully');
       setShowAddForm(false);
       setNewTask({
@@ -211,6 +391,8 @@ export function Tasks() {
         assignedTo: DEV_USER_ID,
         documentId: '',
       });
+      setNewTaskAttachment(null);
+      setDocSearchQuery('');
       setPage(1);
       loadTasks(1);
     } catch (err: any) {
@@ -300,10 +482,12 @@ export function Tasks() {
           <h1 className="page-heading">PCAR / Corrective Action</h1>
           <p className="page-subtitle">Corrective &amp; preventive action register · {taskStats.total} records</p>
         </div>
-        <Button variant="primary" size="md" onClick={() => setShowAddForm(true)}>
-          <Plus className="w-4 h-4 mr-2 inline" />
-          New PCAR
-        </Button>
+        {canCreateTasks && (
+          <Button variant="primary" size="md" onClick={() => setShowAddForm(true)}>
+            <Plus className="w-4 h-4 mr-2 inline" />
+            New PCAR
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -370,28 +554,69 @@ export function Tasks() {
       </div>
 
       {focusedPcar && (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(290px,1fr)]">
+        <div className={`grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(290px,1fr)] ${highlightedTask && focusedPcar.taskId === highlightedTask.taskId ? 'rounded-lg ring-2 ring-[#3f8bca] ring-offset-2 dark:ring-offset-slate-950' : ''}`}>
           <div className="space-y-4">
             <Card>
               <CardBody className="p-5">
-                <h2 className="section-heading">Issue Description</h2>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="section-heading">Issue Description</h2>
+                  {getAssignedToName(focusedPcar) && (
+                    <span className={`rounded-[4px] px-2 py-1 text-xs font-medium ${focusedPcarIsMine ? 'bg-[#eef4fb] text-[#3f8bca] dark:bg-blue-500/15 dark:text-blue-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>
+                      Assigned to: {getAssignedToName(focusedPcar)}{focusedPcarIsMine ? ' (you)' : ''}
+                    </span>
+                  )}
+                </div>
                 <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
+                {!focusedPcarIsMine && (
+                  <p className="mt-3 rounded-[4px] bg-[#fff8e6] px-3 py-2 text-xs text-[#8a6116] dark:bg-amber-500/10 dark:text-amber-300">
+                    This PCAR is assigned to {getAssignedToName(focusedPcar) ?? 'another user'} — only they can complete the Root Cause Analysis and submit it for approval.
+                  </p>
+                )}
               </CardBody>
             </Card>
+            {focusedPcar.documentId && (
+              <Card>
+                <CardBody className="p-5">
+                  <h2 className="section-heading">Linked Document</h2>
+                  {linkedDocument ? (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="h-4 w-4 flex-shrink-0 text-[#3f8bca]" />
+                        <span className="truncate text-sm font-medium text-[#26334d] dark:text-white">{linkedDocument.fileName}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          ref={linkedDocFileInputRef}
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadUpdatedLinkedDocument(file); e.target.value = ''; }}
+                        />
+                        <Button variant="secondary" size="sm" onClick={handleViewLinkedDocument} leftIcon={<Eye className="h-3.5 w-3.5" />}>View</Button>
+                        <Button variant="secondary" size="sm" onClick={handleDownloadLinkedDocument} leftIcon={<Download className="h-3.5 w-3.5" />}>Download</Button>
+                        <Button variant="secondary" size="sm" onClick={handleDownloadLinkedDocumentForEditing} leftIcon={<PencilLine className="h-3.5 w-3.5" />}>Download for Editing</Button>
+                        <Button variant="secondary" size="sm" onClick={() => linkedDocFileInputRef.current?.click()} leftIcon={<Upload className="h-3.5 w-3.5" />}>Upload Updated File</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-[#94a3b8] dark:text-slate-400">Loading linked document…</p>
+                  )}
+                </CardBody>
+              </Card>
+            )}
             <Card>
               <CardBody className="p-5">
                 <h2 className="section-heading">Root Cause Analysis <span className="text-[#e24c53]">*</span></h2>
                 <p className="mt-2 text-xs text-[#718198] dark:text-slate-400">Mandatory. Minimum 20 characters. Use the 5-Whys method.</p>
-                <textarea className="field-control mt-3 min-h-[116px] w-full py-3" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
+                <textarea disabled={!focusedPcarIsMine} className="field-control mt-3 min-h-[116px] w-full py-3 disabled:cursor-not-allowed disabled:opacity-60" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
                 <div className="mt-2 text-xs text-[#94a3b8] dark:text-slate-400">{pcarDraft.rootCause.trim().length} / 20 min</div>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="space-y-4 p-5">
                 <h2 className="section-heading">Corrective &amp; Preventive Action</h2>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction<input className="field-control mt-2 h-10 w-full" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action<input className="field-control mt-2 h-10 w-full" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date<input type="date" className="field-control mt-2 h-10 w-full" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction<input disabled={!focusedPcarIsMine} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action<input disabled={!focusedPcarIsMine} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date<input disabled={!focusedPcarIsMine} type="date" className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
               </CardBody>
             </Card>
           </div>
@@ -400,25 +625,27 @@ export function Tasks() {
             <div className="flex justify-end"><span className={`rounded-[5px] px-3 py-2 text-sm font-semibold ${focusedPcar.priority === 'critical' ? 'bg-[#fde1e2] text-[#c73c44] dark:bg-red-500/15 dark:text-red-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>Severity: {focusedPcar.priority}</span></div>
             <Card>
               <CardBody className="p-5">
-                <h2 className="section-heading">Severity Matrix</h2>
-                <div className="mt-4 space-y-2 text-sm">
-                  {[
-                    ['Critical', '#e34d55'],
-                    ['Major', '#efb514'],
-                    ['Minor', '#58c993'],
-                  ].map(([label, color]) => (
-                    <div key={label} className={`flex items-center justify-between rounded-[4px] px-2 py-2 ${focusedPcar.priority === label.toLowerCase() ? 'bg-[#fff2f2] dark:bg-red-500/15' : ''}`}><span className="text-[#52627a] dark:text-slate-300">{label}</span><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} /></div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody className="p-5">
                 <h2 className="section-heading">Approvers</h2>
                 <div className="mt-4 space-y-3 text-sm text-[#52627a] dark:text-slate-300"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#efb514]" />QA Lead — pending</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#cbd5e3]" />Plant Manager — waiting</div></div>
               </CardBody>
             </Card>
-            <Button className="w-full" onClick={handlePcarSubmit}>Submit for approval</Button>
+            <Button
+              className="w-full"
+              onClick={handlePcarSubmit}
+              disabled={!focusedPcarIsMine || needsCorrectionUpload}
+              title={
+                !focusedPcarIsMine
+                  ? `Only ${getAssignedToName(focusedPcar) ?? 'the assignee'} can submit this PCAR`
+                  : needsCorrectionUpload
+                    ? 'Upload the corrected file first — see Linked Document above'
+                    : undefined
+              }
+            >
+              Submit for approval
+            </Button>
+            {needsCorrectionUpload && focusedPcarIsMine && (
+              <p className="text-center text-xs text-[#b96a08] dark:text-amber-300">Upload the corrected file above before submitting.</p>
+            )}
           </div>
         </div>
       )}
@@ -484,17 +711,20 @@ export function Tasks() {
               <thead className="bg-gray-100 dark:bg-navy-900 border-b border-gray-200 dark:border-navy-700">
                 <tr>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Title</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Assigned To</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Status</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Priority</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Due Date</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Type</th>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-navy-900 dark:text-white">Actions</th>
+                  {canManageAllTasks && (
+                    <th className="px-6 py-3 text-center text-sm font-semibold text-navy-900 dark:text-white">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={canManageAllTasks ? 7 : 6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                       No tasks found
                     </td>
                   </tr>
@@ -502,9 +732,10 @@ export function Tasks() {
                   filteredTasks.map((task, idx) => (
                     <tr
                       key={task.taskId}
-                      className={`border-b border-gray-200 dark:border-navy-700 ${
+                      onClick={() => setSelectedTaskId(task.taskId)}
+                      className={`cursor-pointer border-b border-gray-200 dark:border-navy-700 ${
                         idx % 2 === 1 ? 'bg-gray-50 dark:bg-slate-900/50' : 'bg-white dark:bg-slate-950'
-                      } hover:bg-gray-100 dark:hover:bg-slate-800/60 transition-colors`}
+                      } hover:bg-gray-100 dark:hover:bg-slate-800/60 transition-colors ${focusedPcar?.taskId === task.taskId ? 'ring-1 ring-inset ring-[#3f8bca]' : ''}`}
                     >
                       <td className="px-6 py-4">
                         {editingId === task.taskId ? (
@@ -520,8 +751,21 @@ export function Tasks() {
                             {task.description && (
                               <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
                             )}
+                            {canManageAllTasks && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setAttachmentsFor({ taskId: task.taskId, title: task.title }); }}
+                                className="mt-1 flex items-center gap-1 text-xs font-medium text-[#3f8bca] hover:text-[#2f6f9f]"
+                              >
+                                <Paperclip className="h-3 w-3" /> Attachments
+                              </button>
+                            )}
                           </div>
                         )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-sm ${getAssignedToId(task) === DEV_USER_ID ? 'font-medium text-[#3f8bca]' : 'text-gray-600 dark:text-gray-400'}`}>
+                          {getAssignedToName(task) ?? '—'}{getAssignedToId(task) === DEV_USER_ID ? ' (you)' : ''}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <Badge status={getStatusBadgeColor(task.status)} variant="outline">
@@ -568,7 +812,8 @@ export function Tasks() {
                       <td className="px-6 py-4">
                         <span className="text-sm text-gray-600 dark:text-gray-400">{task.taskType.replace('_', ' ')}</span>
                       </td>
-                      <td className="px-6 py-4">
+                      {canManageAllTasks && (
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
                           {editingId === task.taskId ? (
                             <>
@@ -618,6 +863,7 @@ export function Tasks() {
                           )}
                         </div>
                       </td>
+                      )}
                     </tr>
                   ))
                 )}
@@ -691,18 +937,42 @@ export function Tasks() {
                 />
               </div>
 
-              <div>
+              <div ref={docPickerRef} className="relative">
                 <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document *</label>
-                <select
-                  value={newTask.documentId || ''}
-                  onChange={(e) => setNewTask({ ...newTask, documentId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
-                >
-                  <option value="">Select a document...</option>
-                  {documents.map(doc => (
-                    <option key={doc.documentId} value={doc.documentId}>{doc.title || doc.name}</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  placeholder="Search by file name or folder path..."
+                  value={docSearchQuery}
+                  onFocus={() => setShowDocDropdown(true)}
+                  onChange={(e) => {
+                    setDocSearchQuery(e.target.value);
+                    setShowDocDropdown(true);
+                    if (newTask.documentId) setNewTask({ ...newTask, documentId: '' });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                {showDocDropdown && (
+                  <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-navy-700 dark:bg-navy-900">
+                    {filteredDocumentOptions.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No matching documents</p>
+                    ) : (
+                      filteredDocumentOptions.map((doc) => (
+                        <button
+                          type="button"
+                          key={doc.documentId}
+                          onClick={() => {
+                            setNewTask({ ...newTask, documentId: doc.documentId });
+                            setDocSearchQuery(getDocumentLabel(doc));
+                            setShowDocDropdown(false);
+                          }}
+                          className="block w-full truncate px-3 py-2 text-left text-sm text-navy-900 hover:bg-gray-100 dark:text-white dark:hover:bg-navy-800"
+                        >
+                          {getDocumentLabel(doc)}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -744,23 +1014,39 @@ export function Tasks() {
                 />
               </div>
 
+              {canCreateTasks ? (
+                <div>
+                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Assigned To</label>
+                  <select
+                    value={newTask.assignedTo}
+                    onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                  >
+                    {users.map(user => (
+                      <option key={user.userId} value={user.userId}>{user.fullName}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-slate-400">This PCAR will be filed under your own name.</p>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Assigned To</label>
-                <select
-                  value={newTask.assignedTo}
-                  onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
-                >
-                  {users.map(user => (
-                    <option key={user.userId} value={user.userId}>{user.fullName}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Attachment</label>
+                <input
+                  type="file"
+                  onChange={(e) => setNewTaskAttachment(e.target.files?.[0] ?? null)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white text-sm"
+                />
+                {newTaskAttachment && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-navy-400">{newTaskAttachment.name}</p>
+                )}
               </div>
 
               <div className="flex gap-2 justify-end pt-4">
                 <Button
                   variant="secondary"
-                  onClick={() => setShowAddForm(false)}
+                  onClick={() => { setShowAddForm(false); setNewTaskAttachment(null); setDocSearchQuery(''); setShowDocDropdown(false); }}
                 >
                   Cancel
                 </Button>
@@ -847,6 +1133,14 @@ export function Tasks() {
             </CardBody>
           </Card>
         </div>
+      )}
+
+      {attachmentsFor && (
+        <TaskAttachmentsModal
+          taskId={attachmentsFor.taskId}
+          taskTitle={attachmentsFor.title}
+          onClose={() => setAttachmentsFor(null)}
+        />
       )}
     </div>
   );
