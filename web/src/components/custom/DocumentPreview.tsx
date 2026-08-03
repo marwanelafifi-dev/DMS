@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  ClipboardList,
   Download,
   FilePen,
   History,
@@ -24,6 +25,7 @@ import { PdfJsViewer, type PdfJsViewerHandle, type PdfMatchInfo } from './PdfJsV
 import { PreviewToolbar } from './PreviewToolbar';
 import { UploadNewVersionModal } from './UploadNewVersionModal';
 import { VersionHistoryModal } from './VersionHistoryModal';
+import { RelatedTasksModal } from './RelatedTasksModal';
 
 const ZOOM_STEP = 10;
 const MIN_ZOOM = 50;
@@ -181,6 +183,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
   const newVersionInputRef = useRef<HTMLInputElement>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showRelatedTasks, setShowRelatedTasks] = useState(false);
   const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(
     document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
@@ -810,7 +813,13 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                 })()}
               </div>
             )}
-            <button onClick={handlePrint} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Print ${document.fileName}`} title="Print">
+            <button
+              onClick={handlePrint}
+              disabled={!permissions?.viewOnly}
+              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Print'}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              aria-label={`Print ${document.fileName}`}
+            >
               <Printer className="h-4 w-4" /> Print
             </button>
             {document.status === 'draft' && onSubmitForApproval && (
@@ -861,13 +870,29 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
             )}
             <button
               onClick={() => setShowVersionHistory(true)}
-              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              disabled={!permissions?.viewOnly}
+              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Version history'}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
               aria-label={`View version history of ${document.fileName}`}
-              title="Version history"
             >
               <History className="h-4 w-4" /> History
             </button>
-            <button onClick={() => onDownload(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-xs font-medium text-white hover:bg-[#2f6f9f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download ${document.fileName}`}>
+            <button
+              onClick={() => setShowRelatedTasks(true)}
+              disabled={!permissions?.viewOnly}
+              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'View every task ever raised against this document'}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              aria-label={`View related tasks for ${document.fileName}`}
+            >
+              <ClipboardList className="h-4 w-4" /> Related Tasks
+            </button>
+            <button
+              onClick={() => onDownload(document)}
+              disabled={!permissions?.downloadReadOnly}
+              title={!permissions?.downloadReadOnly ? 'Your role does not have Download permission' : undefined}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-xs font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              aria-label={`Download ${document.fileName}`}
+            >
               <Download className="h-4 w-4" /> Download
             </button>
             <button ref={closeButtonRef} onClick={onClose} className="rounded p-2 text-[#718198] hover:bg-[#eef2f7] hover:text-[#283a7a] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label="Close document preview"><X className="h-5 w-5" /></button>
@@ -1008,6 +1033,14 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
           currentVersionId={document.currentVersionId}
           onClose={() => setShowVersionHistory(false)}
           onReverted={() => onDocumentUpdated?.()}
+        />
+      )}
+
+      {showRelatedTasks && (
+        <RelatedTasksModal
+          documentId={document.documentId}
+          fileName={document.fileName}
+          onClose={() => setShowRelatedTasks(false)}
         />
       )}
     </div>

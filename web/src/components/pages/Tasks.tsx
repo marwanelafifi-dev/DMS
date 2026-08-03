@@ -17,7 +17,9 @@ interface TaskForm {
   taskType: 'correction' | 'rca' | 'audit_action';
   priority: 'low' | 'medium' | 'high' | 'critical';
   dueDate: string;
+  // Exactly one of assignedTo / assignedToGroupId should be set.
   assignedTo: string;
+  assignedToGroupId: string;
   documentId?: string;
 }
 
@@ -54,6 +56,8 @@ export function Tasks() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [groups, setGroups] = useState<Array<{ groupId: string; name: string }>>([]);
+  const [myGroupIds, setMyGroupIds] = useState<Set<string>>(new Set());
   const [docSearchQuery, setDocSearchQuery] = useState('');
   const [showDocDropdown, setShowDocDropdown] = useState(false);
   const docPickerRef = useRef<HTMLDivElement>(null);
@@ -70,6 +74,7 @@ export function Tasks() {
     priority: 'medium',
     dueDate: '',
     assignedTo: DEV_USER_ID,
+    assignedToGroupId: '',
     documentId: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -110,6 +115,15 @@ export function Tasks() {
       setUsers(res.data || []);
     } catch (err) {
       // Silently fail - users list is just for assignment dropdown
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      const res = await apiClient.getGroups();
+      setGroups(res.data || []);
+    } catch (err) {
+      // Silently fail - groups list is just for assignment dropdown
     }
   };
 
@@ -157,8 +171,15 @@ export function Tasks() {
   );
 
   useEffect(() => {
+    apiClient.getGroupsForUser(DEV_USER_ID)
+      .then((res) => setMyGroupIds(new Set(res.data || [])))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     loadTasks(page);
     loadUsers();
+    loadGroups();
     loadDocuments();
     loadFolders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,8 +207,28 @@ export function Tasks() {
   const highlightedTask = (highlightTaskId ? tasks.find((task) => task.taskId === highlightTaskId) : undefined) ?? fetchedHighlightTask ?? undefined;
   const selectedTask = selectedTaskId ? tasks.find((task) => task.taskId === selectedTaskId) : undefined;
   const getAssignedToId = (task: Task) => (task as any).assignedToId as string | undefined;
+  const getAssignedToGroupId = (task: Task) => (task as any).assignedToGroupId as string | undefined;
+  // "Mine" includes a task assigned directly to me AND one assigned to any
+  // group I'm a member of — a group assignment is one shared task, so any
+  // member should be able to act on it exactly like a direct assignee.
+  const isTaskMine = (task: Task) => {
+    const groupId = getAssignedToGroupId(task);
+    if (groupId) return myGroupIds.has(groupId);
+    return getAssignedToId(task) === DEV_USER_ID;
+  };
+  // Shows the group name for a group-assigned task, or the individual
+  // assignee's name otherwise — a task is never assigned to both.
   const getAssignedToName = (task: Task) => {
+    const groupId = getAssignedToGroupId(task);
+    if (groupId) return groups.find((g) => g.groupId === groupId)?.name ?? task.assignedToGroupName ?? null;
     const id = getAssignedToId(task);
+    if (!id) return null;
+    return users.find((u) => u.userId === id)?.fullName ?? null;
+  };
+  // "assignedBy" is the task's managerId — whoever created/submitted it (a
+  // correction task raised from C-Doc Workflow, a PCAR filed manually, etc.).
+  const getSubmittedByName = (task: Task) => {
+    const id = task.assignedBy;
     if (!id) return null;
     return users.find((u) => u.userId === id)?.fullName ?? null;
   };
@@ -196,14 +237,14 @@ export function Tasks() {
   // *act* on a task (fill in RCA, submit for approval), so it should default
   // to a task actually assigned to me, not one I merely handed off to someone else.
   // A row click (selectedTask) always wins next, since that's an explicit choice.
-  const myAssignedTasks = filteredTasks.filter((task) => getAssignedToId(task) === DEV_USER_ID);
+  const myAssignedTasks = filteredTasks.filter((task) => isTaskMine(task));
   const focusedPcar = highlightedTask
     || selectedTask
     || myAssignedTasks.find((task) => task.priority === 'critical')
     || myAssignedTasks[0]
     || filteredTasks.find((task) => task.priority === 'critical')
     || filteredTasks[0];
-  const focusedPcarIsMine = focusedPcar ? getAssignedToId(focusedPcar) === DEV_USER_ID : true;
+  const focusedPcarIsMine = focusedPcar ? isTaskMine(focusedPcar) : true;
 
   useEffect(() => {
     if (!showDocDropdown) return;
@@ -354,7 +395,7 @@ export function Tasks() {
       showError('Document is required');
       return;
     }
-    if (!newTask.assignedTo) {
+    if (!newTask.assignedTo && !newTask.assignedToGroupId) {
       showError('Assignee is required');
       return;
     }
@@ -367,7 +408,8 @@ export function Tasks() {
         taskType: newTask.taskType,
         riskSeverity: newTask.priority,
         documentId: newTask.documentId,
-        assignedToId: newTask.assignedTo,
+        assignedToId: newTask.assignedToGroupId ? undefined : newTask.assignedTo,
+        assignedToGroupId: newTask.assignedToGroupId || undefined,
         dueDate: newTask.dueDate,
       });
 
@@ -389,6 +431,7 @@ export function Tasks() {
         priority: 'medium',
         dueDate: '',
         assignedTo: DEV_USER_ID,
+        assignedToGroupId: '',
         documentId: '',
       });
       setNewTaskAttachment(null);
@@ -711,6 +754,7 @@ export function Tasks() {
               <thead className="bg-gray-100 dark:bg-navy-900 border-b border-gray-200 dark:border-navy-700">
                 <tr>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Title</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Submitted By</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Assigned To</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Status</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Priority</th>
@@ -724,7 +768,7 @@ export function Tasks() {
               <tbody>
                 {filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={canManageAllTasks ? 7 : 6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={canManageAllTasks ? 8 : 7} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                       No tasks found
                     </td>
                   </tr>
@@ -763,8 +807,13 @@ export function Tasks() {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-sm ${getAssignedToId(task) === DEV_USER_ID ? 'font-medium text-[#3f8bca]' : 'text-gray-600 dark:text-gray-400'}`}>
-                          {getAssignedToName(task) ?? '—'}{getAssignedToId(task) === DEV_USER_ID ? ' (you)' : ''}
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          {getSubmittedByName(task) ?? '—'}{task.assignedBy === DEV_USER_ID ? ' (you)' : ''}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-sm ${isTaskMine(task) ? 'font-medium text-[#3f8bca]' : 'text-gray-600 dark:text-gray-400'}`}>
+                          {getAssignedToName(task) ?? '—'}{isTaskMine(task) ? ' (you)' : ''}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -1018,13 +1067,25 @@ export function Tasks() {
                 <div>
                   <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Assigned To</label>
                   <select
-                    value={newTask.assignedTo}
-                    onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
+                    value={newTask.assignedToGroupId ? `group:${newTask.assignedToGroupId}` : `user:${newTask.assignedTo}`}
+                    onChange={(e) => {
+                      const [kind, id] = e.target.value.split(':');
+                      setNewTask({ ...newTask, assignedTo: kind === 'user' ? id : '', assignedToGroupId: kind === 'group' ? id : '' });
+                    }}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
                   >
-                    {users.map(user => (
-                      <option key={user.userId} value={user.userId}>{user.fullName}</option>
-                    ))}
+                    <optgroup label="Users">
+                      {users.map(user => (
+                        <option key={user.userId} value={`user:${user.userId}`}>{user.fullName}</option>
+                      ))}
+                    </optgroup>
+                    {groups.length > 0 && (
+                      <optgroup label="Groups">
+                        {groups.map(group => (
+                          <option key={group.groupId} value={`group:${group.groupId}`}>{group.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               ) : (

@@ -55,6 +55,8 @@ public class DmsAccessOverride
     public bool? FileEdit { get; set; }
     public bool? ManagePermissions { get; set; }
     public bool? FileManagePermissions { get; set; }
+    public bool? ViewHistory { get; set; }
+    public bool? ViewRelatedTasks { get; set; }
 
     public Guid CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -86,4 +88,6 @@ public static class AccessOverrideActions
     public const string FileEdit = "file_edit";
     public const string ManagePermissions = "manage_permissions";
     public const string FileManagePermissions = "file_manage_permissions";
+    public const string ViewHistory = "view_history";
+    public const string ViewRelatedTasks = "view_related_tasks";
 }

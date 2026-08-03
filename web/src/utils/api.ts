@@ -4,6 +4,14 @@ import type { ApiResponse } from '../types';
 const API_BASE = '/api';
 const TOKEN_STORAGE_KEY = 'dms_session_token';
 
+// A task/PCAR is assigned to exactly one of a User or a Group — a group
+// assignment is one shared task visible to every member, not a fan-out of
+// per-member duplicates. Exactly one of userId/groupId should be set.
+export interface TaskAssignee {
+  userId?: string;
+  groupId?: string;
+}
+
 // Flags for a per-folder permission role (Reader/Writer/Manager/QA/Admin, or
 // a custom one) — what a folder-level grant lets its holder do to content.
 // Returned by GET /api/folders/my-permissions. Distinct from a user's global
@@ -33,6 +41,8 @@ export interface RolePermissionFlags {
   edit: boolean;
   managePermissions: boolean;
   fileManagePermissions: boolean;
+  viewHistory: boolean;
+  viewRelatedTasks: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -51,6 +61,14 @@ export interface PageAccessRoleFlags {
   canManageFilePermissions: boolean;
   canManageAllTasks: boolean;
   canCreateTasks: boolean;
+  // Scopes canViewApprovals down to specific C-Doc Workflow stage tabs.
+  canViewQaStage: boolean;
+  canViewManagerStage: boolean;
+  canViewFinalReleaseStage: boolean;
+  // Whether this role can actually approve/reject a batch, independent of any
+  // per-folder role grant or File/Folder Permission override.
+  canApprove: boolean;
+  canReject: boolean;
 }
 
 export interface PageAccessRole extends PageAccessRoleFlags {
@@ -88,6 +106,8 @@ export interface AccessOverrideFlags {
   fileEdit?: boolean | null;
   managePermissions?: boolean | null;
   fileManagePermissions?: boolean | null;
+  viewHistory?: boolean | null;
+  viewRelatedTasks?: boolean | null;
 }
 
 export interface AccessOverride extends AccessOverrideFlags {
@@ -405,58 +425,63 @@ class APIClient {
     return data;
   }
 
-  async getApproval(approvalId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/approvals/${approvalId}`);
+  // Every action below targets exactly one document within an approval batch —
+  // C-Doc Workflow stage/status is tracked per-document (see
+  // 058_approval_document_stage_tracking.sql), never per-batch, so acting on one
+  // document never touches any other document submitted alongside it.
+  async getApproval(approvalId: string, documentId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}`);
     return data;
   }
 
-  async getApprovalAuditTrail(approvalId: string) {
-    const { data } = await this.client.get<ApiResponse>(`/approvals/${approvalId}/audit-trail`);
-    return data;
-  }
-
-  async qaAcceptApproval(approvalId: string, notes?: string) {
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-accept`, {
+  async qaAcceptApproval(approvalId: string, documentId: string, notes?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}/qa-accept`, {
       notes,
     });
     return data;
   }
 
-  async qaRequestCorrection(approvalId: string, taskTitle: string, taskDescription: string, assignToUserId: string, dueDate: string, notes?: string) {
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-request-correction`, {
+  async qaRequestCorrection(approvalId: string, documentId: string, taskTitle: string, taskDescription: string, assignee: TaskAssignee, dueDate: string, notes?: string, taskType?: string, priority?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}/qa-request-correction`, {
       taskTitle,
       taskDescription,
-      assignToUserId,
+      assignToUserId: assignee.userId,
+      assignToGroupId: assignee.groupId,
       dueDate,
       notes,
+      taskType,
+      priority,
     });
     return data;
   }
 
-  async managerApprove(approvalId: string, notes?: string) {
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-approve`, {
+  async managerApprove(approvalId: string, documentId: string, notes?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}/manager-approve`, {
       notes,
     });
     return data;
   }
 
-  async managerRejectWithCorrection(approvalId: string, rejectionReason: string, taskTitle: string, taskDescription: string, assignToUserId: string, dueDate: string) {
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-reject`, {
+  async managerRejectWithCorrection(approvalId: string, documentId: string, rejectionReason: string, taskTitle: string, taskDescription: string, assignee: TaskAssignee, dueDate: string, taskType?: string, priority?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}/manager-reject`, {
       rejectionReason,
       taskTitle,
       taskDescription,
-      assignToUserId,
+      assignToUserId: assignee.userId,
+      assignToGroupId: assignee.groupId,
       dueDate,
+      taskType,
+      priority,
     });
     return data;
   }
 
-  async managerSelfCorrect(approvalId: string, file: File, rejectionReason: string) {
+  async managerSelfCorrect(approvalId: string, documentId: string, file: File, rejectionReason: string) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('rejectionReason', rejectionReason);
 
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/manager-self-correct`, formData, {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}/manager-self-correct`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -464,9 +489,23 @@ class APIClient {
     return data;
   }
 
-  async qaFinalRelease(approvalId: string, releaseNotes?: string) {
-    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/qa-final-release`, {
+  async qaFinalRelease(approvalId: string, documentId: string, releaseNotes?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}/qa-final-release`, {
       releaseNotes,
+    });
+    return data;
+  }
+
+  async qaFinalReject(approvalId: string, documentId: string, rejectionReason: string, taskTitle: string, taskDescription: string, assignee: TaskAssignee, dueDate: string, taskType?: string, priority?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/approvals/${approvalId}/documents/${documentId}/qa-final-reject`, {
+      rejectionReason,
+      taskTitle,
+      taskDescription,
+      assignToUserId: assignee.userId,
+      assignToGroupId: assignee.groupId,
+      dueDate,
+      taskType,
+      priority,
     });
     return data;
   }
@@ -551,9 +590,14 @@ class APIClient {
   private normalizeTask(task: any) {
     return {
       ...task,
-      assignedTo: task.assignedToId ?? task.assignedTo?.userId ?? '',
+      assignedTo: task.assignedToId ?? task.assignedTo?.userId ?? undefined,
       assignedToUser: task.assignedToUser ?? task.assignedTo,
-      assignedBy: task.assignedBy ?? '',
+      assignedToGroupId: task.assignedToGroupId ?? undefined,
+      assignedToGroupName: task.assignedToGroupName ?? undefined,
+      // The backend calls this managerId (whoever created/submitted the task,
+      // "manager" in the correction-task sense — not necessarily a page-access
+      // role) — assignedBy was never actually populated from it before this.
+      assignedBy: task.assignedBy ?? task.managerId ?? '',
       priority: task.priority ?? task.riskSeverity ?? 'medium',
       status: task.status === 'completed' ? 'done' : task.status,
       dueDate: task.dueDate ?? '',

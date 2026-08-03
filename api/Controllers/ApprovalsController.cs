@@ -9,47 +9,50 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/approvals")]
-public class ApprovalsController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService, MinioService minioService, NotificationService notificationService) : BaseController
+public class ApprovalsController(DmsContext context, AuditService auditService, AccessOverrideService accessOverrideService, MinioService minioService, NotificationService notificationService, TaskService taskService) : BaseController
 {
-    /// <summary>
-    /// Every document in the approval batch must belong to a folder where the
-    /// current user's effective role grants the given permission (Approve/Reject) —
-    /// mirrors the same per-folder-role check SubmitForApproval already used.
-    /// </summary>
-    private async Task<bool> CurrentUserHasApprovalPermissionAsync(Guid approvalId, Guid userId, Func<DmsRolePermission, bool> selector)
+    // A role's CanViewApprovals only says whether the C-Doc Workflow page exists for
+    // them at all — CanViewQaStage/CanViewManagerStage/CanViewFinalReleaseStage scope
+    // it down to individual stage tabs (e.g. Manager only ever needed Stage 2), and
+    // CanApprove/CanReject say whether this role can actually act, not just view.
+    // Deliberately independent of per-folder role grants (DmsFolderPermission) and
+    // File/Folder Permission overrides — those govern file/folder MANAGEMENT actions
+    // only (upload/rename/copy/cut/delete/...), never approve/reject on a document. No
+    // page-access role at all (or a role not found) falls back to "no access".
+    private async Task<bool> CurrentUserHasStageAccessAsync(Guid userId, Func<DmsPageAccessRole, bool> selector)
     {
-        var folderIds = await context.ApprovalDocuments
-            .Where(ad => ad.ApprovalId == approvalId)
-            .Join(context.Documents, ad => ad.DocumentId, d => d.DocumentId, (ad, d) => d.FolderId)
-            .Distinct()
-            .ToListAsync();
+        var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+        return pageAccessRole != null && selector(pageAccessRole);
+    }
 
-        foreach (var folderId in folderIds)
+    private static bool StageAllowsAccessCheck(string currentStage, bool canViewQa, bool canViewManager, bool canViewFinal) => currentStage switch
+    {
+        "qa_review" => canViewQa,
+        "manager_review" => canViewManager,
+        "final_release" => canViewFinal,
+        _ => true, // released/rejected — already out of the stage-gated part of the workflow
+    };
+
+    // A correction task assigned to a Group has no single inbox — every member
+    // is notified individually instead of just the (nonexistent) single assignee.
+    private async Task NotifyTaskAssigneeAsync(DmsTask task, Guid actorUserId, string title)
+    {
+        if (task.AssignedToId.HasValue)
         {
-            var effectiveRole = await GetEffectiveRoleAsync(context, userId, folderId);
-            if (!await HasRolePermissionAsync(context, effectiveRole, selector))
-                return false;
+            await notificationService.NotifyAsync(task.AssignedToId.Value, actorUserId, title, task.Title, taskId: task.TaskId);
         }
-
-        return true;
-    }
-
-    // Notifies every document owner in the batch that its approval status
-    // changed — a batch can span multiple documents/owners, so this can't
-    // just look at a single "the" owner.
-    private async Task NotifyBatchOwnersAsync(Guid approvalId, Guid actorUserId, string title, string? body = null)
-    {
-        var documentIds = await context.ApprovalDocuments
-            .Where(ad => ad.ApprovalId == approvalId)
-            .Select(ad => ad.DocumentId)
-            .ToListAsync();
-
-        foreach (var documentId in documentIds)
-            await notificationService.NotifyDocumentOwnerAsync(documentId, actorUserId, title, body);
+        else if (task.AssignedToGroupId.HasValue)
+        {
+            foreach (var memberId in await taskService.GetGroupMemberIdsAsync(task.AssignedToGroupId.Value))
+                await notificationService.NotifyAsync(memberId, actorUserId, title, task.Title, taskId: task.TaskId);
+        }
     }
 
     /// <summary>
-    /// Submit documents for approval batch (C-Doc Stage 1)
+    /// Submit documents for approval (C-Doc Stage 1). One dms_approvals row still
+    /// groups everything uploaded together for submitter/creation-time context, but
+    /// each document gets its own dms_approval_documents row with independent
+    /// stage/status tracking from here on — see 058_approval_document_stage_tracking.sql.
     /// </summary>
     [HttpPost("submit-batch")]
     public async Task<ActionResult<object>> SubmitForApprovalAsync([FromBody] SubmitApprovalRequest request)
@@ -107,7 +110,24 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     DocumentId = version.DocumentId,
                     VersionId = version.VersionId,
                     CreatedAt = DateTime.UtcNow,
+                    CurrentStage = "qa_review",
+                    Status = "pending",
                 });
+
+                // Keep the document/version status in sync with the batch's QA-review
+                // stage — this endpoint previously left both untouched, so the Document
+                // Library kept showing "Draft" even though the batch was already visible
+                // and pending in the C-Doc Workflow queue.
+                version.Status = "pending_approval";
+                version.SubmittedById = userId;
+                version.SubmittedAt = DateTime.UtcNow;
+                version.UpdatedAt = DateTime.UtcNow;
+            }
+
+            foreach (var document in documents)
+            {
+                document.Status = "pending_approval";
+                document.UpdatedAt = DateTime.UtcNow;
             }
 
             context.Approvals.Add(approval);
@@ -141,50 +161,56 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     }
 
     /// <summary>
-    /// Get full detail for a single approval batch (used by the review modal)
+    /// Get full detail for a single document's place in the C-Doc Workflow (used
+    /// by the review modal) — independent of any other document submitted in the
+    /// same batch.
     /// </summary>
-    [HttpGet("{approvalId}")]
-    public async Task<ActionResult<object>> GetApprovalAsync(Guid approvalId)
+    [HttpGet("{approvalId}/documents/{documentId}")]
+    public async Task<ActionResult<object>> GetApprovalDocumentAsync(Guid approvalId, Guid documentId)
     {
         try
         {
-            var approval = await context.Approvals
-                .Include(a => a.CreatedByUser)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Document).ThenInclude(d => d!.Owner)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Version)
-                .FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+            var approvalDocument = await context.ApprovalDocuments
+                .Include(ad => ad.Approval).ThenInclude(a => a!.CreatedByUser)
+                .Include(ad => ad.Document).ThenInclude(d => d!.Owner)
+                .Include(ad => ad.Version)
+                .FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
 
-            if (approval == null)
-                return NotFound(new { success = false, error = "Approval not found" });
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
+
+            var access = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+            if (!StageAllowsAccessCheck(approvalDocument.CurrentStage, access?.CanViewQaStage == true, access?.CanViewManagerStage == true, access?.CanViewFinalReleaseStage == true))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to this document's current stage" });
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    approval.ApprovalId,
-                    approval.CreatedBy,
-                    createdByUserName = approval.CreatedByUser?.FullName,
-                    approval.CreatedAt,
-                    approval.CurrentStage,
-                    approval.Status,
-                    approval.QaNotes,
-                    approval.ManagerNotes,
-                    approval.ReleaseNotes,
-                    documents = approval.Documents.Select(ad => new
-                    {
-                        ad.DocumentId,
-                        ad.VersionId,
-                        fileName = ad.Version?.FileName ?? ad.Document?.Title ?? "Untitled document",
-                        ownerName = ad.Document?.Owner?.FullName ?? "Unknown owner",
-                        department = ad.Document?.Department,
-                        category = ad.Document?.Category,
-                        originalDocumentId = ad.Document?.OriginalDocumentId,
-                        status = ad.Document?.Status,
-                        versionNumber = ad.Version?.VersionNumber,
-                        fileSizeBytes = ad.Version?.FileSizeBytes,
-                        sha256Hash = ad.Version?.Sha256Hash,
-                    }),
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.VersionId,
+                    CreatedBy = approvalDocument.Approval?.CreatedBy,
+                    createdByUserName = approvalDocument.Approval?.CreatedByUser?.FullName,
+                    approvalDocument.CreatedAt,
+                    approvalDocument.CurrentStage,
+                    // Named ApprovalStatus (not Status) — Document?.Status below is the
+                    // document's own generic lifecycle status and needs its own JSON key;
+                    // both named "status" once camelCased collided and crashed serialization.
+                    ApprovalStatus = approvalDocument.Status,
+                    approvalDocument.QaNotes,
+                    approvalDocument.ManagerNotes,
+                    approvalDocument.ReleaseNotes,
+                    fileName = approvalDocument.Version?.FileName ?? approvalDocument.Document?.Title ?? "Untitled document",
+                    ownerName = approvalDocument.Document?.Owner?.FullName ?? "Unknown owner",
+                    department = approvalDocument.Document?.Department,
+                    category = approvalDocument.Document?.Category,
+                    originalDocumentId = approvalDocument.Document?.OriginalDocumentId,
+                    status = approvalDocument.Document?.Status,
+                    versionNumber = approvalDocument.Version?.VersionNumber,
+                    fileSizeBytes = approvalDocument.Version?.FileSizeBytes,
+                    sha256Hash = approvalDocument.Version?.Sha256Hash,
                 },
             });
         }
@@ -192,6 +218,47 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         {
             return BadRequest(new { success = false, error = ex.Message });
         }
+    }
+
+    private async Task<object> BuildStageQueueAsync(string stage, int page, int pageSize)
+    {
+        var query = context.ApprovalDocuments
+            .Where(ad => ad.CurrentStage == stage && ad.Status == "pending")
+            .Include(ad => ad.Approval).ThenInclude(a => a!.CreatedByUser)
+            .Include(ad => ad.Document).ThenInclude(d => d!.Owner)
+            .Include(ad => ad.Version)
+            .OrderByDescending(ad => ad.CreatedAt);
+
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var data = items.Select(ad => new
+        {
+            ApprovalId = ad.ApprovalId,
+            CreatedBy = ad.Approval?.CreatedBy,
+            createdByUserName = ad.Approval?.CreatedByUser?.FullName,
+            CreatedAt = ad.CreatedAt,
+            Status = ad.Status,
+            QaNotes = ad.QaNotes,
+            ManagerNotes = ad.ManagerNotes,
+            documentCount = 1,
+            documents = new[] { ToQueueDocument(ad) },
+        });
+
+        return new
+        {
+            success = true,
+            data,
+            count = items.Count,
+            totalCount,
+            totalPages = (int)Math.Ceiling((double)totalCount / pageSize),
+            page,
+            pageSize,
+        };
     }
 
     /// <summary>
@@ -202,39 +269,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            var approvals = await context.Approvals
-                .Where(a => a.CurrentStage == "qa_review" && a.Status == "pending" && a.Documents.Any())
-                .Include(a => a.CreatedByUser)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Document).ThenInclude(d => d!.Owner)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Version)
-                .OrderByDescending(a => a.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
+            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewQaStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the QA Review stage" });
 
-            var totalCount = await context.Approvals
-                .CountAsync(a => a.CurrentStage == "qa_review" && a.Status == "pending" && a.Documents.Any());
-
-            return Ok(new
-            {
-                success = true,
-                data = approvals.Select(a => new
-                {
-                    a.ApprovalId,
-                    a.CreatedBy,
-                    createdByUserName = a.CreatedByUser?.FullName,
-                    a.CreatedAt,
-                    a.Status,
-                    documentCount = a.Documents.Count,
-                    a.QaNotes,
-                    documents = a.Documents.Select(ToQueueDocument),
-                }),
-                count = approvals.Count,
-                totalCount,
-                totalPages = (int)Math.Ceiling((double)totalCount / pageSize),
-                page,
-                pageSize,
-            });
+            return Ok(await BuildStageQueueAsync("qa_review", page, pageSize));
         }
         catch (Exception ex)
         {
@@ -250,39 +288,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            var approvals = await context.Approvals
-                .Where(a => a.CurrentStage == "manager_review" && a.Status == "pending" && a.Documents.Any())
-                .Include(a => a.CreatedByUser)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Document).ThenInclude(d => d!.Owner)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Version)
-                .OrderByDescending(a => a.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
+            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewManagerStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Manager Review stage" });
 
-            var totalCount = await context.Approvals
-                .CountAsync(a => a.CurrentStage == "manager_review" && a.Status == "pending" && a.Documents.Any());
-
-            return Ok(new
-            {
-                success = true,
-                data = approvals.Select(a => new
-                {
-                    a.ApprovalId,
-                    a.CreatedBy,
-                    createdByUserName = a.CreatedByUser?.FullName,
-                    a.CreatedAt,
-                    a.Status,
-                    documentCount = a.Documents.Count,
-                    a.ManagerNotes,
-                    documents = a.Documents.Select(ToQueueDocument),
-                }),
-                count = approvals.Count,
-                totalCount,
-                totalPages = (int)Math.Ceiling((double)totalCount / pageSize),
-                page,
-                pageSize,
-            });
+            return Ok(await BuildStageQueueAsync("manager_review", page, pageSize));
         }
         catch (Exception ex)
         {
@@ -298,38 +307,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            var approvals = await context.Approvals
-                .Where(a => a.CurrentStage == "final_release" && a.Status == "pending" && a.Documents.Any())
-                .Include(a => a.CreatedByUser)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Document).ThenInclude(d => d!.Owner)
-                .Include(a => a.Documents).ThenInclude(ad => ad.Version)
-                .OrderByDescending(a => a.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
+            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewFinalReleaseStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Final Release stage" });
 
-            var totalCount = await context.Approvals
-                .CountAsync(a => a.CurrentStage == "final_release" && a.Status == "pending" && a.Documents.Any());
-
-            return Ok(new
-            {
-                success = true,
-                data = approvals.Select(a => new
-                {
-                    a.ApprovalId,
-                    a.CreatedBy,
-                    createdByUserName = a.CreatedByUser?.FullName,
-                    a.CreatedAt,
-                    a.Status,
-                    documentCount = a.Documents.Count,
-                    documents = a.Documents.Select(ToQueueDocument),
-                }),
-                count = approvals.Count,
-                totalCount,
-                totalPages = (int)Math.Ceiling((double)totalCount / pageSize),
-                page,
-                pageSize,
-            });
+            return Ok(await BuildStageQueueAsync("final_release", page, pageSize));
         }
         catch (Exception ex)
         {
@@ -338,48 +319,53 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     }
 
     /// <summary>
-    /// QA Accept - Move to Manager Review Stage
+    /// QA Accept - Move this one document to Manager Review Stage
     /// </summary>
-    [HttpPost("{approvalId}/qa-accept")]
-    public async Task<ActionResult<object>> QaAcceptAsync(Guid approvalId, [FromBody] QaActionRequest request)
+    [HttpPost("{approvalId}/documents/{documentId}/qa-accept")]
+    public async Task<ActionResult<object>> QaAcceptAsync(Guid approvalId, Guid documentId, [FromBody] QaActionRequest request)
     {
         try
         {
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals.FindAsync(approvalId);
+            var approvalDocument = await context.ApprovalDocuments.FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
 
-            if (approval == null)
-                return NotFound(new { success = false, error = "Approval not found" });
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
 
-            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Approve))
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
-            if (approval.CurrentStage != "qa_review")
-                return BadRequest(new { success = false, error = "Approval is not in QA review stage" });
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewQaStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the QA Review stage" });
 
-            approval.CurrentStage = "manager_review";
-            approval.Status = "pending";
-            approval.QaNotes = request.Notes;
+            if (approvalDocument.CurrentStage != "qa_review")
+                return BadRequest(new { success = false, error = "This document is not in QA review stage" });
+
+            approvalDocument.CurrentStage = "manager_review";
+            approvalDocument.Status = "pending";
+            approvalDocument.QaNotes = request.Notes;
 
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "QA_ACCEPTED", new
             {
-                approvalId = approval.ApprovalId,
+                approvalId,
+                documentId,
                 notes = request.Notes,
             });
 
-            await NotifyBatchOwnersAsync(approvalId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
+            await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    approval.ApprovalId,
-                    approval.CurrentStage,
-                    approval.Status,
-                    approval.QaNotes,
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.CurrentStage,
+                    approvalDocument.Status,
+                    approvalDocument.QaNotes,
                 },
             });
         }
@@ -390,39 +376,44 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     }
 
     /// <summary>
-    /// QA Request Correction - Creates task and stays in QA review
+    /// QA Request Correction - Creates task and keeps this one document in QA review
     /// </summary>
-    [HttpPost("{approvalId}/qa-request-correction")]
-    public async Task<ActionResult<object>> QaRequestCorrectionAsync(Guid approvalId, [FromBody] QaCorrectionRequest request)
+    [HttpPost("{approvalId}/documents/{documentId}/qa-request-correction")]
+    public async Task<ActionResult<object>> QaRequestCorrectionAsync(Guid approvalId, Guid documentId, [FromBody] QaCorrectionRequest request)
     {
         try
         {
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals.Include(a => a.Documents).FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+            var approvalDocument = await context.ApprovalDocuments.FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
 
-            if (approval == null)
-                return NotFound(new { success = false, error = "Approval not found" });
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
 
-            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Reject))
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
 
-            approval.QaNotes = request.Notes;
-            approval.Status = "correction_requested";
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewQaStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the QA Review stage" });
 
-            // Create task for the assignee — links to the reviewed document
-            // (the first one for a multi-document batch) so the assignee can
-            // actually see/download/re-upload the file they're being asked to fix.
+            if (request.AssignToUserId.HasValue == request.AssignToGroupId.HasValue)
+                return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });
+
+            approvalDocument.QaNotes = request.Notes;
+            approvalDocument.Status = "correction_requested";
+
             var task = new DmsTask
             {
                 TaskId = Guid.NewGuid(),
-                DocumentId = approval.Documents.FirstOrDefault()?.DocumentId,
-                ApprovalId = approval.ApprovalId,
+                DocumentId = documentId,
+                ApprovalId = approvalId,
                 Title = request.TaskTitle,
                 Description = request.TaskDescription,
+                TaskType = request.TaskType ?? "correction",
                 AssignedToId = request.AssignToUserId,
+                AssignedToGroupId = request.AssignToGroupId,
                 ManagerId = userId,
                 Status = "open",
-                RiskSeverity = "high",
+                RiskSeverity = request.Priority ?? "high",
                 DueDate = request.DueDate,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
@@ -431,26 +422,28 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             context.Tasks.Add(task);
             await context.SaveChangesAsync();
 
-            await notificationService.NotifyAsync(task.AssignedToId, userId, "New correction task assigned to you", task.Title, taskId: task.TaskId);
+            await NotifyTaskAssigneeAsync(task, userId, "New correction task assigned to you");
 
             await auditService.LogAsync(userId, "QA_CORRECTION_REQUESTED", new
             {
-                approvalId = approval.ApprovalId,
+                approvalId,
+                documentId,
                 taskId = task.TaskId,
                 notes = request.Notes,
             });
 
-            await NotifyBatchOwnersAsync(approvalId, userId, "QA requested a correction on your document", request.Notes);
+            await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "QA requested a correction on your document", request.Notes);
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    approval.ApprovalId,
-                    approval.CurrentStage,
-                    approval.Status,
-                    approval.QaNotes,
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.CurrentStage,
+                    approvalDocument.Status,
+                    approvalDocument.QaNotes,
                     taskId = task.TaskId,
                     taskTitle = task.Title,
                     assignedToId = task.AssignedToId,
@@ -465,48 +458,53 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     }
 
     /// <summary>
-    /// Manager Approve - Move to Final Release
+    /// Manager Approve - Move this one document to Final Release
     /// </summary>
-    [HttpPost("{approvalId}/manager-approve")]
-    public async Task<ActionResult<object>> ManagerApproveAsync(Guid approvalId, [FromBody] ManagerActionRequest request)
+    [HttpPost("{approvalId}/documents/{documentId}/manager-approve")]
+    public async Task<ActionResult<object>> ManagerApproveAsync(Guid approvalId, Guid documentId, [FromBody] ManagerActionRequest request)
     {
         try
         {
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals.FindAsync(approvalId);
+            var approvalDocument = await context.ApprovalDocuments.FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
 
-            if (approval == null)
-                return NotFound(new { success = false, error = "Approval not found" });
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
 
-            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Approve))
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
-            if (approval.CurrentStage != "manager_review")
-                return BadRequest(new { success = false, error = "Approval is not in manager review stage" });
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewManagerStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Manager Review stage" });
 
-            approval.CurrentStage = "final_release";
-            approval.Status = "pending";
-            approval.ManagerNotes = request.Notes;
+            if (approvalDocument.CurrentStage != "manager_review")
+                return BadRequest(new { success = false, error = "This document is not in manager review stage" });
+
+            approvalDocument.CurrentStage = "final_release";
+            approvalDocument.Status = "pending";
+            approvalDocument.ManagerNotes = request.Notes;
 
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "MANAGER_APPROVED", new
             {
-                approvalId = approval.ApprovalId,
+                approvalId,
+                documentId,
                 notes = request.Notes,
             });
 
-            await NotifyBatchOwnersAsync(approvalId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
+            await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    approval.ApprovalId,
-                    approval.CurrentStage,
-                    approval.Status,
-                    approval.ManagerNotes,
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.CurrentStage,
+                    approvalDocument.Status,
+                    approvalDocument.ManagerNotes,
                 },
             });
         }
@@ -517,40 +515,44 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     }
 
     /// <summary>
-    /// Manager Reject with Correction Task
+    /// Manager Reject with Correction Task - only this one document
     /// </summary>
-    [HttpPost("{approvalId}/manager-reject")]
-    public async Task<ActionResult<object>> ManagerRejectAsync(Guid approvalId, [FromBody] ManagerRejectRequest request)
+    [HttpPost("{approvalId}/documents/{documentId}/manager-reject")]
+    public async Task<ActionResult<object>> ManagerRejectAsync(Guid approvalId, Guid documentId, [FromBody] ManagerRejectRequest request)
     {
         try
         {
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals.Include(a => a.Documents).FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+            var approvalDocument = await context.ApprovalDocuments.FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
 
-            if (approval == null)
-                return NotFound(new { success = false, error = "Approval not found" });
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
 
-            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Reject))
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
 
-            approval.CurrentStage = "manager_review";
-            approval.Status = "correction_requested";
-            approval.ManagerNotes = request.RejectionReason;
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewManagerStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Manager Review stage" });
 
-            // Create correction task — links to the reviewed document (the
-            // first one for a multi-document batch) so the assignee can
-            // actually see/download/re-upload the file they're being asked to fix.
+            if (request.AssignToUserId.HasValue == request.AssignToGroupId.HasValue)
+                return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });
+
+            approvalDocument.Status = "correction_requested";
+            approvalDocument.ManagerNotes = request.RejectionReason;
+
             var task = new DmsTask
             {
                 TaskId = Guid.NewGuid(),
-                DocumentId = approval.Documents.FirstOrDefault()?.DocumentId,
-                ApprovalId = approval.ApprovalId,
+                DocumentId = documentId,
+                ApprovalId = approvalId,
                 Title = request.TaskTitle,
                 Description = request.TaskDescription,
+                TaskType = request.TaskType ?? "correction",
                 AssignedToId = request.AssignToUserId,
+                AssignedToGroupId = request.AssignToGroupId,
                 ManagerId = userId,
                 Status = "open",
-                RiskSeverity = "high",
+                RiskSeverity = request.Priority ?? "high",
                 DueDate = request.DueDate,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
@@ -559,26 +561,28 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             context.Tasks.Add(task);
             await context.SaveChangesAsync();
 
-            await notificationService.NotifyAsync(task.AssignedToId, userId, "New correction task assigned to you", task.Title, taskId: task.TaskId);
+            await NotifyTaskAssigneeAsync(task, userId, "New correction task assigned to you");
 
             await auditService.LogAsync(userId, "MANAGER_REJECTED", new
             {
-                approvalId = approval.ApprovalId,
+                approvalId,
+                documentId,
                 taskId = task.TaskId,
                 reason = request.RejectionReason,
             });
 
-            await NotifyBatchOwnersAsync(approvalId, userId, "Your document was rejected by the Manager", request.RejectionReason);
+            await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was rejected by the Manager", request.RejectionReason);
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    approval.ApprovalId,
-                    approval.CurrentStage,
-                    approval.Status,
-                    approval.ManagerNotes,
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.CurrentStage,
+                    approvalDocument.Status,
+                    approvalDocument.ManagerNotes,
                     taskId = task.TaskId,
                     taskTitle = task.Title,
                     assignedToId = task.AssignedToId,
@@ -595,14 +599,12 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     /// <summary>
     /// Manager Self-Correction (PRD Option 2) - the manager uploads the fixed
     /// file directly instead of routing a correction task back to the team
-    /// member. Bumps the document's minor version and sends the batch straight
+    /// member. Bumps this one document's minor version and sends it straight
     /// to Final Release, bypassing Stage 2's normal manager-approve step.
-    /// Only supported for single-document batches — a multi-document batch
-    /// can't unambiguously say which document the uploaded file replaces, so
-    /// those must go through the correction-task path instead.
+    /// Other documents from the same upload batch are entirely unaffected.
     /// </summary>
-    [HttpPost("{approvalId}/manager-self-correct")]
-    public async Task<ActionResult<object>> ManagerSelfCorrectAsync(Guid approvalId, IFormFile file, [FromForm] string rejectionReason)
+    [HttpPost("{approvalId}/documents/{documentId}/manager-self-correct")]
+    public async Task<ActionResult<object>> ManagerSelfCorrectAsync(Guid approvalId, Guid documentId, IFormFile file, [FromForm] string rejectionReason)
     {
         try
         {
@@ -610,24 +612,21 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 return BadRequest(new { success = false, error = "File is required" });
 
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals
-                .Include(a => a.Documents)
-                .FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+            var approvalDocument = await context.ApprovalDocuments.FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
 
-            if (approval == null)
-                return NotFound(new { success = false, error = "Approval not found" });
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
 
-            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Reject))
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
 
-            if (approval.CurrentStage != "manager_review")
-                return BadRequest(new { success = false, error = "Approval is not in manager review stage" });
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewManagerStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Manager Review stage" });
 
-            if (approval.Documents.Count != 1)
-                return BadRequest(new { success = false, error = "Self-correction only supports single-document batches — use a correction task for multi-document batches" });
+            if (approvalDocument.CurrentStage != "manager_review")
+                return BadRequest(new { success = false, error = "This document is not in manager review stage" });
 
-            var approvalDocument = approval.Documents.First();
-            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == approvalDocument.DocumentId);
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId);
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
 
@@ -669,15 +668,15 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             document.UpdatedAt = DateTime.UtcNow;
             approvalDocument.VersionId = newVersion.VersionId;
 
-            approval.CurrentStage = "final_release";
-            approval.Status = "pending";
-            approval.ManagerNotes = rejectionReason;
+            approvalDocument.CurrentStage = "final_release";
+            approvalDocument.Status = "pending";
+            approvalDocument.ManagerNotes = rejectionReason;
 
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "MANAGER_SELF_CORRECTED", new
             {
-                approvalId = approval.ApprovalId,
+                approvalId,
                 documentId = document.DocumentId,
                 newVersionId = newVersion.VersionId,
                 versionNumber = newVersion.VersionNumber,
@@ -691,9 +690,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 success = true,
                 data = new
                 {
-                    approval.ApprovalId,
-                    approval.CurrentStage,
-                    approval.Status,
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.CurrentStage,
+                    approvalDocument.Status,
                     newVersion.VersionId,
                     newVersion.VersionNumber,
                 },
@@ -706,72 +706,172 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     }
 
     /// <summary>
-    /// QA Final Release - Generate tracking code(s) and release document(s)
+    /// QA Final Release - Generate tracking code and release this one document
     /// </summary>
-    [HttpPost("{approvalId}/qa-final-release")]
-    public async Task<ActionResult<object>> QaFinalReleaseAsync(Guid approvalId, [FromBody] FinalReleaseRequest request)
+    [HttpPost("{approvalId}/documents/{documentId}/qa-final-release")]
+    public async Task<ActionResult<object>> QaFinalReleaseAsync(Guid approvalId, Guid documentId, [FromBody] FinalReleaseRequest request)
     {
         try
         {
             var userId = GetCurrentUserId();
-            var approval = await context.Approvals
-                .Include(a => a.Documents)
-                .FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+            var approvalDocument = await context.ApprovalDocuments.FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
 
-            if (approval == null)
-                return NotFound(new { success = false, error = "Approval not found" });
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
 
-            if (!await CurrentUserHasApprovalPermissionAsync(approvalId, userId, rp => rp.Approve))
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
-            if (approval.CurrentStage != "final_release")
-                return BadRequest(new { success = false, error = "Approval is not in final release stage" });
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewFinalReleaseStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Final Release stage" });
 
-            var documentIds = approval.Documents.Select(d => d.DocumentId).ToList();
-            var documents = await context.Documents
-                .Where(d => documentIds.Contains(d.DocumentId))
+            if (approvalDocument.CurrentStage != "final_release")
+                return BadRequest(new { success = false, error = "This document is not in final release stage" });
+
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            document.Status = "released";
+
+            approvalDocument.CurrentStage = "released";
+            approvalDocument.Status = "approved";
+            approvalDocument.ReleaseNotes = request.ReleaseNotes;
+
+            // Per explicit request: once the document is actually released, every
+            // correction task raised against it during this approval is resolved by
+            // definition — auto-complete any that are still open/in_progress instead
+            // of leaving them stranded regardless of what the PCAR page's own status
+            // controls did or didn't set along the way.
+            var openTasks = await context.Tasks
+                .Where(t => t.ApprovalId == approvalId && t.DocumentId == documentId && t.Status != "completed")
                 .ToListAsync();
-
-            foreach (var doc in documents)
-                doc.Status = "RELEASED";
-
-            approval.CurrentStage = "released";
-            approval.Status = "approved";
-            approval.ReleaseNotes = request.ReleaseNotes;
+            foreach (var openTask in openTasks)
+            {
+                openTask.Status = "completed";
+                openTask.CompletedById = userId;
+                openTask.CompletedAt = DateTime.UtcNow;
+                openTask.UpdatedAt = DateTime.UtcNow;
+            }
 
             await context.SaveChangesAsync();
 
             // The version's SHA-256 hash was captured at upload time; recording it here
             // ties the permanent hash to the exact moment of release in the WORM-protected
             // audit ledger (dms_audit_trails rejects UPDATE/DELETE at the DB level).
-            var releasedVersionIds = approval.Documents.Select(ad => ad.VersionId).ToList();
-            var versionHashes = await context.DocumentVersions
-                .Where(v => releasedVersionIds.Contains(v.VersionId))
+            var releasedVersion = await context.DocumentVersions
+                .Where(v => v.VersionId == approvalDocument.VersionId)
                 .Select(v => new { v.DocumentId, v.Sha256Hash })
-                .ToListAsync();
+                .FirstOrDefaultAsync();
 
             await auditService.LogAsync(userId, "QA_FINAL_RELEASE", new
             {
-                approvalId = approval.ApprovalId,
-                releasedDocuments = documents.Select(d => d.DocumentId),
-                sha256Hashes = versionHashes,
+                approvalId,
+                documentId,
+                sha256Hash = releasedVersion?.Sha256Hash,
             });
 
-            foreach (var released in documents)
-                await notificationService.NotifyDocumentOwnerAsync(released.DocumentId, userId, "Your document was released");
+            await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was released");
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    approval.ApprovalId,
-                    approval.CreatedBy,
-                    approval.CreatedAt,
-                    approval.CurrentStage,
-                    approval.Status,
-                    approval.ReleaseNotes,
-                    documents = documents.Select(d => d.DocumentId),
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.CurrentStage,
+                    approvalDocument.Status,
+                    approvalDocument.ReleaseNotes,
+                },
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// QA Final Reject - Creates a correction task and keeps this one document in
+    /// Final Release stage. Symmetric with QA Request Correction (Stage 1) and
+    /// Manager Reject (Stage 2) — resubmitting the correction later leaves
+    /// CurrentStage untouched, so it comes back to Final Release, not some other
+    /// stage.
+    /// </summary>
+    [HttpPost("{approvalId}/documents/{documentId}/qa-final-reject")]
+    public async Task<ActionResult<object>> QaFinalRejectAsync(Guid approvalId, Guid documentId, [FromBody] FinalReleaseRejectRequest request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var approvalDocument = await context.ApprovalDocuments.FirstOrDefaultAsync(ad => ad.ApprovalId == approvalId && ad.DocumentId == documentId);
+
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Approval document not found" });
+
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
+
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewFinalReleaseStage))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Final Release stage" });
+
+            if (approvalDocument.CurrentStage != "final_release")
+                return BadRequest(new { success = false, error = "This document is not in final release stage" });
+
+            if (request.AssignToUserId.HasValue == request.AssignToGroupId.HasValue)
+                return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });
+
+            approvalDocument.Status = "correction_requested";
+            approvalDocument.ReleaseNotes = request.RejectionReason;
+
+            var task = new DmsTask
+            {
+                TaskId = Guid.NewGuid(),
+                DocumentId = documentId,
+                ApprovalId = approvalId,
+                Title = request.TaskTitle,
+                Description = request.TaskDescription,
+                TaskType = request.TaskType ?? "correction",
+                AssignedToId = request.AssignToUserId,
+                AssignedToGroupId = request.AssignToGroupId,
+                ManagerId = userId,
+                Status = "open",
+                RiskSeverity = request.Priority ?? "high",
+                DueDate = request.DueDate,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+
+            context.Tasks.Add(task);
+            await context.SaveChangesAsync();
+
+            await NotifyTaskAssigneeAsync(task, userId, "New correction task assigned to you");
+
+            await auditService.LogAsync(userId, "QA_FINAL_REJECTED", new
+            {
+                approvalId,
+                documentId,
+                taskId = task.TaskId,
+                reason = request.RejectionReason,
+            });
+
+            await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was rejected at Final Release", request.RejectionReason);
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    approvalDocument.ApprovalId,
+                    approvalDocument.DocumentId,
+                    approvalDocument.CurrentStage,
+                    approvalDocument.Status,
+                    approvalDocument.ReleaseNotes,
+                    taskId = task.TaskId,
+                    taskTitle = task.Title,
+                    assignedToId = task.AssignedToId,
+                    dueDate = task.DueDate,
                 },
             });
         }
@@ -803,7 +903,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 // Request DTOs
 public record SubmitApprovalRequest(List<Guid> DocumentIds);
 public record QaActionRequest(string? Notes = null);
-public record QaCorrectionRequest(string TaskTitle, string TaskDescription, Guid AssignToUserId, DateTime DueDate, string? Notes = null);
+public record QaCorrectionRequest(string TaskTitle, string TaskDescription, DateTime DueDate, Guid? AssignToUserId = null, Guid? AssignToGroupId = null, string? Notes = null, string? TaskType = null, string? Priority = null);
 public record ManagerActionRequest(string? Notes = null);
-public record ManagerRejectRequest(string RejectionReason, string TaskTitle, string TaskDescription, Guid AssignToUserId, DateTime DueDate);
+public record ManagerRejectRequest(string RejectionReason, string TaskTitle, string TaskDescription, DateTime DueDate, Guid? AssignToUserId = null, Guid? AssignToGroupId = null, string? TaskType = null, string? Priority = null);
 public record FinalReleaseRequest(string? ReleaseNotes = null);
+public record FinalReleaseRejectRequest(string RejectionReason, string TaskTitle, string TaskDescription, DateTime DueDate, Guid? AssignToUserId = null, Guid? AssignToGroupId = null, string? TaskType = null, string? Priority = null);

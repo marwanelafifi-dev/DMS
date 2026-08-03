@@ -13,6 +13,13 @@ const rowMenuItemClass = 'flex h-9 select-none items-center gap-2 rounded-[4px] 
 // Excel-style "click a cell to see what got cut off" — every truncated cell in this
 // table is one of these instead of a plain <span title="...">, since a hover tooltip
 // disappears the moment the mouse moves and doesn't work at all on touch devices.
+// Plain wrapping text — for columns like Department/Owner where the whole point is
+// to always show the full value, not to truncate-then-click-to-reveal.
+function WrappingCellText({ value }: { value?: string | null }) {
+  if (!value) return <span className="text-[#93a4bd]">—</span>;
+  return <span className="block whitespace-normal break-words">{value}</span>;
+}
+
 function ExpandableCellText({ value, monospace }: { value?: string | null; monospace?: boolean }) {
   const [open, setOpen] = useState(false);
   if (!value) return <span className="text-[#93a4bd]">—</span>;
@@ -44,12 +51,11 @@ function ExpandableCellText({ value, monospace }: { value?: string | null; monos
   );
 }
 
-export type OptionalDocumentColumn = 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
+export type OptionalDocumentColumn = 'department' | 'owner' | 'modifiedAt' | 'tags' | 'status';
 
 export const defaultVisibleDocumentColumns: ReadonlySet<OptionalDocumentColumn> = new Set([
   'department',
   'owner',
-  'createdAt',
   'modifiedAt',
   'tags',
   'status',
@@ -73,7 +79,7 @@ interface DocumentListProps {
   permissions?: RolePermissionFlags | null;
 }
 
-type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' | 'createdAt' | 'modifiedAt' | 'tags' | 'status';
+type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' | 'modifiedAt' | 'tags' | 'status';
 
 const statusStyles: Record<MockLibraryDocument['status'], string> = {
   draft: 'bg-[#edf1f5] text-[#62718a]',
@@ -147,7 +153,6 @@ export function DocumentList({
       folderName: [a.folderName, b.folderName],
       department: [a.department, b.department],
       owner: [a.owner.fullName, b.owner.fullName],
-      createdAt: [new Date(a.createdAt).getTime(), new Date(b.createdAt).getTime()],
       modifiedAt: [new Date(a.modifiedAt).getTime(), new Date(b.modifiedAt).getTime()],
       tags: [a.tags.join(' '), b.tags.join(' ')],
       status: [a.status, b.status],
@@ -200,11 +205,11 @@ export function DocumentList({
   // guaranteed generous share no matter how many optional columns are toggled on.
   const columnWidthPercents = useMemo(() => {
     const weights: Record<string, number> = {
-      checkbox: 3, documentId: 6, fileName: 25, folder: 8, actions: 9,
-      department: 8, owner: 8, createdAt: 10, modifiedAt: 10, tags: 8, status: 5,
+      checkbox: 3, documentId: 6, fileName: 20, folder: 7, actions: 9,
+      department: 13, owner: 13, modifiedAt: 10, tags: 7, status: 9,
     };
     const activeKeys = ['checkbox', 'documentId', 'fileName', 'folder',
-      ...(['department', 'owner', 'createdAt', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
+      ...(['department', 'owner', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
       'actions'];
     const totalWeight = activeKeys.reduce((sum, key) => sum + weights[key], 0);
     return Object.fromEntries(activeKeys.map((key) => [key, (weights[key] / totalWeight) * 100]));
@@ -224,7 +229,6 @@ export function DocumentList({
           <col style={{ width: `${columnWidthPercents.folder}%` }} />
           {visibleColumns.has('department') && <col style={{ width: `${columnWidthPercents.department}%` }} />}
           {visibleColumns.has('owner') && <col style={{ width: `${columnWidthPercents.owner}%` }} />}
-          {visibleColumns.has('createdAt') && <col style={{ width: `${columnWidthPercents.createdAt}%` }} />}
           {visibleColumns.has('modifiedAt') && <col style={{ width: `${columnWidthPercents.modifiedAt}%` }} />}
           {visibleColumns.has('tags') && <col style={{ width: `${columnWidthPercents.tags}%` }} />}
           {visibleColumns.has('status') && <col style={{ width: `${columnWidthPercents.status}%` }} />}
@@ -245,7 +249,6 @@ export function DocumentList({
             <th>{header('Folder', 'folderName')}</th>
             {visibleColumns.has('department') && <th>{header('Department', 'department')}</th>}
             {visibleColumns.has('owner') && <th>{header('Owner', 'owner')}</th>}
-            {visibleColumns.has('createdAt') && <th>{header('Creation date', 'createdAt')}</th>}
             {visibleColumns.has('modifiedAt') && <th>{header('Modified date', 'modifiedAt')}</th>}
             {visibleColumns.has('tags') && <th>{header('Tags', 'tags')}</th>}
             {visibleColumns.has('status') && <th>{header('Status', 'status')}</th>}
@@ -271,9 +274,8 @@ export function DocumentList({
                 </button>
               </td>
               <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.folderName} /></td>
-              {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.department} /></td>}
-              {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.owner.fullName} /></td>}
-              {visibleColumns.has('createdAt') && <td className="text-[11px] text-[#718198]"><ExpandableCellText value={formatDateTime(document.createdAt)} /></td>}
+              {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.department} /></td>}
+              {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.owner.fullName} /></td>}
               {visibleColumns.has('modifiedAt') && <td className="text-[11px] text-[#718198]"><ExpandableCellText value={formatDateTime(document.modifiedAt)} /></td>}
               {visibleColumns.has('tags') && (
                 <td>
@@ -282,7 +284,7 @@ export function DocumentList({
                   ) : <span className="text-[#93a4bd]">—</span>}
                 </td>
               )}
-              {visibleColumns.has('status') && <td><span className={`rounded px-2 py-1 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></td>}
+              {visibleColumns.has('status') && <td><span className={`inline-block whitespace-nowrap rounded px-2 py-1 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></td>}
               <td className="text-right">
                 <div className="flex items-center justify-end gap-2">
                   <button type="button" title="Preview file" onClick={(event) => { event.stopPropagation(); onDocumentClick(document.documentId); }} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#2f3e83] text-white hover:bg-[#263472] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Preview ${document.fileName}`}>

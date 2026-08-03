@@ -69,6 +69,11 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageFilePermissions = req.CanManageFilePermissions,
                 CanManageAllTasks = req.CanManageAllTasks,
                 CanCreateTasks = req.CanCreateTasks,
+                CanViewQaStage = req.CanViewQaStage,
+                CanViewManagerStage = req.CanViewManagerStage,
+                CanViewFinalReleaseStage = req.CanViewFinalReleaseStage,
+                CanApprove = req.CanApprove,
+                CanReject = req.CanReject,
                 UpdatedAt = DateTime.UtcNow,
             };
 
@@ -109,6 +114,11 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanManageFilePermissions = req.CanManageFilePermissions;
             entity.CanManageAllTasks = req.CanManageAllTasks;
             entity.CanCreateTasks = req.CanCreateTasks;
+            entity.CanViewQaStage = req.CanViewQaStage;
+            entity.CanViewManagerStage = req.CanViewManagerStage;
+            entity.CanViewFinalReleaseStage = req.CanViewFinalReleaseStage;
+            entity.CanApprove = req.CanApprove;
+            entity.CanReject = req.CanReject;
             entity.UpdatedAt = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
@@ -162,11 +172,15 @@ public record UpdatePageAccessRoleRequest(
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false);
+    bool CanManageAllTasks = false, bool CanCreateTasks = false,
+    bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
+    bool CanApprove = false, bool CanReject = false);
 
 public record CreatePageAccessRoleRequest(
     string Role,
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false);
+    bool CanManageAllTasks = false, bool CanCreateTasks = false,
+    bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
+    bool CanApprove = false, bool CanReject = false);

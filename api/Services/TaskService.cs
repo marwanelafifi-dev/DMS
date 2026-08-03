@@ -6,17 +6,47 @@ namespace DMS.Api.Services;
 
 public class TaskService(DmsContext context, AuditService auditService, ILogger<TaskService> logger)
 {
-    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid documentId, Guid assignedToId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null)
+    // A task assigned to a Group is one shared item visible to every member —
+    // whoever gets to it first can act on it, not a fan-out of per-member
+    // duplicates. This is the single place that answers "can this user act on
+    // this task", used by both completion and resubmission.
+    public async Task<bool> IsAssigneeAsync(DmsTask task, Guid userId)
+    {
+        if (task.AssignedToId == userId)
+            return true;
+
+        if (task.AssignedToGroupId.HasValue)
+            return await context.GroupMembers.AnyAsync(gm => gm.GroupId == task.AssignedToGroupId.Value && gm.UserId == userId);
+
+        return false;
+    }
+
+    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid documentId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null)
     {
         try
         {
+            if (assignedToId.HasValue == assignedToGroupId.HasValue)
+                return TaskResult.Invalid("Exactly one of assignedToId or assignedToGroupId is required");
+
             var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId);
             if (document == null)
                 return TaskResult.NotFound("Document not found");
 
-            var assignee = await context.Users.FirstOrDefaultAsync(u => u.UserId == assignedToId && u.IsActive);
-            if (assignee == null)
-                return TaskResult.NotFound("Assignee not found or inactive");
+            string assigneeName;
+            if (assignedToId.HasValue)
+            {
+                var assignee = await context.Users.FirstOrDefaultAsync(u => u.UserId == assignedToId.Value && u.IsActive);
+                if (assignee == null)
+                    return TaskResult.NotFound("Assignee not found or inactive");
+                assigneeName = assignee.FullName;
+            }
+            else
+            {
+                var group = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == assignedToGroupId!.Value);
+                if (group == null)
+                    return TaskResult.NotFound("Group not found");
+                assigneeName = group.Name;
+            }
 
             var task = new DmsTask
             {
@@ -27,6 +57,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                 TaskType = taskType ?? "correction",
                 RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,
+                AssignedToGroupId = assignedToGroupId,
                 ManagerId = managerId,
                 DueDate = dueDate,
                 Status = "open",
@@ -45,8 +76,9 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                 task.DocumentId,
                 task.Title,
                 task.AssignedToId,
+                task.AssignedToGroupId,
                 task.ManagerId,
-                AssignedToName = assignee.FullName,
+                AssignedToName = assigneeName,
                 task.DueDate,
                 task.Status,
                 task.CreatedAt
@@ -59,13 +91,23 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         }
     }
 
+    // Every group-assignee notified individually — there's no single "group inbox".
+    public async Task<List<Guid>> GetGroupMemberIdsAsync(Guid groupId) =>
+        await context.GroupMembers.Where(gm => gm.GroupId == groupId).Select(gm => gm.UserId).ToListAsync();
+
     public async Task<(List<object> Items, int TotalCount)> GetMyTasksAsync(Guid userId, string? status = null, int page = 1, int pageSize = 100)
     {
         try
         {
+            var myGroupIds = await context.GroupMembers.Where(gm => gm.UserId == userId).Select(gm => gm.GroupId).ToListAsync();
+
             // A manager must be able to track work they delegated, while the
-            // assignee still sees the same task in their personal queue.
-            var query = context.Tasks.Where(t => t.AssignedToId == userId || t.ManagerId == userId);
+            // assignee (directly, or via a group they belong to) still sees the
+            // same task in their personal queue.
+            var query = context.Tasks.Where(t =>
+                t.AssignedToId == userId ||
+                t.ManagerId == userId ||
+                (t.AssignedToGroupId.HasValue && myGroupIds.Contains(t.AssignedToGroupId.Value)));
 
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(t => t.Status == status);
@@ -90,6 +132,8 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                     t.RiskSeverity,
                     Priority = t.RiskSeverity ?? "medium",
                     t.AssignedToId,
+                    t.AssignedToGroupId,
+                    AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
                     t.ManagerId,
                     t.DueDate,
                     t.Status,
@@ -116,8 +160,8 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
             if (task == null)
                 return TaskResult.NotFound("Task not found");
 
-            if (task.AssignedToId != userId && !canManageAllTasks)
-                return TaskResult.Forbidden("Only assigned user can complete this task");
+            if (!await IsAssigneeAsync(task, userId) && !canManageAllTasks)
+                return TaskResult.Forbidden("Only the assignee can complete this task");
 
             if (task.Status == "completed")
                 return TaskResult.Invalid("Task is already completed");
@@ -128,51 +172,6 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
             task.UpdatedAt = DateTime.UtcNow;
 
             context.Tasks.Update(task);
-
-            // COMMENTED OUT: C-Doc approval workflow not yet implemented
-            // // If this task was a C-Doc correction task, completing it re-opens the
-            // // approval at the stage that requested the correction (QA or Manager),
-            // // rather than leaving it stuck in correction_in_progress forever.
-            // var approval = await context.Approvals
-            //     .Include(a => a.ApprovalDocuments).ThenInclude(ad => ad.Version)
-            //     .Include(a => a.ApprovalDocuments).ThenInclude(ad => ad.Document)
-            //     .FirstOrDefaultAsync(a => a.CorrectionTaskId == taskId);
-            //
-            // if (approval != null && approval.Status == CDocStatus.CorrectionInProgress)
-            // {
-            //     var returningToQa = approval.QaDecision == "requested_correction";
-            //
-            //     if (returningToQa)
-            //     {
-            //         approval.QaDecision = "pending";
-            //         approval.QaReviewedBy = null;
-            //         approval.QaReviewedAt = null;
-            //         approval.Status = "pending_qa_review";
-            //     }
-            //     else
-            //     {
-            //         approval.ManagerDecision = "pending";
-            //         approval.ManagerReviewedBy = null;
-            //         approval.ManagerReviewedAt = null;
-            //         approval.Status = CDocStatus.ManagerReview;
-            //     }
-            //
-            //     var newDocStatus = returningToQa ? CDocStatus.QaReview : CDocStatus.ManagerReview;
-            //     foreach (var appDoc in approval.ApprovalDocuments)
-            //     {
-            //         appDoc.Version.Status = newDocStatus;
-            //         appDoc.Document.Status = newDocStatus;
-            //         appDoc.Version.UpdatedAt = DateTime.UtcNow;
-            //         appDoc.Document.UpdatedAt = DateTime.UtcNow;
-            //     }
-            //
-            //     await auditService.LogAsync(userId, AuditActions.CORRECTION_TASK_COMPLETED, new
-            //     {
-            //         approvalId = approval.ApprovalId,
-            //         taskId,
-            //         returnedTo = returningToQa ? "QA" : "Manager"
-            //     });
-            // }
 
             await context.SaveChangesAsync();
 
@@ -281,6 +280,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                     t.DocumentId,
                     t.Title,
                     AssignedTo = t.AssignedTo == null ? null : new { t.AssignedTo.UserId, t.AssignedTo.FullName, t.AssignedTo.Email },
+                    AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
                     t.DueDate,
                     t.Status,
                     DaysOverdue = (today - t.DueDate.Value).Days,
@@ -301,6 +301,10 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
     {
         try
         {
+            // Full task history for this document — every correction task raised
+            // against it across every approval cycle, not just the currently open
+            // one. Used by the Document Preview's "View Related Tasks" button so a
+            // reviewer can see every edit/correction round from creation onward.
             var tasks = await context.Tasks
                 .Where(t => t.DocumentId == documentId)
                 .OrderByDescending(t => t.CreatedAt)
@@ -310,15 +314,48 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                     t.Title,
                     t.Description,
                     t.TaskType,
+                    t.RiskSeverity,
                     AssignedTo = t.AssignedTo == null ? null : new { t.AssignedTo.UserId, t.AssignedTo.FullName },
+                    AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
+                    t.ManagerId,
                     t.DueDate,
                     t.Status,
                     t.CreatedAt,
-                    CompletedAt = t.CompletedAt
+                    CompletedAt = t.CompletedAt,
+                    t.CompletedById,
                 })
                 .ToListAsync();
 
-            return tasks.Cast<object>().ToList();
+            var userIds = tasks
+                .SelectMany(t => new[] { t.ManagerId, t.CompletedById })
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .Distinct()
+                .ToList();
+            var userNamesById = await context.Users
+                .Where(u => userIds.Contains(u.UserId))
+                .ToDictionaryAsync(u => u.UserId, u => u.FullName);
+
+            var tasksWithNames = tasks.Select(t => new
+            {
+                t.TaskId,
+                t.Title,
+                t.Description,
+                t.TaskType,
+                t.RiskSeverity,
+                t.AssignedTo,
+                t.AssignedToGroupName,
+                t.ManagerId,
+                SubmittedByName = t.ManagerId.HasValue && userNamesById.TryGetValue(t.ManagerId.Value, out var managerName) ? managerName : null,
+                t.DueDate,
+                t.Status,
+                t.CreatedAt,
+                t.CompletedAt,
+                t.CompletedById,
+                CompletedByName = t.CompletedById.HasValue && userNamesById.TryGetValue(t.CompletedById.Value, out var completedName) ? completedName : null,
+            }).ToList();
+
+            return tasksWithNames.Cast<object>().ToList();
         }
         catch (Exception ex)
         {

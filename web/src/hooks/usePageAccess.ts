@@ -18,6 +18,11 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canManageFilePermissions: false,
   canManageAllTasks: false,
   canCreateTasks: false,
+  canViewQaStage: false,
+  canViewManagerStage: false,
+  canViewFinalReleaseStage: false,
+  canApprove: false,
+  canReject: false,
 };
 
 // Fetches the current user's page/feature access flags (their global role —

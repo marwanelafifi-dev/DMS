@@ -54,7 +54,11 @@ export interface Document {
   checkedOutByName?: string;
   checkedOutAt?: string;
   checkedOutExpires?: string;
-  approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
+  // Populated from the document's most recent approval batch (if any) — tells you
+  // which stage of the C-Doc Workflow it's actually sitting in, since `status` above
+  // only ever says the generic "pending_approval" for the whole review period.
+  approvalStage?: 'qa_review' | 'manager_review' | 'final_release' | 'released' | 'rejected' | null;
+  approvalStatus?: 'pending' | 'correction_requested' | 'approved' | 'rejected' | null;
   department?: string;
   category?: string;
   tags?: string[];
@@ -114,8 +118,12 @@ export interface Task {
   taskType: 'correction' | 'rca' | 'audit_action';
   documentId?: string;
   document?: Document;
-  assignedTo: string;
+  // Exactly one of assignedTo / assignedToGroupId is ever set — a group
+  // assignment is one shared task visible to every member.
+  assignedTo?: string;
   assignedToUser?: User;
+  assignedToGroupId?: string;
+  assignedToGroupName?: string;
   assignedBy: string;
   assignedByUser?: User;
   status: 'open' | 'in_progress' | 'done';

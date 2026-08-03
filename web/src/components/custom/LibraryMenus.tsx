@@ -10,7 +10,6 @@ import { useToast } from '../../hooks/useToast';
 const columnOptions: Array<{ id: OptionalDocumentColumn; label: string }> = [
   { id: 'department', label: 'Department' },
   { id: 'owner', label: 'Owner' },
-  { id: 'createdAt', label: 'Creation date' },
   { id: 'modifiedAt', label: 'Modified date' },
   { id: 'tags', label: 'Tags' },
   { id: 'status', label: 'Status' },

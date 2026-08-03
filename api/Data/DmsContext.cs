@@ -317,6 +317,12 @@ public class DmsContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<DmsTask>()
+            .HasOne(t => t.AssignedToGroup)
+            .WithMany()
+            .HasForeignKey(t => t.AssignedToGroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<DmsTask>()
             .HasOne<DmsUser>()
             .WithMany()
             .HasForeignKey(t => t.ManagerId)

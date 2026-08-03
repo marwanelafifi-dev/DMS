@@ -31,6 +31,23 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canCreateTasks: 'Create New PCAR',
 };
 
+// Scopes the C-Doc Workflow page down to individual stage tabs (e.g. Manager
+// only ever needed Stage 2) plus whether this role can actually act — approve
+// or reject — on whichever stage it can see. Deliberately independent of any
+// per-folder role grant or File/Folder Permission override, which govern
+// file/folder management actions only. Shown as their own section below, both
+// in the role card and the edit modal.
+const STAGE_KEYS = [
+  'canViewQaStage', 'canViewManagerStage', 'canViewFinalReleaseStage', 'canApprove', 'canReject',
+] as const;
+const STAGE_LABELS: Record<typeof STAGE_KEYS[number], string> = {
+  canViewQaStage: 'QA Review (Stage 1)',
+  canViewManagerStage: 'Manager Review (Stage 2)',
+  canViewFinalReleaseStage: 'Final Release (Stage 3)',
+  canApprove: 'Can Approve',
+  canReject: 'Can Reject',
+};
+
 const ROLE_CARD_DESCRIPTIONS: Record<string, string> = {
   User: 'Everyday access to the Dashboard, Document Library, and Reminders',
   Manager: 'Everything a User sees, plus the Approvals (C-Doc Workflow) page',
@@ -40,7 +57,10 @@ const ROLE_CARD_DESCRIPTIONS: Record<string, string> = {
 };
 const ROLE_CARD_ORDER = ['Full Access', 'Manager', 'Quality', 'Auditor', 'User'];
 
+const ALL_KEYS = [...PERMISSION_KEYS, ...STAGE_KEYS] as const;
+
 const NEW_ROLE_FLAGS = PERMISSION_KEYS.map((key) => ({ key, label: PERMISSION_LABELS[key] }));
+const NEW_ROLE_STAGE_FLAGS = STAGE_KEYS.map((key) => ({ key, label: STAGE_LABELS[key] }));
 
 export function RolePermissions() {
   const { showSuccess, showError } = useToast();
@@ -49,10 +69,10 @@ export function RolePermissions() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const EMPTY_PERMISSIONS = Object.fromEntries(PERMISSION_KEYS.map(k => [k, false])) as Record<typeof PERMISSION_KEYS[number], boolean>;
+  const EMPTY_PERMISSIONS = Object.fromEntries(ALL_KEYS.map(k => [k, false])) as Record<typeof ALL_KEYS[number], boolean>;
 
   const [editingRole, setEditingRole] = useState<PageAccessRole | null>(null);
-  const [editPermissions, setEditPermissions] = useState<Record<typeof PERMISSION_KEYS[number], boolean>>(EMPTY_PERMISSIONS);
+  const [editPermissions, setEditPermissions] = useState<Record<typeof ALL_KEYS[number], boolean>>(EMPTY_PERMISSIONS);
   const [isSavingRole, setIsSavingRole] = useState(false);
 
   const [showNewRoleForm, setShowNewRoleForm] = useState(false);
@@ -88,7 +108,7 @@ export function RolePermissions() {
 
   const openEditRole = (role: PageAccessRole) => {
     setEditingRole(role);
-    setEditPermissions(Object.fromEntries(PERMISSION_KEYS.map(k => [k, role[k]])) as Record<typeof PERMISSION_KEYS[number], boolean>);
+    setEditPermissions(Object.fromEntries(ALL_KEYS.map(k => [k, role[k]])) as Record<typeof ALL_KEYS[number], boolean>);
   };
 
   const handleSaveRole = async () => {
@@ -238,6 +258,27 @@ export function RolePermissions() {
                     )}
                   </div>
                 </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">C-Doc Workflow access</p>
+                  <div className="flex flex-wrap gap-2">
+                    {STAGE_KEYS.map((key) => role[key] ? (
+                      <span
+                        key={key}
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300"
+                      >
+                        <Check className="h-3 w-3" />
+                        {STAGE_LABELS[key]}
+                      </span>
+                    ) : (
+                      <span
+                        key={key}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-400 dark:border-navy-700 dark:bg-navy-900 dark:text-navy-500"
+                      >
+                        {STAGE_LABELS[key]}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </CardBody>
             </Card>
             );
@@ -279,6 +320,22 @@ export function RolePermissions() {
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Can see</label>
                 <div className="grid grid-cols-2 gap-2">
                   {NEW_ROLE_FLAGS.map(flag => (
+                    <label key={flag.key} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newRole[flag.key]}
+                        onChange={(e) => setNewRole({ ...newRole, [flag.key]: e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-navy-200">{flag.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">C-Doc Workflow access</label>
+                <div className="grid grid-cols-1 gap-2">
+                  {NEW_ROLE_STAGE_FLAGS.map(flag => (
                     <label key={flag.key} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -372,6 +429,20 @@ export function RolePermissions() {
                       className="w-4 h-4 rounded border-gray-300 text-blue-600"
                     />
                     <span className="text-sm text-gray-700 dark:text-navy-200">{PERMISSION_LABELS[key]}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-2 border-t border-gray-200 pt-3 dark:border-navy-700">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">C-Doc Workflow access</p>
+                {STAGE_KEYS.map((key) => (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editPermissions[key]}
+                      onChange={(e) => setEditPermissions((prev) => ({ ...prev, [key]: e.target.checked }))}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-navy-200">{STAGE_LABELS[key]}</span>
                   </label>
                 ))}
               </div>

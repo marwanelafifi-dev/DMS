@@ -83,8 +83,34 @@ public class DocumentsController(
                 })
                 .ToListAsync();
 
+            // Each dms_approval_documents row now carries its own stage/status directly (see
+            // 058_approval_document_stage_tracking.sql) — no join to dms_approvals needed.
+            // document.Status only ever says the generic "pending_approval", it never advances
+            // stage-by-stage, which is why this exists at all. Fetched separately (not joined
+            // above) because a document can have no approval at all, and EF's client-eval of
+            // "latest per version" reads more clearly as a plain lookup than as a correlated
+            // subquery inside the big projection.
+            var currentVersionIds = documents.Where(d => d.CurrentVersionId.HasValue).Select(d => d.CurrentVersionId!.Value).ToList();
+            var approvalsByVersionId = await context.ApprovalDocuments
+                .Where(ad => currentVersionIds.Contains(ad.VersionId))
+                .Select(ad => new { ad.VersionId, ad.CurrentStage, ad.Status, ad.CreatedAt })
+                .ToListAsync();
+            var latestApprovalByVersionId = approvalsByVersionId
+                .GroupBy(a => a.VersionId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(a => a.CreatedAt).First());
+
+            var documentsWithStage = documents.Select(d => new
+            {
+                d.DocumentId, d.Name, d.Title, d.Status, d.Description, d.Tags, d.Department, d.Category,
+                d.OriginalDocumentId, d.HasDocId, d.TrackingCode, d.OwnerId, d.UploadedBy, d.FolderId, d.CurrentVersionId,
+                d.FileName, d.FileSize, d.ContentType, d.VersionLabel, d.CheckoutStatus, d.CheckedOutBy, d.CheckedOutByName,
+                d.CheckedOutAt, d.UploadedAt, d.CreatedAt, d.UpdatedAt,
+                ApprovalStage = d.CurrentVersionId.HasValue && latestApprovalByVersionId.TryGetValue(d.CurrentVersionId.Value, out var approval) ? approval.CurrentStage : null,
+                ApprovalStatus = d.CurrentVersionId.HasValue && latestApprovalByVersionId.TryGetValue(d.CurrentVersionId.Value, out var approval2) ? approval2.Status : null,
+            }).ToList();
+
             logger.LogInformation("Retrieved {Count} documents", documents.Count);
-            return Ok(new { success = true, data = documents, count = documents.Count });
+            return Ok(new { success = true, data = documentsWithStage, count = documentsWithStage.Count });
         }
         catch (Exception ex)
         {
@@ -136,6 +162,18 @@ public class DocumentsController(
                     .FirstOrDefaultAsync();
             }
 
+            string? approvalStage = null;
+            string? approvalStatus = null;
+            if (currentVersion != null)
+            {
+                var latestApproval = await context.ApprovalDocuments
+                    .Where(ad => ad.VersionId == currentVersion.VersionId)
+                    .OrderByDescending(ad => ad.CreatedAt)
+                    .FirstOrDefaultAsync();
+                approvalStage = latestApproval?.CurrentStage;
+                approvalStatus = latestApproval?.Status;
+            }
+
             logger.LogInformation("Retrieved document {DocumentId}", id);
 
             return Ok(new
@@ -169,6 +207,8 @@ public class DocumentsController(
                     UploadedAt = document.CreatedAt,
                     Versions = versions,
                     VersionCount = versions.Count,
+                    ApprovalStage = approvalStage,
+                    ApprovalStatus = approvalStatus,
                     document.CreatedAt,
                     document.UpdatedAt
                 }

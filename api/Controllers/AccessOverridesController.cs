@@ -63,6 +63,8 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
                 o.FileEdit,
                 o.ManagePermissions,
                 o.FileManagePermissions,
+                o.ViewHistory,
+                o.ViewRelatedTasks,
                 o.CreatedAt,
             });
 
@@ -147,6 +149,8 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
             entity.FileEdit = req.FileEdit;
             entity.ManagePermissions = req.ManagePermissions;
             entity.FileManagePermissions = req.FileManagePermissions;
+            entity.ViewHistory = req.ViewHistory;
+            entity.ViewRelatedTasks = req.ViewRelatedTasks;
             entity.UpdatedAt = DateTime.UtcNow;
 
             if (existing == null)
@@ -215,4 +219,5 @@ public record CreateAccessOverrideRequest(
     bool? Read, bool? Write, bool? Rename, bool? Copy, bool? Cut, bool? DownloadZip, bool? CreateSubfolder, bool? Delete,
     bool? FileRead, bool? FileRename, bool? FileCopy, bool? FileCut,
     bool? Unlock, bool? SubmitForApproval, bool? Download, bool? DownloadForEditing, bool? UploadUpdatedFile, bool? FileDelete,
-    bool? FileEdit, bool? ManagePermissions, bool? FileManagePermissions);
+    bool? FileEdit, bool? ManagePermissions, bool? FileManagePermissions,
+    bool? ViewHistory = null, bool? ViewRelatedTasks = null);

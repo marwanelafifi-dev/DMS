@@ -33,5 +33,18 @@ public class DmsPageAccessRole
     // button and assign a task to anyone, without also granting the ability
     // to edit/complete/delete tasks that already belong to other people.
     public bool CanCreateTasks { get; set; }
+    // Scopes CanViewApprovals down to specific C-Doc Workflow stage tabs —
+    // e.g. Manager only needs Stage 2, Quality only needs Stage 1 and Stage 3.
+    // Enforced both in the frontend tab list and in ApprovalsController's
+    // queue/action endpoints, not just as a UI-only filter.
+    public bool CanViewQaStage { get; set; }
+    public bool CanViewManagerStage { get; set; }
+    public bool CanViewFinalReleaseStage { get; set; }
+    // Whether this role can actually approve/reject a batch in whichever stage
+    // it's viewing — decoupled from per-folder role grants entirely. Folder/File
+    // Permission overrides and per-folder grants govern file/folder management
+    // actions only (upload/rename/copy/cut/delete/...), never approve/reject.
+    public bool CanApprove { get; set; }
+    public bool CanReject { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

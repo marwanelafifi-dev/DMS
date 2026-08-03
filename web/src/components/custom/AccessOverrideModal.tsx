@@ -17,6 +17,7 @@ const FOLDER_LEVEL_FIELDS: FieldDef[] = [
   { key: 'downloadZip', label: 'Download as ZIP' },
   { key: 'createSubfolder', label: 'Create Sub Folders' },
   { key: 'delete', label: 'Delete' },
+  { key: 'managePermissions', label: 'Manage Permissions' },
 ];
 
 // Governs files — shown alone for the standalone File Permissions modal, or
@@ -36,6 +37,9 @@ const FILE_LEVEL_FIELDS: FieldDef[] = [
   { key: 'download', label: 'Download' },
   { key: 'fileDelete', label: 'Delete' },
   { key: 'fileEdit', label: 'Edit' },
+  { key: 'fileManagePermissions', label: 'Manage Permissions' },
+  { key: 'viewHistory', label: 'View Version History' },
+  { key: 'viewRelatedTasks', label: 'View Related Tasks' },
 ];
 
 // Tri-state control: Inherit (no opinion, fall back to the role) / Allow / Deny.
@@ -57,18 +61,19 @@ function TriStateControl({ value, onChange }: { value: boolean | null | undefine
   );
 }
 
-function FieldGroup({ title, fields, values, onChange }: {
-  title?: string;
+// Two columns instead of one long vertical stack — with up to 15 rows per
+// section (Folder + File level combined can be 20+), a single column pushed
+// the modal well past any reasonable viewport height.
+function FieldGroup({ fields, values, onChange }: {
   fields: FieldDef[];
   values: AccessOverrideFlags;
   onChange: (key: keyof AccessOverrideFlags, next: boolean | null) => void;
 }) {
   return (
-    <div className="space-y-2">
-      {title && <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-navy-400">{title}</p>}
+    <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
       {fields.map((f) => (
         <div key={f.key} className="flex items-center gap-3">
-          <span className="w-40 flex-shrink-0 text-sm text-gray-700 dark:text-navy-200">{f.label}</span>
+          <span className="w-32 flex-shrink-0 text-sm text-gray-700 dark:text-navy-200">{f.label}</span>
           <TriStateControl value={values[f.key]} onChange={(next) => onChange(f.key, next)} />
         </div>
       ))}
@@ -100,6 +105,9 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
   const [targetId, setTargetId] = useState('');
   const [flags, setFlags] = useState<AccessOverrideFlags>({});
   const [isSaving, setIsSaving] = useState(false);
+  // Only relevant for a folder-scoped override, which has both sections —
+  // a file-scoped override only ever has File Level fields, no tabs needed.
+  const [activeLevel, setActiveLevel] = useState<'folder' | 'file'>('folder');
 
   const loadData = async () => {
     setIsLoading(true);
@@ -155,6 +163,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
     setTargetId('');
     setTargetType('User');
     setFlags({});
+    setActiveLevel('folder');
   };
 
   const handleEdit = (o: AccessOverride) => {
@@ -181,7 +190,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
         <div className="flex items-center justify-between bg-navy-900 px-6 py-4">
           <div>
             <h3 className="font-serif text-lg font-bold text-white">{resourceKind === 'file' ? 'File Permissions' : 'Folder Permissions'}</h3>
@@ -250,20 +259,45 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
                 </select>
               </div>
 
-              {resourceKind === 'folder' && (
+              {resourceKind === 'folder' ? (
+                <div>
+                  <div className="mb-3 flex gap-1 border-b border-gray-200 dark:border-navy-700">
+                    <button
+                      type="button"
+                      onClick={() => setActiveLevel('folder')}
+                      className={`px-3 py-2 text-sm font-medium transition-colors ${activeLevel === 'folder' ? 'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:text-navy-400 dark:hover:text-navy-200'}`}
+                    >
+                      Folder Level
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveLevel('file')}
+                      className={`px-3 py-2 text-sm font-medium transition-colors ${activeLevel === 'file' ? 'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:text-navy-400 dark:hover:text-navy-200'}`}
+                    >
+                      File Level
+                    </button>
+                  </div>
+                  {activeLevel === 'folder' ? (
+                    <FieldGroup
+                      fields={FOLDER_LEVEL_FIELDS}
+                      values={flags}
+                      onChange={(key, next) => setFlags((prev) => ({ ...prev, [key]: next }))}
+                    />
+                  ) : (
+                    <FieldGroup
+                      fields={FILE_LEVEL_FIELDS}
+                      values={flags}
+                      onChange={(key, next) => setFlags((prev) => ({ ...prev, [key]: next }))}
+                    />
+                  )}
+                </div>
+              ) : (
                 <FieldGroup
-                  title="Folder Level Permissions"
-                  fields={FOLDER_LEVEL_FIELDS}
+                  fields={FILE_LEVEL_FIELDS}
                   values={flags}
                   onChange={(key, next) => setFlags((prev) => ({ ...prev, [key]: next }))}
                 />
               )}
-              <FieldGroup
-                title={resourceKind === 'folder' ? 'File Level Permissions' : undefined}
-                fields={FILE_LEVEL_FIELDS}
-                values={flags}
-                onChange={(key, next) => setFlags((prev) => ({ ...prev, [key]: next }))}
-              />
 
               <div className="flex justify-end gap-2 pt-1">
                 <button onClick={resetForm} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-300 dark:bg-navy-700 dark:text-white dark:hover:bg-navy-600">Cancel</button>

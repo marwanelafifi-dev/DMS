@@ -54,6 +54,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         {
             var task = await context.Tasks
                 .Include(t => t.AssignedTo)
+                .Include(t => t.AssignedToGroup)
                 .Include(t => t.Document)
                 .FirstOrDefaultAsync(t => t.TaskId == id);
 
@@ -76,6 +77,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.TaskType,
                     task.RiskSeverity,
                     AssignedTo = task.AssignedTo == null ? null : new { task.AssignedTo.UserId, task.AssignedTo.FullName, task.AssignedTo.Email },
+                    AssignedToGroup = task.AssignedToGroup == null ? null : new { task.AssignedToGroup.GroupId, task.AssignedToGroup.Name },
                     task.DueDate,
                     task.Status,
                     task.RcaText,
@@ -101,15 +103,19 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (string.IsNullOrWhiteSpace(req.Title))
                 return BadRequest(new { success = false, error = "Title is required" });
 
+            if (req.AssignedToId.HasValue == req.AssignedToGroupId.HasValue)
+                return BadRequest(new { success = false, error = "Exactly one of assignedToId or assignedToGroupId is required" });
+
             var managerId = GetCurrentUserId();
 
             // Tasks aren't folder-scoped, so there's no per-folder grant to
             // check here — anyone who can see the PCAR page can self-file a
-            // PCAR (assign it to themselves). Assigning it to someone ELSE
-            // (the "New PCAR" form lets you pick any assignee) needs either
-            // the dedicated CanCreateTasks flag or the broader
+            // PCAR (assign it to themselves). Assigning it to someone ELSE, or
+            // to a Group (the "New PCAR" form lets you pick either), needs
+            // either the dedicated CanCreateTasks flag or the broader
             // CanManageAllTasks flag (which already implies it).
-            if (req.AssignedToId != managerId)
+            var assigningToSelf = req.AssignedToId == managerId && req.AssignedToGroupId == null;
+            if (!assigningToSelf)
             {
                 var pageAccessRole = await GetPageAccessRoleAsync(context, managerId);
                 if (pageAccessRole?.CanCreateTasks != true && pageAccessRole?.CanManageAllTasks != true)
@@ -120,6 +126,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 managerId,
                 req.DocumentId,
                 req.AssignedToId,
+                req.AssignedToGroupId,
                 req.Title,
                 req.Description,
                 req.TaskType,
@@ -141,7 +148,15 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 return StatusCode(500, new { success = false, error = "Task was created but its ID was not returned" });
             }
 
-            await notificationService.NotifyAsync(req.AssignedToId, managerId, "New task assigned to you", req.Title, taskId: result.ResourceId.Value);
+            if (req.AssignedToId.HasValue)
+            {
+                await notificationService.NotifyAsync(req.AssignedToId.Value, managerId, "New task assigned to you", req.Title, taskId: result.ResourceId.Value);
+            }
+            else if (req.AssignedToGroupId.HasValue)
+            {
+                foreach (var memberId in await taskService.GetGroupMemberIdsAsync(req.AssignedToGroupId.Value))
+                    await notificationService.NotifyAsync(memberId, managerId, "New task assigned to your group", req.Title, taskId: result.ResourceId.Value);
+            }
 
             return CreatedAtAction(nameof(GetTask), new { id = result.ResourceId.Value }, new { success = true, data = result.Data });
         }
@@ -197,7 +212,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             // approval) and the manager/QA who created it can track/adjust it,
             // same as GetMyTasksAsync's visibility rule — anyone else needs
             // the blanket CanManageAllTasks flag (Admin-equivalent).
-            var isOwnTask = task.AssignedToId == userId || task.ManagerId == userId;
+            var isOwnTask = await taskService.IsAssigneeAsync(task, userId) || task.ManagerId == userId;
             if (!isOwnTask)
             {
                 var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
@@ -285,21 +300,36 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (task == null)
                 return NotFound(new { success = false, error = "Task not found" });
 
-            if (task.AssignedToId != userId)
+            if (!await taskService.IsAssigneeAsync(task, userId))
                 return StatusCode(403, new { success = false, error = "Only the assignee can resubmit this task" });
 
-            if (task.ApprovalId == null)
+            if (task.ApprovalId == null || task.DocumentId == null)
                 return BadRequest(new { success = false, error = "This task is not linked to an approval workflow" });
 
-            var approval = await context.Approvals.FirstOrDefaultAsync(a => a.ApprovalId == task.ApprovalId.Value);
-            if (approval == null)
-                return NotFound(new { success = false, error = "Linked approval batch not found" });
+            // Per-document stage tracking (see 058_approval_document_stage_tracking.sql) —
+            // resubmitting only reopens review for the specific document this task was
+            // raised against, not every other document that happened to share the batch.
+            var approvalDocument = await context.ApprovalDocuments
+                .FirstOrDefaultAsync(ad => ad.ApprovalId == task.ApprovalId.Value && ad.DocumentId == task.DocumentId.Value);
+            if (approvalDocument == null)
+                return NotFound(new { success = false, error = "Linked approval document not found" });
 
-            if (approval.Status != "correction_requested")
+            if (approvalDocument.Status != "correction_requested")
                 return BadRequest(new { success = false, error = "This correction has already been resubmitted" });
 
-            approval.Status = "pending";
-            task.Status = "done";
+            // The corrected file was uploaded as a new document version before this
+            // call (bumping dms_documents.current_version_id) — but nothing had ever
+            // pointed the approval-document row at it, so the reviewer's queue kept
+            // showing the stale pre-correction version forever. Re-link it here.
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == task.DocumentId.Value);
+            if (document?.CurrentVersionId != null)
+                approvalDocument.VersionId = document.CurrentVersionId.Value;
+
+            approvalDocument.Status = "pending";
+            // "completed" (not "done") is the canonical value TaskService.CompleteTaskAsync
+            // and every overdue/status check elsewhere in the app actually compare against —
+            // this line previously wrote "done" instead, which no other check recognized.
+            task.Status = "completed";
             task.CompletedById = userId;
             task.CompletedAt = DateTime.UtcNow;
             task.UpdatedAt = DateTime.UtcNow;
@@ -309,13 +339,14 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             await auditService.LogAsync(userId, "TASK_CORRECTION_RESUBMITTED", new
             {
                 TaskId = id,
-                approval.ApprovalId,
-                approval.CurrentStage,
+                approvalDocument.ApprovalId,
+                approvalDocument.DocumentId,
+                approvalDocument.CurrentStage,
             });
 
             if (task.ManagerId.HasValue)
             {
-                var reviewerLabel = approval.CurrentStage == "manager_review" ? "Manager" : "QA";
+                var reviewerLabel = approvalDocument.CurrentStage == "manager_review" ? "Manager" : "QA";
                 await notificationService.NotifyAsync(
                     task.ManagerId.Value,
                     userId,
@@ -328,7 +359,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             return Ok(new
             {
                 success = true,
-                data = new { approval.ApprovalId, approval.CurrentStage, ApprovalStatus = approval.Status, task.TaskId, TaskStatus = task.Status },
+                data = new { approvalDocument.ApprovalId, approvalDocument.CurrentStage, ApprovalStatus = approvalDocument.Status, task.TaskId, TaskStatus = task.Status },
             });
         }
         catch (Exception ex)
@@ -471,8 +502,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
 
 public record CreateTaskRequest(
     Guid DocumentId,
-    Guid AssignedToId,
     string Title,
+    Guid? AssignedToId = null,
+    Guid? AssignedToGroupId = null,
     string? Description = null,
     string? TaskType = null,
     string? RiskSeverity = null,

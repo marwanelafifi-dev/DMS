@@ -7,22 +7,13 @@ import { apiClient } from '../../utils/api';
 import { doclingApi } from '../../services/doclingApi';
 import { EditDocumentModal } from './EditDocumentModal';
 
-interface ApprovalDocument {
+// One document's place in the C-Doc Workflow — stage/status is tracked per
+// document (see 058_approval_document_stage_tracking.sql), independent of any
+// other document that happened to be submitted in the same batch.
+interface ApprovalDocumentDetail {
+  approvalId: string;
   documentId: string;
   versionId: string;
-  fileName: string;
-  ownerName: string;
-  department?: string | null;
-  category?: string | null;
-  originalDocumentId?: string | null;
-  status?: string | null;
-  versionNumber?: string | null;
-  fileSizeBytes?: number | null;
-  sha256Hash?: string | null;
-}
-
-interface ApprovalDetail {
-  approvalId: string;
   createdBy: string;
   createdByUserName?: string;
   createdAt: string;
@@ -31,12 +22,21 @@ interface ApprovalDetail {
   qaNotes?: string | null;
   managerNotes?: string | null;
   releaseNotes?: string | null;
-  documents: ApprovalDocument[];
+  fileName: string;
+  ownerName: string;
+  department?: string | null;
+  category?: string | null;
+  originalDocumentId?: string | null;
+  versionNumber?: string | null;
+  fileSizeBytes?: number | null;
+  sha256Hash?: string | null;
 }
 
 interface ApprovalDetailViewProps {
   approvalId: string;
+  documentId: string;
   users: Array<{ userId: string; fullName: string }>;
+  groups: Array<{ groupId: string; name: string }>;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -61,9 +61,9 @@ function formatBytes(bytes?: number | null) {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: ApprovalDetailViewProps) {
+export function ApprovalDetailView({ approvalId, documentId, users, groups, onClose, onChanged }: ApprovalDetailViewProps) {
   const navigate = useNavigate();
-  const [approval, setApproval] = useState<ApprovalDetail | null>(null);
+  const [item, setItem] = useState<ApprovalDocumentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -74,28 +74,32 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
   const [notes, setNotes] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
+  const [taskType, setTaskType] = useState('correction');
+  const [priority, setPriority] = useState('high');
   const [assignToUserId, setAssignToUserId] = useState('');
+  const [assignToGroupId, setAssignToGroupId] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [correctionTaskAttachment, setCorrectionTaskAttachment] = useState<File | null>(null);
   const [correctionFile, setCorrectionFile] = useState<File | null>(null);
   const [releaseNotes, setReleaseNotes] = useState('');
   const [editDocumentId, setEditDocumentId] = useState<string | null>(null);
 
-  // First Review (QA) requirement: every document needs a Document ID before
-  // QA can accept. Regular uploaders never see this field at upload time — this
+  // First Review (QA) requirement: this document needs a Document ID before QA
+  // can accept it. Regular uploaders never see this field at upload time — this
   // is where QA/Admin resolves it, either by typing the real ID or generating one.
-  const [docIds, setDocIds] = useState<Record<string, string>>({});
-  const [manualDocIdInput, setManualDocIdInput] = useState<Record<string, string>>({});
-  const [docIdBusy, setDocIdBusy] = useState<Record<string, boolean>>({});
+  const [docId, setDocId] = useState('');
+  const [manualDocIdInput, setManualDocIdInput] = useState('');
+  const [docIdBusy, setDocIdBusy] = useState(false);
 
   const load = async () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const res = await apiClient.getApproval(approvalId);
+      const res = await apiClient.getApproval(approvalId, documentId);
       if (!res.success) throw new Error(res.error);
-      setApproval(res.data);
-      setDocIds(Object.fromEntries(res.data.documents.map((d: ApprovalDocument) => [d.documentId, d.originalDocumentId || ''])));
-      setManualDocIdInput(Object.fromEntries(res.data.documents.map((d: ApprovalDocument) => [d.documentId, d.originalDocumentId || ''])));
+      setItem(res.data);
+      setDocId(res.data.originalDocumentId || '');
+      setManualDocIdInput(res.data.originalDocumentId || '');
     } catch (err: any) {
       setLoadError(err?.response?.data?.error || err.message || 'Failed to load approval');
     } finally {
@@ -106,26 +110,31 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approvalId]);
+  }, [approvalId, documentId]);
 
   const resetForm = () => {
     setMode('view');
     setNotes('');
     setTaskTitle('');
     setTaskDescription('');
+    setTaskType('correction');
+    setPriority('high');
     setAssignToUserId('');
+    setAssignToGroupId('');
     setDueDate('');
+    setCorrectionTaskAttachment(null);
     setCorrectionFile(null);
     setReleaseNotes('');
     setActionError(null);
   };
 
-  const runAction = async (fn: () => Promise<any>) => {
+  const runAction = async (fn: () => Promise<any>, afterSuccess?: (data: any) => Promise<void>) => {
     setIsSubmitting(true);
     setActionError(null);
     try {
       const res = await fn();
       if (res && res.success === false) throw new Error(res.error);
+      if (afterSuccess) await afterSuccess(res.data);
       onChanged();
       onClose();
     } catch (err: any) {
@@ -135,22 +144,20 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
     }
   };
 
-  const missingDocIdDocuments = (approval?.documents ?? []).filter((d) => !docIds[d.documentId]?.trim());
-  const allDocIdsResolved = missingDocIdDocuments.length === 0;
+  const docIdResolved = Boolean(docId.trim());
 
-  const handleGenerateDocId = async (documentId: string) => {
-    setDocIdBusy((prev) => ({ ...prev, [documentId]: true }));
+  const handleGenerateDocId = async () => {
+    setDocIdBusy(true);
     setActionError(null);
     try {
-      const alreadyHasId = Boolean(docIds[documentId]?.trim());
-      const document = approval?.documents.find((d) => d.documentId === documentId);
+      const alreadyHasId = docIdResolved;
       let extractedFromFile: string | null = null;
 
       // Only bother re-scanning the file itself when there's no ID yet — once QA has
       // set one, "Generate New ID" means a fresh system sequence, not another parse.
-      if (!alreadyHasId && document?.versionId) {
+      if (!alreadyHasId && item?.versionId) {
         try {
-          const { blob, fileName } = await apiClient.getDocumentFile(documentId, document.versionId);
+          const { blob, fileName } = await apiClient.getDocumentFile(documentId, item.versionId);
           const file = new File([blob], fileName);
           const { content } = await doclingApi.convertDocument(file);
           const extractRes = await apiClient.extractDocId(documentId, content);
@@ -163,62 +170,68 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
       }
 
       if (extractedFromFile) {
-        setDocIds((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
-        setManualDocIdInput((prev) => ({ ...prev, [documentId]: extractedFromFile! }));
+        setDocId(extractedFromFile);
+        setManualDocIdInput(extractedFromFile);
         return;
       }
 
       const res = await apiClient.generateDocId(documentId);
       if (res.success) {
-        setDocIds((prev) => ({ ...prev, [documentId]: res.data.originalDocumentId }));
-        setManualDocIdInput((prev) => ({ ...prev, [documentId]: res.data.originalDocumentId }));
+        setDocId(res.data.originalDocumentId);
+        setManualDocIdInput(res.data.originalDocumentId);
       } else {
         setActionError(res.error || 'Failed to generate Document ID');
       }
     } catch (err: any) {
       setActionError(err?.response?.data?.error || 'Failed to generate Document ID');
     } finally {
-      setDocIdBusy((prev) => ({ ...prev, [documentId]: false }));
+      setDocIdBusy(false);
     }
   };
 
-  const handleSetDocId = async (documentId: string) => {
-    const value = manualDocIdInput[documentId]?.trim();
+  const handleSetDocId = async () => {
+    const value = manualDocIdInput.trim();
     if (!value) return;
-    setDocIdBusy((prev) => ({ ...prev, [documentId]: true }));
+    setDocIdBusy(true);
     setActionError(null);
     try {
       const res = await apiClient.setDocId(documentId, value);
       if (res.success) {
-        setDocIds((prev) => ({ ...prev, [documentId]: res.data.originalDocumentId }));
+        setDocId(res.data.originalDocumentId);
       } else {
         setActionError(res.error || 'Failed to save Document ID');
       }
     } catch (err: any) {
       setActionError(err?.response?.data?.error || 'Failed to save Document ID');
     } finally {
-      setDocIdBusy((prev) => ({ ...prev, [documentId]: false }));
+      setDocIdBusy(false);
     }
   };
 
-  const handleQaAccept = () => runAction(() => apiClient.qaAcceptApproval(approvalId, notes || undefined));
+  const handleQaAccept = () => runAction(() => apiClient.qaAcceptApproval(approvalId, documentId, notes || undefined));
 
   const handleQaCorrection = () => {
-    if (!taskTitle.trim() || !taskDescription.trim() || !assignToUserId || !dueDate) {
+    if (!taskTitle.trim() || !taskDescription.trim() || (!assignToUserId && !assignToGroupId) || !dueDate) {
       setActionError('Task title, description, assignee, and due date are all required');
       return;
     }
-    return runAction(() => apiClient.qaRequestCorrection(approvalId, taskTitle, taskDescription, assignToUserId, dueDate, notes || undefined));
+    return runAction(
+      () => apiClient.qaRequestCorrection(approvalId, documentId, taskTitle, taskDescription, { userId: assignToUserId || undefined, groupId: assignToGroupId || undefined }, dueDate, notes || undefined, taskType, priority),
+      async (data) => { if (data?.taskId && correctionTaskAttachment) await apiClient.uploadTaskAttachment(data.taskId, correctionTaskAttachment); },
+    );
   };
 
-  const handleManagerApprove = () => runAction(() => apiClient.managerApprove(approvalId, notes || undefined));
+  const handleManagerApprove = () => runAction(() => apiClient.managerApprove(approvalId, documentId, notes || undefined));
 
   const handleManagerRejectTask = () => {
-    if (!taskTitle.trim() || !taskDescription.trim() || !assignToUserId || !dueDate) {
+    if (!taskTitle.trim() || !taskDescription.trim() || (!assignToUserId && !assignToGroupId) || !dueDate) {
       setActionError('Task title, description, assignee, and due date are all required');
       return;
     }
-    return runAction(() => apiClient.managerRejectWithCorrection(approvalId, notes || 'Corrections required', taskTitle, taskDescription, assignToUserId, dueDate));
+    return runAction(
+      () => apiClient.managerRejectWithCorrection(approvalId, documentId, notes || 'Corrections required', taskTitle, taskDescription, { userId: assignToUserId || undefined, groupId: assignToGroupId || undefined }, dueDate, taskType, priority),
+      async (data) => { if (data?.taskId && correctionTaskAttachment) await apiClient.uploadTaskAttachment(data.taskId, correctionTaskAttachment); },
+    );
   };
 
   const handleManagerSelfCorrect = () => {
@@ -226,22 +239,33 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
       setActionError('Choose the corrected file to upload');
       return;
     }
-    return runAction(() => apiClient.managerSelfCorrect(approvalId, correctionFile, notes || 'Corrected directly by manager'));
+    return runAction(() => apiClient.managerSelfCorrect(approvalId, documentId, correctionFile, notes || 'Corrected directly by manager'));
   };
 
-  const handleFinalRelease = () => runAction(() => apiClient.qaFinalRelease(approvalId, releaseNotes || undefined));
+  const handleFinalRelease = () => runAction(() => apiClient.qaFinalRelease(approvalId, documentId, releaseNotes || undefined));
 
-  const handlePreview = (documentId: string) => navigate(`/documents?preview=${encodeURIComponent(documentId)}`);
-  const handleDownload = (documentId: string, versionId: string) => apiClient.downloadDocument(documentId, versionId).catch(() => {});
+  const handleQaFinalReject = () => {
+    if (!taskTitle.trim() || !taskDescription.trim() || (!assignToUserId && !assignToGroupId) || !dueDate) {
+      setActionError('Task title, description, assignee, and due date are all required');
+      return;
+    }
+    return runAction(
+      () => apiClient.qaFinalReject(approvalId, documentId, notes || 'Corrections required', taskTitle, taskDescription, { userId: assignToUserId || undefined, groupId: assignToGroupId || undefined }, dueDate, taskType, priority),
+      async (data) => { if (data?.taskId && correctionTaskAttachment) await apiClient.uploadTaskAttachment(data.taskId, correctionTaskAttachment); },
+    );
+  };
+
+  const handlePreview = () => navigate(`/documents?preview=${encodeURIComponent(documentId)}`);
+  const handleDownload = () => { if (item) apiClient.downloadDocument(documentId, item.versionId).catch(() => {}); };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
+      <div className="flex h-[97vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-6 py-3 dark:border-slate-700">
           <div>
             <h2 className="text-lg font-semibold text-navy-900 dark:text-white">Approval Review</h2>
-            {approval && (
-              <p className="text-sm text-gray-500 dark:text-slate-400">{STAGE_LABEL[approval.currentStage] ?? approval.currentStage}</p>
+            {item && (
+              <p className="text-sm text-gray-500 dark:text-slate-400">{STAGE_LABEL[item.currentStage] ?? item.currentStage}</p>
             )}
           </div>
           <button
@@ -253,7 +277,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 py-3 space-y-3">
           {isLoading && (
             <div className="flex items-center justify-center py-16">
               <Spinner />
@@ -274,62 +298,63 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
             </Card>
           )}
 
-          {approval && !isLoading && (
+          {item && !isLoading && (
             <>
               <div className="text-sm text-gray-600 dark:text-slate-400">
-                Submitted by <span className="font-medium text-navy-900 dark:text-white">{approval.createdByUserName || 'Unknown'}</span> on{' '}
-                {new Date(approval.createdAt).toLocaleString()}
+                Submitted by <span className="font-medium text-navy-900 dark:text-white">{item.createdByUserName || 'Unknown'}</span> on{' '}
+                {new Date(item.createdAt).toLocaleString()}
               </div>
 
-              <div className="space-y-3">
-                {approval.documents.map((doc) => (
-                  <Card key={doc.documentId} className="overflow-hidden">
-                    <CardBody className="space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-navy-900 dark:text-white">{doc.fileName}</p>
-                          <p className="text-xs text-gray-500 dark:text-slate-400">
-                            v{doc.versionNumber || '1.0'} · {formatBytes(doc.fileSizeBytes)} · {doc.ownerName}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handlePreview(doc.documentId)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                            title="Preview"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDownload(doc.documentId, doc.versionId)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                            title="Download"
-                          >
-                            <Download className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setEditDocumentId(doc.documentId)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                            title="Edit"
-                          >
-                            <FilePen className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-slate-400">
-                        {doc.department && <Badge status="default" variant="outline">{doc.department}</Badge>}
-                        {doc.category && <Badge status="default" variant="outline">{doc.category}</Badge>}
-                        <span title={doc.documentId}>Doc ID: {doc.originalDocumentId || 'Not set'}</span>
-                      </div>
-                    </CardBody>
-                  </Card>
-                ))}
-              </div>
+              <Card className="overflow-hidden">
+                <CardBody className="space-y-2 !py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handlePreview}
+                      className="min-w-0 flex-1 text-left"
+                      aria-label={`Open ${item.fileName}`}
+                    >
+                      <p className="font-medium text-navy-900 hover:underline dark:text-white">{item.fileName}</p>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">
+                        v{item.versionNumber || '1.0'} · {formatBytes(item.fileSizeBytes)} · {item.ownerName}
+                      </p>
+                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handlePreview}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        title="Preview"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={handleDownload}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        title="Download"
+                      >
+                        <Download className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setEditDocumentId(documentId)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        title="Edit"
+                      >
+                        <FilePen className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-slate-400">
+                    {item.department && <Badge status="default" variant="outline">{item.department}</Badge>}
+                    {item.category && <Badge status="default" variant="outline">{item.category}</Badge>}
+                    <span title={documentId}>Doc ID: {item.originalDocumentId || 'Not set'}</span>
+                  </div>
+                </CardBody>
+              </Card>
 
-              {(approval.qaNotes || approval.managerNotes) && (
+              {(item.qaNotes || item.managerNotes) && (
                 <div className="space-y-1 rounded border border-gray-200 bg-gray-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
-                  {approval.qaNotes && <p><span className="font-medium text-navy-900 dark:text-white">QA notes:</span> {approval.qaNotes}</p>}
-                  {approval.managerNotes && <p><span className="font-medium text-navy-900 dark:text-white">Manager notes:</span> {approval.managerNotes}</p>}
+                  {item.qaNotes && <p><span className="font-medium text-navy-900 dark:text-white">QA notes:</span> {item.qaNotes}</p>}
+                  {item.managerNotes && <p><span className="font-medium text-navy-900 dark:text-white">Manager notes:</span> {item.managerNotes}</p>}
                 </div>
               )}
 
@@ -341,7 +366,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
               )}
 
               {/* ---- Stage 1: QA Review ---- */}
-              {approval.currentStage === 'qa_review' && mode === 'view' && (
+              {item.currentStage === 'qa_review' && mode === 'view' && (
                 <div className="flex gap-3">
                   <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Accept &amp; Send to Manager
@@ -352,22 +377,22 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                 </div>
               )}
 
-              {approval.currentStage === 'qa_review' && mode === 'accept' && (
+              {item.currentStage === 'qa_review' && mode === 'accept' && (
                 <DecisionForm
                   title="Accept for Manager Review"
                   onCancel={resetForm}
                   onSubmit={handleQaAccept}
                   submitLabel="Confirm Accept"
                   isSubmitting={isSubmitting}
-                  submitDisabled={!allDocIdsResolved}
-                  submitTitle="Every document needs a Document ID before QA can accept"
+                  submitDisabled={!docIdResolved}
+                  submitTitle="This document needs a Document ID before QA can accept"
                 >
                   <DocIdResolutionPanel
-                    documents={approval.documents}
-                    docIds={docIds}
+                    fileName={item.fileName}
+                    docId={docId}
                     manualDocIdInput={manualDocIdInput}
                     setManualDocIdInput={setManualDocIdInput}
-                    docIdBusy={docIdBusy}
+                    busy={docIdBusy}
                     onGenerate={handleGenerateDocId}
                     onSave={handleSetDocId}
                     isSubmitting={isSubmitting}
@@ -376,13 +401,18 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                 </DecisionForm>
               )}
 
-              {approval.currentStage === 'qa_review' && mode === 'correction' && (
+              {item.currentStage === 'qa_review' && mode === 'correction' && (
                 <CorrectionTaskForm
                   users={users}
+                  groups={groups}
                   taskTitle={taskTitle} setTaskTitle={setTaskTitle}
                   taskDescription={taskDescription} setTaskDescription={setTaskDescription}
+                  taskType={taskType} setTaskType={setTaskType}
+                  priority={priority} setPriority={setPriority}
                   assignToUserId={assignToUserId} setAssignToUserId={setAssignToUserId}
+                  assignToGroupId={assignToGroupId} setAssignToGroupId={setAssignToGroupId}
                   dueDate={dueDate} setDueDate={setDueDate}
+                  attachment={correctionTaskAttachment} setAttachment={setCorrectionTaskAttachment}
                   notes={notes} setNotes={setNotes}
                   onCancel={resetForm}
                   onSubmit={handleQaCorrection}
@@ -391,7 +421,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
               )}
 
               {/* ---- Stage 2: Manager Review ---- */}
-              {approval.currentStage === 'manager_review' && mode === 'view' && (
+              {item.currentStage === 'manager_review' && mode === 'view' && (
                 <div className="flex flex-wrap gap-3">
                   <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Approve
@@ -405,7 +435,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                 </div>
               )}
 
-              {approval.currentStage === 'manager_review' && mode === 'accept' && (
+              {item.currentStage === 'manager_review' && mode === 'accept' && (
                 <DecisionForm
                   title="Approve for Final Release"
                   onCancel={resetForm}
@@ -417,13 +447,18 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                 </DecisionForm>
               )}
 
-              {approval.currentStage === 'manager_review' && mode === 'correction' && (
+              {item.currentStage === 'manager_review' && mode === 'correction' && (
                 <CorrectionTaskForm
                   users={users}
+                  groups={groups}
                   taskTitle={taskTitle} setTaskTitle={setTaskTitle}
                   taskDescription={taskDescription} setTaskDescription={setTaskDescription}
+                  taskType={taskType} setTaskType={setTaskType}
+                  priority={priority} setPriority={setPriority}
                   assignToUserId={assignToUserId} setAssignToUserId={setAssignToUserId}
+                  assignToGroupId={assignToGroupId} setAssignToGroupId={setAssignToGroupId}
                   dueDate={dueDate} setDueDate={setDueDate}
+                  attachment={correctionTaskAttachment} setAttachment={setCorrectionTaskAttachment}
                   notes={notes} setNotes={setNotes}
                   notesLabel="Rejection reason"
                   onCancel={resetForm}
@@ -432,7 +467,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
                 />
               )}
 
-              {approval.currentStage === 'manager_review' && mode === 'self-correct' && (
+              {item.currentStage === 'manager_review' && mode === 'self-correct' && (
                 <DecisionForm
                   title="Upload Corrected File"
                   onCancel={resetForm}
@@ -453,25 +488,50 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
               )}
 
               {/* ---- Stage 3: Final Release ---- */}
-              {approval.currentStage === 'final_release' && mode === 'view' && (
-                <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="w-full">
-                  <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Final Release
-                </Button>
+              {item.currentStage === 'final_release' && mode === 'view' && (
+                <div className="flex gap-3">
+                  <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="flex-1">
+                    <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Final Release
+                  </Button>
+                  <Button onClick={() => setMode('correction')} disabled={isSubmitting} variant="secondary" className="flex-1">
+                    <FileX2 className="mr-1.5 inline h-4 w-4" /> Reject — Assign Correction Task
+                  </Button>
+                </div>
               )}
 
-              {approval.currentStage === 'final_release' && mode === 'accept' && (
+              {item.currentStage === 'final_release' && mode === 'accept' && (
                 <DecisionForm
                   title="Final Release"
                   onCancel={resetForm}
                   onSubmit={handleFinalRelease}
-                  submitLabel="Release Document(s)"
+                  submitLabel="Release Document"
                   isSubmitting={isSubmitting}
                 >
                   <TextAreaField label="Release notes (optional)" value={releaseNotes} onChange={setReleaseNotes} />
                 </DecisionForm>
               )}
 
-              {approval.currentStage === 'released' && (
+              {item.currentStage === 'final_release' && mode === 'correction' && (
+                <CorrectionTaskForm
+                  users={users}
+                  groups={groups}
+                  taskTitle={taskTitle} setTaskTitle={setTaskTitle}
+                  taskDescription={taskDescription} setTaskDescription={setTaskDescription}
+                  taskType={taskType} setTaskType={setTaskType}
+                  priority={priority} setPriority={setPriority}
+                  assignToUserId={assignToUserId} setAssignToUserId={setAssignToUserId}
+                  assignToGroupId={assignToGroupId} setAssignToGroupId={setAssignToGroupId}
+                  dueDate={dueDate} setDueDate={setDueDate}
+                  attachment={correctionTaskAttachment} setAttachment={setCorrectionTaskAttachment}
+                  notes={notes} setNotes={setNotes}
+                  notesLabel="Rejection reason"
+                  onCancel={resetForm}
+                  onSubmit={handleQaFinalReject}
+                  isSubmitting={isSubmitting}
+                />
+              )}
+
+              {item.currentStage === 'released' && (
                 <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-300">
                   Released.
                 </div>
@@ -484,7 +544,7 @@ export function ApprovalDetailView({ approvalId, users, onClose, onChanged }: Ap
       {editDocumentId && (
         <EditDocumentModal
           documentId={editDocumentId}
-          fileName={approval?.documents.find((d) => d.documentId === editDocumentId)?.fileName ?? ''}
+          fileName={item?.fileName ?? ''}
           onClose={() => setEditDocumentId(null)}
           onSaved={load}
         />
@@ -507,7 +567,7 @@ function DecisionForm({
 }) {
   return (
     <Card className="border border-blue-200 dark:border-blue-900">
-      <CardBody className="space-y-3">
+      <CardBody className="space-y-2 !py-3">
         <h3 className="font-medium text-navy-900 dark:text-white">{title}</h3>
         {children}
         <div className="flex gap-3 pt-1">
@@ -520,69 +580,72 @@ function DecisionForm({
 }
 
 function DocIdResolutionPanel({
-  documents, docIds, manualDocIdInput, setManualDocIdInput, docIdBusy, onGenerate, onSave, isSubmitting,
+  fileName, docId, manualDocIdInput, setManualDocIdInput, busy, onGenerate, onSave, isSubmitting,
 }: {
-  documents: ApprovalDocument[];
-  docIds: Record<string, string>;
-  manualDocIdInput: Record<string, string>;
-  setManualDocIdInput: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
-  docIdBusy: Record<string, boolean>;
-  onGenerate: (documentId: string) => void;
-  onSave: (documentId: string) => void;
+  fileName: string;
+  docId: string;
+  manualDocIdInput: string;
+  setManualDocIdInput: (value: string) => void;
+  busy: boolean;
+  onGenerate: () => void;
+  onSave: () => void;
   isSubmitting: boolean;
 }) {
-  const missingCount = documents.filter((d) => !docIds[d.documentId]?.trim()).length;
+  const isMissing = !docId.trim();
 
   return (
-    <div className={`space-y-3 rounded-lg border p-3 ${missingCount > 0 ? 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10' : 'border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-800/50'}`}>
-      <p className={`text-sm font-medium ${missingCount > 0 ? 'text-amber-900 dark:text-amber-300' : 'text-gray-700 dark:text-slate-300'}`}>
-        {missingCount > 0
-          ? `Document ID required before accepting (${missingCount} document${missingCount !== 1 ? 's' : ''})`
-          : 'Document IDs — edit if a wrong value was extracted'}
+    <div className={`space-y-3 rounded-lg border p-3 ${isMissing ? 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10' : 'border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-800/50'}`}>
+      <p className={`text-sm font-medium ${isMissing ? 'text-amber-900 dark:text-amber-300' : 'text-gray-700 dark:text-slate-300'}`}>
+        {isMissing ? 'Document ID required before accepting' : 'Document ID — edit if a wrong value was extracted'}
       </p>
-      {documents.map((doc) => {
-        const isMissing = !docIds[doc.documentId]?.trim();
-        const busy = docIdBusy[doc.documentId];
-        return (
-          <div key={doc.documentId} className="flex flex-wrap items-center gap-2 rounded-md bg-white/60 p-2 dark:bg-slate-900/40">
-            <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-slate-300" title={doc.fileName}>{doc.fileName}</span>
-            {!isMissing && (
-              <span className="whitespace-nowrap rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
-                {docIds[doc.documentId]}
-              </span>
-            )}
-            <input
-              type="text"
-              placeholder="Original Document ID"
-              value={manualDocIdInput[doc.documentId] || ''}
-              onChange={(e) => setManualDocIdInput((prev) => ({ ...prev, [doc.documentId]: e.target.value }))}
-              disabled={busy || isSubmitting}
-              className="w-36 rounded border border-gray-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-            />
-            <Button type="button" size="sm" variant="secondary" onClick={() => onSave(doc.documentId)} disabled={!manualDocIdInput[doc.documentId]?.trim() || busy || isSubmitting}>
-              {isMissing ? 'Save' : 'Correct'}
-            </Button>
-            <Button type="button" size="sm" onClick={() => onGenerate(doc.documentId)} disabled={busy || isSubmitting}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              <span className="ml-1">{isMissing ? 'Generate from System' : 'Generate New ID'}</span>
-            </Button>
-          </div>
-        );
-      })}
+      <div className="flex flex-wrap items-center gap-2 rounded-md bg-white/60 p-2 dark:bg-slate-900/40">
+        <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-slate-300" title={fileName}>{fileName}</span>
+        {!isMissing && (
+          <span className="whitespace-nowrap rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+            {docId}
+          </span>
+        )}
+        <input
+          type="text"
+          placeholder="Original Document ID"
+          value={manualDocIdInput}
+          onChange={(e) => setManualDocIdInput(e.target.value)}
+          disabled={busy || isSubmitting}
+          className="w-36 rounded border border-gray-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+        />
+        <Button type="button" size="sm" variant="secondary" onClick={onSave} disabled={!manualDocIdInput.trim() || busy || isSubmitting}>
+          {isMissing ? 'Save' : 'Correct'}
+        </Button>
+        <Button type="button" size="sm" onClick={onGenerate} disabled={busy || isSubmitting}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          <span className="ml-1">{isMissing ? 'Generate from System' : 'Generate New ID'}</span>
+        </Button>
+      </div>
     </div>
   );
 }
 
+// Mirrors the fields on the "Create New Task" (New PCAR) modal in Tasks.tsx —
+// per explicit request, rejecting from any C-Doc Workflow stage should feel
+// like filing a real PCAR, not a stripped-down form with only a title and an
+// assignee. Document is implicit here (it's the one being reviewed).
 function CorrectionTaskForm({
-  users, taskTitle, setTaskTitle, taskDescription, setTaskDescription,
-  assignToUserId, setAssignToUserId, dueDate, setDueDate, notes, setNotes,
+  users, groups, taskTitle, setTaskTitle, taskDescription, setTaskDescription,
+  taskType, setTaskType, priority, setPriority,
+  assignToUserId, setAssignToUserId, assignToGroupId, setAssignToGroupId, dueDate, setDueDate,
+  attachment, setAttachment, notes, setNotes,
   notesLabel = 'Notes (optional)', onCancel, onSubmit, isSubmitting,
 }: {
   users: Array<{ userId: string; fullName: string }>;
+  groups: Array<{ groupId: string; name: string }>;
   taskTitle: string; setTaskTitle: (v: string) => void;
   taskDescription: string; setTaskDescription: (v: string) => void;
+  taskType: string; setTaskType: (v: string) => void;
+  priority: string; setPriority: (v: string) => void;
   assignToUserId: string; setAssignToUserId: (v: string) => void;
+  assignToGroupId: string; setAssignToGroupId: (v: string) => void;
   dueDate: string; setDueDate: (v: string) => void;
+  attachment: File | null; setAttachment: (f: File | null) => void;
   notes: string; setNotes: (v: string) => void;
   notesLabel?: string;
   onCancel: () => void;
@@ -595,19 +658,68 @@ function CorrectionTaskForm({
       <TextAreaField label="Task description" value={taskDescription} onChange={setTaskDescription} />
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Assign to</label>
+          <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Type</label>
           <select
-            value={assignToUserId}
-            onChange={(e) => setAssignToUserId(e.target.value)}
+            value={taskType}
+            onChange={(e) => setTaskType(e.target.value)}
             className="w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
           >
-            <option value="">Select user…</option>
-            {users.map((u) => (
-              <option key={u.userId} value={u.userId}>{u.fullName}</option>
-            ))}
+            <option value="correction">Correction</option>
+            <option value="rca">RCA</option>
+            <option value="audit_action">Audit Action</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Priority</label>
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+          >
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Assign to</label>
+          <select
+            value={assignToGroupId ? `group:${assignToGroupId}` : assignToUserId ? `user:${assignToUserId}` : ''}
+            onChange={(e) => {
+              const [kind, id] = e.target.value.split(':');
+              setAssignToUserId(kind === 'user' ? id : '');
+              setAssignToGroupId(kind === 'group' ? id : '');
+            }}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+          >
+            <option value="">Select user or group…</option>
+            <optgroup label="Users">
+              {users.map((u) => (
+                <option key={u.userId} value={`user:${u.userId}`}>{u.fullName}</option>
+              ))}
+            </optgroup>
+            {groups.length > 0 && (
+              <optgroup label="Groups">
+                {groups.map((g) => (
+                  <option key={g.groupId} value={`group:${g.groupId}`}>{g.name}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
         <TextField label="Due date" type="date" value={dueDate} onChange={setDueDate} />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Attachment</label>
+        <input
+          type="file"
+          onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+          className="block w-full text-sm text-gray-600 dark:text-slate-300"
+        />
+        {attachment && <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{attachment.name}</p>}
       </div>
       <TextAreaField label={notesLabel} value={notes} onChange={setNotes} />
     </DecisionForm>

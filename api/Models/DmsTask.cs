@@ -9,7 +9,11 @@ public class DmsTask
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string TaskType { get; set; } = string.Empty;
-    public Guid AssignedToId { get; set; }
+    // Exactly one of AssignedToId / AssignedToGroupId is set — a group
+    // assignment is one shared task visible to every member, completable by
+    // whoever gets to it first, not a fan-out of duplicate per-member tasks.
+    public Guid? AssignedToId { get; set; }
+    public Guid? AssignedToGroupId { get; set; }
     public Guid? ManagerId { get; set; }
     public string? RiskSeverity { get; set; }
     public DateTime? DueDate { get; set; }
@@ -23,5 +27,6 @@ public class DmsTask
     public DateTime UpdatedAt { get; set; }
 
     public DmsUser? AssignedTo { get; set; }
+    public DmsGroup? AssignedToGroup { get; set; }
     public DmsDocument? Document { get; set; }
 }

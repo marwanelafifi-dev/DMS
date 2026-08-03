@@ -42,6 +42,8 @@ public class AccessOverrideService(DmsContext context)
         AccessOverrideActions.FileEdit => o => o.FileEdit,
         AccessOverrideActions.ManagePermissions => o => o.ManagePermissions,
         AccessOverrideActions.FileManagePermissions => o => o.FileManagePermissions,
+        AccessOverrideActions.ViewHistory => o => o.ViewHistory,
+        AccessOverrideActions.ViewRelatedTasks => o => o.ViewRelatedTasks,
         _ => NoSelector
     };
 

@@ -289,6 +289,28 @@ export function getMockLibraryDocument(documentId: string) {
   return mockLibraryDocuments.find((document) => document.documentId === documentId);
 }
 
+// `document.status` only ever says the generic "pending_approval" for the whole
+// review period — `approvalStage`/`approvalStatus` (from the document's most recent
+// approval batch) say which C-Doc Workflow stage it's actually sitting in right now.
+// Resolve those into the same specific status values the library's badges/labels
+// already know how to render (qa_review / manager_review / qa_final_review /
+// correction_in_progress) instead of leaving every in-review document looking
+// identical regardless of stage.
+function resolveLibraryStatus(source: Document): Document['status'] {
+  if (source.status !== 'pending_approval' || !source.approvalStage) return source.status;
+
+  if (source.approvalStatus === 'correction_requested') return 'correction_in_progress';
+
+  switch (source.approvalStage) {
+    case 'qa_review': return 'qa_review';
+    case 'manager_review': return 'manager_review';
+    case 'final_release': return 'qa_final_review';
+    case 'released': return 'released';
+    case 'rejected': return 'rejected';
+    default: return source.status;
+  }
+}
+
 export function createUnavailableLibraryDocument(source: Document, message: string): MockLibraryDocument {
   const candidateExtension = source.fileName.toLowerCase().split('.').pop() ?? 'file';
   const knownExtensions: readonly string[] = [...requiredLibraryExtensions, 'jpg', 'jpeg'];
@@ -305,6 +327,7 @@ export function createUnavailableLibraryDocument(source: Document, message: stri
     contentType: source.contentType || 'application/octet-stream',
     folderName,
     extension,
+    status: resolveLibraryStatus(source),
     department: source.department ?? 'General',
     owner: source.owner ?? source.uploadedByUser ?? owner,
     createdAt: source.createdAt ?? source.uploadedAt,
