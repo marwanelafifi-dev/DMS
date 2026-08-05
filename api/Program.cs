@@ -45,9 +45,15 @@ builder.Services.AddScoped<AuditCalendarService>();
 builder.Services.AddScoped<UserGoogleCalendarService>();
 builder.Services.AddScoped<AccessOverrideService>();
 builder.Services.AddScoped<NotificationService>();
-// Swap for a real implementation once Google OAuth is configured — see
-// IGoogleOAuthCalendarClient.cs for what that involves.
-builder.Services.AddSingleton<IGoogleOAuthCalendarClient, NotConfiguredGoogleOAuthCalendarClient>();
+// Falls back to a clear "not configured" error at runtime (IsConfigured
+// false) if Google:ClientSecret/CalendarRedirectUri aren't set — see
+// IGoogleOAuthCalendarClient.cs for what configuring it involves.
+builder.Services.AddSingleton<IGoogleOAuthCalendarClient, GoogleOAuthCalendarClient>();
+// Falls back to a clear "not configured" no-op (IsConfigured false) if
+// Smtp:User/Password aren't set — see EmailService.cs.
+builder.Services.AddSingleton<EmailService>();
+builder.Services.AddScoped<GoogleMeetingReminderService>();
+builder.Services.AddScoped<AnnouncementService>();
 builder.Services.AddBackgroundJobs();
 
 // Hangfire — Background job processing

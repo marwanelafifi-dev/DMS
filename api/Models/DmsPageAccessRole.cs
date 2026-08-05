@@ -46,5 +46,12 @@ public class DmsPageAccessRole
     // actions only (upload/rename/copy/cut/delete/...), never approve/reject.
     public bool CanApprove { get; set; }
     public bool CanReject { get; set; }
+    // Whether this role can post to the Send Announcement page — independent
+    // of any per-folder grant, same as the other blanket role-wide flags above.
+    public bool CanSendAnnouncements { get; set; }
+    // Set once at creation (true only for the 5 original seeded roles) and
+    // carried over verbatim by a rename — the stable identity that delete
+    // protection checks, instead of matching against the current role name.
+    public bool IsBuiltIn { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

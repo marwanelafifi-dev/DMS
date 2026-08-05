@@ -137,6 +137,7 @@ public static class AuditActions
     public const string ROLE_PERMISSIONS_UPDATED = "ROLE_PERMISSIONS_UPDATED";
     public const string ROLE_CREATED = "ROLE_CREATED";
     public const string ROLE_DELETED = "ROLE_DELETED";
+    public const string ROLE_RENAMED = "ROLE_RENAMED";
     public const string USER_ROLE_UPDATED = "USER_ROLE_UPDATED";
 
     public const string ACCESS_OVERRIDE_CREATED = "ACCESS_OVERRIDE_CREATED";
@@ -146,4 +147,9 @@ public static class AuditActions
     public const string DROPDOWN_ITEM_CREATED = "DROPDOWN_ITEM_CREATED";
     public const string DROPDOWN_ITEM_DELETED = "DROPDOWN_ITEM_DELETED";
     public const string DROPDOWN_ITEMS_IMPORTED = "DROPDOWN_ITEMS_IMPORTED";
+
+    public const string APP_SETTING_UPDATED = "APP_SETTING_UPDATED";
+
+    public const string ANNOUNCEMENT_CREATED = "ANNOUNCEMENT_CREATED";
+    public const string ANNOUNCEMENT_DELETED = "ANNOUNCEMENT_DELETED";
 }

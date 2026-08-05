@@ -13,6 +13,7 @@ import {
   FileWarning,
   Folder,
   LayoutDashboard,
+  Megaphone,
   ScrollText,
   Settings as SettingsIcon,
   Shield,
@@ -32,6 +33,7 @@ const navItems: Array<{ label: string; path: string; icon: typeof LayoutDashboar
   { label: 'C-Doc Workflow', path: '/approvals', icon: ClipboardCheck, visibleWhen: 'canViewApprovals' },
   { label: 'PCAR / Corrective Action', path: '/tasks', icon: FileWarning, visibleWhen: 'canViewPcar' },
   { label: 'Reminders', path: '/reminders', icon: BellRing, visibleWhen: 'canViewReminders' },
+  { label: 'Send Announcement', path: '/send-announcement', icon: Megaphone, visibleWhen: 'canSendAnnouncements' },
 ];
 
 const adminItems = [

@@ -51,6 +51,44 @@ public class GoogleCalendarController(
         return Redirect(result.Success ? $"{frontendUrl}?calendarConnected=true" : $"{frontendUrl}?calendarError=failed");
     }
 
+    // GET /api/googlecalendar/events?year=2026&month=8 — personal, read-only
+    // pull of the signed-in user's own Google Calendar events for that
+    // calendar month (defaults to the current month). Never persisted in the
+    // DMS database or shown to any other user.
+    [HttpGet("events")]
+    public async Task<ActionResult<object>> GetEvents([FromQuery] int? year, [FromQuery] int? month)
+    {
+        var today = DateTime.UtcNow;
+        var y = year ?? today.Year;
+        var m = month ?? today.Month;
+        if (m is < 1 or > 12)
+            return BadRequest(new { success = false, error = "month must be between 1 and 12" });
+
+        DateTime timeMin, timeMax;
+        try
+        {
+            timeMin = new DateTime(y, m, 1, 0, 0, 0, DateTimeKind.Utc);
+            timeMax = timeMin.AddMonths(1);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return BadRequest(new { success = false, error = "Invalid year/month" });
+        }
+
+        var result = await calendarService.GetEventsAsync(GetCurrentUserId(), timeMin, timeMax);
+        if (!result.Success)
+        {
+            return result.Error switch
+            {
+                "NotFound" => NotFound(new { success = false, error = result.Message }),
+                "NotConfigured" => StatusCode(501, new { success = false, error = result.Message }),
+                _ => StatusCode(500, new { success = false, error = result.Message }),
+            };
+        }
+
+        return Ok(new { success = true, data = result.Data });
+    }
+
     // DELETE /api/googlecalendar/disconnect
     [HttpDelete("disconnect")]
     public async Task<ActionResult<object>> Disconnect()

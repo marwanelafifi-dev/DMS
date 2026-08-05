@@ -200,6 +200,50 @@ public class UserGoogleCalendarService(
         logger.LogInformation("Daily Google Calendar sync complete: {Succeeded}/{Total} users synced", succeeded, userIds.Count);
     }
 
+    // Read-only pull for the personal "My Google Calendar" view — never
+    // persisted, fetched live every time so it's always current. [timeMinUtc,
+    // timeMaxUtc) lets the frontend browse any month, like a real calendar.
+    public async Task<GoogleCalendarResult> GetEventsAsync(Guid userId, DateTime timeMinUtc, DateTime timeMaxUtc)
+    {
+        var events = await TryGetEventsAsync(userId, timeMinUtc, timeMaxUtc);
+        if (events == null)
+        {
+            var connectionExists = await context.UserCalendarConnections.AnyAsync(c => c.UserId == userId && c.IsActive);
+            if (!connectionExists)
+                return GoogleCalendarResult.NotFound("Google Calendar is not connected for this user");
+            if (!googleClient.IsConfigured)
+                return GoogleCalendarResult.NotConfigured();
+            return GoogleCalendarResult.Fail("Failed to fetch Google Calendar events");
+        }
+
+        return GoogleCalendarResult.Ok(new { events });
+    }
+
+    // Typed variant for internal callers (e.g. GoogleMeetingReminderService)
+    // that need the list itself rather than the HTTP-shaped GoogleCalendarResult
+    // wrapper. Returns null on any failure — not connected, not configured, or
+    // a real API error — since the reminder scanner just needs to skip a user
+    // it can't currently reach, not surface why.
+    public async Task<List<GoogleCalendarEventSummary>?> TryGetEventsAsync(Guid userId, DateTime timeMinUtc, DateTime timeMaxUtc)
+    {
+        var connection = await context.UserCalendarConnections.FirstOrDefaultAsync(c => c.UserId == userId && c.IsActive);
+        if (connection == null || !googleClient.IsConfigured)
+            return null;
+
+        try
+        {
+            var accessToken = await EnsureFreshAccessTokenAsync(connection);
+            var events = await googleClient.ListEventsAsync(accessToken, timeMinUtc, timeMaxUtc);
+            await context.SaveChangesAsync(); // persist any refreshed token from EnsureFreshAccessTokenAsync
+            return events;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to fetch Google Calendar events for user {UserId}", userId);
+            return null;
+        }
+    }
+
     private async Task<string> EnsureFreshAccessTokenAsync(DmsUserCalendarConnection connection)
     {
         if (connection.TokenExpiresAt > DateTime.UtcNow.AddMinutes(2))

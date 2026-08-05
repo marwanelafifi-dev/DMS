@@ -3,13 +3,78 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-08-03
+**Current Date:** 2026-08-05
 
-**Working Directory:** `C:\Users\user\Desktop\DMS`
+**Working Directory:** `d:\Si ware\DMS - Final`
 
 **Active Branch:** `Main`
 
-**Status:** Session 27 — the C-Doc Workflow's biggest correctness bug found via direct user testing: approving/rejecting one document out of a multi-document upload batch was silently applying to every document in that batch, because stage/status lived on the shared `dms_approvals` row instead of per-document. Rebuilt the whole approval data model so every `dms_approval_documents` row tracks its own `current_stage`/`status`/notes independently; added a symmetric Reject/Correction action at Final Release (previously Accept-only); added per-role C-Doc stage visibility and Approve/Reject flags on the Roles page (decoupled from per-folder grants entirely, per explicit request); added Task/PCAR assignment to a Group (one shared task, any member can act) alongside individual users; and closed out a chain of File/Folder Permission coverage gaps (Manage Permissions, View Version History, View Related Tasks now all have their own tri-state toggles). **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 28 — role renaming (any role, including built-ins, tracked by a stable `IsBuiltIn` flag instead of matching the current name), a full real Google Calendar integration (OAuth connect, month-grid "My Google Calendar" view with attendees/attachments/conference-join details, personal per-user pull), a real SMTP-backed email system (first in the app), an automated "ISO" meeting reminder pipeline (created/day-before/10-min stages, emailing every real attendee), and a new role-permission-gated Announcements feature. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 28 (2026-08-05) — Role Renaming, Real Google Calendar Integration, SMTP Email, ISO Meeting Reminders, Announcements
+
+**Status:** ✅ Complete — every backend change rebuilt (`docker compose build api`/`web`) and live-verified via curl/psql against the running containers after each change, not just compiled.
+
+**Context:** Started from a small ask (let the Roles page rename a role) and escalated, through the user directly testing Google Calendar sync, into building the DMS's first real outbound-email capability and a background reminder system built on top of it.
+
+### 1. Role renaming, including built-in roles
+- `PUT /api/page-access-roles/{role}/rename` (new): renames any role, including the 5 built-in ones. Initially restricted to custom roles only out of caution — a grep across the backend confirmed every real permission check (`BaseController`, `RBACMiddleware`) keys off the `BypassFolderPermissions` **boolean flag**, never the literal role name, so the restriction was unnecessary and removed per user pushback.
+- Since the rename swaps the primary key (`dms_users.role` FK, no `ON UPDATE CASCADE`), the implementation inserts the renamed row first, repoints every affected user, then deletes the old row, all in one transaction.
+- Per explicit follow-up, delete-protection ("built-in roles can't be deleted") now tracks a new stable `IsBuiltIn` boolean column (migration `061`) instead of matching the *current* role name — otherwise renaming "Full Access" would have silently made it deletable.
+- `RolePermissions.tsx`'s Edit-Role modal gained an editable "Role Name" field for every role card.
+
+### 2. Audit Trail page decluttered
+Removed the leftover "Admin Panel / Permissions Matrix / Active Locks" block and the redundant "Administration" tab switcher that rendered above "Audit Trail & Logging" (`Settings.tsx`) — that page now starts directly at its own heading. Also refreshed the Action-Type filter dropdown (`AuditTrail.tsx`), which had drifted badly stale — missing dozens of real actions logged since (Access Overrides, Roles, Groups, C-Doc Workflow stage transitions, Reminders, Google Calendar, Document-ID resolution, etc.).
+
+### 3. Real Google Calendar integration (the OAuth scaffold from Session 16 finally implemented)
+Session 16 had built the entire per-user Google Calendar architecture (connections table, sync button, daily job) against an `IGoogleOAuthCalendarClient` interface, deliberately left as a `NotConfiguredGoogleOAuthCalendarClient` stub pending real OAuth credentials. This session:
+- User supplied a Google Workspace OAuth Client Secret (reusing the existing Sign-In Client ID) and a redirect URI; `GoogleOAuthCalendarClient.cs` (new) implements the interface for real using `Google.Apis.Auth`'s `GoogleAuthorizationCodeFlow` and `Google.Apis.Calendar.v3`.
+- **Real bug found and fixed live**: the generated Google consent URL had a duplicated `access_type=offline` param (the Google-specific request builder already sets it by default; the code appended it again) — fixed by building the URL via `UriBuilder`/`HttpUtility.ParseQueryString` instead of raw string concatenation.
+- **"My Google Calendar" month-grid view** (`GoogleCalendarMonthView.tsx`, new) — a real Google-Calendar-style UI: prev/next month navigation, Today button, color-coded event chips, click a day to see its full event list, click any event to open a detail popup showing the full time range, **location**, **attendees** (with response status and an "Organizer" label — a **real bug found and fixed**: Google represents booked meeting rooms as fake "attendee" resources with `@resource.calendar.google.com` emails, which were inflating the guest count until filtered out via the `Resource` flag), **attachments** (Drive files, clickable), and a prominent **"Join [Google Meet/Zoom/etc.]"** button when the event has a real conferencing link (`HangoutLink` or a `ConferenceData` video entry point — covers both native Meet and third-party add-ons). Event descriptions render with clickable linkified URLs (`linkifyText`), since Zoom invite text is often pasted directly into the description rather than using native conferencing fields.
+- The events endpoint (`GET /api/googlecalendar/events?year=&month=`) takes an explicit month range (not just "upcoming") so the frontend can browse any month, past or future.
+- A Full-Access-only **"Automatically sync every connected user's Google Calendar on login"** toggle (new `dms_app_settings` key/value table, migration `062`, gated on `BypassFolderPermissions` not a literal role name) — checked in `AuthController` after every successful login (local + both Google SSO paths) via a best-effort `TriggerCalendarSyncIfEnabledAsync` that never fails the login itself.
+- "Sync Now" now does a real two-way refresh in one click: pushes DMS-published events out to Google, then re-fetches the currently-open month view so it reflects Google's latest state immediately.
+
+### 4. First real outbound email in the app (`EmailService.cs`, new)
+The pre-existing `Reminders` feature's "EMAIL" type had never actually sent anything — it only flipped `IsSent = true` in the database. This session added the first real SMTP sender:
+- Gmail/Google Workspace SMTP (`smtp.gmail.com:587`, STARTTLS) via an app password the user generated and supplied (`SMTP_USER`/`SMTP_PASSWORD` in `.env`, never committed).
+- `EmailService.BuildBrandedHtml(headline, accentColor, bodyHtml)` — one shared visual identity for every notification email the DMS sends: a solid navy (`#002E5C`) header banner with the actual Si-Ware logo **embedded inline via Content-ID** (not a remote `<img src>`, since the API has no publicly reachable URL for email clients to fetch from — `LinkedResource`/`AlternateView` off `api/Assets/si-ware-logo-dark.png`, copied in from the frontend's dark-mode logo asset), a colored accent bar, and a plain-language footer. Per explicit follow-up, the per-stage urgency colors (blue/amber/red) were unified into one consistent navy accent bar across every email type.
+- `IsConfigured` is false (and every send a logged warning, never a thrown exception) until `Smtp:User`/`Smtp:Password` are set, so a missing SMTP config never blocks whatever feature is trying to notify someone.
+
+### 5. Automated "ISO" meeting reminder pipeline (`GoogleMeetingReminderService.cs`, new)
+Per explicit spec: any meeting with "ISO" in the title, on any connected user's Google Calendar, gets 3 reminder stages — **on first detection**, **1 day before**, and **10 minutes before** — each as both an email and an in-app notification. Runs as a Hangfire job (`scan-iso-meeting-reminders`) every 5 minutes.
+- **Real design correction made live, from direct user testing**: the first version only notified the DMS account that happened to have its calendar connected — not the meeting's actual attendees. Since Google's event data already includes every attendee's real email, the pipeline was redesigned to fan out to all of them directly (`dms_google_meeting_reminders`, migration `063`, keyed by the Google event ID itself rather than per-connected-user, with the attendee list snapshotted at first detection). Any attendee whose email also matches a real DMS user gets the in-app notification too; everyone gets the email regardless of whether they're a DMS user at all.
+- Meeting-room resources are excluded from the attendee/recipient list (same `Resource` flag fix as §3).
+- The reminder email includes the full meeting details block: description (linkified), location, attendee list, attachments, and a Join button — built once and reused across all 3 stages.
+- Idempotent per stage via 3 boolean columns on the tracking row — a stage never re-fires once sent, but the title/time snapshot stays current in case of a rename/reschedule.
+
+### 6. "Send Announcement" — free-text broadcast with real notification fan-out
+Per explicit request: Full Access/Quality users can post a free-text announcement, choose "all users" or hand-picked recipients, and independently toggle Email/In-App delivery.
+- New dedicated page (`SendAnnouncement.tsx`) rather than embedded in the Dashboard card, per explicit follow-up. Route-guarded (`RequirePageAccess flag="canSendAnnouncements"`) so a role without the flag can't reach it even via a direct URL — not just a hidden sidebar link.
+- **Real permission-model correction made live**: initially gated on a hardcoded `role === "Full Access" || role === "Quality"` check (matching the old, since-removed "New Audit Event" pattern) — per explicit follow-up, replaced with a proper `CanSendAnnouncements` role flag (migration `065`), editable per role from the Roles admin page's checkbox list like every other blanket capability, defaulting on for Full Access/Quality and off for everyone else.
+- Every user can still **view** all past announcements regardless of the flag — the Dashboard's "Announcements" panel and its "View all" button open a simple read-only modal (not a navigation to the now-gated page), so a regular user is never sent to a page they can't use.
+- Announcement emails reuse the same branded template as ISO meeting reminders (`AnnouncementService.cs`, new; `dms_announcements`, migration `064`).
+
+### 7. ISO Audit Calendar card simplified to match the new Google-Calendar-first model
+Per explicit follow-up ("all audit meetings will be put using Google Calendar"): the Dashboard's "ISO Certification Journey & Audit Calendar" card had its dead manual-entry list removed entirely (the "New Audit Event" creation button was deleted earlier this session per explicit request — after that, the old `dms_audit_calendar_events` list could only ever show "No audit events published yet", forever). The card is now purely the Google Calendar connection + browser: once connected, the month-grid view renders directly as the card's primary content instead of behind an extra click, with copy updated to explain that audit meetings are scheduled directly in Google Calendar (title it "ISO" to be tracked and reminded here automatically) and to connect using a Si-Ware account.
+
+### Files created
+`api/Services/{GoogleOAuthCalendarClient,EmailService,GoogleMeetingReminderService,AnnouncementService}.cs`, `api/Controllers/{AnnouncementsController,AppSettingsController}.cs`, `api/Models/{DmsAnnouncement,DmsAppSetting,DmsGoogleMeetingReminder}.cs`, `api/Assets/si-ware-logo-dark.png`, `infra/db/init/061`–`065_*.sql`, `web/src/components/custom/GoogleCalendarMonthView.tsx`, `web/src/components/pages/SendAnnouncement.tsx`
+
+### Files modified (highlights)
+`api/Controllers/{AuthController,GoogleCalendarController,PageAccessRolesController}.cs`, `api/Services/{IGoogleOAuthCalendarClient,UserGoogleCalendarService,AuditService,BackgroundJobService}.cs`, `api/Models/DmsPageAccessRole.cs`, `api/Data/DmsContext.cs`, `api/Program.cs`, `api/appsettings.json`, `api/DMS.Api.csproj` (added `Google.Apis.Calendar.v3`), `docker-compose.yml`, `.env.example`, `web/src/components/custom/{AuditCalendarCard,AuditTrail,RolePermissions}.tsx`, `web/src/components/pages/{Dashboard,Settings}.tsx`, `web/src/components/layout/Sidebar.tsx`, `web/src/hooks/usePageAccess.ts`, `web/src/utils/{api,roleLabels}.ts`, `web/src/App.tsx`
+
+### Verification
+- Every backend change rebuilt (`docker compose build api`/`web`) and redeployed; all 6 services confirmed healthy after every change, not just once at the end.
+- Every new endpoint live-verified via curl against the running containers: role rename (including the built-in-role rejection-then-acceptance sequence), Google Calendar OAuth connect/status/events (including real attendee/attachment/conference-link data pulled from real meetings), app-settings get/put with role gating, announcement create/list/delete, and the `scan-iso-meeting-reminders` Hangfire job's actual database side effects (`dms_google_meeting_reminders` rows, real emails received and screenshotted back by the user).
+- `npx tsc --noEmit` clean after every frontend change (only 2 pre-existing, unrelated errors remain — `NotificationsBell.tsx`'s `unreadCount` and `RolePermissions.tsx`'s `canEditFiles`, both predating this session).
+
+### Known follow-ups
+- The OAuth `state` CSRF hardening flagged back in Session 16 (raw user ID, not a signed nonce) still hasn't been addressed — same caveat, now more relevant since the feature is actually live.
+- `NotificationsBell.tsx`'s `unreadCount` type mismatch and `RolePermissions.tsx`'s `canEditFiles` omission (both pre-existing) remain unfixed — flagged to the user, not in scope for this session's work.
+- Persisted PPTX preview bug from earlier sessions remains open.
 
 ---
 

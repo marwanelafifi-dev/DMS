@@ -6,6 +6,7 @@ import { Settings } from './components/pages/Settings';
 import { Tasks } from './components/pages/Tasks';
 import { Approvals } from './components/pages/Approvals';
 import { Reminders } from './components/pages/Reminders';
+import { SendAnnouncement } from './components/pages/SendAnnouncement';
 import { Search } from './components/pages/Search';
 import { Login } from './components/pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
@@ -108,6 +109,19 @@ function App() {
                 </MainLayout>
               }
             />
+
+            {/* Send Announcement — posting is Full Access/Quality by default,
+                but role-editable via the new CanSendAnnouncements flag */}
+            <Route element={<RequirePageAccess flag="canSendAnnouncements" />}>
+              <Route
+                path="/send-announcement"
+                element={
+                  <MainLayout>
+                    <SendAnnouncement />
+                  </MainLayout>
+                }
+              />
+            </Route>
 
             {/* Search */}
             <Route

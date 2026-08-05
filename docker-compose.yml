@@ -73,6 +73,10 @@ services:
       OcrRag__BaseUrl: "http://ocr-rag:8000"
       Jwt__Secret: ${JWT_SECRET}
       Google__ClientId: ${GOOGLE_CLIENT_ID}
+      Google__ClientSecret: ${GOOGLE_CLIENT_SECRET}
+      Google__CalendarRedirectUri: ${GOOGLE_CALENDAR_REDIRECT_URI:-http://localhost:5174/api/googlecalendar/callback}
+      Smtp__User: ${SMTP_USER}
+      Smtp__Password: ${SMTP_PASSWORD}
     ports:
       - "${API_PORT:-8080}:8080"
     healthcheck:

@@ -11,7 +11,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(DmsContext context, JwtTokenService jwtTokenService, AuditService auditService, IConfiguration configuration, ILogger<AuthController> logger) : BaseController
+public class AuthController(DmsContext context, JwtTokenService jwtTokenService, AuditService auditService, IConfiguration configuration, UserGoogleCalendarService calendarService, ILogger<AuthController> logger) : BaseController
 {
     // Only Google accounts on this Workspace domain may sign in — enforced
     // server-side (never trust the client) against the verified token's email.
@@ -51,6 +51,7 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
             var token = jwtTokenService.GenerateToken(user);
 
             await auditService.LogAsync(user.UserId, USER_LOGIN, new { user.UserId, user.Email, LoggedInAt = now });
+            await TriggerCalendarSyncIfEnabledAsync(user.UserId);
 
             return Ok(new
             {
@@ -66,6 +67,27 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
         {
             logger.LogError(ex, "Error during login");
             return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // Fired on every successful login (local + both Google paths) when a Full
+    // Access admin has turned on the "sync on login" app setting — best-effort,
+    // never allowed to fail the login itself (a stale/expired refresh token or
+    // Google outage shouldn't lock anyone out of the app).
+    private async Task TriggerCalendarSyncIfEnabledAsync(Guid userId)
+    {
+        try
+        {
+            var setting = await context.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == AppSettingKeys.SyncCalendarOnLogin);
+            if (setting?.Value != "true")
+                return;
+
+            await calendarService.SyncUserAsync(userId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Sync-on-login failed for user {UserId} (non-fatal)", userId);
         }
     }
 
@@ -252,6 +274,7 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
         await context.SaveChangesAsync();
 
         await auditService.LogAsync(user.UserId, USER_LOGIN, new { user.UserId, user.Email, LoggedInAt = now, Method = "google" });
+        await TriggerCalendarSyncIfEnabledAsync(user.UserId);
 
         return (true, null, user);
     }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, ClipboardCheck, Clock3, FileClock, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, ClipboardCheck, Clock3, FileClock, Megaphone, TriangleAlert, X } from 'lucide-react';
 import { Card, CardBody } from '../ui/Card';
 import { SkeletonCard } from '../ui/Skeleton';
 import type { Task, Document, Approval } from '../../types';
@@ -10,12 +10,22 @@ import { AuditCalendarCard } from '../custom/AuditCalendarCard';
 
 const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
+interface AnnouncementSummary {
+  announcementId: string;
+  title: string;
+  message: string;
+  postedByName?: string | null;
+  createdAt: string;
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [recentDocs, setRecentDocs] = useState<Document[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<Approval[]>([]);
+  const [announcements, setAnnouncements] = useState<AnnouncementSummary[]>([]);
+  const [showAllAnnouncements, setShowAllAnnouncements] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -31,10 +41,11 @@ export function Dashboard() {
 
       // Loaded independently so one failing endpoint still leaves the rest of the
       // dashboard usable instead of blanking the whole page.
-      const [taskResult, documentResult, approvalResult] = await Promise.allSettled([
+      const [taskResult, documentResult, approvalResult, announcementResult] = await Promise.allSettled([
         apiClient.getTasks(),
         apiClient.getDocuments(),
         apiClient.getPendingApprovals(),
+        apiClient.getAnnouncements(),
       ]);
 
       if (cancelled) return;
@@ -42,6 +53,7 @@ export function Dashboard() {
       setTasks(taskResult.status === 'fulfilled' ? asArray<Task>(taskResult.value.data) : []);
       setRecentDocs(documentResult.status === 'fulfilled' ? asArray<Document>(documentResult.value.data) : []);
       setPendingApprovals(approvalResult.status === 'fulfilled' ? asArray<Approval>(approvalResult.value.data) : []);
+      setAnnouncements(announcementResult.status === 'fulfilled' ? asArray<AnnouncementSummary>(announcementResult.value.data) : []);
 
       const failed = [
         taskResult.status === 'rejected' ? 'tasks' : null,
@@ -94,7 +106,6 @@ export function Dashboard() {
     );
   }
 
-  const canManageAuditCalendar = user?.role === 'Admin' || user?.role === 'QA';
 
   const metrics = [
     { label: 'My Open Tasks', value: taskStats.open + taskStats.inProgress, valueClass: 'text-[#2d3d80] dark:text-white', detail: `${myTasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]', action: () => navigate('/tasks') },
@@ -145,9 +156,29 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(330px,0.85fr)]">
-        <AuditCalendarCard canManage={canManageAuditCalendar} />
+        <AuditCalendarCard isFullAccess={user?.role === 'Full Access'} />
 
         <div className="flex flex-col gap-5">
+          <Card>
+            <CardBody className="p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="section-heading flex items-center gap-2"><Megaphone className="h-4 w-4 text-[#3f8bca]" />Announcements</h2>
+                <button onClick={() => setShowAllAnnouncements(true)} className="text-xs font-medium text-[#3f8bca] hover:underline">View all</button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {announcements.length === 0 && (
+                  <p className="px-1 py-4 text-sm text-[#718198]">No announcements yet.</p>
+                )}
+                {announcements.slice(0, 3).map((announcement) => (
+                  <button key={announcement.announcementId} onClick={() => setShowAllAnnouncements(true)} className="flex w-full flex-col rounded-[4px] border-l-2 border-[#2f5f96] px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5">
+                    <span className="truncate text-sm font-medium text-[#26334d] dark:text-white">{announcement.title}</span>
+                    <span className="mt-0.5 line-clamp-2 text-xs text-[#718198]">{announcement.message}</span>
+                  </button>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+
           <Card>
             <CardBody className="p-5">
               <div className="flex items-center justify-between">
@@ -221,6 +252,34 @@ export function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {showAllAnnouncements && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowAllAnnouncements(false)}>
+          <Card className="max-h-[80vh] w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-200 p-5 dark:border-navy-700">
+              <h2 className="section-heading flex items-center gap-2"><Megaphone className="h-4 w-4 text-[#3f8bca]" />All Announcements</h2>
+              <button onClick={() => setShowAllAnnouncements(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <CardBody className="max-h-[calc(80vh-72px)] space-y-2 overflow-y-auto">
+              {announcements.length === 0 ? (
+                <p className="px-1 py-4 text-sm text-[#718198]">No announcements yet.</p>
+              ) : (
+                announcements.map((announcement) => (
+                  <div key={announcement.announcementId} className="rounded-[4px] border-l-2 border-[#2f5f96] px-3 py-2.5">
+                    <p className="text-sm font-medium text-[#26334d] dark:text-white">{announcement.title}</p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-sm text-[#52627a] dark:text-slate-300">{announcement.message}</p>
+                    <p className="mt-1.5 text-xs text-[#718198]">
+                      {announcement.postedByName ?? 'Unknown'} · {new Date(announcement.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { SkeletonTable } from '../ui/Skeleton';
 import { AlertCircle, Check, Edit2, Plus, Shield, Trash2, X } from 'lucide-react';
 import { apiClient, type PageAccessRole } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
-import { isBuiltInRole } from '../../utils/roleLabels';
 
 // Rendered as checkmarked tags per role card, and as checkboxes in the Edit
 // modal. Editing these changes what a user assigned this role actually sees
@@ -16,6 +15,7 @@ const PERMISSION_KEYS = [
   'canViewDashboard', 'canViewDocumentLibrary', 'canViewReminders',
   'canViewApprovals', 'canViewPcar', 'canViewAdminPanel', 'bypassFolderPermissions',
   'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks',
+  'canSendAnnouncements',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
@@ -29,6 +29,7 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',
   canCreateTasks: 'Create New PCAR',
+  canSendAnnouncements: 'Send Announcements',
 };
 
 // Scopes the C-Doc Workflow page down to individual stage tabs (e.g. Manager
@@ -73,6 +74,7 @@ export function RolePermissions() {
 
   const [editingRole, setEditingRole] = useState<PageAccessRole | null>(null);
   const [editPermissions, setEditPermissions] = useState<Record<typeof ALL_KEYS[number], boolean>>(EMPTY_PERMISSIONS);
+  const [editRoleName, setEditRoleName] = useState('');
   const [isSavingRole, setIsSavingRole] = useState(false);
 
   const [showNewRoleForm, setShowNewRoleForm] = useState(false);
@@ -109,18 +111,33 @@ export function RolePermissions() {
   const openEditRole = (role: PageAccessRole) => {
     setEditingRole(role);
     setEditPermissions(Object.fromEntries(ALL_KEYS.map(k => [k, role[k]])) as Record<typeof ALL_KEYS[number], boolean>);
+    setEditRoleName(role.role);
   };
 
   const handleSaveRole = async () => {
     if (!editingRole) return;
+    const trimmedName = editRoleName.trim();
+    const isRenaming = trimmedName !== editingRole.role;
+
+    if (isRenaming && trimmedName.length < 2) {
+      showError('Role name must be at least 2 characters');
+      return;
+    }
+
     setIsSavingRole(true);
     try {
-      const res = await apiClient.updatePageAccessRole(editingRole.role, editPermissions);
+      let currentName = editingRole.role;
+      if (isRenaming) {
+        await apiClient.renamePageAccessRole(currentName, trimmedName);
+        currentName = trimmedName;
+      }
+      const res = await apiClient.updatePageAccessRole(currentName, editPermissions);
       setRoles((prev) => prev.map(r => r.role === editingRole.role ? res.data : r));
-      showSuccess(`${editingRole.role} access updated`);
+      showSuccess(`${currentName} access updated`);
       setEditingRole(null);
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to update role');
+      loadData();
     } finally {
       setIsSavingRole(false);
     }
@@ -210,7 +227,7 @@ export function RolePermissions() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {orderedRoles.map((role) => {
             const description = ROLE_CARD_DESCRIPTIONS[role.role] ?? 'Custom role';
-            const isDeletable = !isBuiltInRole(role.role);
+            const isDeletable = !role.isBuiltIn;
             return (
             <Card key={role.role} className="overflow-hidden">
               <CardBody className="space-y-3">
@@ -418,6 +435,15 @@ export function RolePermissions() {
                 <p className="text-xs text-amber-800 dark:text-amber-300">
                   This changes which pages every user assigned this role can see — not just what's displayed.
                 </p>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Role Name</label>
+                <input
+                  type="text"
+                  value={editRoleName}
+                  onChange={(e) => setEditRoleName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                />
               </div>
               <div className="space-y-2">
                 {PERMISSION_KEYS.map((key) => (

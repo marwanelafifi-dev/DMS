@@ -18,11 +18,6 @@ namespace DMS.Api.Controllers;
 [Route("api/page-access-roles")]
 public class PageAccessRolesController(DmsContext context, AuditService auditService, ILogger<PageAccessRolesController> logger) : BaseController
 {
-    // The 5 built-in roles can never be deleted or renamed away — the Users
-    // page's Access selector and this controller both assume they always exist.
-    private static readonly string[] BuiltInRoles = ["User", "Manager", "Quality", "Auditor", "Full Access"];
-    private static bool IsBuiltInRole(string role) => BuiltInRoles.Contains(role);
-
     [HttpGet]
     public async Task<ActionResult<object>> GetPageAccessRoles()
     {
@@ -74,6 +69,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewFinalReleaseStage = req.CanViewFinalReleaseStage,
                 CanApprove = req.CanApprove,
                 CanReject = req.CanReject,
+                CanSendAnnouncements = req.CanSendAnnouncements,
+                IsBuiltIn = false,
                 UpdatedAt = DateTime.UtcNow,
             };
 
@@ -119,6 +116,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanViewFinalReleaseStage = req.CanViewFinalReleaseStage;
             entity.CanApprove = req.CanApprove;
             entity.CanReject = req.CanReject;
+            entity.CanSendAnnouncements = req.CanSendAnnouncements;
             entity.UpdatedAt = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
@@ -136,18 +134,97 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
         }
     }
 
+    // PUT /api/page-access-roles/{role}/rename — rename any role, including the
+    // 5 built-in ones. Safe to do: every real permission check (BaseController,
+    // RBACMiddleware) keys off the BypassFolderPermissions boolean flag, never
+    // the literal role name, so "Full Access" etc. carry no special string
+    // significance outside this controller's own delete-protection list.
+    [HttpPut("{role}/rename")]
+    public async Task<ActionResult<object>> RenamePageAccessRole(string role, [FromBody] RenamePageAccessRoleRequest req)
+    {
+        var newRole = req.NewRole?.Trim() ?? string.Empty;
+        if (newRole.Length < 2 || newRole.Length > 50)
+            return BadRequest(new { success = false, error = "Role name must be between 2 and 50 characters" });
+
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        try
+        {
+            var entity = await context.PageAccessRoles.FirstOrDefaultAsync(r => r.Role == role);
+            if (entity == null)
+                return NotFound(new { success = false, error = "Role not found" });
+
+            if (newRole != role && await context.PageAccessRoles.AnyAsync(r => r.Role == newRole))
+                return BadRequest(new { success = false, error = $"A role named '{newRole}' already exists" });
+
+            if (newRole == role)
+                return Ok(new { success = true, data = entity });
+
+            // Role is the primary key referenced by dms_users.role via an FK
+            // with no ON UPDATE CASCADE, so the new row has to exist before
+            // reassigning users, and the old row can only go away once nothing
+            // points at it anymore.
+            var renamed = new DmsPageAccessRole
+            {
+                Role = newRole,
+                CanViewDashboard = entity.CanViewDashboard,
+                CanViewDocumentLibrary = entity.CanViewDocumentLibrary,
+                CanViewReminders = entity.CanViewReminders,
+                CanViewApprovals = entity.CanViewApprovals,
+                CanViewPcar = entity.CanViewPcar,
+                CanViewAdminPanel = entity.CanViewAdminPanel,
+                BypassFolderPermissions = entity.BypassFolderPermissions,
+                CanEditFiles = entity.CanEditFiles,
+                CanManageFolderPermissions = entity.CanManageFolderPermissions,
+                CanManageFilePermissions = entity.CanManageFilePermissions,
+                CanManageAllTasks = entity.CanManageAllTasks,
+                CanCreateTasks = entity.CanCreateTasks,
+                CanViewQaStage = entity.CanViewQaStage,
+                CanViewManagerStage = entity.CanViewManagerStage,
+                CanViewFinalReleaseStage = entity.CanViewFinalReleaseStage,
+                CanApprove = entity.CanApprove,
+                CanReject = entity.CanReject,
+                CanSendAnnouncements = entity.CanSendAnnouncements,
+                IsBuiltIn = entity.IsBuiltIn,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            context.PageAccessRoles.Add(renamed);
+            await context.SaveChangesAsync();
+
+            var affectedUsers = await context.Users.Where(u => u.Role == role).ToListAsync();
+            foreach (var user in affectedUsers)
+                user.Role = newRole;
+
+            context.PageAccessRoles.Remove(entity);
+            await context.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+
+            await auditService.LogAsync(GetCurrentUserId(), ROLE_RENAMED, new { OldRole = role, NewRole = newRole, AffectedUserCount = affectedUsers.Count });
+
+            logger.LogInformation("Renamed page access role {OldRole} to {NewRole} ({AffectedUserCount} users updated)", role, newRole, affectedUsers.Count);
+
+            return Ok(new { success = true, data = renamed });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            logger.LogError(ex, "Error renaming page access role {Role}", role);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     // DELETE /api/page-access-roles/{role} — delete a custom role
     [HttpDelete("{role}")]
     public async Task<ActionResult<object>> DeletePageAccessRole(string role)
     {
         try
         {
-            if (IsBuiltInRole(role))
-                return BadRequest(new { success = false, error = $"'{role}' is a built-in role and can't be deleted" });
-
             var entity = await context.PageAccessRoles.FirstOrDefaultAsync(r => r.Role == role);
             if (entity == null)
                 return NotFound(new { success = false, error = "Role not found" });
+
+            if (entity.IsBuiltIn)
+                return BadRequest(new { success = false, error = $"'{role}' is a built-in role and can't be deleted" });
 
             var affectedUserCount = await context.Users.CountAsync(u => u.Role == role);
 
@@ -174,7 +251,9 @@ public record UpdatePageAccessRoleRequest(
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
-    bool CanApprove = false, bool CanReject = false);
+    bool CanApprove = false, bool CanReject = false, bool CanSendAnnouncements = false);
+
+public record RenamePageAccessRoleRequest(string NewRole);
 
 public record CreatePageAccessRoleRequest(
     string Role,
@@ -183,4 +262,4 @@ public record CreatePageAccessRoleRequest(
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
-    bool CanApprove = false, bool CanReject = false);
+    bool CanApprove = false, bool CanReject = false, bool CanSendAnnouncements = false);

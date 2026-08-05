@@ -2,29 +2,23 @@ namespace DMS.Api.Services;
 
 public record GoogleTokenResult(string AccessToken, string RefreshToken, DateTime ExpiresAtUtc);
 
-// The one seam that actually talks to Google — everything else (persistence,
-// the sync button, the daily 6 AM job, per-event tracking) is already built and
-// wired against this interface. To make real per-user sync work:
-//
-//   1. In Google Cloud Console: enable the Calendar API, configure an OAuth
-//      consent screen, and create an OAuth 2.0 Client ID (type: Web application)
-//      with an authorized redirect URI pointing at
-//      GET /api/googlecalendar/callback on this API's public URL.
-//   2. Add the client ID/secret to configuration (appsettings/.env — not source
-//      control) and read them in your implementation of this interface.
-//   3. Implement each method below, most easily via the Google.Apis.Auth and
-//      Google.Apis.Calendar.v3 NuGet packages:
-//        - BuildAuthorizationUrl: GoogleAuthorizationCodeFlow or a manually built
-//          https://accounts.google.com/o/oauth2/v2/auth URL with
-//          scope=https://www.googleapis.com/auth/calendar.events.
-//        - ExchangeCodeForTokensAsync / RefreshAccessTokenAsync: token endpoint
-//          calls (GoogleAuthorizationCodeFlow.ExchangeCodeForTokenAsync /
-//          RefreshTokenAsync).
-//        - UpsertEventAsync / DeleteEventAsync: CalendarService.Events.Insert /
-//          Update / Delete against calendarId "primary" for the connected user.
-//   4. In Program.cs, replace the DI registration:
-//        builder.Services.AddSingleton<IGoogleOAuthCalendarClient, GoogleOAuthCalendarClient>();
-//      (currently NotConfiguredGoogleOAuthCalendarClient).
+public record GoogleCalendarAttachment(string Title, string FileUrl, string? IconLink, string? MimeType);
+
+// ResponseStatus mirrors Google's own values: "accepted" | "declined" | "tentative" | "needsAction".
+public record GoogleCalendarAttendee(string? Email, string? DisplayName, string ResponseStatus, bool IsOrganizer);
+
+public record GoogleCalendarEventSummary(
+    string Id, string Title, DateTime Start, DateTime End, bool IsAllDay, string? Description,
+    string? Location = null, string? ConferenceLink = null, string? ConferenceLabel = null,
+    List<GoogleCalendarAttachment>? Attachments = null, List<GoogleCalendarAttendee>? Attendees = null);
+
+// The seam that actually talks to Google, implemented by GoogleOAuthCalendarClient
+// using Google.Apis.Auth's GoogleAuthorizationCodeFlow and Google.Apis.Calendar.v3.
+// Requires three config values (Google:ClientId, Google:ClientSecret,
+// Google:CalendarRedirectUri — see appsettings.json / GOOGLE_CLIENT_SECRET /
+// GOOGLE_CALENDAR_REDIRECT_URI in .env); IsConfigured is false and every method
+// throws a clear error until all three are set, so a missing config never looks
+// like a silent no-op.
 //
 // SECURITY NOTE for the OAuth callback: the `state` parameter passed through
 // GoogleCalendarController.Connect/Callback currently carries the raw user ID.
@@ -48,18 +42,11 @@ public interface IGoogleOAuthCalendarClient
     Task<string> UpsertEventAsync(string accessToken, string? existingGoogleEventId, string title, DateOnly date, string? notes);
 
     Task DeleteEventAsync(string accessToken, string googleEventId);
-}
 
-public class NotConfiguredGoogleOAuthCalendarClient : IGoogleOAuthCalendarClient
-{
-    public bool IsConfigured => false;
-
-    private static Exception NotConfigured() =>
-        new InvalidOperationException("Google Calendar sync is not configured yet — see IGoogleOAuthCalendarClient.cs.");
-
-    public string BuildAuthorizationUrl(string state) => throw NotConfigured();
-    public Task<GoogleTokenResult> ExchangeCodeForTokensAsync(string code) => throw NotConfigured();
-    public Task<GoogleTokenResult> RefreshAccessTokenAsync(string refreshToken) => throw NotConfigured();
-    public Task<string> UpsertEventAsync(string accessToken, string? existingGoogleEventId, string title, DateOnly date, string? notes) => throw NotConfigured();
-    public Task DeleteEventAsync(string accessToken, string googleEventId) => throw NotConfigured();
+    // Read-only pull for the personal "My Google Calendar" view — lists the
+    // signed-in user's own events on their primary calendar within
+    // [timeMin, timeMax), so the frontend can browse any month like a real
+    // calendar rather than only ever seeing "upcoming". Never persisted to
+    // the DMS database; fetched fresh on every request.
+    Task<List<GoogleCalendarEventSummary>> ListEventsAsync(string accessToken, DateTime timeMinUtc, DateTime timeMaxUtc, int maxResults = 250);
 }

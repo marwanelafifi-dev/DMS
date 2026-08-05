@@ -36,6 +36,9 @@ public class DmsContext : DbContext
     public DbSet<DmsDropdownItem> DropdownItems => Set<DmsDropdownItem>();
     public DbSet<DmsNotification> Notifications => Set<DmsNotification>();
     public DbSet<DmsTaskAttachment> TaskAttachments => Set<DmsTaskAttachment>();
+    public DbSet<DmsAppSetting> AppSettings => Set<DmsAppSetting>();
+    public DbSet<DmsGoogleMeetingReminder> GoogleMeetingReminders => Set<DmsGoogleMeetingReminder>();
+    public DbSet<DmsAnnouncement> Announcements => Set<DmsAnnouncement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -101,6 +104,9 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsDropdownItem>().ToTable("dms_dropdown_items").HasKey(i => i.ItemId);
         modelBuilder.Entity<DmsNotification>().ToTable("dms_notifications").HasKey(n => n.NotificationId);
         modelBuilder.Entity<DmsTaskAttachment>().ToTable("dms_task_attachments").HasKey(a => a.AttachmentId);
+        modelBuilder.Entity<DmsAppSetting>().ToTable("dms_app_settings").HasKey(s => s.Key);
+        modelBuilder.Entity<DmsGoogleMeetingReminder>().ToTable("dms_google_meeting_reminders").HasKey(r => r.ReminderId);
+        modelBuilder.Entity<DmsAnnouncement>().ToTable("dms_announcements").HasKey(a => a.AnnouncementId);
         modelBuilder.Entity<DmsTaskAttachment>().HasOne(a => a.UploadedByUser).WithMany().HasForeignKey(a => a.UploadedBy);
         modelBuilder.Entity<DmsApproval>().ToTable("dms_approvals").HasKey(a => a.ApprovalId);
         modelBuilder.Entity<DmsApprovalDocument>().ToTable("dms_approval_documents").HasKey(ad => ad.ApprovalDocumentId);
@@ -358,6 +364,12 @@ public class DmsContext : DbContext
             .WithMany()
             .HasForeignKey(e => e.PostedBy)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DmsAnnouncement>()
+            .HasOne(a => a.PostedByUser)
+            .WithMany()
+            .HasForeignKey(a => a.PostedById)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<DmsUserCalendarConnection>()
             .HasOne(c => c.User)

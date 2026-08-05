@@ -94,7 +94,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
 
   return (
     <div className="space-y-5">
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && activeTab !== 'audit' && (
         <>
           <div>
             <h1 className="page-heading">Admin Panel</h1>
@@ -150,7 +150,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
       {/* Quick Navigation — redundant with the sidebar's own Admin Panel links on
           the Users tab, so it's skipped there; kept for the other tabs since this
           is still the only way to switch between them from within the page. */}
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'audit' && (
         <>
           <div className="pt-1"><h2 className="section-heading">Administration</h2></div>
           <div className="flex flex-wrap gap-2 rounded-[5px] border border-[#dbe2ec] bg-white p-2 dark:border-white/10 dark:bg-slate-900">

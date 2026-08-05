@@ -69,10 +69,16 @@ export interface PageAccessRoleFlags {
   // per-folder role grant or File/Folder Permission override.
   canApprove: boolean;
   canReject: boolean;
+  // Whether this role can post to the Send Announcement page.
+  canSendAnnouncements: boolean;
 }
 
 export interface PageAccessRole extends PageAccessRoleFlags {
   role: string;
+  // True only for the 5 originally seeded roles; carried over verbatim by a
+  // rename, so this — not the current role name — is what delete protection
+  // and the "can't rename this one" UI (if any) should check.
+  isBuiltIn: boolean;
   updatedAt: string;
 }
 
@@ -778,6 +784,11 @@ class APIClient {
     return data;
   }
 
+  async renamePageAccessRole(role: string, newRole: string) {
+    const { data } = await this.client.put<ApiResponse>(`/page-access-roles/${role}/rename`, { newRole });
+    return data;
+  }
+
   async updateUserRole(userId: string, role: string | null) {
     const { data } = await this.client.put<ApiResponse>(`/users/${userId}/role`, { role });
     return data;
@@ -971,6 +982,42 @@ class APIClient {
 
   async syncGoogleCalendarNow() {
     const { data } = await this.client.post<ApiResponse>('/googlecalendar/sync');
+    return data;
+  }
+
+  // Personal, read-only pull of the signed-in user's own Google Calendar
+  // events for one calendar month — never persisted, fetched live.
+  async getGoogleCalendarEvents(year?: number, month?: number) {
+    const { data } = await this.client.get<ApiResponse>('/googlecalendar/events', { params: { year, month } });
+    return data;
+  }
+
+  // Global app settings (currently just "sync Google Calendar on every
+  // login") — reads are open to any authenticated user, writes require the
+  // caller's role to have BypassFolderPermissions (enforced server-side).
+  async getAppSetting(key: string) {
+    const { data } = await this.client.get<ApiResponse>(`/app-settings/${key}`);
+    return data;
+  }
+
+  async updateAppSetting(key: string, value: string) {
+    const { data } = await this.client.put<ApiResponse>(`/app-settings/${key}`, { value });
+    return data;
+  }
+
+  // Announcements — visible to every user; posting is Full Access/Quality only.
+  async getAnnouncements() {
+    const { data } = await this.client.get<ApiResponse>('/announcements');
+    return data;
+  }
+
+  async createAnnouncement(payload: { title: string; message: string; recipientUserIds: string[] | null; notifyEmail: boolean; notifyApp: boolean }) {
+    const { data } = await this.client.post<ApiResponse>('/announcements', payload);
+    return data;
+  }
+
+  async deleteAnnouncement(announcementId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/announcements/${announcementId}`);
     return data;
   }
 

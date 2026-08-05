@@ -23,6 +23,7 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canViewFinalReleaseStage: false,
   canApprove: false,
   canReject: false,
+  canSendAnnouncements: false,
 };
 
 // Fetches the current user's page/feature access flags (their global role —
