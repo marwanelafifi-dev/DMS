@@ -9,7 +9,62 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Active Branch:** `Main`
 
-**Status:** Session 29 — built out the entire Admin Panel "Database" page from scratch (real `pg_dump`-backed backup/restore, per-module Clear Data, System Controls, Scheduled Backups to MinIO), a real Notification Configuration page (Gmail App Password / Google Workspace SMTP Relay), a real Platform Settings page (General/Login Page/Header/Security) actually wired into the live Login page and Sidebar, and a real in-modal Docling-powered "Review" for any historical document version. **New known issue:** a real "Clear All Data" action was executed against the live database mid-session, wiping every folder/document — see Session 29's own write-up below for the timeline and the untouched pre-wipe backup left in MinIO for recovery. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 30 — a bug-fix and hardening pass driven by direct user testing of Session 29's work: upload-form validation now actually tells the user what's missing instead of silently disabling Save/Submit, Tags is optional and multi-select, image previews gained real search (background OCR), a new independently-grantable "Reassign Tasks / PCARs" role permission plus inline Assignee editing on the PCAR register, document status labels were consolidated into one shared source (fixing a real "In Review — QA" vs "QA Review" drift bug), version restore/review got two real fixes (clearer "Restored from vX" labeling, and real PDF rendering instead of a text-only dump that dropped embedded images), Document ID resolution was moved off a stale per-folder permission check onto the real page-access-role system (with its own new "Resolve Document ID" flag), and Clear Data/Clear All Data now require typing DELETE/DELETE ALL in a real modal instead of a native browser `confirm()` — directly hardening against a repeat of Session 29's data-loss incident. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 30 (2026-08-05) — Upload Validation, Optional Multi-Select Tags, Image Search, Task Reassignment Permission, Status Label Consolidation, Safer Version Restore/Doc ID Permissions/Clear Data Confirmation
+
+**Status:** ✅ Complete — every backend change verified live via curl (including a real permission round-trip for the new Doc ID and Reassign Tasks flags); every frontend change rebuilt and redeployed, each fix confirmed against the specific screenshot/report that surfaced it.
+
+**Context:** A fast-moving, screenshot-driven bug-fix session immediately following Session 29 — each item below was reported live by the user clicking through the features Session 29 had just built, not pre-planned.
+
+### 1. Upload form — required-field errors were invisible
+The Save as Draft/Submit buttons were simply `disabled` whenever a required field was empty, so clicking them while incomplete did nothing visible — the only feedback was a hover tooltip most users never see. Fixed: the buttons are always clickable now; clicking with missing fields shows a toast naming exactly which fields are missing and highlights each empty required field (red border + inline "X is required" text), reproducing the same validation React already had but never surfaced.
+
+### 2. Tags — made optional and multi-select
+Per explicit request: Tags is no longer a required field, and the single-select dropdown was replaced with a click-to-toggle multi-select chip list sourced from the Company Data tag list (plus an "Other" chip revealing a free-text field for ad-hoc tags) — any number of tags, or none, can be selected.
+
+### 3. Image previews gained real search
+Images had no search box at all in the preview header, since there was no extracted text to search against. Fixed: the image's own OCR/Docling-extracted text is now attached to its preview (captured at upload time; backfilled via a background, non-blocking Docling pass on reload for existing images) and rendered in a new "Extracted text (searchable)" panel under the image, with the same highlight/jump-to-match search already used for other document kinds. Per explicit follow-up, the search box now appears immediately when the preview opens (not gated on extraction finishing) — it shows "Indexing…" and disables prev/next until the text is ready, matching the PDF viewer's existing indexing-state pattern, instead of making the user wait with no search UI at all.
+
+### 4. New "Reassign Tasks / PCARs" role permission + inline Assignee editing
+The PCAR register's "Assigned To" column was pure read-only text even in inline-edit mode — there was no way to reassign an existing task to someone else at all. Added a full reassignment path:
+- `PUT /api/tasks/{id}` now accepts `assignedToId`/`assignedToGroupId`, validated (assignee exists and is active, or the group exists) and gated on a new, independently-grantable `CanReassignTasks` page-access-role flag (migration `066`) — separate from the broader `CanManageAllTasks`, which already implies it, same split pattern as `CanCreateTasks`. Notifies the new assignee(s) and logs a new `TASK_REASSIGNED` audit action.
+- Frontend: the register table's "Assigned To" cell becomes a merged Users+Groups `<select>` in edit mode for roles with the new permission; also fixed a real, separate pre-existing bug found while touching this code — the inline "Priority" edit sent a `priority` JSON key the backend's `UpdateTaskRequest` never recognized (it expects `riskSeverity`), so editing a task's priority inline silently did nothing server-side. Fixed by mapping the edit payload's keys correctly.
+- Live-verified: the new `canReassignTasks` flag round-trips correctly per role (seeded `true` only for Full Access, matching nothing else previously being able to reassign at all).
+
+### 5. Document status labels consolidated — fixed a real "In Review — QA" drift bug
+`DocumentPreview.tsx` had its own local copy of the status label map that had drifted from the one used everywhere else — it showed "In Review — QA" / "In Review — Manager" / "In Review — Final Release" while the Document Library table already correctly showed "QA Review" / "Manager Review" / "Final Review" for the exact same status codes. Root-cause fixed properly rather than patched in place:
+- `utils/documentStatus.ts` is now the single source for both label text and badge colors; the drifted duplicate maps in `DocumentPreview.tsx` and `DocumentList.tsx` were deleted in favor of importing from there.
+- Fixed the one real fallback gap: a submitted document whose specific stage can't be resolved yet now defaults to "QA Review" instead of surfacing the generic, meaningless "In Review" label — per explicit request, only six statuses should ever be user-visible: Draft, QA Review, Manager Review, Correction Needed, Final Review, Released (confirmed this already matches real backend behavior — any rejection at any stage already produces "Correction Needed" via a correction task, never a bare "Rejected").
+- Applied the same stage-resolution to the OCR/Metadata Search page and the shared `useAllDmsDocuments` hook, both of which were previously showing raw, unresolved status text (`"pending_approval"`/`"correction_in_progress".replace('_',' ')` with a lingering underscore bug); updated both pages' status filter dropdowns to list the real reachable statuses instead of non-functional "In Review"/"Rejected"/"Archived" options.
+
+### 6. Version History — two real fixes from direct testing
+- **Restore labeling**: reverting to an old version copied that version's label verbatim onto the new current version, so restoring `v1.0 — V2` produced a confusing `v3.0 — V2` that looked like an unrelated duplicate rather than a restore. Fixed: the new version's label now reads e.g. `V2 (Restored from v1.0)` — the row's own creation timestamp (already shown alongside the label) serves as the restore date/time, so it isn't duplicated in the label text itself.
+- **Office format review showed a placeholder instead of the real slide/page**: Session 29's in-modal "Review" used Docling's plain-markdown conversion for Office formats, which represents every embedded image as a literal `<!-- image -->` text placeholder — reproduced live on a `.pptx` with an embedded image. Fixed by switching Word/PowerPoint review to the same real-PDF pipeline (LibreOffice via the OCR sidecar) the main Document Library preview already uses, falling back to text-only extraction only if that sidecar is unreachable or conversion fails. Excel formats still use text/markdown extraction.
+
+### 7. Document ID resolution moved off a stale permission check + new dedicated flag
+"Generate from System" and manual Document ID entry at QA Triage were rejecting a real Full-Access admin with "Only QA or Admin can perform this action" — root-caused to `DocumentsController.RequireQaOrAdminAsync` still checking the old per-folder `dms_folder_permissions` role grant (requiring an explicit "QA"/"Admin" role on that *specific folder*), a leftover from before Session 27's redesign moved every other C-Doc Workflow action onto the page-access-role system. Fixed in two steps:
+- First pass: switched the check to the same `CanApprove && CanViewQaStage` boundary already used by the QA Accept action — verified live via curl (a real admin's `generate-doc-id` call succeeded where it previously 403'd).
+- Per explicit follow-up request, split further into its own independently-grantable `CanResolveDocumentId` flag (migration `067`), decoupled from `CanApprove`/`CanViewQaStage` entirely — shown as "Resolve Document ID (generate/enter at QA Triage)" under each role's "C-DOC WORKFLOW ACCESS" section, seeded `true` only for Full Access and Quality (the two roles that could already do this under the old combined check, so nobody's access silently regressed).
+
+### 8. Clear Data / Clear All Data — replaced native `confirm()` with a typed-confirmation modal
+Per explicit request to prevent a repeat of Session 29's real data-loss incident: both the per-module "Clear" buttons and "Clear All Data — Every Module" previously used the browser's native `window.confirm()` — exactly the kind of dialog that's easy to click through on reflex without reading. Replaced with a real styled modal (matching the existing "Delete User Permanently" pattern) that requires typing an exact confirmation word before the destructive button becomes clickable at all: `DELETE` for a single module, `DELETE ALL` for the "everything" button (deliberately a higher bar for the more dangerous action).
+
+### Files created
+`infra/db/init/066_page_access_role_reassign_tasks.sql`, `infra/db/init/067_page_access_role_resolve_document_id.sql`
+
+### Files modified (highlights)
+`api/Controllers/{DocumentsController,PageAccessRolesController,TasksController}.cs`, `api/Models/DmsPageAccessRole.cs`, `api/Services/{AuditService,TaskService}.cs`, `web/src/components/custom/{DatabaseBackup,DocumentList,DocumentPreview,RolePermissions,VersionHistoryModal}.tsx`, `web/src/components/pages/{Documents,Search,Tasks}.tsx`, `web/src/fixtures/documentLibrary.ts`, `web/src/hooks/{useAllDmsDocuments,usePageAccess}.ts`, `web/src/utils/{api,documentStatus}.ts`
+
+### Verification
+- Every new/changed backend endpoint verified against the **live** running API with real curl round-trips — the `canReassignTasks`/`canResolveDocumentId` flags confirmed to round-trip and seed correctly per role, and a real `generate-doc-id` call confirmed to succeed post-fix where it previously 403'd.
+- `docker compose build --pull=false api web` clean after every change; both containers rebuilt and confirmed `healthy` repeatedly throughout — each fix was rebuilt and redeployed individually as it was made, then confirmed against the user's follow-up screenshot before moving to the next item.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- Force Sign-Out and Restore from Backup still use the native `window.confirm()` — only Clear Data/Clear All Data were upgraded to the typed-confirmation modal this session, per the explicit scope of the request.
 
 ---
 
