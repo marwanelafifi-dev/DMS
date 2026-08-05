@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePageAccess } from '../../hooks/usePageAccess';
-import type { PageAccessRoleFlags } from '../../utils/api';
+import { apiClient, type HeaderSettings, type PageAccessRoleFlags } from '../../utils/api';
 import {
   Bell,
   BellRing,
@@ -54,10 +54,17 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
   const visibleNavItems = navItems.filter((item) => pageAccess?.[item.visibleWhen] !== false);
   const isAdminRoute = location.pathname.startsWith('/admin') || location.pathname.startsWith('/settings');
   const [adminOpen, setAdminOpen] = useState(isAdminRoute);
+  const [headerConfig, setHeaderConfig] = useState<HeaderSettings>({ showLogoInHeader: true, logoAltText: 'Si-Ware' });
 
   useEffect(() => {
     if (isAdminRoute) setAdminOpen(true);
   }, [isAdminRoute]);
+
+  useEffect(() => {
+    apiClient.getPlatformSettings()
+      .then((res) => { if (res.success && res.data?.header) setHeaderConfig(res.data.header); })
+      .catch(() => {});
+  }, []);
 
   const isActive = (item: (typeof navItems)[number]) => {
     if (item.exact) return location.pathname === '/';
@@ -86,10 +93,18 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
         }`}
       >
         <div className="relative flex h-[68px] flex-shrink-0 items-center justify-center border-b border-[#dbe2ec] bg-white px-5 dark:border-slate-950 dark:bg-slate-950">
-          <button onClick={() => navigate('/')} className="flex items-center justify-center" aria-label="Go to dashboard">
-            <img src="/images/si-ware-logo.png" alt="Si-Ware" className="block h-9 w-auto max-w-[200px] object-contain dark:hidden" />
-            <img src="/images/si-ware-logo-dark.png" alt="Si-Ware" className="hidden h-9 w-auto max-w-[200px] object-contain dark:block" />
-          </button>
+          {headerConfig.showLogoInHeader && (
+            <button onClick={() => navigate('/')} className="flex items-center justify-center" aria-label="Go to dashboard">
+              {headerConfig.logoObjectKey ? (
+                <img src="/api/branding/logo/header" alt={headerConfig.logoAltText} className="h-9 w-auto max-w-[200px] object-contain" />
+              ) : (
+                <>
+                  <img src="/images/si-ware-logo.png" alt={headerConfig.logoAltText} className="block h-9 w-auto max-w-[200px] object-contain dark:hidden" />
+                  <img src="/images/si-ware-logo-dark.png" alt={headerConfig.logoAltText} className="hidden h-9 w-auto max-w-[200px] object-contain dark:block" />
+                </>
+              )}
+            </button>
+          )}
           <button onClick={onToggleExpand} className="absolute right-4 rounded p-1.5 text-[#52627a] hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10 lg:hidden" aria-label="Close navigation">
             <X className="h-5 w-5" />
           </button>

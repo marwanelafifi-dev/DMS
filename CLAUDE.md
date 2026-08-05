@@ -9,7 +9,80 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Active Branch:** `Main`
 
-**Status:** Session 28 — role renaming (any role, including built-ins, tracked by a stable `IsBuiltIn` flag instead of matching the current name), a full real Google Calendar integration (OAuth connect, month-grid "My Google Calendar" view with attendees/attachments/conference-join details, personal per-user pull), a real SMTP-backed email system (first in the app), an automated "ISO" meeting reminder pipeline (created/day-before/10-min stages, emailing every real attendee), and a new role-permission-gated Announcements feature. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 29 — built out the entire Admin Panel "Database" page from scratch (real `pg_dump`-backed backup/restore, per-module Clear Data, System Controls, Scheduled Backups to MinIO), a real Notification Configuration page (Gmail App Password / Google Workspace SMTP Relay), a real Platform Settings page (General/Login Page/Header/Security) actually wired into the live Login page and Sidebar, and a real in-modal Docling-powered "Review" for any historical document version. **New known issue:** a real "Clear All Data" action was executed against the live database mid-session, wiping every folder/document — see Session 29's own write-up below for the timeline and the untouched pre-wipe backup left in MinIO for recovery. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 29 (2026-08-05) — Database Admin Page (Backup/Restore/Clear/System Controls/Scheduled Backups), Notification Configuration, Platform Settings, Version Review
+
+**Status:** ✅ Complete — every backend endpoint verified live via curl (including real non-admin accounts for every permission check, and a full safe round-trip test for the destructive backup/restore mechanism). One real, serious incident occurred mid-session — see "Known issue" below.
+
+**Context:** A long, screenshot-driven session building out the three remaining Admin Panel stub pages (Notifications, Settings, Database) end-to-end from mockup screenshots, adapting each mockup's fictional app concepts to this app's real schema rather than copying them literally.
+
+### 1. Notification Configuration page (real, not a stub)
+Replaced the "Coming Soon" stub with a working page offering exactly the two sending methods requested: **Gmail App Password** (`smtp.gmail.com`) and **Google Workspace SMTP Relay** (`smtp-relay.gmail.com`), each with its own setup guide. `EmailService` (used by Announcements and ISO meeting reminders) now loads its SMTP config from this saved setting on every send instead of a fixed env-var snapshot at startup, so saving here takes effect immediately with no restart. New `EmailConfigController` (`GET/PUT /api/email-config`, `POST /api/email-config/test`) — the test-email endpoint sends against whatever's currently in the form, even before saving. Admin-only; verified live with a real non-admin 403, both methods round-tripping correctly, and a real test email actually delivered once real Gmail App Password credentials were configured in `.env`.
+
+### 2. Platform Settings page (General / Login Page / Header / Security) — wired into the real app, not just a settings form
+- **General**: Platform Name, Organization Name, Support Email, Timezone, Date Format — persisted with Reset to Defaults.
+- **Login Page**: title/subtitle/card copy/footer/logo/"Continue with Google" toggle — this is now what the real `/login` page actually renders, fetched via a new public, unauthenticated `GET /api/branding/login-page` endpoint (the login page loads before any session exists, so this had to sit outside the JWT pipeline — added to `JwtAuthMiddleware.PublicEndpoints`/`RBACMiddleware.ShouldSkipAuth`).
+- **Header**: logo/alt-text/show-toggle — wired into the real Sidebar logo, fetched via `GET /api/branding/header`.
+- **Security**: Session Timeout **really controls JWT expiry** (verified: a 1-hour setting produces a token with a 60-minute lifetime), Require Strong Passwords **really enforced** on create-user/reset-password/set-initial-password (verified both on/off), plus Allow Multiple Sessions and Password Expiry which are saved/displayed but explicitly **not enforced** — no session-ledger or password-history infrastructure exists in this app to act on them, so this wasn't faked.
+- Logo upload → MinIO, served via a public streaming endpoint (`GET /api/branding/logo/{type}`); old logo auto-deleted on replace/reset.
+- Real pre-existing bug fixed along the way: login failures showed a generic axios "Request failed with status code ___" instead of the backend's actual error text (needed for the new Maintenance Mode message to display, but this also fixes the same problem for ordinary wrong-password errors).
+- Both this page and Notifications had the shared "Admin Panel" header / Permissions Matrix / Active Locks / "Administration" tab-nav strip removed per explicit request (same treatment applied to Database further down).
+
+### 3. Database page, part 1 — Backup & Restore
+Real `pg_dump`/Postgres-native export instead of hand-rolling per-table JSON serialization for 30+ EF entities — guarantees every table (including future ones) is captured with correct FK ordering automatically. `GET /api/database-backup/export` shells out to `pg_dump --data-only --inserts` and streams the `.sql` file back; `POST /api/database-backup/restore` `TRUNCATE`s every `public` schema table then replays the uploaded file's INSERTs, all in one transaction (rolled back whole on any failure).
+
+Two real bugs found and fixed via a full safe round-trip test (export → restore the *same* file → confirm row counts match exactly, rather than testing with throwaway data):
+- Debian bookworm's default `postgresql-client` is v15; `pg_dump` refuses to dump from a *newer* server (this stack runs Postgres 16) — added the official PGDG apt repo to the API Dockerfile to install a matching `postgresql-client-16`.
+- pg_dump 16 wraps its output in `\restrict`/`\unrestrict` (new psql-only meta-commands, not real SQL) — stripped before execution since the restore runs the SQL directly through Npgsql, not through `psql`.
+- Circular FK pairs (`dms_documents.current_version_id` ↔ `dms_document_versions.document_id`) meant no single INSERT order could satisfy every constraint — restore now runs with `SET session_replication_role = replica` for the duration (the `dms_app` Postgres role is a superuser in the official Docker image, so this works without extra grants).
+
+Scope is deliberately data-only: the actual bytes of uploaded documents/attachments/logos live in MinIO, not Postgres, and are **not** included — a restore brings back every document's record but not the underlying file.
+
+### 4. Database page, part 2 — Clear Data
+Per-module clear (Document Library, C-Doc Workflow, PCAR/Tasks, Reminders, Notifications, Announcements, Groups, Company Data, Audit Trail, Platform Settings, Google Calendar Sync) plus a single "Clear All Data" button, each showing a live row count. `dms_users` and `dms_page_access_roles` are structurally excluded from every group's table list (not just a UI promise) — `dms_users.role` has a foreign key into `dms_page_access_roles`, so clearing roles would otherwise cascade-delete every account via `TRUNCATE ... CASCADE`. Confirmed working correctly via a real destructive incident during this same session (see "Known issue" below) — the exclusion held: user accounts and roles survived intact through a full "Clear All Data" run.
+
+### 5. Database page, part 3 — System Controls
+- **Maintenance Mode**: toggle + custom message. While on, only a `Full Access` role can log in — enforced in `AuthController` across all three login paths (local, Google popup, Google redirect callback). Verified live: a real non-admin gets a 503 with the exact configured message while the admin logs in normally throughout.
+- **Scheduled Maintenance Notice**: message + start/end date-time, shown as a dismissible banner to every signed-in user and on the Login page itself, active from 72 hours before start through the end time.
+- **Force sign-out all users**: every JWT now carries an `issued_at` claim; this action records "now" as a global cutoff, and any token issued before it is rejected on its very next request. Verified live: an already-issued token was confirmed rejected immediately after triggering this, while a fresh login continued to work. Added a global 401 handler on the frontend (`api.ts`) so a signed-out session actually redirects to `/login` instead of silently failing its next call.
+- All three admin-only (`Full Access`), verified against a real non-admin 403.
+
+### 6. Database page, part 4 — Scheduled Backups
+Hourly/Daily/Weekly/Monthly frequencies (any combination can run simultaneously, each on its own schedule — explicit request), Time/Day-of-Week/Day-of-Month controls, and Keep-Last-N retention. A Hangfire job (`scheduled-backup-check`) checks every 5 minutes whether any enabled frequency is due, using a stored per-frequency "last period fired" key so the 5-minute cadence doesn't refire the same day's backup 288 times. Backups save into MinIO (`backups/scheduled/`), not local container disk (which would be lost on every redeploy) — pg_dump logic extracted into a shared `DatabaseExportService` so the manual "Download Backup" button and the scheduled/"Run Backup Now" path can never drift out of sync. Retention verified live: pushed past the configured limit and confirmed the oldest files were deleted automatically while the newest N remained.
+
+### 7. Version History — real in-modal "Review" for any past version
+`VersionHistoryModal`'s Review (eye icon) previously just opened the raw file blob in a new browser tab — fine for PDF/image/text, but a `.pptx`/`.docx`/`.xlsx` blob opened that way just prompts a download since browsers can't render Office formats natively. Rebuilt to render a real preview *inside* the modal: native for image/PDF/text, and Docling-converted (same pipeline the main Document Library preview already uses) for Office formats, with a "Back to Version List" control to return and review a different version without closing the whole dialog.
+
+### 8. Smaller fixes
+- Removed the "Sample files" button and all its now-dead code from the Document Library (mock-data-loading feature, no longer wanted).
+- **Real bug found and fixed**: `Documents.tsx` only rendered the `FolderTree` component (which owns the only "+ New Folder" button) when `folders.length > 0` — the moment a workspace has *zero* folders, there was no UI path to create the very first one at all, a genuine dead end. `FolderTree` already had its own correct empty state with the "+" button intact; the bug was `Documents.tsx` short-circuiting around it with a separate static "No folders available" message instead of always rendering `FolderTree`.
+- Fixed the Settings page's toggle switches, which used a `translate-x` transform that rendered visually broken (thumb overflowing/misaligned) — replaced with a `justify-start`/`justify-end` flexbox approach, which is more robust against Tailwind arbitrary-value quirks.
+- Configured real Google OAuth (Client ID/Secret) and SMTP (Gmail App Password) credentials into `.env` and the Notification Configuration setting — verified with a real Google Client ID present in the built frontend bundle and a real test email delivered.
+
+### ⚠️ Known issue: a real "Clear All Data" action wiped the live Document Library mid-session
+At `2026-08-05 10:31:46 UTC`, a `DATABASE_DATA_CLEARED` audit entry (`Group: "all"`) was recorded against the live database from the seeded admin account, truncating every table in the Clear Data list — `dms_folders` and `dms_documents` both went to 0 rows. This was caught by investigating why the Upload button was stuck disabled (no folders existed to select) rather than assumed to be a UI bug. **User accounts and Page Access Roles were correctly unaffected**, confirming the exclusion design in `ClearDataGroups` worked as intended even under a real destructive event, not just in testing.
+
+**Recovery available but not yet applied per explicit user choice**: a backup taken 11 minutes earlier while testing the new Scheduled Backups feature (`dms-backup-manual-20260805-102058.sql`) survived untouched in MinIO (Clear Data only truncates Postgres tables, never touches object storage) and is still sitting in `backups/scheduled/` — offered to the user as a one-command restore; they chose to handle recovery themselves instead. A single starter "Documents" folder was created afterward so Upload wasn't permanently blocked pending that decision.
+
+### Files created
+`api/Controllers/{BrandingController,DatabaseBackupController,EmailConfigController,PlatformSettingsController,SystemControlsController}.cs`, `api/Services/{ClearDataGroups,DatabaseExportService,PlatformSettingsService,ScheduledBackupService,SystemControlsService}.cs`, `web/src/components/custom/{DatabaseBackup,NotificationConfig,PlatformSettings,ScheduledBackups}.tsx`, `web/src/components/layout/ScheduledNoticeBanner.tsx`
+
+### Files modified (highlights)
+`api/Controllers/{AuthController,UsersController}.cs`, `api/Dockerfile` (PGDG repo + `postgresql-client-16`), `api/Middleware/{JwtAuthMiddleware,RBACMiddleware}.cs`, `api/Program.cs`, `api/Services/{AnnouncementService,AuditService,BackgroundJobService,EmailService,GoogleMeetingReminderService,JwtTokenService,MinioService}.cs`, `web/src/components/custom/VersionHistoryModal.tsx`, `web/src/components/layout/{MainLayout,Sidebar}.tsx`, `web/src/components/pages/{Documents,Login,Settings}.tsx`, `web/src/utils/api.ts`, `.env` (real Google OAuth + SMTP credentials — never committed, gitignored)
+
+### Verification
+- Every new backend endpoint verified against the **live** running API with real curl round-trips, including a real throwaway non-admin account for every new permission check (Notification Config, Platform Settings, Database Backup/Restore, Clear Data, System Controls, Scheduled Backups all independently confirmed to reject non-`Full Access` callers).
+- The destructive backup/restore mechanism was verified via a genuinely safe method — export a real backup, restore that *exact same* file, and confirm row counts match exactly before and after — rather than risking real data with an unverified restore path.
+- Maintenance Mode, Force sign-out, and Scheduled Notice were each verified against real login attempts and real token validation, not just checked for a 200 response.
+- `docker compose build --pull=false api web` clean after every change (one transient Debian mirror 403 mid-session, resolved by retrying); both containers rebuilt and confirmed `healthy` repeatedly throughout.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- Allow Multiple Sessions and Password Expiry (Platform Settings → Security) are persisted but not enforced — would need a session-ledger and a password-history/last-changed timestamp respectively.
+- The pre-wipe backup (`dms-backup-manual-20260805-102058.sql`) remains available in MinIO for a future restore if the user decides they want the pre-incident Document Library data back after all.
 
 ---
 

@@ -5,22 +5,14 @@ import { UserManagement } from '../custom/UserManagement';
 import { GroupManagement } from '../custom/GroupManagement';
 import { AuditTrail } from '../custom/AuditTrail';
 import { CompanyData } from '../custom/CompanyData';
+import { NotificationConfig } from '../custom/NotificationConfig';
+import { PlatformSettings } from '../custom/PlatformSettings';
+import { DatabaseBackup } from '../custom/DatabaseBackup';
 import { Card, CardBody } from '../ui';
 import { apiClient } from '../../utils/api';
 import type { Document } from '../../types';
 
 type SettingsTab = 'roles' | 'users' | 'groups' | 'audit' | 'settings' | 'notifications' | 'company-data' | 'database';
-
-function ComingSoonPanel({ title }: { title: string }) {
-  return (
-    <Card>
-      <CardBody className="p-8 text-center">
-        <h3 className="text-base font-semibold text-[#26334d] dark:text-white">{title}</h3>
-        <p className="mt-2 text-sm text-[#718198]">Requirements pending — let us know what this page should do.</p>
-      </CardBody>
-    </Card>
-  );
-}
 
 interface SettingsProps {
   defaultTab?: SettingsTab;
@@ -94,7 +86,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
 
   return (
     <div className="space-y-5">
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && activeTab !== 'audit' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && (
         <>
           <div>
             <h1 className="page-heading">Admin Panel</h1>
@@ -150,7 +142,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
       {/* Quick Navigation — redundant with the sidebar's own Admin Panel links on
           the Users tab, so it's skipped there; kept for the other tabs since this
           is still the only way to switch between them from within the page. */}
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'audit' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && (
         <>
           <div className="pt-1"><h2 className="section-heading">Administration</h2></div>
           <div className="flex flex-wrap gap-2 rounded-[5px] border border-[#dbe2ec] bg-white p-2 dark:border-white/10 dark:bg-slate-900">
@@ -182,10 +174,10 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'groups' && <GroupManagement />}
         {activeTab === 'audit' && <AuditTrail />}
-        {activeTab === 'settings' && <ComingSoonPanel title="Settings" />}
-        {activeTab === 'notifications' && <ComingSoonPanel title="Notifications" />}
+        {activeTab === 'settings' && <PlatformSettings />}
+        {activeTab === 'notifications' && <NotificationConfig />}
         {activeTab === 'company-data' && <CompanyData />}
-        {activeTab === 'database' && <ComingSoonPanel title="Database" />}
+        {activeTab === 'database' && <DatabaseBackup />}
       </div>
     </div>
   );

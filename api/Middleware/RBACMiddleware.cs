@@ -102,6 +102,8 @@ public class RBACMiddleware
             // GoogleCalendarController validates itself (see the security note
             // in IGoogleOAuthCalendarClient.cs about hardening it).
             "/api/googlecalendar/callback",
+            // Public read-only branding config/logo for the Login page.
+            "/api/branding",
         };
 
         return skipEndpoints.Any(endpoint => path.StartsWith(endpoint, StringComparison.OrdinalIgnoreCase));

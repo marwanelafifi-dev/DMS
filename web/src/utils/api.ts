@@ -73,6 +73,61 @@ export interface PageAccessRoleFlags {
   canSendAnnouncements: boolean;
 }
 
+// Backs the Admin Panel's Notification Configuration page. Method is one of
+// the two constants below — matches EmailNotificationConfig in the API.
+export type EmailNotificationMethod = 'gmail_app_password' | 'google_workspace_smtp_relay';
+
+export interface EmailNotificationConfig {
+  method: EmailNotificationMethod;
+  email?: string | null;
+  appPassword?: string | null;
+  senderName?: string | null;
+}
+
+// Backs the Admin Panel's Settings page — mirrors the API's
+// GeneralSettings/LoginPageSettings/HeaderSettings/SecuritySettings records.
+export interface GeneralSettings {
+  platformName: string;
+  organizationName: string;
+  supportEmail: string;
+  timezone: string;
+  dateFormat: string;
+}
+
+export interface LoginPageSettings {
+  pageTitle: string;
+  pageSubtitle: string;
+  cardTitle: string;
+  cardSubtitle: string;
+  footerLine1: string;
+  footerLine2: string;
+  footerEmail: string;
+  showGoogleButton: boolean;
+  logoObjectKey?: string | null;
+  logoContentType?: string | null;
+}
+
+export interface HeaderSettings {
+  showLogoInHeader: boolean;
+  logoAltText: string;
+  logoObjectKey?: string | null;
+  logoContentType?: string | null;
+}
+
+export interface SecuritySettings {
+  sessionTimeoutHours: number;
+  allowMultipleSessions: boolean;
+  requireStrongPasswords: boolean;
+  passwordExpiry: boolean;
+}
+
+export interface PlatformSettingsBundle {
+  general: GeneralSettings;
+  loginPage: LoginPageSettings;
+  header: HeaderSettings;
+  security: SecuritySettings;
+}
+
 export interface PageAccessRole extends PageAccessRoleFlags {
   role: string;
   // True only for the 5 originally seeded roles; carried over verbatim by a
@@ -175,6 +230,17 @@ class APIClient {
       (error: AxiosError<ApiResponse>) => {
         const message = error.response?.data?.error || error.message;
         console.error('API Error:', message);
+
+        // A 401 here always means the bearer token itself is no longer valid
+        // (expired, or "Force sign-out all users" was pressed) — the token
+        // interceptor above already attached whatever we had, so there's no
+        // retry that could succeed. Bounce to login immediately rather than
+        // leaving the user stuck clicking around a session that's already dead.
+        if (error.response?.status === 401 && getSessionToken() && !window.location.pathname.startsWith('/login')) {
+          clearSessionToken();
+          window.location.href = '/login';
+        }
+
         return Promise.reject(error);
       }
     );
@@ -757,6 +823,169 @@ class APIClient {
     const link = document.createElement('a');
     link.href = url;
     link.download = `${key}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Email notification configuration (Admin Panel -> Notifications)
+  async getEmailConfig() {
+    const { data } = await this.client.get<ApiResponse>('/email-config');
+    return data;
+  }
+
+  async updateEmailConfig(config: EmailNotificationConfig) {
+    const { data } = await this.client.put<ApiResponse>('/email-config', config);
+    return data;
+  }
+
+  async sendTestEmail(config: EmailNotificationConfig) {
+    const { data } = await this.client.post<ApiResponse>('/email-config/test', config);
+    return data;
+  }
+
+  // Platform settings (Admin Panel -> Settings: General / Login Page / Header / Security)
+  async getPlatformSettings() {
+    const { data } = await this.client.get<ApiResponse>('/platform-settings');
+    return data;
+  }
+
+  async updateGeneralSettings(settings: GeneralSettings) {
+    const { data } = await this.client.put<ApiResponse>('/platform-settings/general', settings);
+    return data;
+  }
+
+  async updateLoginPageSettings(settings: LoginPageSettings) {
+    const { data } = await this.client.put<ApiResponse>('/platform-settings/login-page', settings);
+    return data;
+  }
+
+  async updateHeaderSettings(settings: HeaderSettings) {
+    const { data } = await this.client.put<ApiResponse>('/platform-settings/header', settings);
+    return data;
+  }
+
+  async updateSecuritySettings(settings: SecuritySettings) {
+    const { data } = await this.client.put<ApiResponse>('/platform-settings/security', settings);
+    return data;
+  }
+
+  async uploadPlatformLogo(type: 'login' | 'header', file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post<ApiResponse>(`/platform-settings/logo?type=${type}`, formData);
+    return data;
+  }
+
+  async resetPlatformSettings() {
+    const { data } = await this.client.post<ApiResponse>('/platform-settings/reset', {});
+    return data;
+  }
+
+  // Public branding (no auth) — used by the pre-login page.
+  async getLoginPageBranding() {
+    const { data } = await this.client.get<ApiResponse>('/branding/login-page');
+    return data;
+  }
+
+  async getSystemNotice() {
+    const { data } = await this.client.get<ApiResponse>('/branding/system-notice');
+    return data;
+  }
+
+  // System Controls (Admin Panel -> Database)
+  async getSystemControls() {
+    const { data } = await this.client.get<ApiResponse>('/system-controls');
+    return data;
+  }
+
+  async updateMaintenanceMode(settings: { enabled: boolean; message: string }) {
+    const { data } = await this.client.put<ApiResponse>('/system-controls/maintenance-mode', settings);
+    return data;
+  }
+
+  async updateScheduledNotice(settings: { enabled: boolean; message: string; startAt: string | null; endAt: string | null }) {
+    const { data } = await this.client.put<ApiResponse>('/system-controls/scheduled-notice', settings);
+    return data;
+  }
+
+  async forceSignOutAll() {
+    const { data } = await this.client.post<ApiResponse>('/system-controls/force-signout', {});
+    return data;
+  }
+
+  // Database backup/restore (Admin Panel -> Database)
+  async getDatabaseBackupStatus() {
+    const { data } = await this.client.get<ApiResponse>('/database-backup/status');
+    return data;
+  }
+
+  async downloadDatabaseBackup() {
+    const response = await this.client.get('/database-backup/export', { responseType: 'blob' });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const match = disposition?.match(/filename="?([^"]+)"?/);
+    const fileName = match?.[1] ?? `dms-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.sql`;
+    const url = URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async restoreDatabaseBackup(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post<ApiResponse>('/database-backup/restore', formData);
+    return data;
+  }
+
+  async getClearDataOptions() {
+    const { data } = await this.client.get<ApiResponse>('/database-backup/clear-options');
+    return data;
+  }
+
+  async clearDataGroup(key: string) {
+    const { data } = await this.client.post<ApiResponse>(`/database-backup/clear/${key}`, {});
+    return data;
+  }
+
+  async clearAllData() {
+    const { data } = await this.client.post<ApiResponse>('/database-backup/clear-all', {});
+    return data;
+  }
+
+  async getBackupSchedule() {
+    const { data } = await this.client.get<ApiResponse>('/database-backup/schedule');
+    return data;
+  }
+
+  async updateBackupSchedule(config: {
+    enabled: boolean;
+    frequencies: string[];
+    time: string;
+    dayOfWeek: string;
+    dayOfMonth: number;
+    keepLastN: number;
+  }) {
+    const { data } = await this.client.put<ApiResponse>('/database-backup/schedule', config);
+    return data;
+  }
+
+  async runScheduledBackupNow() {
+    const { data } = await this.client.post<ApiResponse>('/database-backup/schedule/run-now', {});
+    return data;
+  }
+
+  async downloadScheduledBackupFile(fileName: string) {
+    const response = await this.client.get(`/database-backup/schedule/files/${encodeURIComponent(fileName)}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     link.remove();

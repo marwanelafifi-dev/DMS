@@ -107,6 +107,21 @@ public class MinioService
         }
     }
 
+    public async Task<(long SizeBytes, DateTime LastModified)?> StatAsync(string objectKey)
+    {
+        try
+        {
+            var statArgs = new StatObjectArgs().WithBucket(_bucketName).WithObject(objectKey);
+            var stat = await _minioClient.StatObjectAsync(statArgs);
+            return (stat.Size, stat.LastModified);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to stat object: {ObjectKey}", objectKey);
+            return null;
+        }
+    }
+
     public async Task<List<string>> ListAsync(string prefix = "")
     {
         try

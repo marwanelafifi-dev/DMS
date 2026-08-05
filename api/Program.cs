@@ -54,6 +54,8 @@ builder.Services.AddSingleton<IGoogleOAuthCalendarClient, GoogleOAuthCalendarCli
 builder.Services.AddSingleton<EmailService>();
 builder.Services.AddScoped<GoogleMeetingReminderService>();
 builder.Services.AddScoped<AnnouncementService>();
+builder.Services.AddScoped<DatabaseExportService>();
+builder.Services.AddScoped<ScheduledBackupService>();
 builder.Services.AddBackgroundJobs();
 
 // Hangfire — Background job processing

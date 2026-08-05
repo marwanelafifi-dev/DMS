@@ -71,6 +71,15 @@ public static class BackgroundJobExtensions
             service => service.ScanAndSendAsync(),
             Cron.MinuteInterval(5));
 
+        // Checks every 5 minutes whether any enabled Scheduled Backup
+        // frequency (Hourly/Daily/Weekly/Monthly) is due right now — see
+        // ScheduledBackupService.RunScheduledCheckAsync for the actual
+        // per-frequency due logic.
+        recurringJobManager.AddOrUpdate<ScheduledBackupService>(
+            "scheduled-backup-check",
+            service => service.RunScheduledCheckAsync(),
+            Cron.MinuteInterval(5));
+
         // Add more jobs here as needed
         // recurringJobManager.AddOrUpdate("job-name", ...);
     }

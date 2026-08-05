@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Files, LoaderCircle, UploadCloud, X } from 'lucide-react';
+import { LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
@@ -32,7 +32,6 @@ import {
   selectionContainsNonEmptyFolder,
 } from '../../services/documentLibraryOperations';
 import { doclingApi } from '../../services/doclingApi';
-import { loadSampleDocumentFiles } from '../../fixtures/sampleFiles';
 import { downloadFolderAsZip } from '../../utils/folderDownload';
 import { parseWordDocument, parseExcelDocument, parsePowerPointDocument } from '../../utils/officeParser';
 
@@ -49,8 +48,6 @@ function readBlobAsText(blob: Blob): Promise<string> {
 
 const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log']);
 const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
-const MOCK_FILES_FOLDER_NAME = 'Mock Files';
-const MOCK_FILES_FOLDER_DESCRIPTION = 'Local multi-format documents for upload, preview, OCR, and workflow testing';
 
 function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
@@ -135,7 +132,6 @@ export function Documents() {
   const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [isLoadingSamples, setIsLoadingSamples] = useState(false);
   const [activeUploadStage, setActiveUploadStage] = useState<'uploading' | 'parsing'>('uploading');
   const [activeUploadFileName, setActiveUploadFileName] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -1090,45 +1086,6 @@ export function Documents() {
     setShowUploadModal(true);
   };
 
-  const handleLoadSampleFiles = async () => {
-    setIsLoadingSamples(true);
-    try {
-      const response = await apiClient.createFolder({
-        name: MOCK_FILES_FOLDER_NAME,
-        description: MOCK_FILES_FOLDER_DESCRIPTION,
-        classification: 'standard',
-        ownerId: DEV_USER_ID,
-        reuseExisting: true,
-      });
-      if (!response.data?.folderId) throw new Error('The server did not return a folder ID');
-
-      const createdAt = response.data.createdAt || new Date().toISOString();
-      const mockFilesFolder: Folder = {
-        folderId: response.data.folderId,
-        name: response.data.name || MOCK_FILES_FOLDER_NAME,
-        description: response.data.description || MOCK_FILES_FOLDER_DESCRIPTION,
-        ownerId: response.data.ownerId || DEV_USER_ID,
-        createdAt,
-        updatedAt: response.data.updatedAt || createdAt,
-        isArchived: false,
-      };
-      setFolders((current) => {
-        const existingIndex = current.findIndex((folder) => folder.folderId === mockFilesFolder.folderId);
-        if (existingIndex === -1) return [...current, mockFilesFolder];
-        return current.map((folder, index) => index === existingIndex ? { ...folder, ...mockFilesFolder } : folder);
-      });
-
-      const files = await loadSampleDocumentFiles();
-      stageFiles(files, mockFilesFolder);
-      showSuccess(`${files.length} sample files are ready to upload`);
-    } catch (error) {
-      console.error('Failed to load sample files:', error);
-      showError('Sample files could not be loaded');
-    } finally {
-      setIsLoadingSamples(false);
-    }
-  };
-
   const closeUploadModal = () => {
     if (isUploading) return;
     setShowUploadModal(false);
@@ -1152,8 +1109,6 @@ export function Documents() {
         <div className="max-h-56 w-full flex-shrink-0 space-y-2 overflow-hidden border-b border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-56 md:border-b-0 md:border-r" role="status" aria-label="Loading folders">
           {[1, 2].map((item) => <div key={item} className="h-12 animate-skeleton rounded bg-slate-100 dark:bg-slate-800" />)}
         </div>
-      ) : folders.length === 0 ? (
-        <div className="w-full flex-shrink-0 border-b border-[#dbe2ec] bg-white p-5 text-center dark:border-white/10 dark:bg-slate-900 md:w-56 md:border-b-0 md:border-r"><p className="text-sm">No folders available</p></div>
       ) : (
         <FolderTree
           folders={folders}
@@ -1186,18 +1141,6 @@ export function Documents() {
             }}
           />
           <div className="flex w-full flex-col gap-2 sm:ml-6 sm:w-auto sm:flex-row">
-            <button
-              type="button"
-              aria-label={isLoadingSamples ? 'Loading sample files' : 'Load sample files'}
-              aria-busy={isLoadingSamples}
-              disabled={isLoadingFolders || isLoadingSamples}
-              title="Create or reuse Mock Files and load TXT, Word, Excel, PowerPoint, PDF, and image samples"
-              onClick={() => void handleLoadSampleFiles()}
-              className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] border border-[#b7c4d6] bg-white px-3 text-sm font-medium text-[#34425b] hover:bg-[#f0f4f8] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:border-white/15 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800 sm:w-auto"
-            >
-              {isLoadingSamples ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Files className="h-4 w-4" />}
-              <span aria-live="polite">{isLoadingSamples ? 'Loading samples...' : 'Sample files'}</span>
-            </button>
             <button
               type="button"
               aria-label="Upload files"

@@ -153,7 +153,7 @@ public class GoogleMeetingReminderService(
         foreach (var user in matchedUsers)
             await notificationService.NotifyAsync(user.UserId, Guid.Empty, subject, plainBody);
 
-        if (!emailService.IsConfigured)
+        if (!await emailService.IsConfiguredAsync())
         {
             logger.LogWarning("Skipped emailing {Count} attendee(s) for meeting {MeetingId} — SMTP not configured", tracking.AttendeeEmails.Count, meeting.Id);
             return;
