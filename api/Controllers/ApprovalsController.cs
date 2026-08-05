@@ -25,6 +25,18 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         return pageAccessRole != null && selector(pageAccessRole);
     }
 
+    // CanApprove/CanReject/CanViewXStage are independent of folder permissions
+    // by design (see the class-level comment above) — but a Deny-Read
+    // override on the document's specific folder should still be able to
+    // pull it back out of a reviewer's reach, per explicit follow-up request.
+    private async Task<ActionResult<object>?> RequireFolderReadAccessAsync(Guid userId, Guid documentId)
+    {
+        var folderId = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => (Guid?)d.FolderId).FirstOrDefaultAsync();
+        if (folderId.HasValue && !await HasFolderReadAccessAsync(context, accessOverrideService, userId, folderId.Value))
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have access to this document's folder" });
+        return null;
+    }
+
     private static bool StageAllowsAccessCheck(string currentStage, bool canViewQa, bool canViewManager, bool canViewFinal) => currentStage switch
     {
         "qa_review" => canViewQa,
@@ -179,9 +191,13 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
-            var access = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+            var userId = GetCurrentUserId();
+            var access = await GetPageAccessRoleAsync(context, userId);
             if (!StageAllowsAccessCheck(approvalDocument.CurrentStage, access?.CanViewQaStage == true, access?.CanViewManagerStage == true, access?.CanViewFinalReleaseStage == true))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to this document's current stage" });
+
+            if (approvalDocument.Document != null && !await HasFolderReadAccessAsync(context, accessOverrideService, userId, approvalDocument.Document.FolderId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have access to this document's folder" });
 
             return Ok(new
             {
@@ -220,10 +236,18 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         }
     }
 
-    private async Task<object> BuildStageQueueAsync(string stage, int page, int pageSize)
+    // Per explicit request: a reviewer with an explicit folder-level Deny
+    // shouldn't see (or be able to act on) documents from that folder in the
+    // approval queue, even though CanApprove/CanViewXStage are otherwise
+    // decoupled from folder permissions by design — Deny is the one signal
+    // that should still be able to carve a document back out of the queue.
+    private async Task<object> BuildStageQueueAsync(string stage, int page, int pageSize, Guid userId)
     {
+        var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, userId, accessOverrideService);
+
         var query = context.ApprovalDocuments
             .Where(ad => ad.CurrentStage == stage && ad.Status == "pending")
+            .Where(ad => accessibleFolderIds == null || accessibleFolderIds.Contains(ad.Document!.FolderId))
             .Include(ad => ad.Approval).ThenInclude(a => a!.CreatedByUser)
             .Include(ad => ad.Document).ThenInclude(d => d!.Owner)
             .Include(ad => ad.Version)
@@ -269,10 +293,11 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewQaStage))
+            var userId = GetCurrentUserId();
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewQaStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the QA Review stage" });
 
-            return Ok(await BuildStageQueueAsync("qa_review", page, pageSize));
+            return Ok(await BuildStageQueueAsync("qa_review", page, pageSize, userId));
         }
         catch (Exception ex)
         {
@@ -288,10 +313,11 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewManagerStage))
+            var userId = GetCurrentUserId();
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewManagerStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Manager Review stage" });
 
-            return Ok(await BuildStageQueueAsync("manager_review", page, pageSize));
+            return Ok(await BuildStageQueueAsync("manager_review", page, pageSize, userId));
         }
         catch (Exception ex)
         {
@@ -307,10 +333,11 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewFinalReleaseStage))
+            var userId = GetCurrentUserId();
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewFinalReleaseStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Final Release stage" });
 
-            return Ok(await BuildStageQueueAsync("final_release", page, pageSize));
+            return Ok(await BuildStageQueueAsync("final_release", page, pageSize, userId));
         }
         catch (Exception ex)
         {
@@ -331,6 +358,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
@@ -388,6 +418,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
@@ -471,6 +504,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
+
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
@@ -527,6 +563,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
@@ -616,6 +655,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
@@ -719,6 +761,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
+
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
@@ -809,6 +854,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });

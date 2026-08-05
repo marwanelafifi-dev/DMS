@@ -934,6 +934,66 @@ public class DocumentsController(
         }
     }
 
+    // POST /api/documents/{id}/move — move a document into a different folder.
+    // The Document Library's Move/Cut action previously only mutated local
+    // React state and never called any backend endpoint at all — the move
+    // looked like it worked, but reloading the page (or any other user's own
+    // session) still showed the document in its original folder, since
+    // nothing was ever persisted. Needs both Cut permission on the source
+    // folder (adminBaseline, same as the FileCut flag already resolved for
+    // the UI's own Move button) and Upload/Write permission on the
+    // destination (same check CreateDocument already uses).
+    [HttpPost("{id}/move")]
+    public async Task<ActionResult<object>> MoveDocument(Guid id, [FromBody] MoveDocumentRequest req)
+    {
+        try
+        {
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            if (document.FolderId == req.DestinationFolderId)
+                return BadRequest(new { success = false, error = "The document is already in this folder" });
+
+            var destinationExists = await context.Folders.AnyAsync(f => f.FolderId == req.DestinationFolderId);
+            if (!destinationExists)
+                return BadRequest(new { success = false, error = "Destination folder not found" });
+
+            var userId = GetCurrentUserId();
+
+            var sourceEffectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+            var sourceAdminBaseline = sourceEffectiveRole == FolderRoles.Admin;
+            if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.FileCut, sourceAdminBaseline))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to move this document out of its current folder" });
+
+            var destinationEffectiveRole = await GetEffectiveRoleAsync(context, userId, req.DestinationFolderId);
+            var destinationRoleAllowsUpload = await HasRolePermissionAsync(context, destinationEffectiveRole, rp => rp.Upload);
+            if (!await accessOverrideService.ResolveAsync(userId, null, req.DestinationFolderId, AccessOverrideActions.Write, destinationRoleAllowsUpload))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Upload permission in the destination folder" });
+
+            var previousFolderId = document.FolderId;
+            document.FolderId = req.DestinationFolderId;
+            document.UpdatedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, DOCUMENT_MOVED, new
+            {
+                document.DocumentId,
+                previousFolderId,
+                newFolderId = req.DestinationFolderId,
+            });
+
+            logger.LogInformation("Moved document {DocumentId} from folder {PreviousFolderId} to {NewFolderId}", id, previousFolderId, req.DestinationFolderId);
+
+            return Ok(new { success = true, data = new { document.DocumentId, document.FolderId, document.UpdatedAt } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error moving document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     // DELETE /api/documents/{id} — delete a document
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeleteDocument(Guid id)
@@ -1443,6 +1503,7 @@ public class DocumentsController(
 
 public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, string? OriginalDocumentId = null);
 public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, Guid? OwnerId = null, string? VersionLabel = null, string? FileName = null);
+public record MoveDocumentRequest(Guid DestinationFolderId);
 public record CheckoutRequest(string? Reason = null);
 public record SubmitRequest(Guid VersionId, string? Comment = null);
 public record ApproveRequest(Guid VersionId, string? Comment = null);

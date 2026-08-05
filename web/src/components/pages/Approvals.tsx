@@ -208,7 +208,7 @@ export function Approvals() {
     <div className="min-w-0 space-y-5 overflow-hidden">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="page-heading">C-Doc Workflow</h1>
+          <h1 className="page-heading">Document Workflow</h1>
           <p className="page-subtitle">Controlled Document Lifecycle</p>
         </div>
       </div>
@@ -236,7 +236,7 @@ export function Approvals() {
         <Card>
           <CardBody className="text-center py-12">
             <AlertCircle className="w-12 h-12 text-gray-300 dark:text-slate-600 mx-auto mb-3" />
-            <p className="text-gray-600 dark:text-slate-400">Your role does not have access to any C-Doc Workflow stage.</p>
+            <p className="text-gray-600 dark:text-slate-400">Your role does not have access to any Document Workflow stage.</p>
           </CardBody>
         </Card>
       )}

@@ -6,6 +6,7 @@ import { X, AlertCircle, Eye, Download, FileCheck2, FileX2, Upload, Loader2, Spa
 import { apiClient } from '../../utils/api';
 import { doclingApi } from '../../services/doclingApi';
 import { EditDocumentModal } from './EditDocumentModal';
+import { usePageAccess } from '../../hooks/usePageAccess';
 
 // One document's place in the C-Doc Workflow — stage/status is tracked per
 // document (see 058_approval_document_stage_tracking.sql), independent of any
@@ -63,6 +64,9 @@ function formatBytes(bytes?: number | null) {
 
 export function ApprovalDetailView({ approvalId, documentId, users, groups, onClose, onChanged }: ApprovalDetailViewProps) {
   const navigate = useNavigate();
+  const access = usePageAccess();
+  const canApprove = access?.canApprove ?? false;
+  const canReject = access?.canReject ?? false;
   const [item, setItem] = useState<ApprovalDocumentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -368,10 +372,10 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
               {/* ---- Stage 1: QA Review ---- */}
               {item.currentStage === 'qa_review' && mode === 'view' && (
                 <div className="flex gap-3">
-                  <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="flex-1">
+                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Accept &amp; Send to Manager
                   </Button>
-                  <Button onClick={() => setMode('correction')} disabled={isSubmitting} variant="secondary" className="flex-1">
+                  <Button onClick={() => setMode('correction')} disabled={isSubmitting || !canReject} title={!canReject ? 'Your role does not have Reject permission' : undefined} variant="secondary" className="flex-1">
                     <FileX2 className="mr-1.5 inline h-4 w-4" /> Request Correction
                   </Button>
                 </div>
@@ -384,8 +388,8 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onSubmit={handleQaAccept}
                   submitLabel="Confirm Accept"
                   isSubmitting={isSubmitting}
-                  submitDisabled={!docIdResolved}
-                  submitTitle="This document needs a Document ID before QA can accept"
+                  submitDisabled={!docIdResolved || !canApprove}
+                  submitTitle={!canApprove ? 'Your role does not have Approve permission' : 'This document needs a Document ID before QA can accept'}
                 >
                   <DocIdResolutionPanel
                     fileName={item.fileName}
@@ -417,19 +421,21 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onCancel={resetForm}
                   onSubmit={handleQaCorrection}
                   isSubmitting={isSubmitting}
+                  submitDisabled={!canReject}
+                  submitTitle={!canReject ? 'Your role does not have Reject permission' : undefined}
                 />
               )}
 
               {/* ---- Stage 2: Manager Review ---- */}
               {item.currentStage === 'manager_review' && mode === 'view' && (
                 <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="flex-1">
+                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Approve
                   </Button>
-                  <Button onClick={() => setMode('correction')} disabled={isSubmitting} variant="secondary" className="flex-1">
+                  <Button onClick={() => setMode('correction')} disabled={isSubmitting || !canReject} title={!canReject ? 'Your role does not have Reject permission' : undefined} variant="secondary" className="flex-1">
                     <FileX2 className="mr-1.5 inline h-4 w-4" /> Reject — Assign Correction Task
                   </Button>
-                  <Button onClick={() => setMode('self-correct')} disabled={isSubmitting} variant="secondary" className="flex-1">
+                  <Button onClick={() => setMode('self-correct')} disabled={isSubmitting || !canReject} title={!canReject ? 'Your role does not have Reject permission' : undefined} variant="secondary" className="flex-1">
                     <Upload className="mr-1.5 inline h-4 w-4" /> Reject — Fix It Myself
                   </Button>
                 </div>
@@ -442,6 +448,8 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onSubmit={handleManagerApprove}
                   submitLabel="Confirm Approve"
                   isSubmitting={isSubmitting}
+                  submitDisabled={!canApprove}
+                  submitTitle={!canApprove ? 'Your role does not have Approve permission' : undefined}
                 >
                   <TextAreaField label="Notes (optional)" value={notes} onChange={setNotes} />
                 </DecisionForm>
@@ -464,6 +472,8 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onCancel={resetForm}
                   onSubmit={handleManagerRejectTask}
                   isSubmitting={isSubmitting}
+                  submitDisabled={!canReject}
+                  submitTitle={!canReject ? 'Your role does not have Reject permission' : undefined}
                 />
               )}
 
@@ -474,6 +484,8 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onSubmit={handleManagerSelfCorrect}
                   submitLabel="Upload &amp; Send to Final Release"
                   isSubmitting={isSubmitting}
+                  submitDisabled={!canReject}
+                  submitTitle={!canReject ? 'Your role does not have Reject permission' : undefined}
                 >
                   <div>
                     <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Corrected file</label>
@@ -490,10 +502,10 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
               {/* ---- Stage 3: Final Release ---- */}
               {item.currentStage === 'final_release' && mode === 'view' && (
                 <div className="flex gap-3">
-                  <Button onClick={() => setMode('accept')} disabled={isSubmitting} className="flex-1">
+                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Final Release
                   </Button>
-                  <Button onClick={() => setMode('correction')} disabled={isSubmitting} variant="secondary" className="flex-1">
+                  <Button onClick={() => setMode('correction')} disabled={isSubmitting || !canReject} title={!canReject ? 'Your role does not have Reject permission' : undefined} variant="secondary" className="flex-1">
                     <FileX2 className="mr-1.5 inline h-4 w-4" /> Reject — Assign Correction Task
                   </Button>
                 </div>
@@ -506,6 +518,8 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onSubmit={handleFinalRelease}
                   submitLabel="Release Document"
                   isSubmitting={isSubmitting}
+                  submitDisabled={!canApprove}
+                  submitTitle={!canApprove ? 'Your role does not have Approve permission' : undefined}
                 >
                   <TextAreaField label="Release notes (optional)" value={releaseNotes} onChange={setReleaseNotes} />
                 </DecisionForm>
@@ -528,6 +542,8 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onCancel={resetForm}
                   onSubmit={handleQaFinalReject}
                   isSubmitting={isSubmitting}
+                  submitDisabled={!canReject}
+                  submitTitle={!canReject ? 'Your role does not have Reject permission' : undefined}
                 />
               )}
 
@@ -634,7 +650,7 @@ function CorrectionTaskForm({
   taskType, setTaskType, priority, setPriority,
   assignToUserId, setAssignToUserId, assignToGroupId, setAssignToGroupId, dueDate, setDueDate,
   attachment, setAttachment, notes, setNotes,
-  notesLabel = 'Notes (optional)', onCancel, onSubmit, isSubmitting,
+  notesLabel = 'Notes (optional)', onCancel, onSubmit, isSubmitting, submitDisabled, submitTitle,
 }: {
   users: Array<{ userId: string; fullName: string }>;
   groups: Array<{ groupId: string; name: string }>;
@@ -651,9 +667,11 @@ function CorrectionTaskForm({
   onCancel: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
+  submitDisabled?: boolean;
+  submitTitle?: string;
 }) {
   return (
-    <DecisionForm title="Correction Task" onCancel={onCancel} onSubmit={onSubmit} submitLabel="Send Correction Task" isSubmitting={isSubmitting}>
+    <DecisionForm title="Correction Task" onCancel={onCancel} onSubmit={onSubmit} submitLabel="Send Correction Task" isSubmitting={isSubmitting} submitDisabled={submitDisabled} submitTitle={submitTitle}>
       <TextField label="Task title" value={taskTitle} onChange={setTaskTitle} />
       <TextAreaField label="Task description" value={taskDescription} onChange={setTaskDescription} />
       <div className="grid grid-cols-2 gap-3">

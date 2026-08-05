@@ -46,6 +46,12 @@ function readBlobAsText(blob: Blob): Promise<string> {
   });
 }
 
+// allDocuments carries the *resolved* stage-specific status (see
+// resolveLibraryStatus) by the time it reaches this component, not the raw
+// "pending_approval" the API returns — so "still pending review" means any of
+// these four in-pipeline stages, not a literal status === 'pending_approval'
+// check (which would never match anything post-resolution).
+const PENDING_STAGE_STATUSES = new Set(['qa_review', 'manager_review', 'correction_in_progress', 'qa_final_review']);
 const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log']);
 const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 
@@ -222,7 +228,18 @@ export function Documents() {
     }
   }, []);
 
-  const documents = useMemo(() => allDocuments.filter((document) => document.folderId === selectedFolderId), [allDocuments, selectedFolderId]);
+  // "My Submitted Documents" (Dashboard's "View all") shows every document the
+  // current user submitted, regardless of which folder it lives in — the
+  // normal per-folder scoping below doesn't apply while this is active, but
+  // everything else (preview, details, search, columns) is the same
+  // DocumentList/DocumentPreview used everywhere else in the library.
+  const showOnlyMySubmissions = searchParams.get('mine') === '1';
+  const documents = useMemo(() => {
+    if (showOnlyMySubmissions) {
+      return allDocuments.filter((document) => document.uploadedBy === currentUser?.userId && PENDING_STAGE_STATUSES.has(document.status));
+    }
+    return allDocuments.filter((document) => document.folderId === selectedFolderId);
+  }, [allDocuments, selectedFolderId, showOnlyMySubmissions, currentUser?.userId]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
@@ -612,6 +629,14 @@ export function Documents() {
     }, { replace: true });
   }, [setSearchParams]);
 
+  const clearMySubmissionsFilter = useCallback(() => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('mine');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const closePreview = useCallback(() => {
     previewAbortControllerRef.current?.abort();
     previewAbortControllerRef.current = null;
@@ -629,6 +654,7 @@ export function Documents() {
     setSelectedFolderIds(new Set());
     setPreviewDocument(null);
     clearPreviewParam();
+    if (showOnlyMySubmissions) clearMySubmissionsFilter();
   };
 
   const openDocumentPreview = (docId: string) => {
@@ -861,8 +887,33 @@ export function Documents() {
     setRequestedFolderAction(action === 'cut' ? 'move' : action);
   };
 
-  const handleBulkAction = (action: LibraryBulkAction, value?: string) => {
+  const handleBulkAction = async (action: LibraryBulkAction, value?: string) => {
     try {
+      // Move previously only ever mutated local React state — it looked like
+      // it worked, but nothing was ever persisted, so a reload (or any other
+      // user's own session) showed every item back in its original folder.
+      // Real (server-backed) documents/folders now get a real API call first;
+      // fixture/demo items have no backend record to update, so they still
+      // only go through the local transform below.
+      if (action === 'move' && value) {
+        const realDocumentIds = [...librarySelection.documentIds].filter(isServerDocumentId);
+        const realFolderIds = [...librarySelection.folderIds].filter(isServerDocumentId);
+        for (const docId of realDocumentIds) {
+          const res = await apiClient.moveDocument(docId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to move a document',
+          }));
+          if (!res.success) return res.error || 'Failed to move a document';
+        }
+        for (const folderId of realFolderIds) {
+          const res = await apiClient.moveFolder(folderId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to move a folder',
+          }));
+          if (!res.success) return res.error || 'Failed to move a folder';
+        }
+      }
+
       const currentState = { folders, documents: allDocuments };
       const nextState = action === 'copy'
         ? copyLibraryItems(currentState, librarySelection, value ?? '')
@@ -1206,6 +1257,17 @@ export function Documents() {
             </button>
           </div>
         </div>
+
+        {showOnlyMySubmissions && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#dbe2ec] bg-[#eef4fb] px-4 py-2.5 dark:border-white/10 dark:bg-[#3f8bca]/10 sm:px-6">
+            <p className="text-sm text-[#2f6f9f] dark:text-[#8fc4ea]">
+              Showing only documents <strong>you submitted</strong> that are still pending review, across every folder.
+            </p>
+            <button type="button" onClick={clearMySubmissionsFilter} className="text-sm font-medium text-[#3f8bca] hover:underline">
+              Clear filter — show folders
+            </button>
+          </div>
+        )}
 
         {/* Documents Table and Filters */}
         <div className="flex-1 overflow-y-auto">

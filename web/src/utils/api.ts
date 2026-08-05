@@ -333,6 +333,11 @@ class APIClient {
     return data;
   }
 
+  async moveFolder(folderId: string, destinationFolderId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/folders/${folderId}/move`, { destinationFolderId });
+    return data;
+  }
+
   async deleteFolder(folderId: string) {
     const { data } = await this.client.delete<ApiResponse>(`/folders/${folderId}`);
     return data;
@@ -359,6 +364,11 @@ class APIClient {
 
   async updateDocument(documentId: string, documentData: any) {
     const { data } = await this.client.put<ApiResponse>(`/documents/${documentId}`, documentData);
+    return data;
+  }
+
+  async moveDocument(documentId: string, destinationFolderId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/move`, { destinationFolderId });
     return data;
   }
 

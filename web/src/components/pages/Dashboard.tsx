@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { apiClient } from '../../utils/api';
 import { AuditCalendarCard } from '../custom/AuditCalendarCard';
+import { resolveLibraryStatus } from '../../fixtures/documentLibrary';
+import { statusLabels } from '../../utils/documentStatus';
 
 const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
@@ -93,9 +95,16 @@ export function Dashboard() {
   const myCheckedOutDocs = recentDocs.filter((doc) => doc.checkoutStatus === 'checked_out' && doc.checkedOutBy === currentUserId);
   const mySubmissionsInReview = recentDocs.filter((doc) => doc.uploadedBy === currentUserId && doc.status === 'pending_approval');
   // The API returns every pending document; anything the current user submitted belongs
-  // in "My Submissions in Review" instead, so it is excluded here to avoid double-counting.
+  // in "My Submitted Documents" instead, so it is excluded here to avoid double-counting.
   const approvalsForMe = pendingApprovals.filter((approval) => approval.submittedBy !== currentUserId);
-  const reviewStageFor = (doc: Document) => (doc.department === 'Quality Assurance' ? 'Awaiting QA review' : 'Awaiting manager review');
+  // The real stage, not a department-based guess — same resolution the
+  // Document Library/Search/Preview already use, so this panel never shows a
+  // status that disagrees with what the document actually shows everywhere else.
+  const reviewStageFor = (doc: Document) => statusLabels[resolveLibraryStatus(doc)];
+  // "In Review" would be misleading as a blanket label — some of these are
+  // actually sitting back with the submitter awaiting a fix, the opposite of
+  // being under review, so the count/detail text stays neutral about that.
+  const mySubmissionsNeedingCorrection = mySubmissionsInReview.filter((doc) => resolveLibraryStatus(doc) === 'correction_in_progress').length;
 
   if (isLoading) {
     return (
@@ -111,7 +120,7 @@ export function Dashboard() {
     { label: 'My Open Tasks', value: taskStats.open + taskStats.inProgress, valueClass: 'text-[#2d3d80] dark:text-white', detail: `${myTasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]', action: () => navigate('/tasks') },
     { label: 'My Overdue Tasks', value: taskStats.overdue, valueClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#2d3d80] dark:text-white', detail: taskStats.overdue > 0 ? 'Needs attention' : 'All on track', detailClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#319d68]', action: () => navigate('/tasks') },
     { label: 'Awaiting My Approval', value: approvalsForMe.length, valueClass: 'text-[#d27a08]', detail: approvalsForMe.length > 0 ? 'Review needed' : 'Nothing pending', detailClass: 'text-[#d27a08]', action: () => navigate('/approvals') },
-    { label: 'My Submissions in Review', value: mySubmissionsInReview.length, valueClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', detail: mySubmissionsInReview.length > 0 ? 'With manager/QA' : 'Nothing submitted', detailClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', action: () => navigate('/documents') },
+    { label: 'My Submitted Documents', value: mySubmissionsInReview.length, valueClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', detail: mySubmissionsNeedingCorrection > 0 ? `${mySubmissionsNeedingCorrection} need correction` : mySubmissionsInReview.length > 0 ? 'In the approval pipeline' : 'Nothing submitted', detailClass: mySubmissionsNeedingCorrection > 0 ? 'text-[#c73c44]' : 'text-[#6c4fd1] dark:text-[#b9a3f5]', action: () => navigate('/documents') },
     { label: 'My Checked-Out Docs', value: myCheckedOutDocs.length, valueClass: 'text-[#2d3d80] dark:text-white', detail: myCheckedOutDocs.length > 0 ? '60-min lock window' : 'None checked out', detailClass: 'text-[#64748b] dark:text-slate-400', action: () => navigate('/documents') },
   ];
 
@@ -231,15 +240,15 @@ export function Dashboard() {
           <Card>
             <CardBody className="p-5">
               <div className="flex items-center justify-between">
-                <h2 className="section-heading">My Submissions in Review</h2>
-                <button onClick={() => navigate('/documents')} className="text-xs font-medium text-[#3f8bca] hover:underline">View all</button>
+                <h2 className="section-heading">My Submitted Documents</h2>
+                <button onClick={() => navigate('/documents?mine=1')} className="text-xs font-medium text-[#3f8bca] hover:underline">View all</button>
               </div>
               <div className="mt-3 space-y-2">
                 {mySubmissionsInReview.length === 0 && (
                   <p className="px-1 py-4 text-sm text-[#718198]">You have no documents waiting on approval.</p>
                 )}
                 {mySubmissionsInReview.slice(0, 4).map((doc) => (
-                  <button key={doc.documentId} onClick={() => navigate('/documents')} className="flex w-full gap-3 rounded-[4px] border-l-2 border-[#6c4fd1] px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5">
+                  <button key={doc.documentId} onClick={() => navigate(`/documents?mine=1&preview=${doc.documentId}`)} className="flex w-full gap-3 rounded-[4px] border-l-2 border-[#6c4fd1] px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5">
                     <FileClock className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#6c4fd1]" />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-[#26334d] dark:text-white">{doc.name}</span>

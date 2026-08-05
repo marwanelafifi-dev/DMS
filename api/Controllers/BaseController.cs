@@ -89,6 +89,33 @@ public class BaseController : ControllerBase
         return permission != null && selector(permission);
     }
 
+    // Single-folder version of the same "can this user actually see this
+    // folder" check as GetAccessibleFolderIdsAsync below — used wherever a
+    // specific folder is already in hand (e.g. resolving one document's
+    // approval-queue visibility) instead of computing the whole accessible
+    // set. BypassFolderPermissions short-circuits to true; otherwise a role
+    // grant on this folder is the baseline, and a Deny-Read override still
+    // wins over that grant, same deny-always-wins rule as everywhere else.
+    protected static async Task<bool> HasFolderReadAccessAsync(DmsContext context, AccessOverrideService accessOverrideService, Guid userId, Guid folderId)
+    {
+        var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user?.Role != null)
+        {
+            var pageAccessRole = await context.PageAccessRoles.AsNoTracking().FirstOrDefaultAsync(r => r.Role == user.Role);
+            if (pageAccessRole?.BypassFolderPermissions == true)
+                return true;
+        }
+
+        var hasGrant = await context.FolderPermissions.AsNoTracking().AnyAsync(p => p.UserId == userId && p.FolderId == folderId);
+        if (!hasGrant)
+        {
+            var overrideVisibleFolderIds = await accessOverrideService.GetOverrideVisibleFolderIdsAsync(userId);
+            hasGrant = overrideVisibleFolderIds.Contains(folderId);
+        }
+
+        return await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Read, hasGrant);
+    }
+
     // Used by folder/document *list* endpoints (GET /api/folders, GET
     // /api/documents) — those have no single ID for RBACMiddleware to gate,
     // so without this a "User"-role account with zero folder grants could
@@ -117,6 +144,21 @@ public class BaseController : ControllerBase
         // a "User"-role account with only an override sees an empty library.
         var overrideVisibleFolderIds = await accessOverrideService.GetOverrideVisibleFolderIdsAsync(userId);
         folderIds.UnionWith(overrideVisibleFolderIds);
+
+        // A Deny-Read override must be able to take a folder back OUT of view
+        // even when the user already holds a per-folder role grant on it (e.g.
+        // as the folder's own creator/Admin) — the two computations above are
+        // purely additive and never accounted for that, so an explicit Deny
+        // was silently ignored for list/browse visibility even though it was
+        // already correctly enforced for individual actions (upload, rename,
+        // download, ...) via AccessOverrideService.ResolveAsync.
+        var deniedFolderIds = new List<Guid>();
+        foreach (var folderId in folderIds)
+        {
+            if (!await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Read, true))
+                deniedFolderIds.Add(folderId);
+        }
+        folderIds.ExceptWith(deniedFolderIds);
 
         return folderIds;
     }
