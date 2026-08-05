@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Clock3, FileClock, Megaphone, TriangleAlert, X } from 'lucide-react';
 import { Card, CardBody } from '../ui/Card';
 import { SkeletonCard } from '../ui/Skeleton';
-import type { Task, Document, Approval } from '../../types';
+import type { Task, Document } from '../../types';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { apiClient } from '../../utils/api';
@@ -20,12 +20,48 @@ interface AnnouncementSummary {
   createdAt: string;
 }
 
+// One document from a real Document Workflow stage queue — built straight
+// from the same qa-review-queue/manager-review-queue/final-release-queue
+// endpoints the actual Document Workflow page uses, not the old, disconnected
+// "any document with status pending_approval" legacy endpoint this used to
+// call, whose fabricated approvalId (= documentId) didn't match any real
+// approval record, so it could never deep-link into the queue it came from.
+interface PendingApprovalItem {
+  approvalId: string;
+  documentId: string;
+  fileName: string;
+  ownerName: string;
+  createdBy?: string;
+  stageKey: 'qa-queue' | 'manager-queue' | 'release-queue';
+}
+
+function flattenQueueResult(
+  result: PromiseSettledResult<{ data?: any[] }>,
+  stageKey: PendingApprovalItem['stageKey'],
+): PendingApprovalItem[] {
+  if (result.status !== 'fulfilled') return [];
+  return (result.value.data || [])
+    .map((item: any) => {
+      const doc = item.documents?.[0];
+      if (!doc?.documentId) return null;
+      return {
+        approvalId: item.approvalId,
+        documentId: doc.documentId,
+        fileName: doc.fileName ?? 'Document',
+        ownerName: doc.ownerName ?? 'Unknown owner',
+        createdBy: item.createdBy,
+        stageKey,
+      };
+    })
+    .filter((item): item is PendingApprovalItem => item !== null);
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [recentDocs, setRecentDocs] = useState<Document[]>([]);
-  const [pendingApprovals, setPendingApprovals] = useState<Approval[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementSummary[]>([]);
   const [showAllAnnouncements, setShowAllAnnouncements] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,11 +78,16 @@ export function Dashboard() {
       setLoadError(null);
 
       // Loaded independently so one failing endpoint still leaves the rest of the
-      // dashboard usable instead of blanking the whole page.
-      const [taskResult, documentResult, approvalResult, announcementResult] = await Promise.allSettled([
+      // dashboard usable instead of blanking the whole page. A role without
+      // access to a given stage gets a 403 for that one call, which just
+      // resolves to an empty list for that stage below — same graceful
+      // degradation as any other failed call here.
+      const [taskResult, documentResult, qaResult, managerResult, releaseResult, announcementResult] = await Promise.allSettled([
         apiClient.getTasks(),
         apiClient.getDocuments(),
-        apiClient.getPendingApprovals(),
+        apiClient.getQaReviewQueue({ pageSize: 100 }),
+        apiClient.getManagerReviewQueue({ pageSize: 100 }),
+        apiClient.getFinalReleaseQueue({ pageSize: 100 }),
         apiClient.getAnnouncements(),
       ]);
 
@@ -54,13 +95,19 @@ export function Dashboard() {
 
       setTasks(taskResult.status === 'fulfilled' ? asArray<Task>(taskResult.value.data) : []);
       setRecentDocs(documentResult.status === 'fulfilled' ? asArray<Document>(documentResult.value.data) : []);
-      setPendingApprovals(approvalResult.status === 'fulfilled' ? asArray<Approval>(approvalResult.value.data) : []);
+      setPendingApprovals([
+        ...flattenQueueResult(qaResult, 'qa-queue'),
+        ...flattenQueueResult(managerResult, 'manager-queue'),
+        ...flattenQueueResult(releaseResult, 'release-queue'),
+      ]);
       setAnnouncements(announcementResult.status === 'fulfilled' ? asArray<AnnouncementSummary>(announcementResult.value.data) : []);
 
+      // A rejected queue call (qa/manager/release) usually just means this
+      // role has no access to that stage — a normal, expected 403, not a
+      // real failure worth surfacing as a load-error banner.
       const failed = [
         taskResult.status === 'rejected' ? 'tasks' : null,
         documentResult.status === 'rejected' ? 'documents' : null,
-        approvalResult.status === 'rejected' ? 'approvals' : null,
       ].filter(Boolean);
 
       setLoadError(failed.length > 0 ? `Could not load ${failed.join(', ')}. Showing what is available.` : null);
@@ -94,9 +141,12 @@ export function Dashboard() {
   };
   const myCheckedOutDocs = recentDocs.filter((doc) => doc.checkoutStatus === 'checked_out' && doc.checkedOutBy === currentUserId);
   const mySubmissionsInReview = recentDocs.filter((doc) => doc.uploadedBy === currentUserId && doc.status === 'pending_approval');
-  // The API returns every pending document; anything the current user submitted belongs
-  // in "My Submitted Documents" instead, so it is excluded here to avoid double-counting.
-  const approvalsForMe = pendingApprovals.filter((approval) => approval.submittedBy !== currentUserId);
+  // The queues return every pending document in that stage; anything the
+  // current user submitted themselves belongs in "My Submitted Documents"
+  // instead, so it is excluded here to avoid double-counting.
+  const approvalsForMe = pendingApprovals.filter((approval) => approval.createdBy !== currentUserId);
+  const approvalDeepLink = (approval: PendingApprovalItem) =>
+    `/approvals?tab=${approval.stageKey}&approvalId=${encodeURIComponent(approval.approvalId)}&documentId=${encodeURIComponent(approval.documentId)}`;
   // The real stage, not a department-based guess — same resolution the
   // Document Library/Search/Preview already use, so this panel never shows a
   // status that disagrees with what the document actually shows everywhere else.
@@ -117,11 +167,11 @@ export function Dashboard() {
 
 
   const metrics = [
-    { label: 'My Open Tasks', value: taskStats.open + taskStats.inProgress, valueClass: 'text-[#2d3d80] dark:text-white', detail: `${myTasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]', action: () => navigate('/tasks') },
-    { label: 'My Overdue Tasks', value: taskStats.overdue, valueClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#2d3d80] dark:text-white', detail: taskStats.overdue > 0 ? 'Needs attention' : 'All on track', detailClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#319d68]', action: () => navigate('/tasks') },
-    { label: 'Awaiting My Approval', value: approvalsForMe.length, valueClass: 'text-[#d27a08]', detail: approvalsForMe.length > 0 ? 'Review needed' : 'Nothing pending', detailClass: 'text-[#d27a08]', action: () => navigate('/approvals') },
-    { label: 'My Submitted Documents', value: mySubmissionsInReview.length, valueClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', detail: mySubmissionsNeedingCorrection > 0 ? `${mySubmissionsNeedingCorrection} need correction` : mySubmissionsInReview.length > 0 ? 'In the approval pipeline' : 'Nothing submitted', detailClass: mySubmissionsNeedingCorrection > 0 ? 'text-[#c73c44]' : 'text-[#6c4fd1] dark:text-[#b9a3f5]', action: () => navigate('/documents') },
-    { label: 'My Checked-Out Docs', value: myCheckedOutDocs.length, valueClass: 'text-[#2d3d80] dark:text-white', detail: myCheckedOutDocs.length > 0 ? '60-min lock window' : 'None checked out', detailClass: 'text-[#64748b] dark:text-slate-400', action: () => navigate('/documents') },
+    { label: 'My Open Tasks', value: taskStats.open + taskStats.inProgress, valueClass: 'text-[#2d3d80] dark:text-white', detail: `${myTasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]', action: () => { const openTask = myTasks.find((t) => t.status === 'open' || t.status === 'in_progress'); navigate(openTask ? `/tasks?highlight=${encodeURIComponent(openTask.taskId)}` : '/tasks'); } },
+    { label: 'My Overdue Tasks', value: taskStats.overdue, valueClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#2d3d80] dark:text-white', detail: taskStats.overdue > 0 ? 'Needs attention' : 'All on track', detailClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#319d68]', action: () => { const overdueTask = myTasks.find((t) => { const due = dueTime(t.dueDate); return t.status !== 'done' && due !== null && due < Date.now(); }); navigate(overdueTask ? `/tasks?highlight=${encodeURIComponent(overdueTask.taskId)}` : '/tasks'); } },
+    { label: 'Awaiting My Approval', value: approvalsForMe.length, valueClass: 'text-[#d27a08]', detail: approvalsForMe.length > 0 ? 'Review needed' : 'Nothing pending', detailClass: 'text-[#d27a08]', action: () => navigate(approvalsForMe[0] ? approvalDeepLink(approvalsForMe[0]) : '/approvals') },
+    { label: 'My Submitted Documents', value: mySubmissionsInReview.length, valueClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', detail: mySubmissionsNeedingCorrection > 0 ? `${mySubmissionsNeedingCorrection} need correction` : mySubmissionsInReview.length > 0 ? 'In the approval pipeline' : 'Nothing submitted', detailClass: mySubmissionsNeedingCorrection > 0 ? 'text-[#c73c44]' : 'text-[#6c4fd1] dark:text-[#b9a3f5]', action: () => navigate('/documents?mine=1') },
+    { label: 'My Checked-Out Docs', value: myCheckedOutDocs.length, valueClass: 'text-[#2d3d80] dark:text-white', detail: myCheckedOutDocs.length > 0 ? '60-min lock window' : 'None checked out', detailClass: 'text-[#64748b] dark:text-slate-400', action: () => navigate(myCheckedOutDocs[0] ? `/documents?preview=${encodeURIComponent(myCheckedOutDocs[0].documentId)}` : '/documents') },
   ];
 
   const taskIcons = [Clock3, CheckCircle2, TriangleAlert, ClipboardCheck];
@@ -201,7 +251,7 @@ export function Dashboard() {
                 {myTasks.slice(0, 4).map((task, index) => {
                   const Icon = taskIcons[index % taskIcons.length];
                   return (
-                    <button key={task.taskId} onClick={() => navigate('/tasks')} className={`flex w-full gap-3 rounded-[4px] border-l-2 px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5 ${taskColors[index % taskColors.length]}`}>
+                    <button key={task.taskId} onClick={() => navigate(`/tasks?highlight=${encodeURIComponent(task.taskId)}`)} className={`flex w-full gap-3 rounded-[4px] border-l-2 px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5 ${taskColors[index % taskColors.length]}`}>
                       <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-[#26334d] dark:text-white">{task.title}</span>
@@ -225,11 +275,11 @@ export function Dashboard() {
                   <p className="px-1 py-4 text-sm text-[#718198]">Nothing waiting on your review.</p>
                 )}
                 {approvalsForMe.slice(0, 4).map((approval) => (
-                  <button key={approval.approvalId} onClick={() => navigate('/approvals')} className="flex w-full gap-3 rounded-[4px] border-l-2 border-[#d27a08] px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5">
+                  <button key={`${approval.approvalId}-${approval.documentId}`} onClick={() => navigate(approvalDeepLink(approval))} className="flex w-full gap-3 rounded-[4px] border-l-2 border-[#d27a08] px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5">
                     <FileClock className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d27a08]" />
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-[#26334d] dark:text-white">{approval.document?.name ?? 'Document'}</span>
-                      <span className="mt-1 block text-xs text-[#718198]">Submitted by {approval.submittedByUser?.fullName ?? 'a colleague'}</span>
+                      <span className="block truncate text-sm font-medium text-[#26334d] dark:text-white">{approval.fileName}</span>
+                      <span className="mt-1 block text-xs text-[#718198]">Submitted by {approval.ownerName}</span>
                     </span>
                   </button>
                 ))}

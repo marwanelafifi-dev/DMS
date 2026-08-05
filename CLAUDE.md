@@ -9,7 +9,40 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Active Branch:** `Main`
 
-**Status:** Session 31 — closed a real, critical folder-visibility bug (an explicit Deny-Read override was silently ignored whenever the user also held a per-folder role grant, e.g. as a folder's own creator) and extended the same Deny-always-wins rule into Document Workflow's queues and every approve/reject action; made every Document Workflow Approve/Reject button actually reflect the caller's live `CanApprove`/`CanReject` permission instead of only failing after a click; and discovered and fixed the session's biggest find — Move (both documents and folders) in the Document Library had never been backed by a real API call at all, so it looked like it worked but silently reverted for every other session/user. Also: renamed "C-Doc Workflow" to "Document Workflow" throughout, replaced the Dashboard's fake department-based review-stage guess with the real resolved status, and added a real cross-folder "My Submitted Documents" filtered view to the Document Library. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 32 — a Dashboard-focused follow-up session that found and fixed every "card that doesn't lead anywhere real": the "My Submitted Documents" stat card was still missing the `?mine=1` filter that "View all" had already gotten; and "Awaiting My Approval" turned out to be built entirely from a disconnected legacy endpoint with a fabricated, non-real `approvalId` — replaced it with the real three-stage-queue data and wired every card/row (Approvals, Tasks, Checked-Out Docs) to deep-link straight into the exact item, not just the generic page. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 32 (2026-08-05) — Dashboard Card Deep-Linking, Real "Awaiting My Approval" Data
+
+**Status:** ✅ Complete — every fix rebuilt and redeployed, confirmed against the exact screenshot/report that surfaced it.
+
+**Context:** A short, sharp follow-up to Session 31's Dashboard work — the user immediately caught that the "My Submitted Documents" *stat card* (as opposed to the panel's "View all" link, fixed in Session 31) still went to an unfiltered library, which led to auditing every Dashboard card's click target and finding one of them was built on entirely fake data.
+
+### 1. "My Submitted Documents" stat card still missing `?mine=1`
+Session 31 added the real cross-folder filtered view (`/documents?mine=1`) to the panel's "View all" link and each row, but the stat card itself (the big number at the top) was never updated and still called `navigate('/documents')` — landing on whatever folder happened to be selected, not the filtered list. Fixed to match.
+
+### 2. Real bug: "Awaiting My Approval" was built on a fake, disconnected legacy endpoint
+Investigating why clicking a specific document in this panel opened the wrong thing (a single unrelated document in a normal folder view, not a deep link) traced back to `GET /api/documents/pending-approvals/list` — an old `ApprovalService.GetPendingApprovalsAsync` query that just lists *any* document with the generic `Status == "pending_approval"`, completely separate from the real C-Doc Workflow tables (`dms_approvals`/`dms_approval_documents`). It fabricates `ApprovalId = DocumentId` and never returns which stage (QA/Manager/Final) the document is actually in — so a deep link built from this data could never point at a real approval record or the correct tab.
+- **Fixed properly, not patched**: Dashboard now fetches the same three real queue endpoints the Document Workflow page itself uses (`qa-review-queue`/`manager-review-queue`/`final-release-queue`), flattens them into one list with each item's *real* `approvalId`, `documentId`, and stage. A role without access to a given stage just gets an empty list for it (403 handled the same graceful way as any other failed dashboard call), not an error banner.
+- Clicking the stat card, "View all", or any individual row now navigates to `/approvals?tab=<stage>&approvalId=...&documentId=...`.
+- `Approvals.tsx` (Document Workflow) gained the corresponding read side: on load it honors `?tab=` to pick the right stage tab (falling back to the role's first visible tab as before), and `?approvalId=&documentId=` to open the Review modal immediately — both query params are cleared from the URL when the modal closes so navigating back doesn't reopen it.
+
+### 3. Same fix applied to the other Dashboard cards, per explicit "fix all cards" request
+Auditing every card's `action`/row-click turned up the identical shallow-link pattern elsewhere, even though the target pages already supported real deep-linking:
+- **My Open Tasks / My Overdue Tasks** (stat cards) and every row in the **My Tasks** panel — now navigate to `/tasks?highlight=<taskId>` (for the stat cards, the first matching open/overdue task) instead of a bare `/tasks`. `Tasks.tsx` already had full support for `?highlight=` from an earlier session; it just was never actually used by the Dashboard.
+- **My Checked-Out Docs** — now navigates to `/documents?preview=<id>` for the actual checked-out document instead of a bare `/documents`.
+
+### Files modified
+`web/src/components/pages/{Dashboard,Approvals}.tsx`
+
+### Verification
+- Confirmed live via curl that the three real queue endpoints return the exact shape assumed (`approvalId`, `createdBy`, `documents[0].{documentId,fileName,ownerName}`), matching what Session 31 had already verified for the Document Workflow page itself.
+- `docker compose build --pull=false web` clean; container rebuilt and confirmed `healthy` after each change.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- The legacy `pending-approvals/list` endpoint (`ApprovalService.GetPendingApprovalsAsync`) is now unused by the Dashboard but still exists and is still called by `bulk-approve`/`bulk-reject`/`bulk-download` in `DocumentsController` — left alone since those weren't in scope this session, but worth revisiting given it's built on the same disconnected, non-real approval model.
 
 ---
 
