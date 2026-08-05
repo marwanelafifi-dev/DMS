@@ -43,12 +43,16 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
             if (!user.IsActive)
                 return Unauthorized(new { success = false, error = "This account has been deactivated" });
 
+            var maintenanceBlock = await GetMaintenanceBlockMessageAsync(user);
+            if (maintenanceBlock != null)
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { success = false, error = maintenanceBlock });
+
             var now = DateTime.UtcNow;
             user.LastLoginAt = now;
             user.LastHeartbeatAt = now;
             await context.SaveChangesAsync();
 
-            var token = jwtTokenService.GenerateToken(user);
+            var token = jwtTokenService.GenerateToken(user, await GetSessionTimeoutMinutesAsync());
 
             await auditService.LogAsync(user.UserId, USER_LOGIN, new { user.UserId, user.Email, LoggedInAt = now });
             await TriggerCalendarSyncIfEnabledAsync(user.UserId);
@@ -74,6 +78,24 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
     // Access admin has turned on the "sync on login" app setting — best-effort,
     // never allowed to fail the login itself (a stale/expired refresh token or
     // Google outage shouldn't lock anyone out of the app).
+    private async Task<int> GetSessionTimeoutMinutesAsync()
+    {
+        var security = await PlatformSettingsService.LoadSecurityAsync(context);
+        return security.SessionTimeoutHours * 60;
+    }
+
+    // While Maintenance Mode is on, only a Full Access role may log in —
+    // returns the rejection message, or null if this user is allowed through.
+    private async Task<string?> GetMaintenanceBlockMessageAsync(DmsUser user)
+    {
+        var maintenance = await SystemControlsService.LoadMaintenanceModeAsync(context);
+        if (!maintenance.Enabled)
+            return null;
+
+        var pageAccessRole = await GetPageAccessRoleAsync(context, user.UserId);
+        return pageAccessRole?.BypassFolderPermissions == true ? null : maintenance.Message;
+    }
+
     private async Task TriggerCalendarSyncIfEnabledAsync(Guid userId)
     {
         try
@@ -102,8 +124,8 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 8)
-                return BadRequest(new { success = false, error = "Email and an 8+ character password are required" });
+            if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
+                return BadRequest(new { success = false, error = "Email and password are required" });
 
             var user = await context.Users.FirstOrDefaultAsync(u => u.Email == req.Email.ToLower().Trim());
             if (user == null)
@@ -111,6 +133,10 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
 
             if (!string.IsNullOrEmpty(user.PasswordHash))
                 return BadRequest(new { success = false, error = "This account already has a password set — use the reset-password flow instead" });
+
+            var passwordError = PasswordPolicy.Validate(req.Password, await PlatformSettingsService.LoadSecurityAsync(context));
+            if (passwordError != null)
+                return BadRequest(new { success = false, error = passwordError });
 
             user.PasswordHash = PasswordHasher.Hash(req.Password);
             user.UpdatedAt = DateTime.UtcNow;
@@ -141,7 +167,11 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
             if (!success || user == null)
                 return Unauthorized(new { success = false, error });
 
-            var token = jwtTokenService.GenerateToken(user);
+            var maintenanceBlock = await GetMaintenanceBlockMessageAsync(user);
+            if (maintenanceBlock != null)
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { success = false, error = maintenanceBlock });
+
+            var token = jwtTokenService.GenerateToken(user, await GetSessionTimeoutMinutesAsync());
             return Ok(new
             {
                 success = true,
@@ -193,7 +223,11 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
             return Redirect($"{errorPath}&reason={Uri.EscapeDataString(error ?? "unknown")}");
         }
 
-        var token = jwtTokenService.GenerateToken(user);
+        var maintenanceBlock = await GetMaintenanceBlockMessageAsync(user);
+        if (maintenanceBlock != null)
+            return Redirect($"{errorPath}&reason={Uri.EscapeDataString(maintenanceBlock)}");
+
+        var token = jwtTokenService.GenerateToken(user, await GetSessionTimeoutMinutesAsync());
         var html = $$"""
             <!doctype html>
             <html><head><meta charset="utf-8"><title>Signing in…</title></head>

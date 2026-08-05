@@ -167,8 +167,12 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
             if (await context.Users.AnyAsync(u => u.Email == req.Email.ToLower()))
                 return BadRequest(new { success = false, error = "A user with this email already exists" });
 
-            if (!string.IsNullOrEmpty(req.Password) && req.Password.Length < 8)
-                return BadRequest(new { success = false, error = "Password must be at least 8 characters" });
+            if (!string.IsNullOrEmpty(req.Password))
+            {
+                var passwordError = PasswordPolicy.Validate(req.Password, await PlatformSettingsService.LoadSecurityAsync(context));
+                if (passwordError != null)
+                    return BadRequest(new { success = false, error = passwordError });
+            }
 
             var user = new DmsUser
             {
@@ -363,8 +367,12 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
     {
         try
         {
-            if (string.IsNullOrEmpty(req.NewPassword) || req.NewPassword.Length < 8)
-                return BadRequest(new { success = false, error = "Password must be at least 8 characters" });
+            if (string.IsNullOrEmpty(req.NewPassword))
+                return BadRequest(new { success = false, error = "Password is required" });
+
+            var passwordError = PasswordPolicy.Validate(req.NewPassword, await PlatformSettingsService.LoadSecurityAsync(context));
+            if (passwordError != null)
+                return BadRequest(new { success = false, error = passwordError });
 
             var user = await context.Users.FirstOrDefaultAsync(u => u.UserId == id);
             if (user == null)

@@ -1,9 +1,19 @@
-import { useEffect, useState } from 'react';
-import { X, AlertCircle, Download, Eye, History, RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, AlertCircle, ArrowLeft, Download, Eye, History, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '../ui';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
+import { doclingApi } from '../../services/doclingApi';
+import { MarkdownViewer } from './MarkdownViewer';
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 'csv']);
+const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+
+type ReviewContent =
+  | { kind: 'image' | 'pdf'; url: string }
+  | { kind: 'text' | 'markdown'; content: string };
 
 interface VersionRow {
   versionId: string;
@@ -28,6 +38,8 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<{ versionLabel: string; content: ReviewContent } | null>(null);
+  const reviewObjectUrlRef = useRef<string | null>(null);
 
   const load = () => {
     setIsLoading(true);
@@ -57,21 +69,52 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
     }
   };
 
-  // Opens the version's actual file content in a new tab (the browser renders
-  // PDFs/images/text natively) — this reviews that exact past version without
-  // making it current, unlike Revert.
-  const handleReview = async (versionId: string) => {
+  // Renders the version's actual content right in this modal — a real
+  // preview (native for PDF/image/text, Docling-converted for Office
+  // formats a browser tab can't render on its own), not just a raw file
+  // dump. Reviews that exact past version without making it current, unlike
+  // Revert.
+  const handleReview = async (versionId: string, versionLabel: string) => {
     setBusyVersionId(versionId);
     try {
-      const { blob } = await apiClient.getDocumentFile(documentId, versionId);
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const { blob, fileName: versionFileName } = await apiClient.getDocumentFile(documentId, versionId);
+      const extension = versionFileName.split('.').pop()?.toLowerCase() ?? '';
+
+      if (IMAGE_EXTENSIONS.has(extension) || extension === 'pdf') {
+        const url = URL.createObjectURL(blob);
+        reviewObjectUrlRef.current = url;
+        setReviewing({ versionLabel, content: { kind: extension === 'pdf' ? 'pdf' : 'image', url } });
+        return;
+      }
+
+      if (TEXT_EXTENSIONS.has(extension)) {
+        const content = await blob.text();
+        setReviewing({ versionLabel, content: { kind: 'text', content } });
+        return;
+      }
+
+      if (OFFICE_EXTENSIONS.has(extension)) {
+        const file = new File([blob], versionFileName, { type: blob.type });
+        const converted = await doclingApi.convertDocument(file);
+        setReviewing({ versionLabel, content: { kind: 'markdown', content: converted.content } });
+        return;
+      }
+
+      // Unknown format — no in-browser way to render it, fall back to a download.
+      await handleDownload(versionId);
     } catch {
       showError('Failed to open this version for review');
     } finally {
       setBusyVersionId(null);
     }
+  };
+
+  const closeReview = () => {
+    if (reviewObjectUrlRef.current) {
+      URL.revokeObjectURL(reviewObjectUrlRef.current);
+      reviewObjectUrlRef.current = null;
+    }
+    setReviewing(null);
   };
 
   const handleRevert = async (versionId: string, versionNumber: string) => {
@@ -94,17 +137,44 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
+      <div className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900 ${reviewing ? 'max-w-4xl' : 'max-w-2xl'}`}>
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-navy-900 dark:text-white"><History className="h-5 w-5" /> Version History</h2>
-            <p className="truncate text-sm text-gray-500 dark:text-slate-400">{fileName}</p>
+          <div className="flex min-w-0 items-center gap-3">
+            {reviewing && (
+              <button onClick={closeReview} className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-slate-400" aria-label="Back to version list">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+            )}
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-navy-900 dark:text-white">
+                <History className="h-5 w-5" /> {reviewing ? `Reviewing ${reviewing.versionLabel}` : 'Version History'}
+              </h2>
+              <p className="truncate text-sm text-gray-500 dark:text-slate-400">{fileName}</p>
+            </div>
           </div>
-          <button onClick={onClose} className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-slate-400" aria-label="Close">
+          <button onClick={reviewing ? closeReview : onClose} className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-slate-400" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
 
+        {reviewing ? (
+          <div className="flex-1 overflow-y-auto bg-gray-50 p-4 dark:bg-slate-950">
+            {reviewing.content.kind === 'image' && (
+              <img src={reviewing.content.url} alt={reviewing.versionLabel} className="mx-auto max-w-full rounded shadow" />
+            )}
+            {reviewing.content.kind === 'pdf' && (
+              <iframe src={reviewing.content.url} title={reviewing.versionLabel} className="h-[70vh] w-full rounded border-0 bg-white" />
+            )}
+            {reviewing.content.kind === 'text' && (
+              <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-4 text-sm text-navy-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{reviewing.content.content}</pre>
+            )}
+            {reviewing.content.kind === 'markdown' && (
+              <div className="rounded border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <MarkdownViewer content={reviewing.content.content} />
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {error && (
             <div className="mb-4 flex gap-2 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
@@ -131,12 +201,12 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
                     </div>
                     <div className="flex flex-shrink-0 gap-2">
                       <button
-                        onClick={() => handleReview(v.versionId)}
+                        onClick={() => handleReview(v.versionId, `v${v.versionNumber}${v.versionLabel ? ` — ${v.versionLabel}` : ''}`)}
                         disabled={isBusy}
                         title="Review this version"
                         className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                       >
-                        <Eye className="h-4 w-4" />
+                        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                       </button>
                       <button
                         onClick={() => handleDownload(v.versionId)}
@@ -163,9 +233,14 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
             </div>
           )}
         </div>
+        )}
 
         <div className="flex justify-end border-t border-gray-200 px-6 py-4 dark:border-slate-700">
-          <Button onClick={onClose} variant="secondary">Close</Button>
+          {reviewing ? (
+            <Button onClick={closeReview} variant="secondary">Back to Version List</Button>
+          ) : (
+            <Button onClick={onClose} variant="secondary">Close</Button>
+          )}
         </div>
       </div>
     </div>

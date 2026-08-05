@@ -20,6 +20,9 @@ public class JwtAuthMiddleware(RequestDelegate next, JwtTokenService jwtTokenSer
         // Google redirects the user's browser here directly after OAuth consent —
         // there is no Authorization header on that request.
         "/api/googlecalendar/callback",
+        // The Login page needs its own branding config/logo before a session
+        // exists — see BrandingController.
+        "/api/branding",
     };
 
     public async Task InvokeAsync(HttpContext context)
@@ -42,7 +45,7 @@ public class JwtAuthMiddleware(RequestDelegate next, JwtTokenService jwtTokenSer
         }
 
         var token = authHeader["Bearer ".Length..].Trim();
-        var userId = jwtTokenService.ValidateTokenAndGetUserId(token);
+        var userId = await jwtTokenService.ValidateTokenAndGetUserIdAsync(token);
 
         if (userId == null)
         {

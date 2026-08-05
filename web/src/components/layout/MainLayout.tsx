@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
+import { ScheduledNoticeBanner } from './ScheduledNoticeBanner';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -17,6 +18,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <ScheduledNoticeBanner />
         <Navbar onMenuClick={() => setSidebarOpen((open) => !open)} />
 
         <main className="flex-1 overflow-y-auto bg-[#f3f6fa] dark:bg-slate-950">

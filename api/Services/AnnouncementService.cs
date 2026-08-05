@@ -75,7 +75,7 @@ public class AnnouncementService(
                     await notificationService.NotifyAsync(user.UserId, postedById, announcement.Title, announcement.Message);
             }
 
-            if (notifyEmail && emailService.IsConfigured)
+            if (notifyEmail && await emailService.IsConfiguredAsync())
             {
                 var bodyHtml = $"""<p style="margin:0;font-size:14px;color:#3c4043;white-space:pre-wrap;">{System.Net.WebUtility.HtmlEncode(announcement.Message)}</p>""";
                 var html = EmailService.BuildBrandedHtml(announcement.Title, AccentColor, bodyHtml);

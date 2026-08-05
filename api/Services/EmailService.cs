@@ -1,41 +1,73 @@
 using System.Net;
 using System.Net.Mail;
 using System.Net.Mime;
+using System.Text.Json;
+using DMS.Api.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Services;
 
-// Thin SMTP wrapper — the only place in the API that actually sends an email.
-// Configured via Smtp:Host/Port/User/Password/FromName (see appsettings.json /
-// SMTP_* in .env). IsConfigured is false (and every send a no-op logged
-// warning, never a thrown exception) until all of Host/User/Password are set,
-// so a missing config never blocks whatever feature is trying to notify someone.
-public class EmailService
+// The two sending methods exposed on the admin Notification Configuration
+// page — both are plain Gmail SMTP, just against a different host/account
+// type. "Recommended" (personal Gmail + App Password) needs no admin access
+// to Google Workspace; the Workspace SMTP relay needs a one-time relay rule
+// set up in the Google Admin Console but sends as a real si-ware.com address.
+public record EmailNotificationConfig(string Method, string? Email, string? AppPassword, string? SenderName)
 {
+    public const string GmailAppPassword = "gmail_app_password";
+    public const string GoogleWorkspaceSmtpRelay = "google_workspace_smtp_relay";
+
+    public string Host => Method == GoogleWorkspaceSmtpRelay ? "smtp-relay.gmail.com" : "smtp.gmail.com";
+    public int Port => 587;
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Email) && !string.IsNullOrWhiteSpace(AppPassword);
+}
+
+// Thin SMTP wrapper — the only place in the API that actually sends an email.
+// Configuration is loaded fresh from dms_app_settings on every send (not
+// cached at startup) so a change saved on the admin Notification
+// Configuration page takes effect immediately, no restart needed. Falls back
+// to the legacy Smtp:User/Password env vars if nothing has been saved there
+// yet. A missing/incomplete config never blocks whatever feature is trying
+// to notify someone — every send is a no-op logged warning, never a thrown
+// exception.
+public class EmailService(IServiceScopeFactory scopeFactory, IConfiguration configuration, ILogger<EmailService> logger)
+{
+    public const string SettingKey = "email_notification_config";
     private const string LogoContentId = "siwarelogo";
     private static readonly string LogoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "si-ware-logo-dark.png");
 
-    private readonly string? _host;
-    private readonly int _port;
-    private readonly string? _user;
-    private readonly string? _password;
-    private readonly string _fromName;
-    private readonly ILogger<EmailService> _logger;
-
-    public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
+    public async Task<EmailNotificationConfig> LoadConfigAsync()
     {
-        _logger = logger;
-        _host = configuration["Smtp:Host"];
-        _port = int.TryParse(configuration["Smtp:Port"], out var port) ? port : 587;
-        _user = configuration["Smtp:User"];
-        _password = configuration["Smtp:Password"];
-        _fromName = configuration["Smtp:FromName"] ?? "Si-Ware DMS";
+        using var scope = scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<DmsContext>();
+        var setting = await context.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == SettingKey);
+
+        if (!string.IsNullOrWhiteSpace(setting?.Value))
+        {
+            try
+            {
+                var saved = JsonSerializer.Deserialize<EmailNotificationConfig>(setting.Value, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (saved != null)
+                    return saved;
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "Failed to parse saved email notification config — falling back to environment configuration");
+            }
+        }
+
+        return new EmailNotificationConfig(
+            EmailNotificationConfig.GmailAppPassword,
+            configuration["Smtp:User"],
+            configuration["Smtp:Password"],
+            configuration["Smtp:FromName"] ?? "Si-Ware DMS");
     }
 
-    public bool IsConfigured => !string.IsNullOrEmpty(_host) && !string.IsNullOrEmpty(_user) && !string.IsNullOrEmpty(_password);
+    public async Task<bool> IsConfiguredAsync() => (await LoadConfigAsync()).IsConfigured;
 
     // One shared visual identity for every notification email the DMS sends —
     // navy header banner with the actual Si-Ware logo (embedded inline via
-    // Content-ID in SendAsync below, not a remote <img src>, since email
+    // Content-ID in SendWithConfigAsync below, not a remote <img src>, since email
     // clients often block/never-fetch images from a URL that isn't a real
     // publicly reachable host), a colored accent bar callers can use to
     // signal urgency (e.g. red for "starting in 10 minutes" vs. blue for
@@ -72,17 +104,30 @@ public class EmailService
 
     public async Task<bool> SendAsync(string toEmail, string subject, string htmlBody)
     {
-        if (!IsConfigured)
+        var config = await LoadConfigAsync();
+        if (!config.IsConfigured)
         {
-            _logger.LogWarning("Email not sent to {ToEmail} ({Subject}) — SMTP is not configured", toEmail, subject);
+            logger.LogWarning("Email not sent to {ToEmail} ({Subject}) — notification email is not configured", toEmail, subject);
             return false;
         }
+
+        var (success, _) = await SendWithConfigAsync(config, toEmail, subject, htmlBody);
+        return success;
+    }
+
+    // Sends against an explicit config rather than the persisted one — used by
+    // the "Send Test Email" action so an admin can verify credentials before
+    // saving them.
+    public async Task<(bool Success, string? Error)> SendWithConfigAsync(EmailNotificationConfig config, string toEmail, string subject, string htmlBody)
+    {
+        if (!config.IsConfigured)
+            return (false, "Email and App Password are required");
 
         try
         {
             using var message = new MailMessage
             {
-                From = new MailAddress(_user!, _fromName),
+                From = new MailAddress(config.Email!, config.SenderName ?? "Si-Ware DMS"),
                 Subject = subject,
             };
             message.To.Add(toEmail);
@@ -104,24 +149,24 @@ public class EmailService
             }
             else
             {
-                _logger.LogWarning("Si-Ware logo asset not found at {LogoPath} — email will send without it", LogoPath);
+                logger.LogWarning("Si-Ware logo asset not found at {LogoPath} — email will send without it", LogoPath);
             }
 
             message.AlternateViews.Add(htmlView);
 
-            using var client = new SmtpClient(_host, _port)
+            using var client = new SmtpClient(config.Host, config.Port)
             {
                 EnableSsl = true,
-                Credentials = new NetworkCredential(_user, _password),
+                Credentials = new NetworkCredential(config.Email, config.AppPassword),
             };
 
             await client.SendMailAsync(message);
-            return true;
+            return (true, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send email to {ToEmail} ({Subject})", toEmail, subject);
-            return false;
+            logger.LogError(ex, "Failed to send email to {ToEmail} ({Subject})", toEmail, subject);
+            return (false, ex.Message);
         }
     }
 }
