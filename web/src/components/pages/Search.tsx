@@ -11,6 +11,8 @@ import { Badge, Button, Card, CardBody } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
 import { SearchSuggestionsDropdown } from '../custom/SearchSuggestionsDropdown';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
+import { statusLabels } from '../../utils/documentStatus';
+import { resolveLibraryStatus } from '../../fixtures/documentLibrary';
 
 export function Search() {
   const navigate = useNavigate();
@@ -214,16 +216,18 @@ export function Search() {
     setHasLibrarySearched(true);
     try {
       const response = await apiClient.searchDocuments(query, filters);
-      setLibraryResults(response.data || []);
+      setLibraryResults((response.data || []).map((document: Document) => ({ ...document, status: resolveLibraryStatus(document) })));
     } catch {
       try {
         const response = await apiClient.getDocuments();
         setLibraryResults(
-          (response.data || []).filter((document: Document) =>
-            (document.title ?? document.name ?? '')
-              .toLowerCase()
-              .includes(query.toLowerCase()),
-          ),
+          (response.data || [])
+            .filter((document: Document) =>
+              (document.title ?? document.name ?? '')
+                .toLowerCase()
+                .includes(query.toLowerCase()),
+            )
+            .map((document: Document) => ({ ...document, status: resolveLibraryStatus(document) })),
         );
       } catch {
         setLibraryResults([]);
@@ -329,7 +333,10 @@ export function Search() {
                 >
                   <option value="">Any Status</option>
                   <option value="draft">Draft</option>
-                  <option value="pending_approval">Pending Approval</option>
+                  <option value="qa_review">QA Review</option>
+                  <option value="manager_review">Manager Review</option>
+                  <option value="correction_in_progress">Correction Needed</option>
+                  <option value="qa_final_review">Final Review</option>
                   <option value="released">Released</option>
                 </select>
               </label>
@@ -490,13 +497,15 @@ export function Search() {
                           status={
                             dmsDoc?.status === 'released'
                               ? 'success'
-                              : dmsDoc?.status === 'pending_approval'
-                                ? 'warning'
-                                : 'info'
+                              : dmsDoc?.status === 'correction_in_progress'
+                                ? 'error'
+                                : dmsDoc?.status === 'draft'
+                                  ? 'default'
+                                  : 'warning'
                           }
                           variant="outline"
                         >
-                          {dmsDoc?.status?.replace('_', ' ') || 'Unknown'}
+                          {dmsDoc?.status ? statusLabels[dmsDoc.status] : 'Unknown'}
                         </Badge>
                       </td>
                       <td className="px-6 py-4">
@@ -580,13 +589,15 @@ export function Search() {
                             status={
                               document.status === 'released'
                                 ? 'success'
-                                : document.status === 'pending_approval'
-                                  ? 'warning'
-                                  : 'info'
+                                : document.status === 'correction_in_progress'
+                                  ? 'error'
+                                  : document.status === 'draft'
+                                    ? 'default'
+                                    : 'warning'
                             }
                             variant="outline"
                           >
-                            {document.status.replace('_', ' ')}
+                            {statusLabels[document.status]}
                           </Badge>
                         </td>
                         <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">

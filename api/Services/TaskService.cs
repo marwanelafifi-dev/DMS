@@ -202,7 +202,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         }
     }
 
-    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? preventiveActions = null)
+    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? preventiveActions = null, Guid? assignedToId = null, Guid? assignedToGroupId = null)
     {
         try
         {
@@ -210,6 +210,31 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             if (task == null)
                 return TaskResult.NotFound("Task not found");
+
+            // Both null means "no reassignment requested", not "unassign" — a
+            // task always has exactly one of the two set (DB CHECK constraint).
+            if (assignedToId.HasValue || assignedToGroupId.HasValue)
+            {
+                if (assignedToId.HasValue == assignedToGroupId.HasValue)
+                    return TaskResult.Invalid("Exactly one of assignedToId or assignedToGroupId is required to reassign");
+
+                if (assignedToId.HasValue)
+                {
+                    var assignee = await context.Users.FirstOrDefaultAsync(u => u.UserId == assignedToId.Value && u.IsActive);
+                    if (assignee == null)
+                        return TaskResult.NotFound("Assignee not found or inactive");
+                    task.AssignedToId = assignedToId.Value;
+                    task.AssignedToGroupId = null;
+                }
+                else
+                {
+                    var group = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == assignedToGroupId!.Value);
+                    if (group == null)
+                        return TaskResult.NotFound("Group not found");
+                    task.AssignedToGroupId = assignedToGroupId;
+                    task.AssignedToId = null;
+                }
+            }
 
             if (!string.IsNullOrWhiteSpace(title))
                 task.Title = title.Trim();
@@ -254,6 +279,8 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                 task.Title,
                 task.DueDate,
                 task.Status,
+                task.AssignedToId,
+                task.AssignedToGroupId,
                 task.UpdatedAt
             });
         }

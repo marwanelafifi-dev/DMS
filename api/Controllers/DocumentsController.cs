@@ -483,18 +483,26 @@ public class DocumentsController(
         }
     }
 
+    // Document ID resolution (manual entry or system-generated) at QA Triage —
+    // its own independently-grantable flag (migration 067), decoupled from
+    // CanApprove/CanViewQaStage so a role can be given just this one ability
+    // without also getting full QA Accept/Reject rights. This used to check
+    // the folder-scoped Reader/Writer/Manager/QA/Admin role instead, a
+    // leftover from before the Session 27 redesign that moved approval-stage
+    // actions onto the page-access-role system — it was simply missed when
+    // that redesign happened, so a real QA/Admin user without an unrelated
+    // per-folder "QA" grant was wrongly rejected.
     private async Task<ActionResult<object>?> RequireQaOrAdminAsync(Guid folderId)
     {
         var userId = GetCurrentUserId();
-        var permission = await context.FolderPermissions
-            .FirstOrDefaultAsync(p => p.FolderId == folderId && p.UserId == userId);
+        var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
 
-        if (permission == null || permission.Role is not (FolderRoles.QA or FolderRoles.Admin))
+        if (pageAccessRole == null || !pageAccessRole.CanResolveDocumentId)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
                 success = false,
-                error = "Only QA or Admin can perform this action"
+                error = "Your role does not have permission to resolve Document IDs"
             });
         }
 
@@ -695,12 +703,22 @@ public class DocumentsController(
                 .Select(v => (int?)v.MajorVersion)
                 .MaxAsync() ?? 1;
 
+            // Copying the target's own label verbatim (the old behavior) made a
+            // revert look like a plain duplicate of that old entry instead of a
+            // new, distinct restore — keep the original label's own name but
+            // mark clearly which version it was restored from; the row's own
+            // CreatedAt (already shown next to the label everywhere versions are
+            // listed) is the actual restore timestamp, so it isn't duplicated here.
+            var restoredLabel = string.IsNullOrWhiteSpace(targetVersion.VersionLabel)
+                ? $"Restored from v{targetVersion.VersionNumber}"
+                : $"{targetVersion.VersionLabel} (Restored from v{targetVersion.VersionNumber})";
+
             var revertedVersion = new DmsDocumentVersion
             {
                 VersionId = Guid.NewGuid(),
                 DocumentId = id,
                 VersionNumber = $"{nextMajorVersion}.0",
-                VersionLabel = targetVersion.VersionLabel,
+                VersionLabel = restoredLabel,
                 MajorVersion = nextMajorVersion,
                 MinorVersion = 0,
                 FileName = targetVersion.FileName,

@@ -14,7 +14,7 @@ import { useToast } from '../../hooks/useToast';
 const PERMISSION_KEYS = [
   'canViewDashboard', 'canViewDocumentLibrary', 'canViewReminders',
   'canViewApprovals', 'canViewPcar', 'canViewAdminPanel', 'bypassFolderPermissions',
-  'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks',
+  'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks', 'canReassignTasks',
   'canSendAnnouncements',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
@@ -29,6 +29,7 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',
   canCreateTasks: 'Create New PCAR',
+  canReassignTasks: 'Reassign Tasks / PCARs',
   canSendAnnouncements: 'Send Announcements',
 };
 
@@ -39,7 +40,7 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
 // file/folder management actions only. Shown as their own section below, both
 // in the role card and the edit modal.
 const STAGE_KEYS = [
-  'canViewQaStage', 'canViewManagerStage', 'canViewFinalReleaseStage', 'canApprove', 'canReject',
+  'canViewQaStage', 'canViewManagerStage', 'canViewFinalReleaseStage', 'canApprove', 'canReject', 'canResolveDocumentId',
 ] as const;
 const STAGE_LABELS: Record<typeof STAGE_KEYS[number], string> = {
   canViewQaStage: 'QA Review (Stage 1)',
@@ -47,6 +48,7 @@ const STAGE_LABELS: Record<typeof STAGE_KEYS[number], string> = {
   canViewFinalReleaseStage: 'Final Release (Stage 3)',
   canApprove: 'Can Approve',
   canReject: 'Can Reject',
+  canResolveDocumentId: 'Resolve Document ID (generate/enter at QA Triage)',
 };
 
 const ROLE_CARD_DESCRIPTIONS: Record<string, string> = {

@@ -64,11 +64,13 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageFilePermissions = req.CanManageFilePermissions,
                 CanManageAllTasks = req.CanManageAllTasks,
                 CanCreateTasks = req.CanCreateTasks,
+                CanReassignTasks = req.CanReassignTasks,
                 CanViewQaStage = req.CanViewQaStage,
                 CanViewManagerStage = req.CanViewManagerStage,
                 CanViewFinalReleaseStage = req.CanViewFinalReleaseStage,
                 CanApprove = req.CanApprove,
                 CanReject = req.CanReject,
+                CanResolveDocumentId = req.CanResolveDocumentId,
                 CanSendAnnouncements = req.CanSendAnnouncements,
                 IsBuiltIn = false,
                 UpdatedAt = DateTime.UtcNow,
@@ -111,11 +113,13 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanManageFilePermissions = req.CanManageFilePermissions;
             entity.CanManageAllTasks = req.CanManageAllTasks;
             entity.CanCreateTasks = req.CanCreateTasks;
+            entity.CanReassignTasks = req.CanReassignTasks;
             entity.CanViewQaStage = req.CanViewQaStage;
             entity.CanViewManagerStage = req.CanViewManagerStage;
             entity.CanViewFinalReleaseStage = req.CanViewFinalReleaseStage;
             entity.CanApprove = req.CanApprove;
             entity.CanReject = req.CanReject;
+            entity.CanResolveDocumentId = req.CanResolveDocumentId;
             entity.CanSendAnnouncements = req.CanSendAnnouncements;
             entity.UpdatedAt = DateTime.UtcNow;
 
@@ -178,11 +182,13 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageFilePermissions = entity.CanManageFilePermissions,
                 CanManageAllTasks = entity.CanManageAllTasks,
                 CanCreateTasks = entity.CanCreateTasks,
+                CanReassignTasks = entity.CanReassignTasks,
                 CanViewQaStage = entity.CanViewQaStage,
                 CanViewManagerStage = entity.CanViewManagerStage,
                 CanViewFinalReleaseStage = entity.CanViewFinalReleaseStage,
                 CanApprove = entity.CanApprove,
                 CanReject = entity.CanReject,
+                CanResolveDocumentId = entity.CanResolveDocumentId,
                 CanSendAnnouncements = entity.CanSendAnnouncements,
                 IsBuiltIn = entity.IsBuiltIn,
                 UpdatedAt = DateTime.UtcNow,
@@ -249,9 +255,9 @@ public record UpdatePageAccessRoleRequest(
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false,
+    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
-    bool CanApprove = false, bool CanReject = false, bool CanSendAnnouncements = false);
+    bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false);
 
 public record RenamePageAccessRoleRequest(string NewRole);
 
@@ -260,6 +266,6 @@ public record CreatePageAccessRoleRequest(
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false,
+    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
-    bool CanApprove = false, bool CanReject = false, bool CanSendAnnouncements = false);
+    bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../utils/api';
-import { mockLibraryDocuments } from '../fixtures/documentLibrary';
+import { mockLibraryDocuments, resolveLibraryStatus } from '../fixtures/documentLibrary';
 import type { Document } from '../types';
 
 // Loads every DMS document (both the fixture library docs used for demo
@@ -43,13 +43,20 @@ export function useAllDmsDocuments() {
           .map((user: any) => [user.userId, user]),
       );
 
-      const enrichedRealDocuments = (documentsResult.value.data || []).map((doc: any) => ({
-        ...doc,
-        folderName: folderNameById.get(doc.folderId) || doc.folderName,
-        extension: doc.fileName?.split('.').pop()?.toLowerCase() || doc.extension,
-        owner: userById.get(doc.ownerId) || doc.owner,
-        modifiedAt: doc.modifiedAt || doc.updatedAt,
-      }));
+      const enrichedRealDocuments = (documentsResult.value.data || []).map((doc: any) => {
+        const enriched = {
+          ...doc,
+          folderName: folderNameById.get(doc.folderId) || doc.folderName,
+          extension: doc.fileName?.split('.').pop()?.toLowerCase() || doc.extension,
+          owner: userById.get(doc.ownerId) || doc.owner,
+          modifiedAt: doc.modifiedAt || doc.updatedAt,
+        };
+        // Resolve the API's generic "pending_approval" into the actual C-Doc
+        // Workflow stage (QA Review / Manager Review / Correction Needed /
+        // Final Review) — same resolution Documents.tsx already applies, so
+        // this page doesn't show a raw, meaningless "pending approval" status.
+        return { ...enriched, status: resolveLibraryStatus(enriched) };
+      });
 
       setDocuments([...(mockLibraryDocuments as Document[]), ...enrichedRealDocuments]);
       setIsLoading(false);

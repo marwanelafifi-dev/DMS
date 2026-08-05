@@ -17,7 +17,11 @@ export type SpreadsheetSheet = { name: string; columns: string[]; rowNumbers?: n
 type SpreadsheetPreview = { kind: 'spreadsheet'; sheets: SpreadsheetSheet[] };
 type PresentationPreview = { kind: 'presentation'; slides: Array<{ title: string; bullets: string[] }>; totalSlides?: number; renderNotice?: string };
 type PdfPreview = { kind: 'pdf'; url: string };
-type ImagePreview = { kind: 'image'; url: string; alt: string };
+// `ocrText` is the file's own OCR/Docling-extracted text, when available — it
+// powers in-preview search for images, which otherwise have no text content
+// to search at all. Absent for fixture images and for a real upload before
+// OCR completes.
+type ImagePreview = { kind: 'image'; url: string; alt: string; ocrText?: string };
 type OfficeEmbedPreview = { kind: 'office-embed'; url: string };
 type LoadingPreview = { kind: 'loading'; message: string };
 type UnavailablePreview = { kind: 'unavailable'; message: string };
@@ -296,8 +300,14 @@ export function getMockLibraryDocument(documentId: string) {
 // already know how to render (qa_review / manager_review / qa_final_review /
 // correction_in_progress) instead of leaving every in-review document looking
 // identical regardless of stage.
-function resolveLibraryStatus(source: Document): Document['status'] {
-  if (source.status !== 'pending_approval' || !source.approvalStage) return source.status;
+export function resolveLibraryStatus(source: Document): Document['status'] {
+  if (source.status !== 'pending_approval') return source.status;
+  // A submitted document always gets an approval record in the same request
+  // that sets it to pending_approval (see ApprovalsController.SubmitBatch) —
+  // a missing approvalStage here means that lookup just hasn't caught up yet,
+  // not that the document has no real stage. Default to the first real stage
+  // rather than surface the generic, meaningless "In Review" fallback label.
+  if (!source.approvalStage) return 'qa_review';
 
   if (source.approvalStatus === 'correction_requested') return 'correction_in_progress';
 

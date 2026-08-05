@@ -44,6 +44,7 @@ export function Tasks() {
   const pageAccess = usePageAccess();
   const canManageAllTasks = pageAccess?.canManageAllTasks ?? false;
   const canCreateTasks = (pageAccess?.canCreateTasks || pageAccess?.canManageAllTasks) ?? false;
+  const canReassignTasks = (pageAccess?.canReassignTasks || pageAccess?.canManageAllTasks) ?? false;
   const linkedDocFileInputRef = useRef<HTMLInputElement>(null);
   const [searchParams] = useSearchParams();
   const highlightTaskId = searchParams.get('highlight');
@@ -470,13 +471,28 @@ export function Tasks() {
       description: task.description,
       priority: task.priority,
       dueDate: task.dueDate,
+      assignedTo: getAssignedToId(task) ?? '',
+      assignedToGroupId: getAssignedToGroupId(task) ?? '',
     });
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
     try {
-      await apiClient.updateTask(editingId, editData);
+      const payload: Record<string, unknown> = {
+        title: editData.title,
+        description: editData.description,
+        dueDate: editData.dueDate,
+        riskSeverity: editData.priority,
+      };
+      // Reassignment is its own permission, gated separately server-side too —
+      // only send it when the field was actually editable, so a save with no
+      // reassignment intent never triggers the reassign-specific 403.
+      if (canReassignTasks) {
+        if (editData.assignedToGroupId) payload.assignedToGroupId = editData.assignedToGroupId;
+        else if (editData.assignedTo) payload.assignedToId = editData.assignedTo;
+      }
+      await apiClient.updateTask(editingId, payload);
       showSuccess('Task updated successfully');
       setEditingId(null);
       loadTasks();
@@ -812,9 +828,33 @@ export function Tasks() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-sm ${isTaskMine(task) ? 'font-medium text-[#3f8bca]' : 'text-gray-600 dark:text-gray-400'}`}>
-                          {getAssignedToName(task) ?? '—'}{isTaskMine(task) ? ' (you)' : ''}
-                        </span>
+                        {editingId === task.taskId && canReassignTasks ? (
+                          <select
+                            value={editData.assignedToGroupId ? `group:${editData.assignedToGroupId}` : `user:${editData.assignedTo}`}
+                            onChange={(e) => {
+                              const [kind, value] = e.target.value.split(':');
+                              setEditData({ ...editData, assignedTo: kind === 'user' ? value : '', assignedToGroupId: kind === 'group' ? value : '' });
+                            }}
+                            className="px-3 py-2 border border-gray-200 dark:border-navy-700 rounded bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                          >
+                            <optgroup label="Users">
+                              {users.map((user) => (
+                                <option key={user.userId} value={`user:${user.userId}`}>{user.fullName}</option>
+                              ))}
+                            </optgroup>
+                            {groups.length > 0 && (
+                              <optgroup label="Groups">
+                                {groups.map((group) => (
+                                  <option key={group.groupId} value={`group:${group.groupId}`}>{group.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        ) : (
+                          <span className={`text-sm ${isTaskMine(task) ? 'font-medium text-[#3f8bca]' : 'text-gray-600 dark:text-gray-400'}`}>
+                            {getAssignedToName(task) ?? '—'}{isTaskMine(task) ? ' (you)' : ''}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <Badge status={getStatusBadgeColor(task.status)} variant="outline">

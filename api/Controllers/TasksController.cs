@@ -213,11 +213,22 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             // same as GetMyTasksAsync's visibility rule — anyone else needs
             // the blanket CanManageAllTasks flag (Admin-equivalent).
             var isOwnTask = await taskService.IsAssigneeAsync(task, userId) || task.ManagerId == userId;
-            if (!isOwnTask)
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (!isOwnTask && pageAccessRole?.CanManageAllTasks != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+
+            // Reassigning to a different user/group is gated on its own,
+            // independent flag (or the broader CanManageAllTasks, which already
+            // implies it) — separate from the base "can edit this task at all"
+            // check above, since a task's own assignee/manager shouldn't
+            // automatically be able to hand it off to someone else.
+            var isReassigning = req.AssignedToId.HasValue || req.AssignedToGroupId.HasValue;
+            if (isReassigning)
             {
-                var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-                if (pageAccessRole?.CanManageAllTasks != true)
-                    return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+                if (req.AssignedToId.HasValue == req.AssignedToGroupId.HasValue)
+                    return BadRequest(new { success = false, error = "Exactly one of assignedToId or assignedToGroupId is required to reassign" });
+                if (pageAccessRole?.CanManageAllTasks != true && pageAccessRole?.CanReassignTasks != true)
+                    return StatusCode(403, new { success = false, error = "You do not have permission to reassign tasks" });
             }
 
             var result = await taskService.UpdateTaskAsync(
@@ -228,7 +239,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.RiskSeverity,
                 req.Status,
                 req.RcaText,
-                req.PreventiveActions);
+                req.PreventiveActions,
+                req.AssignedToId,
+                req.AssignedToGroupId);
 
             if (!result.Success)
             {
@@ -237,6 +250,17 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     "NotFound" => NotFound(new { success = false, error = result.Message }),
                     _ => BadRequest(new { success = false, error = result.Message })
                 };
+            }
+
+            if (isReassigning)
+            {
+                var title = req.Title ?? task.Title;
+                await auditService.LogAsync(userId, TASK_REASSIGNED, new { TaskId = id, req.AssignedToId, req.AssignedToGroupId });
+                if (req.AssignedToId.HasValue)
+                    await notificationService.NotifyAsync(req.AssignedToId.Value, userId, "A task was reassigned to you", title, taskId: id);
+                else if (req.AssignedToGroupId.HasValue)
+                    foreach (var memberId in await taskService.GetGroupMemberIdsAsync(req.AssignedToGroupId.Value))
+                        await notificationService.NotifyAsync(memberId, userId, "A task was reassigned to your group", title, taskId: id);
             }
 
             return Ok(new { success = true, data = result.Data });
@@ -518,7 +542,9 @@ public record UpdateTaskRequest(
     string? RiskSeverity = null,
     string? Status = null,
     string? RcaText = null,
-    string? PreventiveActions = null
+    string? PreventiveActions = null,
+    Guid? AssignedToId = null,
+    Guid? AssignedToGroupId = null
 );
 
 public record CompleteTaskRequest(

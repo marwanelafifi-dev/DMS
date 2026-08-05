@@ -61,6 +61,7 @@ export interface PageAccessRoleFlags {
   canManageFilePermissions: boolean;
   canManageAllTasks: boolean;
   canCreateTasks: boolean;
+  canReassignTasks: boolean;
   // Scopes canViewApprovals down to specific C-Doc Workflow stage tabs.
   canViewQaStage: boolean;
   canViewManagerStage: boolean;
@@ -69,6 +70,7 @@ export interface PageAccessRoleFlags {
   // per-folder role grant or File/Folder Permission override.
   canApprove: boolean;
   canReject: boolean;
+  canResolveDocumentId: boolean;
   // Whether this role can post to the Send Announcement page.
   canSendAnnouncements: boolean;
 }

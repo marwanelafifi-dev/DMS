@@ -5,7 +5,7 @@ import { Copy, Download, Eye, FilePen, FileText, FolderInput, MoreVertical, Penc
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
-import { statusLabels } from '../../utils/documentStatus';
+import { statusLabels, statusStyles } from '../../utils/documentStatus';
 
 const rowMenuContentClass = 'z-[95] min-w-[210px] rounded-[5px] border border-[#dbe2ec] bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900';
 const rowMenuItemClass = 'flex h-9 select-none items-center gap-2 rounded-[4px] px-2.5 text-sm text-[#34425b] outline-none data-[highlighted]:bg-[#edf2f8] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 dark:text-slate-200 dark:data-[highlighted]:bg-slate-800';
@@ -80,18 +80,6 @@ interface DocumentListProps {
 }
 
 type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' | 'modifiedAt' | 'tags' | 'status';
-
-const statusStyles: Record<MockLibraryDocument['status'], string> = {
-  draft: 'bg-[#edf1f5] text-[#62718a]',
-  pending_approval: 'bg-[#fff1c9] text-[#b96a08]',
-  qa_review: 'bg-[#fff1c9] text-[#b96a08]',
-  manager_review: 'bg-[#fde9c8] text-[#a15c1f]',
-  correction_in_progress: 'bg-[#fde1e2] text-[#c73c44]',
-  qa_final_review: 'bg-[#dbe9fb] text-[#2f6f9f]',
-  released: 'bg-[#d8f5e4] text-[#27885a]',
-  rejected: 'bg-[#fde1e2] text-[#c73c44]',
-  archived: 'bg-slate-100 text-slate-500',
-};
 
 const extensionStyles: Record<MockLibraryDocument['extension'], string> = {
   txt: 'bg-slate-100 text-slate-600',

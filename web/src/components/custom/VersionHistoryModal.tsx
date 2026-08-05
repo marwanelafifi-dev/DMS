@@ -9,7 +9,14 @@ import { MarkdownViewer } from './MarkdownViewer';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 'csv']);
-const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+// Word/PowerPoint render as a real PDF (LibreOffice via the OCR sidecar) —
+// same pipeline the main Document Library preview already uses — so slide
+// images/layout/fonts actually show up, not just a text dump. Docling's plain
+// markdown conversion (which drops embedded images entirely, replacing them
+// with a bare "<!-- image -->" placeholder) is only the fallback if the
+// sidecar is unreachable or the PDF conversion itself fails.
+const OFFICE_PDF_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx']);
+const OFFICE_TEXT_EXTENSIONS = new Set(['xls', 'xlsx']);
 
 type ReviewContent =
   | { kind: 'image' | 'pdf'; url: string }
@@ -93,8 +100,27 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
         return;
       }
 
-      if (OFFICE_EXTENSIONS.has(extension)) {
-        const file = new File([blob], versionFileName, { type: blob.type });
+      const file = new File([blob], versionFileName, { type: blob.type });
+
+      if (OFFICE_PDF_EXTENSIONS.has(extension)) {
+        const sidecarAvailable = await doclingApi.isAvailable();
+        if (sidecarAvailable) {
+          try {
+            const pdfBlob = await doclingApi.convertToPdf(file, versionFileName);
+            const url = URL.createObjectURL(pdfBlob);
+            reviewObjectUrlRef.current = url;
+            setReviewing({ versionLabel, content: { kind: 'pdf', url } });
+            return;
+          } catch {
+            // Falls through to the text-only extraction below.
+          }
+        }
+        const converted = await doclingApi.convertDocument(file);
+        setReviewing({ versionLabel, content: { kind: 'markdown', content: converted.content } });
+        return;
+      }
+
+      if (OFFICE_TEXT_EXTENSIONS.has(extension)) {
         const converted = await doclingApi.convertDocument(file);
         setReviewing({ versionLabel, content: { kind: 'markdown', content: converted.content } });
         return;

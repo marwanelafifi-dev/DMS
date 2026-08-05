@@ -18,11 +18,13 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canManageFilePermissions: false,
   canManageAllTasks: false,
   canCreateTasks: false,
+  canReassignTasks: false,
   canViewQaStage: false,
   canViewManagerStage: false,
   canViewFinalReleaseStage: false,
   canApprove: false,
   canReject: false,
+  canResolveDocumentId: false,
   canSendAnnouncements: false,
 };
 

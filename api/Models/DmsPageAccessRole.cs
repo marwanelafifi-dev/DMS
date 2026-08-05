@@ -33,6 +33,10 @@ public class DmsPageAccessRole
     // button and assign a task to anyone, without also granting the ability
     // to edit/complete/delete tasks that already belong to other people.
     public bool CanCreateTasks { get; set; }
+    // Independent from CanManageAllTasks — lets a role change an existing
+    // task's Assignee (user or group) without also granting edit/complete/
+    // delete over tasks that already belong to other people.
+    public bool CanReassignTasks { get; set; }
     // Scopes CanViewApprovals down to specific C-Doc Workflow stage tabs —
     // e.g. Manager only needs Stage 2, Quality only needs Stage 1 and Stage 3.
     // Enforced both in the frontend tab list and in ApprovalsController's
@@ -46,6 +50,10 @@ public class DmsPageAccessRole
     // actions only (upload/rename/copy/cut/delete/...), never approve/reject.
     public bool CanApprove { get; set; }
     public bool CanReject { get; set; }
+    // Independent of CanApprove/CanViewQaStage — lets a role manually enter or
+    // system-generate a document's Original Document ID at QA Triage, without
+    // also needing the broader QA Accept/Reject action rights.
+    public bool CanResolveDocumentId { get; set; }
     // Whether this role can post to the Send Announcement page — independent
     // of any per-folder grant, same as the other blanket role-wide flags above.
     public bool CanSendAnnouncements { get; set; }
