@@ -13,6 +13,8 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canViewPcar: false,
   canViewAdminPanel: false,
   bypassFolderPermissions: false,
+  canReadAllFolders: false,
+  canReadWriteAllFolders: false,
   canEditFiles: false,
   canManageFolderPermissions: false,
   canManageFilePermissions: false,

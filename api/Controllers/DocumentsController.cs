@@ -542,9 +542,15 @@ public class DocumentsController(
             // upload a new version even while another user had the document
             // checked out, silently overwriting the locked edit and defeating
             // the whole point of the checkout lock. A user may only replace
-            // the file while it's locked if they're the one holding the lock,
-            // or their role has AdminForceUnlock (mirrors who's allowed to
-            // force-unlock in the first place).
+            // the file while it's locked if they're the one holding the lock
+            // — full stop, no exception for AdminForceUnlock/Unlock-override
+            // here. Having the *capability* to force-unlock must never
+            // silently bypass the block; an admin who actually wants to
+            // override someone else's lock has to call POST
+            // {id}/versions/{versionId}/force-unlock first, which is itself
+            // audited (FORCE_UNLOCK) and notifies the document owner — that
+            // explicit, logged step is the whole point, not a formality this
+            // endpoint could just skip on their behalf.
             var userId = GetCurrentUserId();
             var currentVersion = document.CurrentVersionId.HasValue
                 ? await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId)
@@ -552,20 +558,15 @@ public class DocumentsController(
 
             if (currentVersion is { IsCheckedOut: true } && currentVersion.CheckedOutById != userId)
             {
-                var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
-                var roleAllowsForceUnlock = await HasRolePermissionAsync(context, effectiveRole, rp => rp.AdminForceUnlock);
-                if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.Unlock, roleAllowsForceUnlock))
+                var lockedByName = await context.Users
+                    .Where(u => u.UserId == currentVersion.CheckedOutById)
+                    .Select(u => u.FullName)
+                    .FirstOrDefaultAsync();
+                return StatusCode(StatusCodes.Status423Locked, new
                 {
-                    var lockedByName = await context.Users
-                        .Where(u => u.UserId == currentVersion.CheckedOutById)
-                        .Select(u => u.FullName)
-                        .FirstOrDefaultAsync();
-                    return StatusCode(StatusCodes.Status423Locked, new
-                    {
-                        success = false,
-                        error = $"This document is locked for editing by {lockedByName ?? "another user"} — you can't upload a new version until they release it."
-                    });
-                }
+                    success = false,
+                    error = $"This document is locked for editing by {lockedByName ?? "another user"} — force-unlock it first if you need to override their lock."
+                });
             }
 
             // Compute the SHA256 hash of the file
@@ -621,6 +622,29 @@ public class DocumentsController(
             context.DocumentVersions.Add(version);
             document.CurrentVersionId = version.VersionId;
             document.UpdatedAt = DateTime.UtcNow;
+
+            // Real bug found live: dms_approval_documents.version_id is a
+            // point-in-time snapshot of whichever version was in review when
+            // the approval batch/stage started — the task-resubmit and
+            // Manager-self-correct paths already knew to re-point it at the
+            // freshly-uploaded version, but this generic "just attach a new
+            // version" endpoint never did. Any document re-uploaded through
+            // this path (Document Library's own Upload New Version, not via
+            // a task correction) while an approval was still in progress
+            // (Status != "approved") drifted CurrentVersionId away from the
+            // version the approval row actually points at — the Document
+            // Library's stage lookup, keyed by CurrentVersionId, then finds
+            // no match at all and silently falls back to a stale/default
+            // "QA Review" label even though the real stage had already
+            // advanced further. Re-point it here too, leaving the stage/
+            // status/notes exactly as they were — this endpoint isn't a
+            // review decision, just a newer file for whatever's already
+            // in flight.
+            var activeApprovalDocuments = await context.ApprovalDocuments
+                .Where(ad => ad.DocumentId == id && ad.Status != "approved")
+                .ToListAsync();
+            foreach (var activeApprovalDocument in activeApprovalDocuments)
+                activeApprovalDocument.VersionId = version.VersionId;
 
             await context.SaveChangesAsync();
 
@@ -685,18 +709,16 @@ public class DocumentsController(
 
             // Same lock check as uploading a new version — reverting replaces
             // the current version's content just like a fresh upload would.
+            // No AdminForceUnlock exception here either — see the matching
+            // note in UploadVersion above; force-unlock must be its own
+            // explicit, audited step, never silently implied by this call.
             var userId = GetCurrentUserId();
             var currentVersion = document.CurrentVersionId.HasValue
                 ? await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId)
                 : null;
 
             if (currentVersion is { IsCheckedOut: true } && currentVersion.CheckedOutById != userId)
-            {
-                var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
-                var roleAllowsForceUnlock = await HasRolePermissionAsync(context, effectiveRole, rp => rp.AdminForceUnlock);
-                if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.Unlock, roleAllowsForceUnlock))
-                    return StatusCode(StatusCodes.Status423Locked, new { success = false, error = "This document is locked for editing by another user — you can't revert until they release it." });
-            }
+                return StatusCode(StatusCodes.Status423Locked, new { success = false, error = "This document is locked for editing by another user — force-unlock it first if you need to override their lock." });
 
             var nextMajorVersion = 1 + await context.DocumentVersions
                 .Where(v => v.DocumentId == id)
@@ -734,6 +756,15 @@ public class DocumentsController(
             context.DocumentVersions.Add(revertedVersion);
             document.CurrentVersionId = revertedVersion.VersionId;
             document.UpdatedAt = DateTime.UtcNow;
+
+            // Same re-pointing as UploadVersion above — a revert while an
+            // approval is still in progress must not leave it referencing a
+            // version that's no longer current.
+            var activeApprovalDocumentsForRevert = await context.ApprovalDocuments
+                .Where(ad => ad.DocumentId == id && ad.Status != "approved")
+                .ToListAsync();
+            foreach (var activeApprovalDocument in activeApprovalDocumentsForRevert)
+                activeApprovalDocument.VersionId = revertedVersion.VersionId;
 
             await context.SaveChangesAsync();
 

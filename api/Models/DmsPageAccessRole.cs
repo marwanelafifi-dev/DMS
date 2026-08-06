@@ -18,6 +18,15 @@ public class DmsPageAccessRole
     public bool CanViewPcar { get; set; }
     public bool CanViewAdminPanel { get; set; }
     public bool BypassFolderPermissions { get; set; }
+    // Weaker, tiered versions of BypassFolderPermissions — automatic
+    // visibility (and, for the write variant, upload/edit rights) on every
+    // folder with no per-folder grant needed, but capped well short of Admin
+    // (no delete, no permission management). A per-folder grant or an
+    // explicit Deny override still takes precedence, same as
+    // BypassFolderPermissions. Mutually exclusive in practice (the stronger
+    // one wins if both are somehow set) — see BaseController.GetEffectiveRoleAsync.
+    public bool CanReadAllFolders { get; set; }
+    public bool CanReadWriteAllFolders { get; set; }
     // Blanket, role-wide flags — every user assigned this role can Edit
     // document metadata / manage File and Folder Permissions everywhere,
     // without needing a per-folder Access Override grant.

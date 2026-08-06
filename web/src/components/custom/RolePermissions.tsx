@@ -14,6 +14,7 @@ import { useToast } from '../../hooks/useToast';
 const PERMISSION_KEYS = [
   'canViewDashboard', 'canViewDocumentLibrary', 'canViewReminders',
   'canViewApprovals', 'canViewPcar', 'canViewAdminPanel', 'bypassFolderPermissions',
+  'canReadAllFolders', 'canReadWriteAllFolders',
   'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks', 'canReassignTasks',
   'canSendAnnouncements',
 ] as const;
@@ -25,6 +26,8 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewPcar: 'PCAR / Corrective Action',
   canViewAdminPanel: 'Admin Panel',
   bypassFolderPermissions: 'Full Access to All Folders',
+  canReadAllFolders: 'Read Only to all folder',
+  canReadWriteAllFolders: 'Read and Write only to all folder',
   canManageFolderPermissions: 'Manage Folder Permissions',
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',

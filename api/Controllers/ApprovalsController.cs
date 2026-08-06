@@ -60,6 +60,53 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         }
     }
 
+    // Every stage-advancing action (QA accept, Manager approve, Manager
+    // self-correct) previously only notified the document's original
+    // submitter — nobody at the *next* stage ever got told a document was
+    // now sitting in their queue; they'd only find out by opening the page
+    // and happening to look. Notifies every active user whose page-access
+    // role can view the target stage (same flag the queue endpoints
+    // themselves gate on), skipping the actor via NotifyAsync's own
+    // self-skip.
+    private async Task NotifyStageReviewersAsync(Guid actorUserId, Guid documentId, string title, string? body, Func<DmsPageAccessRole, bool> stageFlagSelector)
+    {
+        var roles = await context.PageAccessRoles.AsNoTracking().ToListAsync();
+        var reviewerRoleNames = roles.Where(stageFlagSelector).Select(r => r.Role).ToList();
+        if (reviewerRoleNames.Count == 0)
+            return;
+
+        var reviewerIds = await context.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Role != null && reviewerRoleNames.Contains(u.Role!))
+            .Select(u => u.UserId)
+            .ToListAsync();
+
+        foreach (var reviewerId in reviewerIds)
+            await notificationService.NotifyAsync(reviewerId, actorUserId, title, body, documentId: documentId);
+    }
+
+    // A correction task represents "please fix this specific rejection" — it's
+    // fully resolved the moment the stage that rejected it accepts the fix and
+    // moves the approval forward, not only once the document eventually
+    // reaches Final Release (that auto-complete, still below, is a fallback
+    // safety net for anything left stranded, not the primary trigger). Real
+    // bug found live: a correction task stayed "open" in the PCAR register
+    // for as long as the document sat in Manager Review/Final Release,
+    // even though the assignee's actual corrective work (the upload QA just
+    // accepted) was already done and accepted.
+    private async Task CompleteOpenTasksForApprovalAsync(Guid approvalId, Guid documentId, Guid userId)
+    {
+        var openTasks = await context.Tasks
+            .Where(t => t.ApprovalId == approvalId && t.DocumentId == documentId && t.Status != "completed")
+            .ToListAsync();
+        foreach (var openTask in openTasks)
+        {
+            openTask.Status = "completed";
+            openTask.CompletedById = userId;
+            openTask.CompletedAt = DateTime.UtcNow;
+            openTask.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
     /// <summary>
     /// Submit documents for approval (C-Doc Stage 1). One dms_approvals row still
     /// groups everything uploaded together for submitter/creation-time context, but
@@ -375,6 +422,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "pending";
             approvalDocument.QaNotes = request.Notes;
 
+            await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "QA_ACCEPTED", new
@@ -385,6 +434,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
+
+            var acceptedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
+            await NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Manager Review", acceptedDocTitle, r => r.CanViewManagerStage);
 
             return Ok(new
             {
@@ -520,6 +572,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "pending";
             approvalDocument.ManagerNotes = request.Notes;
 
+            await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "MANAGER_APPROVED", new
@@ -530,6 +584,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
+
+            var managerApprovedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
+            await NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Final Release", managerApprovedDocTitle, r => r.CanViewFinalReleaseStage);
 
             return Ok(new
             {
@@ -714,6 +771,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "pending";
             approvalDocument.ManagerNotes = rejectionReason;
 
+            await CompleteOpenTasksForApprovalAsync(approvalId, document.DocumentId, userId);
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "MANAGER_SELF_CORRECTED", new
@@ -726,6 +785,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(document.DocumentId, userId, "The Manager corrected your document directly", "Now moving to Final Release.");
+            await NotifyStageReviewersAsync(userId, document.DocumentId, "A document is waiting for Final Release", document.Title, r => r.CanViewFinalReleaseStage);
 
             return Ok(new
             {
@@ -783,21 +843,14 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "approved";
             approvalDocument.ReleaseNotes = request.ReleaseNotes;
 
-            // Per explicit request: once the document is actually released, every
-            // correction task raised against it during this approval is resolved by
-            // definition — auto-complete any that are still open/in_progress instead
-            // of leaving them stranded regardless of what the PCAR page's own status
-            // controls did or didn't set along the way.
-            var openTasks = await context.Tasks
-                .Where(t => t.ApprovalId == approvalId && t.DocumentId == documentId && t.Status != "completed")
-                .ToListAsync();
-            foreach (var openTask in openTasks)
-            {
-                openTask.Status = "completed";
-                openTask.CompletedById = userId;
-                openTask.CompletedAt = DateTime.UtcNow;
-                openTask.UpdatedAt = DateTime.UtcNow;
-            }
+            // Safety net: QaAcceptAsync/ManagerApproveAsync/ManagerSelfCorrectAsync
+            // already complete a correction task the moment its own rejecting
+            // stage accepts the fix — this just catches anything that somehow
+            // slipped through still open/in_progress by the time the document
+            // is actually released, so nothing stays stranded regardless of
+            // what the PCAR page's own status controls did or didn't set along
+            // the way.
+            await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
 
             await context.SaveChangesAsync();
 

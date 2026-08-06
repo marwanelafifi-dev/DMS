@@ -56,6 +56,11 @@ export interface PageAccessRoleFlags {
   canViewPcar: boolean;
   canViewAdminPanel: boolean;
   bypassFolderPermissions: boolean;
+  // Weaker, tiered versions of bypassFolderPermissions — automatic
+  // visibility (and, for the write variant, upload/edit rights) on every
+  // folder with no per-folder grant needed, capped short of Admin.
+  canReadAllFolders: boolean;
+  canReadWriteAllFolders: boolean;
   canEditFiles: boolean;
   canManageFolderPermissions: boolean;
   canManageFilePermissions: boolean;
@@ -625,6 +630,41 @@ class APIClient {
 
   async resubmitTaskForReview(taskId: string) {
     const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/resubmit-for-review`, {});
+    return data;
+  }
+
+  // Fetches the document linked to a task directly — works for the task's
+  // assignee/manager even when they have no folder-browsing grant on it,
+  // unlike getDocuments() (which is scoped to folders the caller can browse).
+  async getTaskDocument(taskId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/tasks/${taskId}/document`);
+    return data;
+  }
+
+  // PCAR review — moves a task from 'open' into the real QA review queue
+  // instead of just flipping status locally with no reviewer-facing effect.
+  async submitPcar(taskId: string, payload: { rca: string; correction: string; preventiveActions: string; targetDate: string }) {
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/submit-pcar`, {
+      rca: payload.rca,
+      correction: payload.correction,
+      preventiveActions: payload.preventiveActions,
+      targetDate: payload.targetDate,
+    });
+    return data;
+  }
+
+  async getPcarReviewQueue(params?: any) {
+    const { data } = await this.client.get<ApiResponse>('/tasks/pcar-review-queue', { params });
+    return data;
+  }
+
+  async approvePcar(taskId: string, notes?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/qa-approve`, { notes });
+    return data;
+  }
+
+  async rejectPcar(taskId: string, notes: string) {
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/qa-reject`, { notes });
     return data;
   }
 

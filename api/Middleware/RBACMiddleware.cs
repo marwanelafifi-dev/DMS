@@ -148,6 +148,20 @@ public class RBACMiddleware
         // ("Full Access"), which acts as Admin everywhere.
         var effectiveRole = await ResolveEffectiveFolderRoleAsync(dbContext, permission, user);
 
+        // POST /{id}/upload is used both to attach a brand-new document's
+        // very first version (immediately after creation) and to replace an
+        // existing version's content later (the checkout/edit/reupload
+        // workflow) — those are two different real permissions. Gating the
+        // first case on UploadUpdatedFile (meant for the second) meant an
+        // Access Override that granted Write (enough for the document record
+        // itself to be created) but not the separate UploadUpdatedFile action
+        // left the new document permanently stuck with no file attached: the
+        // row was created, then the very next call in the same upload flow
+        // was rejected with a confusing "No permission" error.
+        var isFirstVersionUpload = method.Equals("POST", StringComparison.OrdinalIgnoreCase)
+            && path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase)
+            && !document.CurrentVersionId.HasValue;
+
         // With no role at all, there's nothing for a File Permission override
         // to layer on top of — a lone "allow" override with no role can't
         // grant access on its own in this pass (only role-holders get the
@@ -158,11 +172,28 @@ public class RBACMiddleware
         if (effectiveRole == null)
         {
             roleAllowed = false;
-            action = ActionForMethod(method, path, isFolder: false);
+            action = ActionForMethod(method, path, isFolder: false, isFirstVersionUpload);
         }
         else
         {
-            (roleAllowed, action) = await HasPermissionForMethodAsync(dbContext, method, path, effectiveRole, isFolder: false, isRootFolder: false);
+            (roleAllowed, action) = await HasPermissionForMethodAsync(dbContext, method, path, effectiveRole, isFolder: false, isRootFolder: false, isFirstVersionUpload);
+        }
+
+        // A task assignee (or the task's manager) needs to view, download,
+        // check out for editing, release that same checkout, and re-upload
+        // the specific document their own open task is about, even with
+        // zero general folder-browsing grant on it — same reasoning as GET
+        // /api/tasks/{id}/document. Deliberately narrow: covers only the
+        // actions actually needed to work the task, never rename/delete (of
+        // the document itself)/permissions-management. Releasing a checkout
+        // is DELETE .../checkout, which otherwise maps to the same FileDelete
+        // action as deleting the document outright — checked by exact path
+        // instead of IsTaskWorkAction so this bypass can never be mistaken
+        // for a general delete permission.
+        var isCheckoutRelease = method.Equals("DELETE", StringComparison.OrdinalIgnoreCase) && path.EndsWith("/checkout", StringComparison.OrdinalIgnoreCase);
+        if (!roleAllowed && (IsTaskWorkAction(action) || isCheckoutRelease) && await HasAssignedOpenTaskForDocumentAsync(dbContext, user.UserId, documentId))
+        {
+            roleAllowed = true;
         }
 
         var finalAllowed = await accessOverrideService.ResolveAsync(user.UserId, documentId, document.FolderId, action, roleAllowed);
@@ -264,7 +295,41 @@ public class RBACMiddleware
             return null;
 
         var pageAccessRole = await dbContext.PageAccessRoles.FirstOrDefaultAsync(r => r.Role == user.Role);
-        return pageAccessRole?.BypassFolderPermissions == true ? FolderRoles.Admin : null;
+        if (pageAccessRole?.BypassFolderPermissions == true) return FolderRoles.Admin;
+        // "Read Folders Only" / "Read and Write Folders Only" — weaker, tiered
+        // versions of the same bypass idea, capped at Reader/Writer instead
+        // of Admin everywhere.
+        if (pageAccessRole?.CanReadWriteAllFolders == true) return FolderRoles.Writer;
+        if (pageAccessRole?.CanReadAllFolders == true) return FolderRoles.Reader;
+        return null;
+    }
+
+    private static bool IsTaskWorkAction(string action) =>
+        action == AccessOverrideActions.FileRead
+        || action == AccessOverrideActions.Download
+        || action == AccessOverrideActions.UploadUpdatedFile
+        || action == AccessOverrideActions.Write;
+
+    // Direct assignee, or a member of the assigned group, on a still-open
+    // task pointed at this document — completed tasks don't carry access
+    // forward, so finishing (or being reassigned off of) the task doesn't
+    // leave a permanent back door into the document.
+    private static async Task<bool> HasAssignedOpenTaskForDocumentAsync(DmsContext dbContext, Guid userId, Guid documentId)
+    {
+        var candidateTasks = await dbContext.Tasks
+            .Where(t => t.DocumentId == documentId && t.Status != "completed"
+                && (t.AssignedToId == userId || t.ManagerId == userId || t.AssignedToGroupId.HasValue))
+            .Select(t => new { t.AssignedToId, t.ManagerId, t.AssignedToGroupId })
+            .ToListAsync();
+
+        if (candidateTasks.Any(t => t.AssignedToId == userId || t.ManagerId == userId))
+            return true;
+
+        var candidateGroupIds = candidateTasks.Where(t => t.AssignedToGroupId.HasValue).Select(t => t.AssignedToGroupId!.Value).Distinct().ToList();
+        if (candidateGroupIds.Count == 0)
+            return false;
+
+        return await dbContext.GroupMembers.AnyAsync(gm => gm.UserId == userId && candidateGroupIds.Contains(gm.GroupId));
     }
 
     // Maps an HTTP method (+ path shape, + entity kind) to the File/Folder
@@ -274,13 +339,13 @@ public class RBACMiddleware
     // FileRead, Rename vs FileRename, Delete vs FileDelete) since "can see
     // this folder" and "can open/delete a file inside it" are different
     // questions — see DmsAccessOverride.
-    private static string ActionForMethod(string method, string path, bool isFolder) => method.ToUpper() switch
+    private static string ActionForMethod(string method, string path, bool isFolder, bool isFirstVersionUpload = false) => method.ToUpper() switch
     {
         "GET" => path.Contains("/download", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.Download
             : isFolder ? AccessOverrideActions.Read : AccessOverrideActions.FileRead,
         "POST" => path.EndsWith("/submit", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.SubmitForApproval
             : path.EndsWith("/force-unlock", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.Unlock
-            : path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.UploadUpdatedFile
+            : path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase) ? (isFirstVersionUpload ? AccessOverrideActions.Write : AccessOverrideActions.UploadUpdatedFile)
             : AccessOverrideActions.Write,
         "PUT" => isFolder ? AccessOverrideActions.Rename : AccessOverrideActions.FileRename,
         "DELETE" => isFolder ? AccessOverrideActions.Delete : AccessOverrideActions.FileDelete,
@@ -306,9 +371,9 @@ public class RBACMiddleware
     // Returns (roleAllows, action) — action is the File/Folder Permission
     // override key this request maps to, resolved by the caller against
     // AccessOverrideService alongside the role's own default.
-    private async Task<(bool RoleAllows, string Action)> HasPermissionForMethodAsync(DmsContext dbContext, string method, string path, string role, bool isFolder, bool isRootFolder)
+    private async Task<(bool RoleAllows, string Action)> HasPermissionForMethodAsync(DmsContext dbContext, string method, string path, string role, bool isFolder, bool isRootFolder, bool isFirstVersionUpload = false)
     {
-        var action = ActionForMethod(method, path, isFolder);
+        var action = ActionForMethod(method, path, isFolder, isFirstVersionUpload);
         var permission = await dbContext.RolePermissions.FirstOrDefaultAsync(rp => rp.Role == role);
         if (permission == null)
         {

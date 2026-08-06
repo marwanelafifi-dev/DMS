@@ -59,6 +59,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewPcar = req.CanViewPcar,
                 CanViewAdminPanel = req.CanViewAdminPanel,
                 BypassFolderPermissions = req.BypassFolderPermissions,
+                CanReadAllFolders = req.CanReadAllFolders,
+                CanReadWriteAllFolders = req.CanReadWriteAllFolders,
                 CanEditFiles = req.CanEditFiles,
                 CanManageFolderPermissions = req.CanManageFolderPermissions,
                 CanManageFilePermissions = req.CanManageFilePermissions,
@@ -108,6 +110,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanViewPcar = req.CanViewPcar;
             entity.CanViewAdminPanel = req.CanViewAdminPanel;
             entity.BypassFolderPermissions = req.BypassFolderPermissions;
+            entity.CanReadAllFolders = req.CanReadAllFolders;
+            entity.CanReadWriteAllFolders = req.CanReadWriteAllFolders;
             entity.CanEditFiles = req.CanEditFiles;
             entity.CanManageFolderPermissions = req.CanManageFolderPermissions;
             entity.CanManageFilePermissions = req.CanManageFilePermissions;
@@ -177,6 +181,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewPcar = entity.CanViewPcar,
                 CanViewAdminPanel = entity.CanViewAdminPanel,
                 BypassFolderPermissions = entity.BypassFolderPermissions,
+                CanReadAllFolders = entity.CanReadAllFolders,
+                CanReadWriteAllFolders = entity.CanReadWriteAllFolders,
                 CanEditFiles = entity.CanEditFiles,
                 CanManageFolderPermissions = entity.CanManageFolderPermissions,
                 CanManageFilePermissions = entity.CanManageFilePermissions,
@@ -254,6 +260,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
 public record UpdatePageAccessRoleRequest(
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
+    bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
@@ -265,6 +272,7 @@ public record CreatePageAccessRoleRequest(
     string Role,
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
+    bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,

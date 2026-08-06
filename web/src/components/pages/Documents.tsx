@@ -26,6 +26,7 @@ import type { Document, Folder, User } from '../../types';
 import {
   copyLibraryItems,
   deleteLibraryItems,
+  getDescendantFolderIds,
   getInvalidDestinationIds,
   moveLibraryItems,
   renameLibraryItem,
@@ -911,6 +912,52 @@ export function Documents() {
             error: err.response?.data?.error || 'Failed to move a folder',
           }));
           if (!res.success) return res.error || 'Failed to move a folder';
+        }
+      }
+
+      // Delete had the exact same "looks like it worked, nothing was ever
+      // persisted" problem as Move — a deleted item reappeared on reload.
+      // Real documents are deleted first; a real folder is only deletable
+      // once it's empty, so its own real documents/subfolders are cleared
+      // out first (deepest first, to avoid orphaning a subfolder whose
+      // parent got removed out from under it).
+      if (action === 'delete') {
+        const realSelectedDocumentIds = [...librarySelection.documentIds].filter(isServerDocumentId);
+        for (const docId of realSelectedDocumentIds) {
+          const res = await apiClient.deleteDocument(docId).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to delete a document',
+          }));
+          if (!res.success) return res.error || 'Failed to delete a document';
+        }
+
+        const realSelectedFolderIds = [...librarySelection.folderIds].filter(isServerDocumentId);
+        for (const folderId of realSelectedFolderIds) {
+          const treeFolderIds = [folderId, ...getDescendantFolderIds(folders, folderId)].filter(isServerDocumentId);
+          const treeDocumentIds = allDocuments
+            .filter((document) => treeFolderIds.includes(document.folderId) && isServerDocumentId(document.documentId))
+            .map((document) => document.documentId);
+          for (const docId of treeDocumentIds) {
+            const res = await apiClient.deleteDocument(docId).catch((err: any) => ({
+              success: false,
+              error: err.response?.data?.error || 'Failed to delete a document inside this folder',
+            }));
+            if (!res.success) return res.error || 'Failed to delete a document inside this folder';
+          }
+
+          const remaining = new Set(treeFolderIds);
+          while (remaining.size > 0) {
+            const leaves = [...remaining].filter((id) => !folders.some((f) => f.parentFolderId === id && remaining.has(f.folderId)));
+            if (leaves.length === 0) break; // guards against an unexpected cycle
+            for (const id of leaves) {
+              const res = await apiClient.deleteFolder(id).catch((err: any) => ({
+                success: false,
+                error: err.response?.data?.error || 'Failed to delete a folder',
+              }));
+              if (!res.success) return res.error || 'Failed to delete a folder';
+              remaining.delete(id);
+            }
+          }
         }
       }
 

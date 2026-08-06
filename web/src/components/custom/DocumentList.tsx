@@ -15,9 +15,9 @@ const rowMenuItemClass = 'flex h-9 select-none items-center gap-2 rounded-[4px] 
 // disappears the moment the mouse moves and doesn't work at all on touch devices.
 // Plain wrapping text — for columns like Department/Owner where the whole point is
 // to always show the full value, not to truncate-then-click-to-reveal.
-function WrappingCellText({ value }: { value?: string | null }) {
+function WrappingCellText({ value, monospace }: { value?: string | null; monospace?: boolean }) {
   if (!value) return <span className="text-[#93a4bd]">—</span>;
-  return <span className="block whitespace-normal break-words">{value}</span>;
+  return <span className={`block whitespace-normal break-words ${monospace ? 'font-mono text-xs' : ''}`}>{value}</span>;
 }
 
 function ExpandableCellText({ value, monospace }: { value?: string | null; monospace?: boolean }) {
@@ -193,8 +193,8 @@ export function DocumentList({
   // guaranteed generous share no matter how many optional columns are toggled on.
   const columnWidthPercents = useMemo(() => {
     const weights: Record<string, number> = {
-      checkbox: 3, documentId: 6, fileName: 20, folder: 7, actions: 9,
-      department: 13, owner: 13, modifiedAt: 10, tags: 7, status: 9,
+      checkbox: 3, documentId: 10, fileName: 17, folder: 7, actions: 10,
+      department: 12, owner: 12, modifiedAt: 10, tags: 6, status: 13,
     };
     const activeKeys = ['checkbox', 'documentId', 'fileName', 'folder',
       ...(['department', 'owner', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
@@ -240,7 +240,7 @@ export function DocumentList({
             {visibleColumns.has('modifiedAt') && <th>{header('Modified date', 'modifiedAt')}</th>}
             {visibleColumns.has('tags') && <th>{header('Tags', 'tags')}</th>}
             {visibleColumns.has('status') && <th>{header('Status', 'status')}</th>}
-            <th className="text-right">Actions</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -250,7 +250,7 @@ export function DocumentList({
                 <SelectionCheckbox checked={selectedDocumentIds.has(document.documentId)} onChange={() => toggleSelected(document.documentId)} label={`Select ${document.fileName}`} />
               </td>
               <td className="text-[#52627a] dark:text-slate-200">
-                <ExpandableCellText value={document.originalDocumentId} monospace />
+                <WrappingCellText value={document.originalDocumentId} monospace />
               </td>
               <td className="min-w-0">
                 <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}`}>

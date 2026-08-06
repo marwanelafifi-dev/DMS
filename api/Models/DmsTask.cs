@@ -19,10 +19,14 @@ public class DmsTask
     public DateTime? DueDate { get; set; }
     public string Status { get; set; } = "open";
     public string? RcaText { get; set; }
+    public string? CorrectionText { get; set; }
     public string? PreventiveActions { get; set; }
     public string? EvidenceUrl { get; set; }
     public Guid? CompletedById { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public string? QaReviewNotes { get; set; }
+    public Guid? QaReviewedById { get; set; }
+    public DateTime? QaReviewedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
