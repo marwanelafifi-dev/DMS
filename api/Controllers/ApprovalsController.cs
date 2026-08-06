@@ -25,6 +25,18 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         return pageAccessRole != null && selector(pageAccessRole);
     }
 
+    // CanApprove/CanReject/CanViewXStage are independent of folder permissions
+    // by design (see the class-level comment above) — but a Deny-Read
+    // override on the document's specific folder should still be able to
+    // pull it back out of a reviewer's reach, per explicit follow-up request.
+    private async Task<ActionResult<object>?> RequireFolderReadAccessAsync(Guid userId, Guid documentId)
+    {
+        var folderId = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => (Guid?)d.FolderId).FirstOrDefaultAsync();
+        if (folderId.HasValue && !await HasFolderReadAccessAsync(context, accessOverrideService, userId, folderId.Value))
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have access to this document's folder" });
+        return null;
+    }
+
     private static bool StageAllowsAccessCheck(string currentStage, bool canViewQa, bool canViewManager, bool canViewFinal) => currentStage switch
     {
         "qa_review" => canViewQa,
@@ -45,6 +57,53 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         {
             foreach (var memberId in await taskService.GetGroupMemberIdsAsync(task.AssignedToGroupId.Value))
                 await notificationService.NotifyAsync(memberId, actorUserId, title, task.Title, taskId: task.TaskId);
+        }
+    }
+
+    // Every stage-advancing action (QA accept, Manager approve, Manager
+    // self-correct) previously only notified the document's original
+    // submitter — nobody at the *next* stage ever got told a document was
+    // now sitting in their queue; they'd only find out by opening the page
+    // and happening to look. Notifies every active user whose page-access
+    // role can view the target stage (same flag the queue endpoints
+    // themselves gate on), skipping the actor via NotifyAsync's own
+    // self-skip.
+    private async Task NotifyStageReviewersAsync(Guid actorUserId, Guid documentId, string title, string? body, Func<DmsPageAccessRole, bool> stageFlagSelector)
+    {
+        var roles = await context.PageAccessRoles.AsNoTracking().ToListAsync();
+        var reviewerRoleNames = roles.Where(stageFlagSelector).Select(r => r.Role).ToList();
+        if (reviewerRoleNames.Count == 0)
+            return;
+
+        var reviewerIds = await context.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Role != null && reviewerRoleNames.Contains(u.Role!))
+            .Select(u => u.UserId)
+            .ToListAsync();
+
+        foreach (var reviewerId in reviewerIds)
+            await notificationService.NotifyAsync(reviewerId, actorUserId, title, body, documentId: documentId);
+    }
+
+    // A correction task represents "please fix this specific rejection" — it's
+    // fully resolved the moment the stage that rejected it accepts the fix and
+    // moves the approval forward, not only once the document eventually
+    // reaches Final Release (that auto-complete, still below, is a fallback
+    // safety net for anything left stranded, not the primary trigger). Real
+    // bug found live: a correction task stayed "open" in the PCAR register
+    // for as long as the document sat in Manager Review/Final Release,
+    // even though the assignee's actual corrective work (the upload QA just
+    // accepted) was already done and accepted.
+    private async Task CompleteOpenTasksForApprovalAsync(Guid approvalId, Guid documentId, Guid userId)
+    {
+        var openTasks = await context.Tasks
+            .Where(t => t.ApprovalId == approvalId && t.DocumentId == documentId && t.Status != "completed")
+            .ToListAsync();
+        foreach (var openTask in openTasks)
+        {
+            openTask.Status = "completed";
+            openTask.CompletedById = userId;
+            openTask.CompletedAt = DateTime.UtcNow;
+            openTask.UpdatedAt = DateTime.UtcNow;
         }
     }
 
@@ -179,9 +238,13 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
-            var access = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+            var userId = GetCurrentUserId();
+            var access = await GetPageAccessRoleAsync(context, userId);
             if (!StageAllowsAccessCheck(approvalDocument.CurrentStage, access?.CanViewQaStage == true, access?.CanViewManagerStage == true, access?.CanViewFinalReleaseStage == true))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to this document's current stage" });
+
+            if (approvalDocument.Document != null && !await HasFolderReadAccessAsync(context, accessOverrideService, userId, approvalDocument.Document.FolderId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have access to this document's folder" });
 
             return Ok(new
             {
@@ -220,10 +283,18 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         }
     }
 
-    private async Task<object> BuildStageQueueAsync(string stage, int page, int pageSize)
+    // Per explicit request: a reviewer with an explicit folder-level Deny
+    // shouldn't see (or be able to act on) documents from that folder in the
+    // approval queue, even though CanApprove/CanViewXStage are otherwise
+    // decoupled from folder permissions by design — Deny is the one signal
+    // that should still be able to carve a document back out of the queue.
+    private async Task<object> BuildStageQueueAsync(string stage, int page, int pageSize, Guid userId)
     {
+        var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, userId, accessOverrideService);
+
         var query = context.ApprovalDocuments
             .Where(ad => ad.CurrentStage == stage && ad.Status == "pending")
+            .Where(ad => accessibleFolderIds == null || accessibleFolderIds.Contains(ad.Document!.FolderId))
             .Include(ad => ad.Approval).ThenInclude(a => a!.CreatedByUser)
             .Include(ad => ad.Document).ThenInclude(d => d!.Owner)
             .Include(ad => ad.Version)
@@ -269,10 +340,11 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewQaStage))
+            var userId = GetCurrentUserId();
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewQaStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the QA Review stage" });
 
-            return Ok(await BuildStageQueueAsync("qa_review", page, pageSize));
+            return Ok(await BuildStageQueueAsync("qa_review", page, pageSize, userId));
         }
         catch (Exception ex)
         {
@@ -288,10 +360,11 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewManagerStage))
+            var userId = GetCurrentUserId();
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewManagerStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Manager Review stage" });
 
-            return Ok(await BuildStageQueueAsync("manager_review", page, pageSize));
+            return Ok(await BuildStageQueueAsync("manager_review", page, pageSize, userId));
         }
         catch (Exception ex)
         {
@@ -307,10 +380,11 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         try
         {
-            if (!await CurrentUserHasStageAccessAsync(GetCurrentUserId(), r => r.CanViewFinalReleaseStage))
+            var userId = GetCurrentUserId();
+            if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewFinalReleaseStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Final Release stage" });
 
-            return Ok(await BuildStageQueueAsync("final_release", page, pageSize));
+            return Ok(await BuildStageQueueAsync("final_release", page, pageSize, userId));
         }
         catch (Exception ex)
         {
@@ -332,6 +406,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
+
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
@@ -345,6 +422,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "pending";
             approvalDocument.QaNotes = request.Notes;
 
+            await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "QA_ACCEPTED", new
@@ -355,6 +434,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
+
+            var acceptedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
+            await NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Manager Review", acceptedDocTitle, r => r.CanViewManagerStage);
 
             return Ok(new
             {
@@ -388,6 +470,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
@@ -471,6 +556,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
+
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
@@ -484,6 +572,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "pending";
             approvalDocument.ManagerNotes = request.Notes;
 
+            await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "MANAGER_APPROVED", new
@@ -494,6 +584,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
+
+            var managerApprovedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
+            await NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Final Release", managerApprovedDocTitle, r => r.CanViewFinalReleaseStage);
 
             return Ok(new
             {
@@ -527,6 +620,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
@@ -617,6 +713,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
+
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
 
@@ -672,6 +771,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "pending";
             approvalDocument.ManagerNotes = rejectionReason;
 
+            await CompleteOpenTasksForApprovalAsync(approvalId, document.DocumentId, userId);
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, "MANAGER_SELF_CORRECTED", new
@@ -684,6 +785,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(document.DocumentId, userId, "The Manager corrected your document directly", "Now moving to Final Release.");
+            await NotifyStageReviewersAsync(userId, document.DocumentId, "A document is waiting for Final Release", document.Title, r => r.CanViewFinalReleaseStage);
 
             return Ok(new
             {
@@ -719,6 +821,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
 
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
+
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
@@ -738,21 +843,14 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.Status = "approved";
             approvalDocument.ReleaseNotes = request.ReleaseNotes;
 
-            // Per explicit request: once the document is actually released, every
-            // correction task raised against it during this approval is resolved by
-            // definition — auto-complete any that are still open/in_progress instead
-            // of leaving them stranded regardless of what the PCAR page's own status
-            // controls did or didn't set along the way.
-            var openTasks = await context.Tasks
-                .Where(t => t.ApprovalId == approvalId && t.DocumentId == documentId && t.Status != "completed")
-                .ToListAsync();
-            foreach (var openTask in openTasks)
-            {
-                openTask.Status = "completed";
-                openTask.CompletedById = userId;
-                openTask.CompletedAt = DateTime.UtcNow;
-                openTask.UpdatedAt = DateTime.UtcNow;
-            }
+            // Safety net: QaAcceptAsync/ManagerApproveAsync/ManagerSelfCorrectAsync
+            // already complete a correction task the moment its own rejecting
+            // stage accepts the fix — this just catches anything that somehow
+            // slipped through still open/in_progress by the time the document
+            // is actually released, so nothing stays stranded regardless of
+            // what the PCAR page's own status controls did or didn't set along
+            // the way.
+            await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
 
             await context.SaveChangesAsync();
 
@@ -809,6 +907,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (approvalDocument == null)
                 return NotFound(new { success = false, error = "Approval document not found" });
+
+            var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
+            if (folderCheck != null) return folderCheck;
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });

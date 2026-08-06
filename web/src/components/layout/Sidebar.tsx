@@ -30,7 +30,7 @@ interface SidebarProps {
 const navItems: Array<{ label: string; path: string; icon: typeof LayoutDashboard; exact?: boolean; visibleWhen: keyof PageAccessRoleFlags }> = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true, visibleWhen: 'canViewDashboard' },
   { label: 'Document Library', path: '/documents', icon: Folder, visibleWhen: 'canViewDocumentLibrary' },
-  { label: 'C-Doc Workflow', path: '/approvals', icon: ClipboardCheck, visibleWhen: 'canViewApprovals' },
+  { label: 'Document Workflow', path: '/approvals', icon: ClipboardCheck, visibleWhen: 'canViewApprovals' },
   { label: 'PCAR / Corrective Action', path: '/tasks', icon: FileWarning, visibleWhen: 'canViewPcar' },
   { label: 'Reminders', path: '/reminders', icon: BellRing, visibleWhen: 'canViewReminders' },
   { label: 'Send Announcement', path: '/send-announcement', icon: Megaphone, visibleWhen: 'canSendAnnouncements' },

@@ -455,6 +455,85 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
         }
     }
 
+    // POST /api/folders/{id}/move — move a folder (and everything beneath it)
+    // under a different parent. Like the equivalent document move, this
+    // previously only ever existed as a client-side React state mutation with
+    // no backend call at all — it looked like it worked until a reload or a
+    // different user's session showed the folder back in its original place.
+    // Needs Cut permission on the folder being moved (adminBaseline, same as
+    // the UI's own Move button) and CreateSubfolder permission on the
+    // destination (moving a folder in is equivalent to creating one there).
+    [HttpPost("{id}/move")]
+    public async Task<ActionResult<object>> MoveFolder(Guid id, [FromBody] MoveFolderRequest req)
+    {
+        try
+        {
+            var folder = await context.Folders.FirstOrDefaultAsync(f => f.FolderId == id);
+            if (folder == null)
+                return NotFound(new { success = false, error = "Folder not found" });
+
+            if (folder.ParentFolderId == req.DestinationFolderId)
+                return BadRequest(new { success = false, error = "The folder is already in this location" });
+
+            if (req.DestinationFolderId == id)
+                return BadRequest(new { success = false, error = "A folder cannot be moved into itself" });
+
+            // A folder can't be moved into one of its own descendants — walk the
+            // subtree the same way the frontend's own destination-picker does.
+            var allFolders = await context.Folders.AsNoTracking().Select(f => new { f.FolderId, f.ParentFolderId }).ToListAsync();
+            var descendantIds = new HashSet<Guid>();
+            var queue = new Queue<Guid>();
+            queue.Enqueue(id);
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                foreach (var child in allFolders.Where(f => f.ParentFolderId == current))
+                {
+                    if (descendantIds.Add(child.FolderId))
+                        queue.Enqueue(child.FolderId);
+                }
+            }
+            if (descendantIds.Contains(req.DestinationFolderId))
+                return BadRequest(new { success = false, error = "A folder cannot be moved into one of its own subfolders" });
+
+            if (!allFolders.Any(f => f.FolderId == req.DestinationFolderId))
+                return BadRequest(new { success = false, error = "Destination folder not found" });
+
+            var userId = GetCurrentUserId();
+
+            var sourceEffectiveRole = await GetEffectiveRoleAsync(context, userId, id);
+            var sourceAdminBaseline = sourceEffectiveRole == FolderRoles.Admin;
+            if (!await accessOverrideService.ResolveAsync(userId, null, id, AccessOverrideActions.Cut, sourceAdminBaseline))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to move this folder" });
+
+            var destinationEffectiveRole = await GetEffectiveRoleAsync(context, userId, req.DestinationFolderId);
+            var destinationRoleAllowsCreateSubfolder = await HasRolePermissionAsync(context, destinationEffectiveRole, rp => rp.CreateSubfolder);
+            if (!await accessOverrideService.ResolveAsync(userId, null, req.DestinationFolderId, AccessOverrideActions.CreateSubfolder, destinationRoleAllowsCreateSubfolder))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to create a subfolder in the destination" });
+
+            var previousParentId = folder.ParentFolderId;
+            folder.ParentFolderId = req.DestinationFolderId;
+            folder.UpdatedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, AuditActions.FOLDER_MOVED, new
+            {
+                folder.FolderId,
+                previousParentId,
+                newParentId = req.DestinationFolderId,
+            });
+
+            logger.LogInformation("Moved folder {FolderId} from parent {PreviousParentId} to {NewParentId}", id, previousParentId, req.DestinationFolderId);
+
+            return Ok(new { success = true, data = new { folder.FolderId, folder.ParentFolderId, folder.UpdatedAt } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error moving folder {FolderId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     // DELETE /api/folders/{id} — delete folder
     [HttpDelete("{id}")]
     public async Task<ActionResult<object>> DeleteFolder(Guid id)
@@ -525,3 +604,5 @@ public record UpdateFolderRequest(
     string? Description = null,
     string? Classification = null
 );
+
+public record MoveFolderRequest(Guid DestinationFolderId);

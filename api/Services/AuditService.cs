@@ -87,10 +87,12 @@ public static class AuditActions
     public const string FOLDER_CREATED = "FOLDER_CREATED";
     public const string FOLDER_UPDATED = "FOLDER_UPDATED";
     public const string FOLDER_DELETED = "FOLDER_DELETED";
+    public const string FOLDER_MOVED = "FOLDER_MOVED";
 
     public const string DOCUMENT_CREATED = "DOCUMENT_CREATED";
     public const string DOCUMENT_UPDATED = "DOCUMENT_UPDATED";
     public const string DOCUMENT_DELETED = "DOCUMENT_DELETED";
+    public const string DOCUMENT_MOVED = "DOCUMENT_MOVED";
     public const string DOCUMENT_UPLOADED = "DOCUMENT_UPLOADED";
     public const string DOCUMENT_VERSION_REVERTED = "DOCUMENT_VERSION_REVERTED";
     public const string DOCUMENT_DOWNLOADED = "DOCUMENT_DOWNLOADED";
@@ -103,7 +105,11 @@ public static class AuditActions
     public const string DOCUMENT_REJECTED = "DOCUMENT_REJECTED";
 
     public const string TASK_COMPLETED = "TASK_COMPLETED";
+    public const string TASK_REASSIGNED = "TASK_REASSIGNED";
     public const string CORRECTION_TASK_COMPLETED = "CORRECTION_TASK_COMPLETED";
+    public const string PCAR_SUBMITTED = "PCAR_SUBMITTED";
+    public const string PCAR_APPROVED = "PCAR_APPROVED";
+    public const string PCAR_REJECTED = "PCAR_REJECTED";
     public const string TASK_ATTACHMENT_UPLOADED = "TASK_ATTACHMENT_UPLOADED";
     public const string TASK_ATTACHMENT_DELETED = "TASK_ATTACHMENT_DELETED";
 

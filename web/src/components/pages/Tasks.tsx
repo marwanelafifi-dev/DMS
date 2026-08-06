@@ -44,6 +44,9 @@ export function Tasks() {
   const pageAccess = usePageAccess();
   const canManageAllTasks = pageAccess?.canManageAllTasks ?? false;
   const canCreateTasks = (pageAccess?.canCreateTasks || pageAccess?.canManageAllTasks) ?? false;
+  const canReassignTasks = (pageAccess?.canReassignTasks || pageAccess?.canManageAllTasks) ?? false;
+  const canReviewPcars = pageAccess?.canApprove ?? false;
+  const canRejectPcars = pageAccess?.canReject ?? false;
   const linkedDocFileInputRef = useRef<HTMLInputElement>(null);
   const [searchParams] = useSearchParams();
   const highlightTaskId = searchParams.get('highlight');
@@ -91,6 +94,78 @@ export function Tasks() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+
+  // "My PCARs" (the register below) vs the QA reviewer's own queue of
+  // submitted PCARs awaiting a decision — only reachable by a role with
+  // CanApprove, same flag the Document Workflow queues already gate on.
+  const [pcarViewMode, setPcarViewMode] = useState<'my' | 'review'>('my');
+  const [reviewQueue, setReviewQueue] = useState<any[]>([]);
+  const [isReviewQueueLoading, setIsReviewQueueLoading] = useState(false);
+  const [reviewQueueError, setReviewQueueError] = useState<string | null>(null);
+  const [rejectingTaskId, setRejectingTaskId] = useState<string | null>(null);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [reviewActionBusyId, setReviewActionBusyId] = useState<string | null>(null);
+
+  const loadReviewQueue = async () => {
+    if (!canReviewPcars) return;
+    setIsReviewQueueLoading(true);
+    setReviewQueueError(null);
+    try {
+      const res = await apiClient.getPcarReviewQueue();
+      setReviewQueue(res.data || []);
+    } catch (err: any) {
+      setReviewQueueError(err.response?.data?.error || 'Failed to load the PCAR review queue');
+    } finally {
+      setIsReviewQueueLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (canReviewPcars) loadReviewQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReviewPcars]);
+
+  const handleApprovePcar = async (taskId: string) => {
+    setReviewActionBusyId(taskId);
+    try {
+      const res = await apiClient.approvePcar(taskId);
+      if (!res.success) {
+        showError(res.error || 'Failed to approve PCAR');
+        return;
+      }
+      showSuccess('PCAR approved and closed out');
+      loadReviewQueue();
+      loadTasks();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to approve PCAR');
+    } finally {
+      setReviewActionBusyId(null);
+    }
+  };
+
+  const handleRejectPcar = async (taskId: string) => {
+    if (!rejectNotes.trim()) {
+      showError('Explain what needs to be fixed before rejecting');
+      return;
+    }
+    setReviewActionBusyId(taskId);
+    try {
+      const res = await apiClient.rejectPcar(taskId, rejectNotes.trim());
+      if (!res.success) {
+        showError(res.error || 'Failed to reject PCAR');
+        return;
+      }
+      showSuccess('PCAR sent back to the assignee for revision');
+      setRejectingTaskId(null);
+      setRejectNotes('');
+      loadReviewQueue();
+      loadTasks();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to reject PCAR');
+    } finally {
+      setReviewActionBusyId(null);
+    }
+  };
 
   const loadTasks = async (targetPage = page) => {
     setIsLoading(true);
@@ -245,6 +320,16 @@ export function Tasks() {
     || filteredTasks.find((task) => task.priority === 'critical')
     || filteredTasks[0];
   const focusedPcarIsMine = focusedPcar ? isTaskMine(focusedPcar) : true;
+  // Only 'submitted' (awaiting a QA decision) and 'completed' (already
+  // approved) actually mean "this PCAR is locked" — 'in_progress' is a
+  // separate, ordinary manual work-status a task can carry independent of
+  // PCAR submission (see UpdateTaskAsync), so treating "anything but open"
+  // as submitted would wrongly lock out a task that was simply marked
+  // in-progress and never actually went through Submit at all. (A legacy
+  // task from before the real QA queue existed could also get stuck in
+  // 'in_progress' forever with no reviewer ever seeing it — that's a data
+  // issue to repair directly, not something this check should paper over.)
+  const pcarAlreadySubmitted = !!focusedPcar && (focusedPcar.status === 'submitted' || focusedPcar.status === 'done');
 
   useEffect(() => {
     if (!showDocDropdown) return;
@@ -271,7 +356,31 @@ export function Tasks() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightTaskId]);
-  const linkedDocument = focusedPcar?.documentId ? documents.find((d) => d.documentId === focusedPcar.documentId) : undefined;
+  // documents (getDocuments()) is scoped to folders the current user can
+  // browse — a task's assignee may have zero folder access to the document
+  // their own assigned task is about, in which case it's simply missing from
+  // that list. Fall back to the dedicated per-task endpoint, which resolves
+  // access via "is this task mine" instead of folder-browsing rights.
+  const [linkedDocumentFallback, setLinkedDocumentFallback] = useState<{ documentId: string; fileName: string; currentVersionId?: string } | null>(null);
+  const linkedDocument = focusedPcar?.documentId ? documents.find((d) => d.documentId === focusedPcar.documentId) ?? linkedDocumentFallback ?? undefined : undefined;
+
+  useEffect(() => {
+    setLinkedDocumentFallback(null);
+    const docId = focusedPcar?.documentId;
+    if (!docId || documents.some((d) => d.documentId === docId)) return;
+    apiClient.getTaskDocument(focusedPcar!.taskId)
+      .then((res) => {
+        if (res.success && res.data) {
+          setLinkedDocumentFallback({
+            documentId: res.data.documentId,
+            fileName: res.data.fileName,
+            currentVersionId: res.data.currentVersionId ?? undefined,
+          });
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedPcar?.taskId, focusedPcar?.documentId, documents]);
 
   const handleViewLinkedDocument = () => {
     if (!linkedDocument) return;
@@ -289,6 +398,10 @@ export function Tasks() {
 
   const handleDownloadLinkedDocumentForEditing = async () => {
     if (!linkedDocument?.currentVersionId) return;
+    if (pcarAlreadySubmitted) {
+      showError('This PCAR has already been submitted — view/download only');
+      return;
+    }
     try {
       await apiClient.checkoutDocument(linkedDocument.documentId, linkedDocument.currentVersionId);
       await apiClient.downloadDocument(linkedDocument.documentId, linkedDocument.currentVersionId);
@@ -305,6 +418,10 @@ export function Tasks() {
 
   const handleUploadUpdatedLinkedDocument = async (file: File) => {
     if (!linkedDocument || !focusedPcar) return;
+    if (pcarAlreadySubmitted) {
+      showError('This PCAR has already been submitted — view/download only');
+      return;
+    }
     try {
       const res = await apiClient.uploadDocument(linkedDocument.documentId, file);
       if (!res.success) {
@@ -340,21 +457,41 @@ export function Tasks() {
   useEffect(() => {
     if (!focusedPcar) return;
     setPcarDraft({
-      rootCause: focusedPcar.taskType === 'rca' ? (focusedPcar.description || '') : '',
-      correction: '',
-      preventiveAction: '',
+      rootCause: focusedPcar.rcaText || '',
+      correction: focusedPcar.correctionText || '',
+      preventiveAction: focusedPcar.preventiveActions || '',
       targetDate: focusedPcar.dueDate.slice(0, 10),
     });
     setCorrectionUploadedTaskId(null);
   }, [focusedPcar?.taskId]);
 
-  // If there's a linked document to fix, the corrected file must actually be
-  // re-uploaded before the PCAR can be submitted — filling in RCA text alone
-  // isn't enough to close out a correction.
-  const needsCorrectionUpload = !!focusedPcar?.documentId && correctionUploadedTaskId !== focusedPcar?.taskId;
+  // A task spawned by a real QA/Manager rejection (approvalId set) is
+  // already governed by the Document Workflow itself — qa-final-release
+  // auto-completes it the moment the underlying document is actually
+  // released (see ApprovalsController), independent of anything on this
+  // page. Running it through a SECOND, separate "Submit for approval" / QA
+  // Review Queue cycle here would just be a redundant, confusing gate with
+  // no real reviewer on the other end for this specific case — that manual
+  // flow only makes sense for a genuinely self-filed PCAR with no approval
+  // behind it. RCA/Correction/Preventive fields stay editable as optional
+  // documentation either way, saved via the plain update endpoint instead.
+  const isApprovalLinked = !!focusedPcar?.approvalId;
+
+  // Only a real correction task spawned by a QA/Manager rejection (has a
+  // real approvalId) needs the corrected file re-uploaded before it can be
+  // submitted — a self-filed PCAR that merely references a document for
+  // context has nothing to "correct" on that file, so gating it on
+  // documentId alone (the old check) meant it could never be submitted at
+  // all unless something was re-uploaded onto a document that was never
+  // broken to begin with.
+  const needsCorrectionUpload = !!focusedPcar?.approvalId && correctionUploadedTaskId !== focusedPcar?.taskId;
 
   const handlePcarSubmit = async () => {
     if (!focusedPcar) return;
+    if (focusedPcar.status !== 'open') {
+      showError('This PCAR has already been submitted for approval');
+      return;
+    }
     if (pcarDraft.rootCause.trim().length < 20) {
       showError('Root cause analysis must contain at least 20 characters');
       return;
@@ -365,20 +502,45 @@ export function Tasks() {
     }
 
     try {
-      await apiClient.updateTask(focusedPcar.taskId, {
-        description: [
-          `Issue: ${focusedPcar.description || focusedPcar.title}`,
-          `Root cause: ${pcarDraft.rootCause.trim()}`,
-          `Immediate correction: ${pcarDraft.correction.trim()}`,
-          `Preventive action: ${pcarDraft.preventiveAction.trim()}`,
-        ].join('\n'),
-        dueDate: pcarDraft.targetDate,
-        status: 'in_progress',
+      const res = await apiClient.submitPcar(focusedPcar.taskId, {
+        rca: pcarDraft.rootCause.trim(),
+        correction: pcarDraft.correction.trim(),
+        preventiveActions: pcarDraft.preventiveAction.trim(),
+        targetDate: pcarDraft.targetDate,
       });
-      showSuccess('PCAR submitted for approval');
+      if (!res.success) {
+        showError(res.error || 'Failed to submit PCAR');
+        return;
+      }
+      showSuccess('PCAR submitted — now awaiting QA review');
       loadTasks();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to submit PCAR');
+    }
+  };
+
+  // For a correction task tied to a real Document Workflow approval, RCA/
+  // Correction/Preventive text is documentation only — no separate reviewer
+  // decision happens here, so this just saves the fields without touching
+  // status. The task itself closes automatically when the document is
+  // finally released.
+  const handleSaveDocumentation = async () => {
+    if (!focusedPcar) return;
+    try {
+      const res = await apiClient.updateTask(focusedPcar.taskId, {
+        rcaText: pcarDraft.rootCause.trim() || undefined,
+        correctionText: pcarDraft.correction.trim() || undefined,
+        preventiveActions: pcarDraft.preventiveAction.trim() || undefined,
+        dueDate: pcarDraft.targetDate || undefined,
+      });
+      if (!res.success) {
+        showError(res.error || 'Failed to save');
+        return;
+      }
+      showSuccess('Documentation saved');
+      loadTasks();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to save');
     }
   };
 
@@ -470,13 +632,28 @@ export function Tasks() {
       description: task.description,
       priority: task.priority,
       dueDate: task.dueDate,
+      assignedTo: getAssignedToId(task) ?? '',
+      assignedToGroupId: getAssignedToGroupId(task) ?? '',
     });
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
     try {
-      await apiClient.updateTask(editingId, editData);
+      const payload: Record<string, unknown> = {
+        title: editData.title,
+        description: editData.description,
+        dueDate: editData.dueDate,
+        riskSeverity: editData.priority,
+      };
+      // Reassignment is its own permission, gated separately server-side too —
+      // only send it when the field was actually editable, so a save with no
+      // reassignment intent never triggers the reassign-specific 403.
+      if (canReassignTasks) {
+        if (editData.assignedToGroupId) payload.assignedToGroupId = editData.assignedToGroupId;
+        else if (editData.assignedTo) payload.assignedToId = editData.assignedTo;
+      }
+      await apiClient.updateTask(editingId, payload);
       showSuccess('Task updated successfully');
       setEditingId(null);
       loadTasks();
@@ -506,6 +683,8 @@ export function Tasks() {
       case 'open':
         return 'info';
       case 'in_progress':
+        return 'warning';
+      case 'submitted':
         return 'warning';
       case 'done':
         return 'success';
@@ -610,6 +789,11 @@ export function Tasks() {
                   )}
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
+                {focusedPcar.status === 'open' && focusedPcar.qaReviewNotes && (
+                  <p className="mt-3 rounded-[4px] bg-[#fde1e2] px-3 py-2 text-xs text-[#c73c44] dark:bg-red-500/10 dark:text-red-300">
+                    <strong>Sent back for revision:</strong> {focusedPcar.qaReviewNotes}
+                  </p>
+                )}
                 {!focusedPcarIsMine && (
                   <p className="mt-3 rounded-[4px] bg-[#fff8e6] px-3 py-2 text-xs text-[#8a6116] dark:bg-amber-500/10 dark:text-amber-300">
                     This PCAR is assigned to {getAssignedToName(focusedPcar) ?? 'another user'} — only they can complete the Root Cause Analysis and submit it for approval.
@@ -636,8 +820,26 @@ export function Tasks() {
                         />
                         <Button variant="secondary" size="sm" onClick={handleViewLinkedDocument} leftIcon={<Eye className="h-3.5 w-3.5" />}>View</Button>
                         <Button variant="secondary" size="sm" onClick={handleDownloadLinkedDocument} leftIcon={<Download className="h-3.5 w-3.5" />}>Download</Button>
-                        <Button variant="secondary" size="sm" onClick={handleDownloadLinkedDocumentForEditing} leftIcon={<PencilLine className="h-3.5 w-3.5" />}>Download for Editing</Button>
-                        <Button variant="secondary" size="sm" onClick={() => linkedDocFileInputRef.current?.click()} leftIcon={<Upload className="h-3.5 w-3.5" />}>Upload Updated File</Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleDownloadLinkedDocumentForEditing}
+                          leftIcon={<PencilLine className="h-3.5 w-3.5" />}
+                          disabled={pcarAlreadySubmitted}
+                          title={pcarAlreadySubmitted ? 'This PCAR has already been submitted — view/download only' : undefined}
+                        >
+                          Download for Editing
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => linkedDocFileInputRef.current?.click()}
+                          leftIcon={<Upload className="h-3.5 w-3.5" />}
+                          disabled={pcarAlreadySubmitted}
+                          title={pcarAlreadySubmitted ? 'This PCAR has already been submitted — view/download only' : undefined}
+                        >
+                          Upload Updated File
+                        </Button>
                       </div>
                     </div>
                   ) : (
@@ -648,51 +850,204 @@ export function Tasks() {
             )}
             <Card>
               <CardBody className="p-5">
-                <h2 className="section-heading">Root Cause Analysis <span className="text-[#e24c53]">*</span></h2>
-                <p className="mt-2 text-xs text-[#718198] dark:text-slate-400">Mandatory. Minimum 20 characters. Use the 5-Whys method.</p>
-                <textarea disabled={!focusedPcarIsMine} className="field-control mt-3 min-h-[116px] w-full py-3 disabled:cursor-not-allowed disabled:opacity-60" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
+                <h2 className="section-heading">Root Cause Analysis {!isApprovalLinked && <span className="text-[#e24c53]">*</span>}</h2>
+                <p className="mt-2 text-xs text-[#718198] dark:text-slate-400">
+                  {isApprovalLinked ? 'Optional documentation. Use the 5-Whys method.' : 'Mandatory. Minimum 20 characters. Use the 5-Whys method.'}
+                </p>
+                <textarea disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-3 min-h-[116px] w-full py-3 disabled:cursor-not-allowed disabled:opacity-60" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
                 <div className="mt-2 text-xs text-[#94a3b8] dark:text-slate-400">{pcarDraft.rootCause.trim().length} / 20 min</div>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="space-y-4 p-5">
                 <h2 className="section-heading">Corrective &amp; Preventive Action</h2>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction<input disabled={!focusedPcarIsMine} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action<input disabled={!focusedPcarIsMine} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date<input disabled={!focusedPcarIsMine} type="date" className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction<input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action<input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date<input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} type="date" className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
               </CardBody>
             </Card>
           </div>
 
           <div className="space-y-4">
             <div className="flex justify-end"><span className={`rounded-[5px] px-3 py-2 text-sm font-semibold ${focusedPcar.priority === 'critical' ? 'bg-[#fde1e2] text-[#c73c44] dark:bg-red-500/15 dark:text-red-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>Severity: {focusedPcar.priority}</span></div>
-            <Card>
-              <CardBody className="p-5">
-                <h2 className="section-heading">Approvers</h2>
-                <div className="mt-4 space-y-3 text-sm text-[#52627a] dark:text-slate-300"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#efb514]" />QA Lead — pending</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#cbd5e3]" />Plant Manager — waiting</div></div>
-              </CardBody>
-            </Card>
-            <Button
-              className="w-full"
-              onClick={handlePcarSubmit}
-              disabled={!focusedPcarIsMine || needsCorrectionUpload}
-              title={
-                !focusedPcarIsMine
-                  ? `Only ${getAssignedToName(focusedPcar) ?? 'the assignee'} can submit this PCAR`
-                  : needsCorrectionUpload
-                    ? 'Upload the corrected file first — see Linked Document above'
-                    : undefined
-              }
-            >
-              Submit for approval
-            </Button>
-            {needsCorrectionUpload && focusedPcarIsMine && (
-              <p className="text-center text-xs text-[#b96a08] dark:text-amber-300">Upload the corrected file above before submitting.</p>
+            {isApprovalLinked ? (
+              <>
+                <Card>
+                  <CardBody className="p-5">
+                    <h2 className="section-heading">Document Workflow</h2>
+                    <div className="mt-4 flex items-center gap-2 text-sm text-[#52627a] dark:text-slate-300">
+                      <span className={`h-2.5 w-2.5 rounded-full ${focusedPcar.status === 'done' ? 'bg-[#3aa66a]' : 'bg-[#efb514]'}`} />
+                      {focusedPcar.status === 'done' ? 'Closed — document was released' : 'Tracked via the linked document’s own QA/Manager review'}
+                    </div>
+                    <p className="mt-3 text-xs text-[#94a3b8] dark:text-slate-400">
+                      This corrective action was raised from a real rejection in Document Workflow — it isn't a separate approval. It closes automatically once that document reaches Final Release.
+                    </p>
+                  </CardBody>
+                </Card>
+                <Button className="w-full" variant="secondary" onClick={handleSaveDocumentation} disabled={!focusedPcarIsMine || pcarAlreadySubmitted}>
+                  Save Documentation
+                </Button>
+                {pcarAlreadySubmitted && (
+                  <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">This task is closed — documentation is read-only.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <Card>
+                  <CardBody className="p-5">
+                    <h2 className="section-heading">QA Review</h2>
+                    <div className="mt-4 flex items-center gap-2 text-sm text-[#52627a] dark:text-slate-300">
+                      <span className={`h-2.5 w-2.5 rounded-full ${
+                        focusedPcar.status === 'done' ? 'bg-[#3aa66a]'
+                          : focusedPcar.status === 'submitted' ? 'bg-[#efb514]'
+                          : 'bg-[#cbd5e3]'
+                      }`} />
+                      {focusedPcar.status === 'done'
+                        ? 'Approved and closed'
+                        : focusedPcar.status === 'submitted'
+                          ? 'Submitted — awaiting QA decision'
+                          : focusedPcar.qaReviewNotes
+                            ? 'Sent back for revision'
+                            : 'Not yet submitted'}
+                    </div>
+                  </CardBody>
+                </Card>
+                <Button
+                  className="w-full"
+                  onClick={handlePcarSubmit}
+                  disabled={!focusedPcarIsMine || needsCorrectionUpload || pcarAlreadySubmitted}
+                  title={
+                    !focusedPcarIsMine
+                      ? `Only ${getAssignedToName(focusedPcar) ?? 'the assignee'} can submit this PCAR`
+                      : pcarAlreadySubmitted
+                        ? (focusedPcar.status === 'done' ? 'Already approved and closed' : 'Already submitted for approval')
+                        : needsCorrectionUpload
+                          ? 'Upload the corrected file first — see Linked Document above'
+                          : undefined
+                  }
+                >
+                  {focusedPcar.status === 'done' ? 'Approved' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Submit for approval'}
+                </Button>
+                {pcarAlreadySubmitted ? (
+                  <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">
+                    {focusedPcar.status === 'done'
+                      ? 'This PCAR has been approved and closed.'
+                      : 'This PCAR has already been submitted and is awaiting a QA decision.'}
+                  </p>
+                ) : needsCorrectionUpload && focusedPcarIsMine && (
+                  <p className="text-center text-xs text-[#b96a08] dark:text-amber-300">Upload the corrected file above before submitting.</p>
+                )}
+              </>
             )}
           </div>
         </div>
       )}
 
+      {canReviewPcars && (
+        <div className="flex gap-2 border-b border-[#e2e8f0] pb-2 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setPcarViewMode('my')}
+            className={`rounded-[4px] px-3 py-1.5 text-sm font-medium ${pcarViewMode === 'my' ? 'bg-[#2f3e83] text-white' : 'text-[#52627a] hover:bg-[#f1f4f8] dark:text-slate-300 dark:hover:bg-slate-800'}`}
+          >
+            My PCARs
+          </button>
+          <button
+            type="button"
+            onClick={() => setPcarViewMode('review')}
+            className={`rounded-[4px] px-3 py-1.5 text-sm font-medium ${pcarViewMode === 'review' ? 'bg-[#2f3e83] text-white' : 'text-[#52627a] hover:bg-[#f1f4f8] dark:text-slate-300 dark:hover:bg-slate-800'}`}
+          >
+            QA Review Queue{reviewQueue.length > 0 ? ` (${reviewQueue.length})` : ''}
+          </button>
+        </div>
+      )}
+
+      {pcarViewMode === 'review' && canReviewPcars && (
+        <Card>
+          <CardBody className="p-5">
+            <h2 className="section-heading">PCAR Review Queue</h2>
+            <p className="mt-1 text-xs text-[#718198] dark:text-slate-400">Every self-filed PCAR currently submitted and awaiting a QA decision.</p>
+            {reviewQueueError ? (
+              <div className="mt-4 rounded-[4px] bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
+                {reviewQueueError}
+                <Button variant="secondary" size="sm" onClick={loadReviewQueue} className="ml-3">Retry</Button>
+              </div>
+            ) : isReviewQueueLoading ? (
+              <div className="mt-4"><SkeletonTable /></div>
+            ) : reviewQueue.length === 0 ? (
+              <p className="mt-4 text-sm text-[#94a3b8] dark:text-slate-400">Nothing waiting for review right now.</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {reviewQueue.map((item) => (
+                  <div key={item.taskId} className="rounded-[5px] border border-[#e2e8f0] p-4 dark:border-slate-800">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-[#26334d] dark:text-white">{item.title}</p>
+                        <p className="text-xs text-[#718198] dark:text-slate-400">
+                          Submitted by {item.assignedToName ?? item.assignedToGroupName ?? 'Unknown'} · Due {item.dueDate ? formatDate(item.dueDate) : '—'}
+                        </p>
+                      </div>
+                      <span className={`rounded-[4px] px-2 py-1 text-xs font-semibold ${item.priority === 'critical' ? 'bg-[#fde1e2] text-[#c73c44] dark:bg-red-500/15 dark:text-red-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>
+                        {item.priority}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-2 text-sm text-[#52627a] dark:text-slate-300">
+                      <p><span className="font-medium text-[#26334d] dark:text-white">Root cause:</span> {item.rcaText}</p>
+                      <p><span className="font-medium text-[#26334d] dark:text-white">Immediate correction:</span> {item.correctionText}</p>
+                      <p><span className="font-medium text-[#26334d] dark:text-white">Preventive action:</span> {item.preventiveActions}</p>
+                    </div>
+                    {rejectingTaskId === item.taskId ? (
+                      <div className="mt-3 space-y-2">
+                        <textarea
+                          className="field-control w-full min-h-[80px] py-2"
+                          placeholder="Explain what needs to be fixed..."
+                          value={rejectNotes}
+                          onChange={(e) => setRejectNotes(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => { setRejectingTaskId(null); setRejectNotes(''); }}>Cancel</Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleRejectPcar(item.taskId)}
+                            disabled={reviewActionBusyId === item.taskId}
+                          >
+                            Confirm Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex justify-end gap-2">
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          disabled={!canRejectPcars || reviewActionBusyId === item.taskId}
+                          title={!canRejectPcars ? 'Your role does not have permission to reject PCARs' : undefined}
+                          onClick={() => { setRejectingTaskId(item.taskId); setRejectNotes(''); }}
+                        >
+                          Reject
+                        </Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          disabled={reviewActionBusyId === item.taskId}
+                          onClick={() => handleApprovePcar(item.taskId)}
+                        >
+                          Approve
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {pcarViewMode === 'my' && (
+      <>
       <div className="flex items-center justify-between pt-1"><h2 className="section-heading">PCAR Register</h2></div>
 
       {/* Filters */}
@@ -718,6 +1073,7 @@ export function Tasks() {
           <option value="">All Status</option>
           <option value="open">Open</option>
           <option value="in_progress">In Progress</option>
+          <option value="submitted">Submitted for approval</option>
           <option value="done">Completed</option>
         </select>
 
@@ -812,9 +1168,33 @@ export function Tasks() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-sm ${isTaskMine(task) ? 'font-medium text-[#3f8bca]' : 'text-gray-600 dark:text-gray-400'}`}>
-                          {getAssignedToName(task) ?? '—'}{isTaskMine(task) ? ' (you)' : ''}
-                        </span>
+                        {editingId === task.taskId && canReassignTasks ? (
+                          <select
+                            value={editData.assignedToGroupId ? `group:${editData.assignedToGroupId}` : `user:${editData.assignedTo}`}
+                            onChange={(e) => {
+                              const [kind, value] = e.target.value.split(':');
+                              setEditData({ ...editData, assignedTo: kind === 'user' ? value : '', assignedToGroupId: kind === 'group' ? value : '' });
+                            }}
+                            className="px-3 py-2 border border-gray-200 dark:border-navy-700 rounded bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                          >
+                            <optgroup label="Users">
+                              {users.map((user) => (
+                                <option key={user.userId} value={`user:${user.userId}`}>{user.fullName}</option>
+                              ))}
+                            </optgroup>
+                            {groups.length > 0 && (
+                              <optgroup label="Groups">
+                                {groups.map((group) => (
+                                  <option key={group.groupId} value={`group:${group.groupId}`}>{group.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        ) : (
+                          <span className={`text-sm ${isTaskMine(task) ? 'font-medium text-[#3f8bca]' : 'text-gray-600 dark:text-gray-400'}`}>
+                            {getAssignedToName(task) ?? '—'}{isTaskMine(task) ? ' (you)' : ''}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <Badge status={getStatusBadgeColor(task.status)} variant="outline">
@@ -949,6 +1329,8 @@ export function Tasks() {
             </div>
           )}
         </Card>
+      )}
+      </>
       )}
 
       {/* Add Task Modal */}

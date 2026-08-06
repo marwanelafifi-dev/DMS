@@ -26,6 +26,7 @@ import type { Document, Folder, User } from '../../types';
 import {
   copyLibraryItems,
   deleteLibraryItems,
+  getDescendantFolderIds,
   getInvalidDestinationIds,
   moveLibraryItems,
   renameLibraryItem,
@@ -46,6 +47,12 @@ function readBlobAsText(blob: Blob): Promise<string> {
   });
 }
 
+// allDocuments carries the *resolved* stage-specific status (see
+// resolveLibraryStatus) by the time it reaches this component, not the raw
+// "pending_approval" the API returns — so "still pending review" means any of
+// these four in-pipeline stages, not a literal status === 'pending_approval'
+// check (which would never match anything post-resolution).
+const PENDING_STAGE_STATUSES = new Set(['qa_review', 'manager_review', 'correction_in_progress', 'qa_final_review']);
 const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log']);
 const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 
@@ -138,7 +145,7 @@ export function Documents() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFileName, setUploadFileName] = useState('');
-  const [uploadTags, setUploadTags] = useState('');
+  const [uploadTags, setUploadTags] = useState<string[]>([]);
   const [uploadCustomTags, setUploadCustomTags] = useState('');
   const [uploadVersionLabel, setUploadVersionLabel] = useState('');
   const [uploadCategory, setUploadCategory] = useState('');
@@ -147,6 +154,7 @@ export function Documents() {
   const [uploadDepartment, setUploadDepartment] = useState('');
   const [uploadCustomDepartment, setUploadCustomDepartment] = useState('');
   const [uploadApprovalNotes, setUploadApprovalNotes] = useState('');
+  const [uploadValidationAttempted, setUploadValidationAttempted] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [myPermissions, setMyPermissions] = useState<RolePermissionFlags | null>(null);
   const [editDocumentId, setEditDocumentId] = useState<string | null>(null);
@@ -221,7 +229,18 @@ export function Documents() {
     }
   }, []);
 
-  const documents = useMemo(() => allDocuments.filter((document) => document.folderId === selectedFolderId), [allDocuments, selectedFolderId]);
+  // "My Submitted Documents" (Dashboard's "View all") shows every document the
+  // current user submitted, regardless of which folder it lives in — the
+  // normal per-folder scoping below doesn't apply while this is active, but
+  // everything else (preview, details, search, columns) is the same
+  // DocumentList/DocumentPreview used everywhere else in the library.
+  const showOnlyMySubmissions = searchParams.get('mine') === '1';
+  const documents = useMemo(() => {
+    if (showOnlyMySubmissions) {
+      return allDocuments.filter((document) => document.uploadedBy === currentUser?.userId && PENDING_STAGE_STATUSES.has(document.status));
+    }
+    return allDocuments.filter((document) => document.folderId === selectedFolderId);
+  }, [allDocuments, selectedFolderId, showOnlyMySubmissions, currentUser?.userId]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
@@ -477,6 +496,30 @@ export function Documents() {
       setPreviewDocument(restoredDocument);
       documentObjectUrlsRef.current.set(restoredDocument.documentId, previewUrls);
       touchPreviewCache(restoredDocument.documentId);
+
+      // The native <img> preview above renders instantly, but carries no text to
+      // search — a reload never re-runs the upload-time Docling/OCR step. Fetch it
+      // in the background (stateless, doesn't re-index) so search still works
+      // after a refresh, without delaying the image itself.
+      if (preview.kind === 'image') {
+        doclingApi.convertDocument(new File([blob], resolvedFileName, { type: contentType }), signal)
+          .then((parsedDocument) => {
+            if (signal.aborted || previewRequestRef.current !== requestId) return;
+            const withOcrText: MockLibraryDocument = {
+              ...restoredDocument,
+              preview: { ...(restoredDocument.preview as { kind: 'image'; url: string; alt: string }), ocrText: parsedDocument.content },
+            };
+            setAllDocuments((current) => current.map((document) =>
+              document.documentId === withOcrText.documentId ? withOcrText : document,
+            ));
+            setPreviewDocument((current) =>
+              current && current.documentId === withOcrText.documentId ? withOcrText : current,
+            );
+          })
+          .catch(() => {
+            // No OCR text available for this image — search simply stays unavailable.
+          });
+      }
     } catch (error) {
       if (sourceUrl) {
         URL.revokeObjectURL(sourceUrl);
@@ -587,6 +630,14 @@ export function Documents() {
     }, { replace: true });
   }, [setSearchParams]);
 
+  const clearMySubmissionsFilter = useCallback(() => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('mine');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const closePreview = useCallback(() => {
     previewAbortControllerRef.current?.abort();
     previewAbortControllerRef.current = null;
@@ -604,6 +655,7 @@ export function Documents() {
     setSelectedFolderIds(new Set());
     setPreviewDocument(null);
     clearPreviewParam();
+    if (showOnlyMySubmissions) clearMySubmissionsFilter();
   };
 
   const openDocumentPreview = (docId: string) => {
@@ -836,8 +888,79 @@ export function Documents() {
     setRequestedFolderAction(action === 'cut' ? 'move' : action);
   };
 
-  const handleBulkAction = (action: LibraryBulkAction, value?: string) => {
+  const handleBulkAction = async (action: LibraryBulkAction, value?: string) => {
     try {
+      // Move previously only ever mutated local React state — it looked like
+      // it worked, but nothing was ever persisted, so a reload (or any other
+      // user's own session) showed every item back in its original folder.
+      // Real (server-backed) documents/folders now get a real API call first;
+      // fixture/demo items have no backend record to update, so they still
+      // only go through the local transform below.
+      if (action === 'move' && value) {
+        const realDocumentIds = [...librarySelection.documentIds].filter(isServerDocumentId);
+        const realFolderIds = [...librarySelection.folderIds].filter(isServerDocumentId);
+        for (const docId of realDocumentIds) {
+          const res = await apiClient.moveDocument(docId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to move a document',
+          }));
+          if (!res.success) return res.error || 'Failed to move a document';
+        }
+        for (const folderId of realFolderIds) {
+          const res = await apiClient.moveFolder(folderId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to move a folder',
+          }));
+          if (!res.success) return res.error || 'Failed to move a folder';
+        }
+      }
+
+      // Delete had the exact same "looks like it worked, nothing was ever
+      // persisted" problem as Move — a deleted item reappeared on reload.
+      // Real documents are deleted first; a real folder is only deletable
+      // once it's empty, so its own real documents/subfolders are cleared
+      // out first (deepest first, to avoid orphaning a subfolder whose
+      // parent got removed out from under it).
+      if (action === 'delete') {
+        const realSelectedDocumentIds = [...librarySelection.documentIds].filter(isServerDocumentId);
+        for (const docId of realSelectedDocumentIds) {
+          const res = await apiClient.deleteDocument(docId).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to delete a document',
+          }));
+          if (!res.success) return res.error || 'Failed to delete a document';
+        }
+
+        const realSelectedFolderIds = [...librarySelection.folderIds].filter(isServerDocumentId);
+        for (const folderId of realSelectedFolderIds) {
+          const treeFolderIds = [folderId, ...getDescendantFolderIds(folders, folderId)].filter(isServerDocumentId);
+          const treeDocumentIds = allDocuments
+            .filter((document) => treeFolderIds.includes(document.folderId) && isServerDocumentId(document.documentId))
+            .map((document) => document.documentId);
+          for (const docId of treeDocumentIds) {
+            const res = await apiClient.deleteDocument(docId).catch((err: any) => ({
+              success: false,
+              error: err.response?.data?.error || 'Failed to delete a document inside this folder',
+            }));
+            if (!res.success) return res.error || 'Failed to delete a document inside this folder';
+          }
+
+          const remaining = new Set(treeFolderIds);
+          while (remaining.size > 0) {
+            const leaves = [...remaining].filter((id) => !folders.some((f) => f.parentFolderId === id && remaining.has(f.folderId)));
+            if (leaves.length === 0) break; // guards against an unexpected cycle
+            for (const id of leaves) {
+              const res = await apiClient.deleteFolder(id).catch((err: any) => ({
+                success: false,
+                error: err.response?.data?.error || 'Failed to delete a folder',
+              }));
+              if (!res.success) return res.error || 'Failed to delete a folder';
+              remaining.delete(id);
+            }
+          }
+        }
+      }
+
       const currentState = { folders, documents: allDocuments };
       const nextState = action === 'copy'
         ? copyLibraryItems(currentState, librarySelection, value ?? '')
@@ -872,20 +995,31 @@ export function Documents() {
   const effectiveUploadCategory = uploadIsOtherCategory ? uploadCustomCategory.trim() : uploadCategory;
   const uploadIsOtherDepartment = uploadDepartment === 'Other';
   const effectiveUploadDepartment = uploadIsOtherDepartment ? uploadCustomDepartment.trim() : uploadDepartment;
-  const uploadIsOtherTag = uploadTags === 'OTHER';
-  const uploadTagList = uploadIsOtherTag
-    ? uploadCustomTags.split(',').map((t) => t.trim()).filter(Boolean)
-    : (uploadTags ? [uploadTags] : []);
-  const isUploadFormValid = Boolean(
-    uploadDescription.trim()
-    && uploadTagList.length > 0
-    && uploadVersionLabel.trim()
-    && uploadCategory
-    && (!uploadIsOtherCategory || uploadCustomCategory.trim())
-    && uploadOwnerId
-    && uploadDepartment
-    && (!uploadIsOtherDepartment || uploadCustomDepartment.trim())
-  );
+  const uploadIsOtherTag = uploadTags.includes('OTHER');
+  const uploadTagList = [
+    ...uploadTags.filter((tag) => tag !== 'OTHER'),
+    ...(uploadIsOtherTag ? uploadCustomTags.split(',').map((t) => t.trim()).filter(Boolean) : []),
+  ];
+  const toggleUploadTag = (value: string) => {
+    setUploadTags((current) => (current.includes(value) ? current.filter((t) => t !== value) : [...current, value]));
+  };
+  const uploadMissingFields = {
+    description: !uploadDescription.trim(),
+    version: !uploadVersionLabel.trim(),
+    category: !uploadCategory || (uploadIsOtherCategory && !uploadCustomCategory.trim()),
+    owner: !uploadOwnerId,
+    department: !uploadDepartment || (uploadIsOtherDepartment && !uploadCustomDepartment.trim()),
+  };
+  const uploadMissingFieldLabels: Record<keyof typeof uploadMissingFields, string> = {
+    description: 'Description',
+    version: 'Version',
+    category: 'Document Category',
+    owner: 'Owner',
+    department: 'Department',
+  };
+  const isUploadFormValid = !Object.values(uploadMissingFields).some(Boolean);
+  const fieldError = (field: keyof typeof uploadMissingFields) =>
+    uploadValidationAttempted && uploadMissingFields[field] ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/20' : '';
 
   const handleUploadDocument = async (action: 'draft' | 'submit') => {
     if (!selectedFolder) {
@@ -897,7 +1031,11 @@ export function Documents() {
       return;
     }
     if (!isUploadFormValid) {
-      showError('Please fill in description, tags, version, category, owner, and department');
+      setUploadValidationAttempted(true);
+      const missingLabels = (Object.keys(uploadMissingFields) as Array<keyof typeof uploadMissingFields>)
+        .filter((field) => uploadMissingFields[field])
+        .map((field) => uploadMissingFieldLabels[field]);
+      showError(`Please fill in the required field${missingLabels.length > 1 ? 's' : ''}: ${missingLabels.join(', ')}`);
       return;
     }
 
@@ -1001,7 +1139,11 @@ export function Documents() {
             // beats Docling's generic markdown dump — e.g. the xlsx parser preserves
             // every sheet as its own switchable tab, while Docling flattens a workbook
             // to a single crude markdown table and silently drops every sheet but one.
-            uploadedDocument.preview = nativePreview;
+            // Images are the one case where both are kept: the native <img> preview
+            // for viewing, plus Docling's OCR text so the preview can be searched.
+            uploadedDocument.preview = nativePreview.kind === 'image' && parsedContent
+              ? { ...nativePreview, ocrText: parsedContent }
+              : nativePreview;
             if (parsedContent) {
               uploadedDocument.fallbackDownload = {
                 fileName: `${uploadFile.name.replace(/\.[^/.]+$/, '')}.md`,
@@ -1055,7 +1197,7 @@ export function Documents() {
       if (errors.length === 0) {
         setShowUploadModal(false);
         setUploadFiles([]);
-        setUploadTags('');
+        setUploadTags([]);
         setUploadCustomTags('');
         setUploadVersionLabel('');
         setUploadCategory('');
@@ -1063,6 +1205,7 @@ export function Documents() {
         setUploadDepartment('');
         setUploadCustomDepartment('');
         setUploadApprovalNotes('');
+        setUploadValidationAttempted(false);
         void refreshServerDocuments(folders);
       }
     } finally {
@@ -1083,6 +1226,7 @@ export function Documents() {
     setUploadFileName(files.length === 1 ? splitFileName(files[0].name).base : '');
     setUploadProgress({ complete: 0, total: files.length });
     setUploadOwnerId(DEV_USER_ID);
+    setUploadValidationAttempted(false);
     setShowUploadModal(true);
   };
 
@@ -1092,7 +1236,7 @@ export function Documents() {
     setUploadFiles([]);
     setUploadDescription('');
     setUploadFileName('');
-    setUploadTags('');
+    setUploadTags([]);
     setUploadCustomTags('');
     setUploadVersionLabel('');
     setUploadCategory('');
@@ -1100,6 +1244,7 @@ export function Documents() {
     setUploadDepartment('');
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
+    setUploadValidationAttempted(false);
   };
 
   return (
@@ -1160,6 +1305,17 @@ export function Documents() {
           </div>
         </div>
 
+        {showOnlyMySubmissions && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#dbe2ec] bg-[#eef4fb] px-4 py-2.5 dark:border-white/10 dark:bg-[#3f8bca]/10 sm:px-6">
+            <p className="text-sm text-[#2f6f9f] dark:text-[#8fc4ea]">
+              Showing only documents <strong>you submitted</strong> that are still pending review, across every folder.
+            </p>
+            <button type="button" onClick={clearMySubmissionsFilter} className="text-sm font-medium text-[#3f8bca] hover:underline">
+              Clear filter — show folders
+            </button>
+          </div>
+        )}
+
         {/* Documents Table and Filters */}
         <div className="flex-1 overflow-y-auto">
           <Card className="m-3 min-w-0 overflow-hidden sm:m-4">
@@ -1168,10 +1324,11 @@ export function Documents() {
               <select className="field-control h-9 w-full sm:w-[150px]" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter documents by status">
                 <option value="">All statuses</option>
                 <option value="draft">Draft</option>
-                <option value="pending_approval">In Review</option>
+                <option value="qa_review">QA Review</option>
+                <option value="manager_review">Manager Review</option>
+                <option value="correction_in_progress">Correction Needed</option>
+                <option value="qa_final_review">Final Review</option>
                 <option value="released">Released</option>
-                <option value="rejected">Rejected</option>
-                <option value="archived">Archived</option>
               </select>
               <div className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
                 <LibraryBulkActions
@@ -1383,27 +1540,42 @@ export function Documents() {
                   onChange={(e) => setUploadDescription(e.target.value)}
                   placeholder="Describe the purpose and content of these documents..."
                   disabled={isUploading}
-                  className="field-control min-h-[60px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                  className={`field-control min-h-[60px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500 ${fieldError('description')}`}
                 />
+                {uploadValidationAttempted && uploadMissingFields.description && (
+                  <p className="text-xs text-red-500">Description is required.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label htmlFor="upload-tags" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
-                    Tags <span className="text-red-500">*</span>
+                  <label className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                    Tags <span className="text-xs font-normal text-[#8ea0ba]">(Optional)</span>
                   </label>
-                  <select
-                    id="upload-tags"
-                    value={uploadTags}
-                    onChange={(e) => setUploadTags(e.target.value)}
-                    disabled={isUploading}
-                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
-                  >
-                    <option value="">Select a tag...</option>
-                    {uploadTagOptions.map((tag) => (
-                      <option key={tag.value} value={tag.value}>{tag.label}</option>
-                    ))}
-                  </select>
+                  <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-[4px] border border-[#dbe2ec] bg-white p-2 dark:border-white/10 dark:bg-slate-900">
+                    {uploadTagOptions.length === 0 && (
+                      <span className="px-1 py-0.5 text-xs text-[#8ea0ba]">No tags configured yet</span>
+                    )}
+                    {uploadTagOptions.map((tag) => {
+                      const isSelected = uploadTags.includes(tag.value);
+                      return (
+                        <button
+                          key={tag.value}
+                          type="button"
+                          disabled={isUploading}
+                          onClick={() => toggleUploadTag(tag.value)}
+                          aria-pressed={isSelected}
+                          className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            isSelected
+                              ? 'border-[#3f8bca] bg-[#3f8bca]/10 text-[#2b6ca3] dark:border-[#3f8bca] dark:bg-[#3f8bca]/20 dark:text-[#8fc4ea]'
+                              : 'border-[#dbe2ec] bg-white text-[#52627a] hover:border-[#3f8bca]/50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {tag.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {uploadIsOtherTag && (
                     <input
                       type="text"
@@ -1412,9 +1584,10 @@ export function Documents() {
                       placeholder="Specify tags, comma-separated..."
                       autoFocus
                       disabled={isUploading}
-                      className="mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                      className="mt-1 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
                     />
                   )}
+                  <p className="text-xs text-[#718198]">Select any number of tags, or none.</p>
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="upload-version" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
@@ -1427,9 +1600,13 @@ export function Documents() {
                     onChange={(e) => setUploadVersionLabel(e.target.value)}
                     placeholder="e.g. v1.0, Rev A"
                     disabled={isUploading}
-                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                    className={`field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500 ${fieldError('version')}`}
                   />
-                  <p className="text-xs text-[#718198]">Shown when viewing the file.</p>
+                  {uploadValidationAttempted && uploadMissingFields.version ? (
+                    <p className="text-xs text-red-500">Version is required.</p>
+                  ) : (
+                    <p className="text-xs text-[#718198]">Shown when viewing the file.</p>
+                  )}
                 </div>
               </div>
 
@@ -1443,7 +1620,7 @@ export function Documents() {
                     value={uploadCategory}
                     onChange={(e) => setUploadCategory(e.target.value)}
                     disabled={isUploading}
-                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                    className={`field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white ${fieldError('category')}`}
                   >
                     <option value="">Select a category...</option>
                     {uploadCategoryOptions.map((cat) => (
@@ -1458,8 +1635,11 @@ export function Documents() {
                       placeholder="Specify the category..."
                       autoFocus
                       disabled={isUploading}
-                      className="mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                      className={`mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500 ${fieldError('category')}`}
                     />
+                  )}
+                  {uploadValidationAttempted && uploadMissingFields.category && (
+                    <p className="text-xs text-red-500">{uploadIsOtherCategory ? 'Please specify the category.' : 'Document Category is required.'}</p>
                   )}
                 </div>
 
@@ -1472,7 +1652,7 @@ export function Documents() {
                     value={uploadDepartment}
                     onChange={(e) => setUploadDepartment(e.target.value)}
                     disabled={isUploading}
-                    className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                    className={`field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white ${fieldError('department')}`}
                   >
                     <option value="">Select a department...</option>
                     {uploadDepartmentOptions.map((dept) => (
@@ -1487,8 +1667,11 @@ export function Documents() {
                       placeholder="Specify the department..."
                       autoFocus
                       disabled={isUploading}
-                      className="mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
+                      className={`mt-2 field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500 ${fieldError('department')}`}
                     />
+                  )}
+                  {uploadValidationAttempted && uploadMissingFields.department && (
+                    <p className="text-xs text-red-500">{uploadIsOtherDepartment ? 'Please specify the department.' : 'Department is required.'}</p>
                   )}
                 </div>
               </div>
@@ -1502,13 +1685,16 @@ export function Documents() {
                   value={uploadOwnerId}
                   onChange={(e) => setUploadOwnerId(e.target.value)}
                   disabled={isUploading}
-                  className="field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                  className={`field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white ${fieldError('owner')}`}
                 >
                   {allUsers.length === 0 && <option value={uploadOwnerId}>Loading users...</option>}
                   {allUsers.map((u) => (
                     <option key={u.userId} value={u.userId}>{u.fullName}</option>
                   ))}
                 </select>
+                {uploadValidationAttempted && uploadMissingFields.owner && (
+                  <p className="text-xs text-red-500">Owner is required.</p>
+                )}
               </div>
 
               {/* No Document ID field here at all, for anyone including Admin — the system
@@ -1547,16 +1733,14 @@ export function Documents() {
                 <Button
                   variant="secondary"
                   onClick={() => handleUploadDocument('draft')}
-                  disabled={uploadFiles.length === 0 || !isUploadFormValid || isUploading}
-                  title={!isUploadFormValid ? 'Please fill in description, tags, version, category, owner, and department' : ''}
+                  disabled={uploadFiles.length === 0 || isUploading}
                   className="flex-1"
                 >
                   {isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Saving...') : 'Save as Draft'}
                 </Button>
                 <Button
                   onClick={() => handleUploadDocument('submit')}
-                  disabled={uploadFiles.length === 0 || !isUploadFormValid || isUploading}
-                  title={!isUploadFormValid ? 'Please fill in description, tags, version, category, owner, and department' : ''}
+                  disabled={uploadFiles.length === 0 || isUploading}
                   className="flex-1"
                 >
                   {isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : 'Submit'}

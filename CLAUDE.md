@@ -3,13 +3,222 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-08-05
+**Current Date:** 2026-08-06
 
 **Working Directory:** `d:\Si ware\DMS - Final`
 
 **Active Branch:** `Main`
 
-**Status:** Session 29 — built out the entire Admin Panel "Database" page from scratch (real `pg_dump`-backed backup/restore, per-module Clear Data, System Controls, Scheduled Backups to MinIO), a real Notification Configuration page (Gmail App Password / Google Workspace SMTP Relay), a real Platform Settings page (General/Login Page/Header/Security) actually wired into the live Login page and Sidebar, and a real in-modal Docling-powered "Review" for any historical document version. **New known issue:** a real "Clear All Data" action was executed against the live database mid-session, wiping every folder/document — see Session 29's own write-up below for the timeline and the untouched pre-wipe backup left in MinIO for recovery. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 33 — a long, screenshot-driven session that started from tiered folder-bypass permission flags and real Delete persistence, then moved into PDF preview UX and a deep, multi-round dig into the PCAR/Corrective Action and Document Workflow's actual coupling — found and fixed a real task-completion bug (correction tasks stayed "open" for as long as the document sat in later review stages, even after their own correction was already accepted) plus the missing manager/final-release notifications and a document-version/approval drift bug that made the Document Library show a stale, wrong workflow stage. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 33 (2026-08-06) — Tiered Folder-Bypass Flags, Real Delete Persistence, Continuous PDF Scroll, Task/Document-Workflow Coupling Fixes, Real PCAR QA Queue
+
+**Status:** ✅ Complete — every backend change rebuilt and live-verified via curl round-trips with real throwaway users/documents/tasks (cleaned up afterward in every case); every frontend change type-checked against a real `tsc --noEmit` run (not just `vite build`, which doesn't fully type-check) and redeployed.
+
+**Context:** Started from two small, unrelated asks (new tiered folder-access flags, and "deleted files/folders come back on refresh") and escalated — through direct user testing of the PCAR/Corrective Action page — into finding that the PCAR feature had never had a real reviewer queue at all, and then into a deeper realization that a *whole class* of PCAR tasks (ones spawned by a real Document Workflow rejection) shouldn't go through a PCAR-specific approval at all, since they already have their own real approval path that the app just wasn't respecting.
+
+### 1. Two new tiered folder-bypass permission flags
+Per explicit request ("read folders only" / "read and write folders only" access, applied to *every* role as new checkboxes — not new roles): added `CanReadAllFolders`/`CanReadWriteAllFolders` to `dms_page_access_roles` (migration `068`) — weaker versions of the existing `BypassFolderPermissions` ("Full Access to All Folders"), granting automatic Reader/Writer-tier visibility on every folder with no per-folder grant needed, capped short of Admin (no delete, no permission management). Wired into `BaseController.GetEffectiveRoleAsync`/`GetAccessibleFolderIdsAsync`/`HasFolderReadAccessAsync` and `RBACMiddleware.ResolveEffectiveFolderRoleAsync` — unlike the full bypass (which returns `null`/skips override checks entirely), these two still go through the existing Deny-override subtraction, so an explicit Deny still wins. Shown on every role card as "Read Only to all folder" / "Read and Write only to all folder" (iterated on the exact label wording per follow-up).
+
+### 2. Real bug: Delete (files and folders) never actually persisted — found live by the user
+Same class of bug Move had before Session 31: Delete via the Document Library's bulk-action system was 100% client-side React state — deleting looked instant but a refresh brought everything back. Fixed in `Documents.tsx`'s `handleBulkAction`: real documents are deleted via `apiClient.deleteDocument` before real folders, and folders are deleted deepest-first (the backend rejects deleting a non-empty folder) using `getDescendantFolderIds`. **Known remaining gap:** Copy and Rename via this same bulk-action path are still client-side-only — not in scope for this session's report, flagged for a future session same as Move/Delete were.
+
+### 3. Real bug: Manager (non-admin) upload silently "failed" while the file still appeared
+Root-caused to `RBACMiddleware.CheckDocumentPermissions` mapping *every* `POST .../upload` to the `UploadUpdatedFile` override action — including the very first upload that attaches a brand-new document's initial version. A user granted only `Write` (enough to create the document row) but not the separate `UploadUpdatedFile` action got the document created as an empty "Draft" with no file ever attached, while the toast showed a permission error. Fixed by detecting `isFirstVersionUpload` (`!document.CurrentVersionId.HasValue`) and gating that specific case on `Write` instead — verified live with a real throwaway override-restricted user: first upload succeeds with Write alone, a genuine replacement upload is still correctly rejected without `UploadUpdatedFile`.
+
+### 4. PDF/Office preview — continuous scroll instead of one-page-at-a-time
+`PdfJsViewer.tsx` was rewritten from a single-page-render-and-swap model to a stacked, lazily-rendered continuous-scroll view (`IntersectionObserver`-gated per-page rendering, so a large document doesn't render every page up front) — per explicit request to scroll through a multi-page Word-to-PDF preview without clicking the toolbar's arrow buttons. Preserved: fit-to-width zoom, full-document search with match highlighting/jump-to-match, the two previously-fixed render-cancellation and `--scale-factor` CSS bugs, and the `PdfJsViewerHandle`/`onMatchInfoChange`/`onReady`/`onError` contract `DocumentPreview.tsx` depends on. Toolbar Prev/Next now smooth-scroll to the target page instead of switching a single rendered page.
+
+### 5. Document Library table polish
+- **Doc ID column**: was truncated with a click-to-expand popover; switched to always showing the full ID (wrapping to a second line if needed, same pattern as Department/Owner), and widened the column.
+- **Status badge clipping**: "Correction Needed" was visually cut off/overlapping the Actions column because the Status column was too narrow for that label with `whitespace-nowrap` — widened the column.
+- **"Actions" header alignment**: was right-aligned while every other header was left-aligned — made consistent.
+
+### 6. Real bug: a task's assignee couldn't view/download/edit their own assigned document
+`Tasks.tsx`'s "Linked Document" panel resolved the file from the same folder-scoped `GET /api/documents` list the Document Library uses — an assignee with zero folder-browsing grant on that folder saw nothing at all, even though the task itself was legitimately assigned to them. Added `GET /api/tasks/{id}/document` (assignee/manager/`CanManageAllTasks` only, still subject to an explicit Deny override) as a fallback in `Tasks.tsx`, plus a matching, narrowly-scoped bypass in `RBACMiddleware.CheckDocumentPermissions`: a user with an open task assigned to them (directly or via group) can View/Download/Download-for-Editing(checkout)/Upload-Updated-File/release-that-checkout on the specific linked document even with no folder grant — never rename/delete/manage-permissions, and an explicit Deny override still wins. Live-verified all four actions plus the Deny-override guard with a real throwaway user/task.
+
+### 7. Real bug: Admin (or anyone with AdminForceUnlock) could silently bypass another user's checkout lock
+`DocumentsController.UploadVersion`/`RevertToVersion` let a caller with the `AdminForceUnlock` role permission or an `Unlock` override upload/revert straight through someone else's active lock — the *capability* to force-unlock was silently substituting for actually doing it. Removed that exception entirely: only the lock holder can upload/revert while locked; anyone else, including a Full-Access admin, must call the real `POST .../force-unlock` endpoint first (itself audited and notifies the document owner). Verified live: admin blocked (423) while another user held the lock → admin force-unlocks → upload then succeeds.
+
+### 8. Real PCAR QA review queue built (previously entirely cosmetic)
+The PCAR page's "Submit for approval" button + "QA Lead — pending / Plant Manager — waiting" panel had no backend behind it at all — clicking Submit just set `status = 'in_progress'` via the generic task-update endpoint with the RCA/correction/preventive text string-concatenated into `description` (the literal cause of a real "Issue: Issue: Issue: ..." duplication bug reported live, since nothing stopped clicking Submit repeatedly). Per explicit request, built a real queue:
+- Migration `069`: `correction_text`, `qa_review_notes`, `qa_reviewed_by_id`, `qa_reviewed_at` on `dms_tasks`.
+- `TaskService.SubmitPcarAsync`/`GetPcarReviewQueueAsync`/`ApprovePcarAsync`/`RejectPcarAsync` + matching `TasksController` endpoints (`POST {id}/submit-pcar`, `GET pcar-review-queue`, `POST {id}/qa-approve`, `POST {id}/qa-reject`) — reviewer endpoints gated on the existing `CanApprove`/`CanReject` page-access flags (same ones the Document Workflow already uses), decoupled from folder permissions.
+- Frontend: a "QA Review Queue" tab (visible only to `CanApprove` roles) alongside "My PCARs"; Submit is blocked once already `submitted`/`completed` (fixing the duplication bug at the source, not just cosmetically); Reject requires notes, which the assignee then sees on their own task and can revise/resubmit against.
+- Live-verified the full lifecycle: submit → blocked double-submit → reviewer queue visibility → 403 for a non-reviewer → reject-with-notes → assignee sees notes → resubmit → approve → task closes.
+
+### 9. Real bug: Document Library showed a stale/wrong workflow stage after re-upload
+Root-caused via a real user report ("QA already accepted this and it's with the Manager, but the status hasn't changed and the Manager got no notification") to two independent bugs:
+- **Version drift**: `dms_approval_documents.VersionId` is a point-in-time snapshot of whichever version was under review — the task-resubmit and Manager-self-correct paths already knew to re-point it at a freshly-uploaded version, but the *generic* "just attach a new version" endpoints (`DocumentsController.UploadVersion`/`RevertToVersion`) never did. Any document re-uploaded through the Document Library directly (not via a task correction) while an approval was still active drifted `CurrentVersionId` away from what the approval row pointed at, so the Document Library's stage lookup (keyed by `CurrentVersionId`) found no match and silently fell back to a stale default label — even though the real stage had already advanced. Fixed: both endpoints now re-point any non-`approved` `ApprovalDocuments` row's `VersionId` at the new version. Repaired the real, already-drifted production row directly.
+- **Missing stage notifications**: every stage-advancing action (`QaAcceptAsync`, `ManagerApproveAsync`, `ManagerSelfCorrectAsync`) only ever notified the original document *submitter* — nobody at the next stage was ever told a document had landed in their queue. Added `NotifyStageReviewersAsync` (notifies every active user whose page-access role can view the target stage) and wired it into all three transitions.
+
+### 10. Real bug: a legacy task got permanently orphaned by the new PCAR queue, plus an over-broad lock condition
+A real task pre-dating the Session 33 PCAR queue was stuck at `status = 'in_progress'` (the old flow's value) — since the new reviewer queue only watches for `'submitted'`, this task could never reach any reviewer, yet the UI showed it as if "already submitted." Repaired the one affected row (`status` back to `'open'`) and narrowed `Tasks.tsx`'s `pcarAlreadySubmitted` gate from "any status but open" to specifically `'submitted' | 'done'` — `'in_progress'` is also a legitimate, unrelated manual work-status a task can carry (see `UpdateTaskAsync`), so the broad check was wrongly locking out tasks that never actually went through Submit at all.
+
+### 11. Real design gap: correction tasks were made to go through a second, redundant approval
+Direct user pushback ("this task came from a real QA rejection — QA already approved the fix and it's with the Manager, why does it still need its *own* Submit/approval?") surfaced that a correction task spawned by a real Document Workflow rejection (`ApprovalId` set) already has a real, independent approval path — running it through the new PCAR Submit/QA-Review-Queue cycle *on top of that* was pure redundant friction with no real reviewer on the other end for that specific case. Fixed:
+- `needsCorrectionUpload` (the "upload the corrected file before you can submit" gate) is now keyed on `approvalId`, not merely having a linked `documentId` — a self-filed PCAR that just references a document for context was being wrongly blocked from ever submitting.
+- For a task with a real `approvalId`, the PCAR page now shows a **"Document Workflow"** status panel (explaining it closes automatically when the document is released) and a **"Save Documentation"** button instead of "Submit for approval"/"QA Review" — RCA/Correction/Preventive fields are optional documentation there, saved via the plain task-update endpoint with no separate approval gate. The real QA Review Queue built in item 8 now applies only to genuinely self-filed PCARs with no linked approval.
+- **Real bug found in the same investigation**: a correction task only ever auto-completed when its document reached *Final Release* — even after the specific rejection that spawned it had already been accepted and moved on (e.g., QA accepted it and it's sitting in Manager Review for whoever-knows-how-long). Added task auto-completion to `QaAcceptAsync`/`ManagerApproveAsync`/`ManagerSelfCorrectAsync` (a shared `CompleteOpenTasksForApprovalAsync` helper) — a correction task now closes the moment the stage that rejected it accepts the fix, not only as a last-resort safety net at Final Release (which remains, now just as that fallback). Repaired the real task this was found on (already-accepted correction, marked `completed` retroactively) — its "Download for Editing"/"Upload Updated File" buttons (already gated on the same lock condition) correctly disable now that it's closed.
+
+### Files created
+`infra/db/init/068_page_access_role_folder_bypass_tiers.sql`, `069_task_pcar_review.sql`
+
+### Files modified
+`api/Controllers/{ApprovalsController,BaseController,DocumentsController,PageAccessRolesController,TasksController}.cs`, `api/Middleware/RBACMiddleware.cs`, `api/Models/{DmsPageAccessRole,DmsTask}.cs`, `api/Services/{AuditService,TaskService}.cs`, `web/src/components/custom/{DocumentList,PdfJsViewer,RolePermissions}.tsx`, `web/src/components/pages/{Documents,Tasks}.tsx`, `web/src/hooks/usePageAccess.ts`, `web/src/types/index.ts`, `web/src/utils/api.ts`
+
+### Verification
+- Every backend change verified against the **live** running API with real curl round-trips using real throwaway users/roles/documents/tasks/overrides for every permission edge (including the Deny-override guard on the task-linked-document bypass, the force-unlock requirement, and the full PCAR submit→reject→resubmit→approve lifecycle) — all test data cleaned up afterward in every case.
+- Every frontend change verified with a real `npx tsc --noEmit` run inside a built Docker build-stage image (not just `vite build`, which only transpiles and would miss real type errors) — confirmed only the four pre-existing, unrelated errors remained each time (`ocrText` in `DocumentPreview.tsx`, `unreadCount` in `NotificationsBell.tsx`, `canEditFiles` in `RolePermissions.tsx` ×2, a pre-existing `PendingApprovalItem` narrowing issue in `Dashboard.tsx`).
+- `docker compose build --pull=false api web` clean after every change (one transient registry TLS hiccup mid-session, resolved by retrying); both containers rebuilt and confirmed `healthy` repeatedly throughout.
+- Two real production data rows were repaired directly as part of root-causing live bugs (a drifted `ApprovalDocuments.VersionId`, and a task stuck in a state the new queue could never reach) — both confirmed correct via a fresh GET after the repair.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- Copy and Rename via the Document Library's bulk-action system are still client-side-only (Move and Delete are now both real; see item 2).
+- The four pre-existing TypeScript errors flagged in Verification above remain unfixed — not in scope for this session, tracked across several prior sessions already.
+
+---
+
+## Session 32 (2026-08-05) — Dashboard Card Deep-Linking, Real "Awaiting My Approval" Data
+
+**Status:** ✅ Complete — every fix rebuilt and redeployed, confirmed against the exact screenshot/report that surfaced it.
+
+**Context:** A short, sharp follow-up to Session 31's Dashboard work — the user immediately caught that the "My Submitted Documents" *stat card* (as opposed to the panel's "View all" link, fixed in Session 31) still went to an unfiltered library, which led to auditing every Dashboard card's click target and finding one of them was built on entirely fake data.
+
+### 1. "My Submitted Documents" stat card still missing `?mine=1`
+Session 31 added the real cross-folder filtered view (`/documents?mine=1`) to the panel's "View all" link and each row, but the stat card itself (the big number at the top) was never updated and still called `navigate('/documents')` — landing on whatever folder happened to be selected, not the filtered list. Fixed to match.
+
+### 2. Real bug: "Awaiting My Approval" was built on a fake, disconnected legacy endpoint
+Investigating why clicking a specific document in this panel opened the wrong thing (a single unrelated document in a normal folder view, not a deep link) traced back to `GET /api/documents/pending-approvals/list` — an old `ApprovalService.GetPendingApprovalsAsync` query that just lists *any* document with the generic `Status == "pending_approval"`, completely separate from the real C-Doc Workflow tables (`dms_approvals`/`dms_approval_documents`). It fabricates `ApprovalId = DocumentId` and never returns which stage (QA/Manager/Final) the document is actually in — so a deep link built from this data could never point at a real approval record or the correct tab.
+- **Fixed properly, not patched**: Dashboard now fetches the same three real queue endpoints the Document Workflow page itself uses (`qa-review-queue`/`manager-review-queue`/`final-release-queue`), flattens them into one list with each item's *real* `approvalId`, `documentId`, and stage. A role without access to a given stage just gets an empty list for it (403 handled the same graceful way as any other failed dashboard call), not an error banner.
+- Clicking the stat card, "View all", or any individual row now navigates to `/approvals?tab=<stage>&approvalId=...&documentId=...`.
+- `Approvals.tsx` (Document Workflow) gained the corresponding read side: on load it honors `?tab=` to pick the right stage tab (falling back to the role's first visible tab as before), and `?approvalId=&documentId=` to open the Review modal immediately — both query params are cleared from the URL when the modal closes so navigating back doesn't reopen it.
+
+### 3. Same fix applied to the other Dashboard cards, per explicit "fix all cards" request
+Auditing every card's `action`/row-click turned up the identical shallow-link pattern elsewhere, even though the target pages already supported real deep-linking:
+- **My Open Tasks / My Overdue Tasks** (stat cards) and every row in the **My Tasks** panel — now navigate to `/tasks?highlight=<taskId>` (for the stat cards, the first matching open/overdue task) instead of a bare `/tasks`. `Tasks.tsx` already had full support for `?highlight=` from an earlier session; it just was never actually used by the Dashboard.
+- **My Checked-Out Docs** — now navigates to `/documents?preview=<id>` for the actual checked-out document instead of a bare `/documents`.
+
+### Files modified
+`web/src/components/pages/{Dashboard,Approvals}.tsx`
+
+### Verification
+- Confirmed live via curl that the three real queue endpoints return the exact shape assumed (`approvalId`, `createdBy`, `documents[0].{documentId,fileName,ownerName}`), matching what Session 31 had already verified for the Document Workflow page itself.
+- `docker compose build --pull=false web` clean; container rebuilt and confirmed `healthy` after each change.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- The legacy `pending-approvals/list` endpoint (`ApprovalService.GetPendingApprovalsAsync`) is now unused by the Dashboard but still exists and is still called by `bulk-approve`/`bulk-reject`/`bulk-download` in `DocumentsController` — left alone since those weren't in scope this session, but worth revisiting given it's built on the same disconnected, non-real approval model.
+
+---
+
+## Session 31 (2026-08-05) — Critical Folder-Visibility Deny Bug, Document Workflow Permission Enforcement, Real Move Persistence
+
+**Status:** ✅ Complete — every backend change verified live via curl against the running containers (including a full move → verify-persisted → move-back round trip for both a real document and a real folder), every frontend change rebuilt and redeployed.
+
+**Context:** A rapid, screenshot-driven session that started from small cosmetic asks (rename a nav label, fix a misleading Dashboard title) and escalated — through the user directly testing a second account's real permissions — into finding and fixing the session's most serious bug: Move in the Document Library never actually persisted anything.
+
+### 1. "C-Doc Workflow" renamed to "Document Workflow"
+Per explicit request, renamed everywhere it's user-visible: the sidebar link, the page's own `<h1>` heading, its empty-state message, the "Approvals (C-Doc Workflow)" permission label and role-card description text, and the "C-Doc Workflow access" section headers in the role edit modal (`RolePermissions.tsx`).
+
+### 2. Dashboard "My Submissions" — real status instead of a guess, then renamed twice per follow-up
+- The panel's per-document status line (`reviewStageFor`) was a crude guess — `doc.department === 'Quality Assurance' ? 'Awaiting QA review' : 'Awaiting manager review'` — with no relationship to the document's actual stage. Replaced with the same real stage resolution (`resolveLibraryStatus` + `statusLabels`) already used everywhere else, so it always agrees with the Document Library/Preview/Search.
+- Per explicit follow-up ("the title is misleading" — a document showing "Correction Needed" contradicts a panel titled "...in Review"), renamed "My Submissions in Review" → "My Submissions" → **"My Submitted Documents"** (final), with the stat card's detail text also fixed to stop asserting "With manager/QA" when some items are actually sitting back with the submitter needing a fix (shows "X need correction" in red instead, when applicable).
+
+### 3. "View all" now shows a real, filtered, full-featured Document Library view
+Clicking "View all" previously just navigated to a plain `/documents`. Per explicit request, it now opens the real Document Library (full preview/details/search/columns intact) pre-filtered to only the current user's own pending submissions, across every folder — a new `?mine=1` query param on `/documents` that bypasses the normal per-folder scoping, with a dismissible banner ("Clear filter — show folders") to return to normal browsing. **Real bug found immediately after shipping**: the filter checked for the literal API status `pending_approval`, but `allDocuments` in this component already carries the *resolved* stage-specific status by the time it's stored in state — so the filter matched nothing. Fixed to match any of the four real in-pipeline statuses (`qa_review`/`manager_review`/`correction_in_progress`/`qa_final_review`).
+
+### 4. Critical bug: an explicit Deny-Read override was silently ignored for folder visibility
+User (a real "Manager"-role account, not Full Access) reported seeing and fully browsing a folder's documents in the Document Library despite having an explicit **Deny Read** override on that exact folder, set from the Folder Permissions modal. Root-caused in `BaseController.GetAccessibleFolderIdsAsync`: the function that computes "which folders can this user see" only ever *added* visibility sources together (per-folder role grants ∪ Allow-override grants) — it never checked whether a Deny override should *remove* a folder the user already saw via an existing grant (in this case, an Admin grant from being the folder's own creator). The per-action permission checks (upload, rename, delete, ...) already correctly enforced the Deny; only the *listing/browsing* visibility computation was blind to it. **Fixed**: after computing the additive visible-folder set, now subtracts any folder where `AccessOverrideService.ResolveAsync(..., Read, ...)` resolves to deny for that user — confirmed against the exact real database row that caused it (a folder-role Admin grant + a direct Deny-Read override on the same folder for the same user) before and after the fix.
+
+### 5. Document Workflow (approve/reject) — Deny override now also applies, per explicit follow-up
+`CanApprove`/`CanReject`/stage-view access are deliberately decoupled from folder permissions by design (a reviewer needs to act on whatever lands in their queue) — explained this as intentional, then the user explicitly asked for a Deny override to be able to override that too. Added a new shared `BaseController.HasFolderReadAccessAsync` (single-folder version of the fix in §4) and wired it into: all three stage queues (`qa-review-queue`/`manager-review-queue`/`final-release-queue`, filtered at the query level so pagination/totalCount stay correct), the single-document detail endpoint (`GET /{approvalId}/documents/{documentId}`, used by the Review modal), and all seven action endpoints (QA Accept/Request-Correction, Manager Approve/Reject/Self-Correct, Final Release/Final-Reject) — a user with an explicit Deny on a folder now can't see or act on that folder's documents anywhere in Document Workflow either, verified live against a real Full-Access account (unaffected, still bypasses everything) after the change.
+
+### 6. Approve/Reject buttons now reflect real permissions instead of only failing after a click
+User found that unchecking "Can Approve" on a role left the "Confirm Approve" button (and every other approve/reject action button) still clickable in `ApprovalDetailView.tsx` — it only failed with a red error banner *after* being clicked, since the component never actually checked the caller's own permissions. Fixed by wiring in `usePageAccess()` and gating every entry-point button (Accept/Approve/Final-Release on `canApprove`; Request-Correction/Reject-task/Reject-Fix-Myself on `canReject`) *and* every corresponding `DecisionForm`/`CorrectionTaskForm` submit button independently (`submitDisabled`/`submitTitle`), so a form already open when a role's permission changes can't be submitted either — not just the initial entry buttons.
+
+### 7. Biggest find: Move (documents and folders) never actually persisted anything
+User moved a real document as one account, found it missing from the same location when logged in as a different user, and found it had reverted back to its original folder even on the account that moved it. Root-caused: `Documents.tsx`'s entire bulk-action system (`handleBulkAction` → `documentLibraryOperations.ts`'s `copyLibraryItems`/`moveLibraryItems`/`deleteLibraryItems`/`renameLibraryItem`) — covering every Copy/Cut(Move)/Rename/Delete action, whether triggered via checkbox multi-select or a single row/folder's own three-dot menu — was, and had apparently remained since an earlier session's own "known follow-up" note, **100% client-side React state mutation with zero backend API calls**. It looked like it worked (the UI updated instantly) purely because the local state changed; a page reload or a different browser session re-fetched the untouched original data from the server.
+- Scoped the fix to **Move** specifically (what was reported) rather than all four operations — Copy/Rename/Delete via this same bulk-action path remain client-side-only and are flagged as a known, still-open gap below.
+- **Backend**: two new endpoints mirroring the exact permission checks already used to gate the *button* itself (so enabling/disabling the UI and what the server actually allows can never drift apart again):
+  - `POST /api/documents/{id}/move` — requires `FileCut` (adminBaseline, resolved via `AccessOverrideService`) on the source folder, and `Write`/Upload permission (same check `CreateDocument` already uses) on the destination.
+  - `POST /api/folders/{id}/move` — requires `Cut` (adminBaseline) on the folder itself, `CreateSubfolder` permission on the destination, and server-side cycle prevention (rejects moving a folder into itself or one of its own descendants — mirrors the frontend's existing `getInvalidDestinationIds` check, now also enforced server-side).
+  - Both audited (`DOCUMENT_MOVED`, `FOLDER_MOVED`).
+- **Frontend**: `LibraryBulkActions`' `onConfirm` prop (and its internal `confirm()` handler) converted from synchronous to `async`, with a busy state on the dialog's buttons during the API call. `handleBulkAction` now calls the new endpoints for every real (GUID-shaped ID) selected document/folder *before* applying the existing local state transform — a failed API call surfaces its real error and the local UI never claims the move succeeded when it didn't; a successful one still applies the same local transform as before for instant visual feedback, now backed by a real, persisted change.
+- Verified live end-to-end via curl: moved a real document to a different folder, confirmed via a **fresh** `GET /api/documents` call that the new `folderId` persisted (not just the initial response), moved it back; repeated the same round-trip for a real folder (including confirming the destination survives a fresh `GET /api/folders`), then restored original test data state.
+
+### Files created
+`infra/db/init/` — none (no schema changes this session)
+
+### Files modified (highlights)
+`api/Controllers/{BaseController,DocumentsController,FoldersController,ApprovalsController}.cs`, `api/Services/AuditService.cs`, `web/src/components/layout/Sidebar.tsx`, `web/src/components/pages/{Approvals,Dashboard,Documents}.tsx`, `web/src/components/custom/{RolePermissions,ApprovalDetailView,LibraryMenus}.tsx`, `web/src/utils/api.ts`
+
+### Verification
+- Every backend change verified against the **live** running API with real curl round-trips — the folder-visibility fix confirmed against the exact real database rows (grant + deny override) that caused the original bug report; the Document Workflow permission checks confirmed to still return full queues for a real Full-Access account (no regression) after adding the new filter; the Move endpoints confirmed via a genuine move → fresh-fetch-verify → move-back round trip for both a document and a folder, not just a single request/response check.
+- `docker compose build --pull=false api web` clean after every change (only pre-existing, unrelated compiler warnings); both containers rebuilt and confirmed `healthy` repeatedly throughout, with each fix redeployed and confirmed against the user's own follow-up screenshot before moving to the next item.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- Copy, Rename, and Delete via the Document Library's bulk-action system (`handleBulkAction`/`documentLibraryOperations.ts`) are **still entirely client-side/mock**, same as Move was before this session — only Move was fixed, since that's what was reported. These three carry the identical risk (looks like it worked, nothing persisted, reverts on reload/for other users) and should be fixed the same way in a future session.
+- `FoldersController.UpdateFolder` (rename/description/classification) still has **no permission check of any kind** — found while working in this area but out of scope for this session's fix; any authenticated user can currently rename or change the classification of any folder via a direct API call.
+
+---
+
+## Session 30 (2026-08-05) — Upload Validation, Optional Multi-Select Tags, Image Search, Task Reassignment Permission, Status Label Consolidation, Safer Version Restore/Doc ID Permissions/Clear Data Confirmation
+
+**Status:** ✅ Complete — every backend change verified live via curl (including a real permission round-trip for the new Doc ID and Reassign Tasks flags); every frontend change rebuilt and redeployed, each fix confirmed against the specific screenshot/report that surfaced it.
+
+**Context:** A fast-moving, screenshot-driven bug-fix session immediately following Session 29 — each item below was reported live by the user clicking through the features Session 29 had just built, not pre-planned.
+
+### 1. Upload form — required-field errors were invisible
+The Save as Draft/Submit buttons were simply `disabled` whenever a required field was empty, so clicking them while incomplete did nothing visible — the only feedback was a hover tooltip most users never see. Fixed: the buttons are always clickable now; clicking with missing fields shows a toast naming exactly which fields are missing and highlights each empty required field (red border + inline "X is required" text), reproducing the same validation React already had but never surfaced.
+
+### 2. Tags — made optional and multi-select
+Per explicit request: Tags is no longer a required field, and the single-select dropdown was replaced with a click-to-toggle multi-select chip list sourced from the Company Data tag list (plus an "Other" chip revealing a free-text field for ad-hoc tags) — any number of tags, or none, can be selected.
+
+### 3. Image previews gained real search
+Images had no search box at all in the preview header, since there was no extracted text to search against. Fixed: the image's own OCR/Docling-extracted text is now attached to its preview (captured at upload time; backfilled via a background, non-blocking Docling pass on reload for existing images) and rendered in a new "Extracted text (searchable)" panel under the image, with the same highlight/jump-to-match search already used for other document kinds. Per explicit follow-up, the search box now appears immediately when the preview opens (not gated on extraction finishing) — it shows "Indexing…" and disables prev/next until the text is ready, matching the PDF viewer's existing indexing-state pattern, instead of making the user wait with no search UI at all.
+
+### 4. New "Reassign Tasks / PCARs" role permission + inline Assignee editing
+The PCAR register's "Assigned To" column was pure read-only text even in inline-edit mode — there was no way to reassign an existing task to someone else at all. Added a full reassignment path:
+- `PUT /api/tasks/{id}` now accepts `assignedToId`/`assignedToGroupId`, validated (assignee exists and is active, or the group exists) and gated on a new, independently-grantable `CanReassignTasks` page-access-role flag (migration `066`) — separate from the broader `CanManageAllTasks`, which already implies it, same split pattern as `CanCreateTasks`. Notifies the new assignee(s) and logs a new `TASK_REASSIGNED` audit action.
+- Frontend: the register table's "Assigned To" cell becomes a merged Users+Groups `<select>` in edit mode for roles with the new permission; also fixed a real, separate pre-existing bug found while touching this code — the inline "Priority" edit sent a `priority` JSON key the backend's `UpdateTaskRequest` never recognized (it expects `riskSeverity`), so editing a task's priority inline silently did nothing server-side. Fixed by mapping the edit payload's keys correctly.
+- Live-verified: the new `canReassignTasks` flag round-trips correctly per role (seeded `true` only for Full Access, matching nothing else previously being able to reassign at all).
+
+### 5. Document status labels consolidated — fixed a real "In Review — QA" drift bug
+`DocumentPreview.tsx` had its own local copy of the status label map that had drifted from the one used everywhere else — it showed "In Review — QA" / "In Review — Manager" / "In Review — Final Release" while the Document Library table already correctly showed "QA Review" / "Manager Review" / "Final Review" for the exact same status codes. Root-cause fixed properly rather than patched in place:
+- `utils/documentStatus.ts` is now the single source for both label text and badge colors; the drifted duplicate maps in `DocumentPreview.tsx` and `DocumentList.tsx` were deleted in favor of importing from there.
+- Fixed the one real fallback gap: a submitted document whose specific stage can't be resolved yet now defaults to "QA Review" instead of surfacing the generic, meaningless "In Review" label — per explicit request, only six statuses should ever be user-visible: Draft, QA Review, Manager Review, Correction Needed, Final Review, Released (confirmed this already matches real backend behavior — any rejection at any stage already produces "Correction Needed" via a correction task, never a bare "Rejected").
+- Applied the same stage-resolution to the OCR/Metadata Search page and the shared `useAllDmsDocuments` hook, both of which were previously showing raw, unresolved status text (`"pending_approval"`/`"correction_in_progress".replace('_',' ')` with a lingering underscore bug); updated both pages' status filter dropdowns to list the real reachable statuses instead of non-functional "In Review"/"Rejected"/"Archived" options.
+
+### 6. Version History — two real fixes from direct testing
+- **Restore labeling**: reverting to an old version copied that version's label verbatim onto the new current version, so restoring `v1.0 — V2` produced a confusing `v3.0 — V2` that looked like an unrelated duplicate rather than a restore. Fixed: the new version's label now reads e.g. `V2 (Restored from v1.0)` — the row's own creation timestamp (already shown alongside the label) serves as the restore date/time, so it isn't duplicated in the label text itself.
+- **Office format review showed a placeholder instead of the real slide/page**: Session 29's in-modal "Review" used Docling's plain-markdown conversion for Office formats, which represents every embedded image as a literal `<!-- image -->` text placeholder — reproduced live on a `.pptx` with an embedded image. Fixed by switching Word/PowerPoint review to the same real-PDF pipeline (LibreOffice via the OCR sidecar) the main Document Library preview already uses, falling back to text-only extraction only if that sidecar is unreachable or conversion fails. Excel formats still use text/markdown extraction.
+
+### 7. Document ID resolution moved off a stale permission check + new dedicated flag
+"Generate from System" and manual Document ID entry at QA Triage were rejecting a real Full-Access admin with "Only QA or Admin can perform this action" — root-caused to `DocumentsController.RequireQaOrAdminAsync` still checking the old per-folder `dms_folder_permissions` role grant (requiring an explicit "QA"/"Admin" role on that *specific folder*), a leftover from before Session 27's redesign moved every other C-Doc Workflow action onto the page-access-role system. Fixed in two steps:
+- First pass: switched the check to the same `CanApprove && CanViewQaStage` boundary already used by the QA Accept action — verified live via curl (a real admin's `generate-doc-id` call succeeded where it previously 403'd).
+- Per explicit follow-up request, split further into its own independently-grantable `CanResolveDocumentId` flag (migration `067`), decoupled from `CanApprove`/`CanViewQaStage` entirely — shown as "Resolve Document ID (generate/enter at QA Triage)" under each role's "C-DOC WORKFLOW ACCESS" section, seeded `true` only for Full Access and Quality (the two roles that could already do this under the old combined check, so nobody's access silently regressed).
+
+### 8. Clear Data / Clear All Data — replaced native `confirm()` with a typed-confirmation modal
+Per explicit request to prevent a repeat of Session 29's real data-loss incident: both the per-module "Clear" buttons and "Clear All Data — Every Module" previously used the browser's native `window.confirm()` — exactly the kind of dialog that's easy to click through on reflex without reading. Replaced with a real styled modal (matching the existing "Delete User Permanently" pattern) that requires typing an exact confirmation word before the destructive button becomes clickable at all: `DELETE` for a single module, `DELETE ALL` for the "everything" button (deliberately a higher bar for the more dangerous action).
+
+### Files created
+`infra/db/init/066_page_access_role_reassign_tasks.sql`, `infra/db/init/067_page_access_role_resolve_document_id.sql`
+
+### Files modified (highlights)
+`api/Controllers/{DocumentsController,PageAccessRolesController,TasksController}.cs`, `api/Models/DmsPageAccessRole.cs`, `api/Services/{AuditService,TaskService}.cs`, `web/src/components/custom/{DatabaseBackup,DocumentList,DocumentPreview,RolePermissions,VersionHistoryModal}.tsx`, `web/src/components/pages/{Documents,Search,Tasks}.tsx`, `web/src/fixtures/documentLibrary.ts`, `web/src/hooks/{useAllDmsDocuments,usePageAccess}.ts`, `web/src/utils/{api,documentStatus}.ts`
+
+### Verification
+- Every new/changed backend endpoint verified against the **live** running API with real curl round-trips — the `canReassignTasks`/`canResolveDocumentId` flags confirmed to round-trip and seed correctly per role, and a real `generate-doc-id` call confirmed to succeed post-fix where it previously 403'd.
+- `docker compose build --pull=false api web` clean after every change; both containers rebuilt and confirmed `healthy` repeatedly throughout — each fix was rebuilt and redeployed individually as it was made, then confirmed against the user's follow-up screenshot before moving to the next item.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- Force Sign-Out and Restore from Backup still use the native `window.confirm()` — only Clear Data/Clear All Data were upgraded to the typed-confirmation modal this session, per the explicit scope of the request.
 
 ---
 

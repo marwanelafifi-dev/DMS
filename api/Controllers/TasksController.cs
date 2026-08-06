@@ -9,7 +9,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class TasksController(DmsContext context, TaskService taskService, MinioService minioService, AuditService auditService, NotificationService notificationService, ILogger<TasksController> logger) : BaseController
+public class TasksController(DmsContext context, TaskService taskService, MinioService minioService, AuditService auditService, NotificationService notificationService, AccessOverrideService accessOverrideService, ILogger<TasksController> logger) : BaseController
 {
     // GET /api/tasks — my tasks
     [HttpGet]
@@ -81,7 +81,10 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.DueDate,
                     task.Status,
                     task.RcaText,
+                    task.CorrectionText,
                     task.PreventiveActions,
+                    task.QaReviewNotes,
+                    task.QaReviewedAt,
                     task.CreatedAt,
                     task.CompletedAt
                 }
@@ -90,6 +93,210 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         catch (Exception ex)
         {
             logger.LogError(ex, "Error retrieving task {TaskId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/tasks/{id}/document — the document linked to this task, reachable
+    // by the assignee/manager regardless of whether they hold a folder-browsing
+    // grant on it. A task assignee legitimately needs to view/download/replace
+    // the file their corrective action is about even if nobody ever gave them
+    // general access to that folder in the Document Library — same decoupling
+    // already granted to Document Workflow reviewers for their queue. An
+    // explicit Deny override on the folder/document still wins over this.
+    [HttpGet("{id}/document")]
+    public async Task<ActionResult<object>> GetLinkedDocument(Guid id)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.TaskId == id);
+            if (task == null)
+                return NotFound(new { success = false, error = "Task not found" });
+            if (task.DocumentId == null)
+                return NotFound(new { success = false, error = "This task has no linked document" });
+
+            var isOwnTask = await taskService.IsAssigneeAsync(task, userId) || task.ManagerId == userId;
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (!isOwnTask && pageAccessRole?.CanManageAllTasks != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to view this task's document" });
+
+            var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.DocumentId == task.DocumentId);
+            if (document == null)
+                return NotFound(new { success = false, error = "Linked document not found" });
+
+            var allowed = await accessOverrideService.ResolveAsync(userId, document.DocumentId, document.FolderId, AccessOverrideActions.Read, true);
+            if (!allowed)
+                return StatusCode(403, new { success = false, error = "Access to this document has been explicitly denied" });
+
+            var currentVersion = document.CurrentVersionId.HasValue
+                ? await context.DocumentVersions.AsNoTracking().FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId)
+                : null;
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    document.DocumentId,
+                    document.FolderId,
+                    document.CurrentVersionId,
+                    FileName = currentVersion?.FileName ?? document.Title,
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving linked document for task {TaskId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/tasks/{id}/submit-pcar — the RCA/correction/preventive-action
+    // form on the PCAR page. Moves the task into the real 'submitted' state
+    // (see the QA review queue endpoints below) instead of the previous
+    // UpdateTaskAsync-based flow, which had no real reviewer queue and no
+    // guard against resubmission.
+    [HttpPost("{id}/submit-pcar")]
+    public async Task<ActionResult<object>> SubmitPcar(Guid id, [FromBody] SubmitPcarRequest req)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var result = await taskService.SubmitPcarAsync(id, userId, req.Rca ?? "", req.Correction ?? "", req.PreventiveActions ?? "", req.TargetDate);
+
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    "Forbidden" => StatusCode(403, new { success = false, error = result.Message }),
+                    _ => BadRequest(new { success = false, error = result.Message })
+                };
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error submitting PCAR {TaskId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/tasks/pcar-review-queue — every PCAR currently awaiting QA
+    // review, across all assignees. Reuses the same CanApprove flag the
+    // Document Workflow already gates its stage queues on, decoupled from
+    // folder permissions (tasks aren't folder-scoped) — same reasoning as
+    // that system's own reviewer access.
+    [HttpGet("pcar-review-queue")]
+    public async Task<ActionResult<object>> GetPcarReviewQueue([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (pageAccessRole?.CanApprove != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to review PCARs" });
+
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 200);
+            var result = await taskService.GetPcarReviewQueueAsync(page, pageSize);
+
+            return Ok(new { success = true, data = result.Items, count = result.TotalCount, totalCount = result.TotalCount, page, pageSize });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving PCAR review queue");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/tasks/{id}/qa-approve — closes the PCAR out (status ->
+    // 'completed'). Gated on CanApprove, same flag as the queue itself.
+    [HttpPost("{id}/qa-approve")]
+    public async Task<ActionResult<object>> ApprovePcar(Guid id, [FromBody] PcarReviewDecisionRequest? req)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (pageAccessRole?.CanApprove != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to approve PCARs" });
+
+            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.TaskId == id);
+            var result = await taskService.ApprovePcarAsync(id, userId, req?.Notes);
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    _ => BadRequest(new { success = false, error = result.Message })
+                };
+            }
+
+            if (task != null)
+            {
+                if (task.AssignedToId.HasValue)
+                    await notificationService.NotifyAsync(task.AssignedToId.Value, userId, "Your PCAR was approved", task.Title, taskId: id);
+                else if (task.AssignedToGroupId.HasValue)
+                {
+                    var memberIds = await context.GroupMembers.Where(gm => gm.GroupId == task.AssignedToGroupId.Value).Select(gm => gm.UserId).ToListAsync();
+                    foreach (var memberId in memberIds)
+                        await notificationService.NotifyAsync(memberId, userId, "Your PCAR was approved", task.Title, taskId: id);
+                }
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error approving PCAR {TaskId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/tasks/{id}/qa-reject — bounces the PCAR back to the assignee
+    // (status -> 'open') with required notes explaining what to fix. Gated
+    // on CanReject, mirroring the Document Workflow's own approve/reject split.
+    [HttpPost("{id}/qa-reject")]
+    public async Task<ActionResult<object>> RejectPcar(Guid id, [FromBody] PcarReviewDecisionRequest req)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (pageAccessRole?.CanReject != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to reject PCARs" });
+
+            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.TaskId == id);
+            var result = await taskService.RejectPcarAsync(id, userId, req.Notes ?? "");
+            if (!result.Success)
+            {
+                return result.Error switch
+                {
+                    "NotFound" => NotFound(new { success = false, error = result.Message }),
+                    _ => BadRequest(new { success = false, error = result.Message })
+                };
+            }
+
+            if (task != null)
+            {
+                if (task.AssignedToId.HasValue)
+                    await notificationService.NotifyAsync(task.AssignedToId.Value, userId, "Your PCAR needs revision", req.Notes, taskId: id);
+                else if (task.AssignedToGroupId.HasValue)
+                {
+                    var memberIds = await context.GroupMembers.Where(gm => gm.GroupId == task.AssignedToGroupId.Value).Select(gm => gm.UserId).ToListAsync();
+                    foreach (var memberId in memberIds)
+                        await notificationService.NotifyAsync(memberId, userId, "Your PCAR needs revision", req.Notes, taskId: id);
+                }
+            }
+
+            return Ok(new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error rejecting PCAR {TaskId}", id);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
@@ -213,11 +420,22 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             // same as GetMyTasksAsync's visibility rule — anyone else needs
             // the blanket CanManageAllTasks flag (Admin-equivalent).
             var isOwnTask = await taskService.IsAssigneeAsync(task, userId) || task.ManagerId == userId;
-            if (!isOwnTask)
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (!isOwnTask && pageAccessRole?.CanManageAllTasks != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+
+            // Reassigning to a different user/group is gated on its own,
+            // independent flag (or the broader CanManageAllTasks, which already
+            // implies it) — separate from the base "can edit this task at all"
+            // check above, since a task's own assignee/manager shouldn't
+            // automatically be able to hand it off to someone else.
+            var isReassigning = req.AssignedToId.HasValue || req.AssignedToGroupId.HasValue;
+            if (isReassigning)
             {
-                var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-                if (pageAccessRole?.CanManageAllTasks != true)
-                    return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+                if (req.AssignedToId.HasValue == req.AssignedToGroupId.HasValue)
+                    return BadRequest(new { success = false, error = "Exactly one of assignedToId or assignedToGroupId is required to reassign" });
+                if (pageAccessRole?.CanManageAllTasks != true && pageAccessRole?.CanReassignTasks != true)
+                    return StatusCode(403, new { success = false, error = "You do not have permission to reassign tasks" });
             }
 
             var result = await taskService.UpdateTaskAsync(
@@ -228,7 +446,10 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.RiskSeverity,
                 req.Status,
                 req.RcaText,
-                req.PreventiveActions);
+                req.CorrectionText,
+                req.PreventiveActions,
+                req.AssignedToId,
+                req.AssignedToGroupId);
 
             if (!result.Success)
             {
@@ -237,6 +458,17 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     "NotFound" => NotFound(new { success = false, error = result.Message }),
                     _ => BadRequest(new { success = false, error = result.Message })
                 };
+            }
+
+            if (isReassigning)
+            {
+                var title = req.Title ?? task.Title;
+                await auditService.LogAsync(userId, TASK_REASSIGNED, new { TaskId = id, req.AssignedToId, req.AssignedToGroupId });
+                if (req.AssignedToId.HasValue)
+                    await notificationService.NotifyAsync(req.AssignedToId.Value, userId, "A task was reassigned to you", title, taskId: id);
+                else if (req.AssignedToGroupId.HasValue)
+                    foreach (var memberId in await taskService.GetGroupMemberIdsAsync(req.AssignedToGroupId.Value))
+                        await notificationService.NotifyAsync(memberId, userId, "A task was reassigned to your group", title, taskId: id);
             }
 
             return Ok(new { success = true, data = result.Data });
@@ -511,6 +743,9 @@ public record CreateTaskRequest(
     DateTime? DueDate = null
 );
 
+public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate);
+public record PcarReviewDecisionRequest(string? Notes);
+
 public record UpdateTaskRequest(
     string? Title = null,
     string? Description = null,
@@ -518,7 +753,10 @@ public record UpdateTaskRequest(
     string? RiskSeverity = null,
     string? Status = null,
     string? RcaText = null,
-    string? PreventiveActions = null
+    string? CorrectionText = null,
+    string? PreventiveActions = null,
+    Guid? AssignedToId = null,
+    Guid? AssignedToGroupId = null
 );
 
 public record CompleteTaskRequest(

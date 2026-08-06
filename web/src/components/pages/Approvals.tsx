@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardBody, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
 import { CheckCircle2, ChevronLeft, ChevronRight, AlertCircle, Eye, Download, FileText } from 'lucide-react';
@@ -72,6 +72,7 @@ const extensionStyleFor = (fileName: string) => {
 
 export function Approvals() {
   const access = usePageAccess();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<ApprovalTab | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [allGroups, setAllGroups] = useState<Array<{ groupId: string; name: string }>>([]);
@@ -191,11 +192,30 @@ export function Approvals() {
 
   useEffect(() => {
     if (!access) return;
-    if (tab === null || !tabs.some((t) => t.key === tab)) {
+    if (tab === null) {
+      // A Dashboard "Awaiting My Approval" card can deep-link straight into
+      // the specific stage its document is actually sitting in, instead of
+      // always landing on whichever tab happens to be first.
+      const requestedTab = searchParams.get('tab') as ApprovalTab | null;
+      setTab(requestedTab && tabs.some((t) => t.key === requestedTab) ? requestedTab : tabs[0]?.key ?? null);
+    } else if (!tabs.some((t) => t.key === tab)) {
       setTab(tabs[0]?.key ?? null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access, tabs]);
+
+  // Opens the Review modal directly when arriving via a Dashboard deep link
+  // (?approvalId=&documentId=) instead of requiring an extra click to find
+  // the same document again in the queue table it's already known to be in.
+  useEffect(() => {
+    const approvalId = searchParams.get('approvalId');
+    const documentId = searchParams.get('documentId');
+    if (approvalId && documentId) {
+      setSelectedApprovalId(approvalId);
+      setFocusDocumentId(documentId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (tab === 'qa-queue') loadQaQueue(qaPage);
@@ -208,7 +228,7 @@ export function Approvals() {
     <div className="min-w-0 space-y-5 overflow-hidden">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="page-heading">C-Doc Workflow</h1>
+          <h1 className="page-heading">Document Workflow</h1>
           <p className="page-subtitle">Controlled Document Lifecycle</p>
         </div>
       </div>
@@ -236,7 +256,7 @@ export function Approvals() {
         <Card>
           <CardBody className="text-center py-12">
             <AlertCircle className="w-12 h-12 text-gray-300 dark:text-slate-600 mx-auto mb-3" />
-            <p className="text-gray-600 dark:text-slate-400">Your role does not have access to any C-Doc Workflow stage.</p>
+            <p className="text-gray-600 dark:text-slate-400">Your role does not have access to any Document Workflow stage.</p>
           </CardBody>
         </Card>
       )}
@@ -298,7 +318,18 @@ export function Approvals() {
           documentId={focusDocumentId}
           users={allUsers}
           groups={allGroups}
-          onClose={() => { setSelectedApprovalId(null); setFocusDocumentId(null); }}
+          onClose={() => {
+            setSelectedApprovalId(null);
+            setFocusDocumentId(null);
+            if (searchParams.has('approvalId') || searchParams.has('documentId')) {
+              setSearchParams((current) => {
+                const next = new URLSearchParams(current);
+                next.delete('approvalId');
+                next.delete('documentId');
+                return next;
+              }, { replace: true });
+            }
+          }}
           onChanged={refreshAllQueues}
         />
       )}

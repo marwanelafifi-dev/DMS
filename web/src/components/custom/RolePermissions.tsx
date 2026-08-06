@@ -14,32 +14,36 @@ import { useToast } from '../../hooks/useToast';
 const PERMISSION_KEYS = [
   'canViewDashboard', 'canViewDocumentLibrary', 'canViewReminders',
   'canViewApprovals', 'canViewPcar', 'canViewAdminPanel', 'bypassFolderPermissions',
-  'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks',
+  'canReadAllFolders', 'canReadWriteAllFolders',
+  'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks', 'canReassignTasks',
   'canSendAnnouncements',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
   canViewDocumentLibrary: 'Document Library',
   canViewReminders: 'Reminders',
-  canViewApprovals: 'Approvals (C-Doc Workflow)',
+  canViewApprovals: 'Approvals (Document Workflow)',
   canViewPcar: 'PCAR / Corrective Action',
   canViewAdminPanel: 'Admin Panel',
   bypassFolderPermissions: 'Full Access to All Folders',
+  canReadAllFolders: 'Read Only to all folder',
+  canReadWriteAllFolders: 'Read and Write only to all folder',
   canManageFolderPermissions: 'Manage Folder Permissions',
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',
   canCreateTasks: 'Create New PCAR',
+  canReassignTasks: 'Reassign Tasks / PCARs',
   canSendAnnouncements: 'Send Announcements',
 };
 
-// Scopes the C-Doc Workflow page down to individual stage tabs (e.g. Manager
+// Scopes the Document Workflow page down to individual stage tabs (e.g. Manager
 // only ever needed Stage 2) plus whether this role can actually act — approve
 // or reject — on whichever stage it can see. Deliberately independent of any
 // per-folder role grant or File/Folder Permission override, which govern
 // file/folder management actions only. Shown as their own section below, both
 // in the role card and the edit modal.
 const STAGE_KEYS = [
-  'canViewQaStage', 'canViewManagerStage', 'canViewFinalReleaseStage', 'canApprove', 'canReject',
+  'canViewQaStage', 'canViewManagerStage', 'canViewFinalReleaseStage', 'canApprove', 'canReject', 'canResolveDocumentId',
 ] as const;
 const STAGE_LABELS: Record<typeof STAGE_KEYS[number], string> = {
   canViewQaStage: 'QA Review (Stage 1)',
@@ -47,11 +51,12 @@ const STAGE_LABELS: Record<typeof STAGE_KEYS[number], string> = {
   canViewFinalReleaseStage: 'Final Release (Stage 3)',
   canApprove: 'Can Approve',
   canReject: 'Can Reject',
+  canResolveDocumentId: 'Resolve Document ID (generate/enter at QA Triage)',
 };
 
 const ROLE_CARD_DESCRIPTIONS: Record<string, string> = {
   User: 'Everyday access to the Dashboard, Document Library, and Reminders',
-  Manager: 'Everything a User sees, plus the Approvals (C-Doc Workflow) page',
+  Manager: 'Everything a User sees, plus the Approvals (Document Workflow) page',
   Quality: 'Everything a User sees, plus the PCAR / Corrective Action page',
   Auditor: 'Everything a User sees, plus the PCAR / Corrective Action page',
   'Full Access': 'Sees every page, including the Admin Panel, and bypasses folder permissions entirely',
@@ -276,7 +281,7 @@ export function RolePermissions() {
                   </div>
                 </div>
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">C-Doc Workflow access</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">Document Workflow access</p>
                   <div className="flex flex-wrap gap-2">
                     {STAGE_KEYS.map((key) => role[key] ? (
                       <span
@@ -350,7 +355,7 @@ export function RolePermissions() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">C-Doc Workflow access</label>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Document Workflow access</label>
                 <div className="grid grid-cols-1 gap-2">
                   {NEW_ROLE_STAGE_FLAGS.map(flag => (
                     <label key={flag.key} className="flex items-center gap-2 cursor-pointer">
@@ -459,7 +464,7 @@ export function RolePermissions() {
                 ))}
               </div>
               <div className="space-y-2 border-t border-gray-200 pt-3 dark:border-navy-700">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">C-Doc Workflow access</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-navy-500">Document Workflow access</p>
                 {STAGE_KEYS.map((key) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer">
                     <input

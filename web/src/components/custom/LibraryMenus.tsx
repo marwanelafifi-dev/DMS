@@ -71,7 +71,7 @@ interface LibraryBulkActionsProps {
   requestedAction?: LibraryBulkAction | null;
   onRequestedActionHandled?: () => void;
   onRequestedActionDismissed?: () => void;
-  onConfirm: (action: LibraryBulkAction, value?: string) => string | undefined;
+  onConfirm: (action: LibraryBulkAction, value?: string) => Promise<string | undefined> | string | undefined;
 }
 
 function fileExtension(name: string) {
@@ -99,6 +99,7 @@ export function LibraryBulkActions({
   const [error, setError] = useState('');
   const [extensionConfirmed, setExtensionConfirmed] = useState(false);
   const [isRequestedAction, setIsRequestedAction] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const { showError } = useToast();
 
   // A requested action can arrive from outside this menu (e.g. the folder
@@ -139,7 +140,7 @@ export function LibraryBulkActions({
 
   if (selectedCount === 0) return null;
 
-  const confirm = () => {
+  const confirm = async () => {
     if ((action === 'copy' || action === 'move') && !value) {
       setError('Choose a destination folder.');
       return;
@@ -157,13 +158,18 @@ export function LibraryBulkActions({
       }
     }
     if (!action) return;
-    const operationError = onConfirm(action, value.trim() || undefined);
-    if (operationError) {
-      setError(operationError);
-      return;
+    setIsConfirming(true);
+    try {
+      const operationError = await onConfirm(action, value.trim() || undefined);
+      if (operationError) {
+        setError(operationError);
+        return;
+      }
+      setIsRequestedAction(false);
+      setAction(null);
+    } finally {
+      setIsConfirming(false);
     }
-    setIsRequestedAction(false);
-    setAction(null);
   };
 
   const actionTitle = action ? `${action[0].toUpperCase()}${action.slice(1)} selected ${selectedCount === 1 ? 'item' : 'items'}` : '';
@@ -247,9 +253,9 @@ export function LibraryBulkActions({
               )}
               {error && <p id="bulk-action-error" role="alert" className="text-sm text-[#c73c44]">{error}</p>}
               <div className="flex justify-end gap-2">
-                <Dialog.Close asChild><Button variant="secondary" type="button">Cancel</Button></Dialog.Close>
-                <Button variant={action === 'delete' ? 'danger' : 'primary'} type="button" onClick={confirm}>
-                  {action === 'rename' && extensionConfirmed ? 'Change extension' : action === 'copy' ? 'Copy items' : action === 'move' ? 'Move items' : action === 'delete' ? 'Delete items' : 'Rename item'}
+                <Dialog.Close asChild><Button variant="secondary" type="button" disabled={isConfirming}>Cancel</Button></Dialog.Close>
+                <Button variant={action === 'delete' ? 'danger' : 'primary'} type="button" onClick={confirm} disabled={isConfirming}>
+                  {isConfirming ? 'Working…' : action === 'rename' && extensionConfirmed ? 'Change extension' : action === 'copy' ? 'Copy items' : action === 'move' ? 'Move items' : action === 'delete' ? 'Delete items' : 'Rename item'}
                 </Button>
               </div>
             </div>

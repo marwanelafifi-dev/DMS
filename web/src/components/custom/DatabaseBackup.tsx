@@ -25,6 +25,72 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
+// Replaces the browser's native window.confirm() for destructive actions —
+// that dialog is too easy to click through on reflex without reading it,
+// which is exactly how a real "Clear All Data" got run by mistake against
+// live production data in an earlier session. Requiring the exact word to be
+// typed forces a deliberate, read-it-first action instead of a reflex click.
+function TypedConfirmModal({
+  title, message, warning, confirmWord, confirmLabel, onConfirm, onCancel, isBusy,
+}: {
+  title: string;
+  message: string;
+  warning?: string;
+  confirmWord: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isBusy?: boolean;
+}) {
+  const [typed, setTyped] = useState('');
+  const matches = typed.trim() === confirmWord;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
+        <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4">
+          <h3 className="font-serif text-lg font-bold text-white">{title}</h3>
+        </div>
+        <div className="space-y-3 px-6 py-4">
+          <p className="text-gray-700 dark:text-gray-300">{message}</p>
+          {warning && <p className="text-sm font-medium text-red-700 dark:text-red-400">{warning}</p>}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Type <span className="font-mono font-bold text-red-600 dark:text-red-400">{confirmWord}</span> to confirm
+            </label>
+            <input
+              type="text"
+              value={typed}
+              onChange={(event) => setTyped(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter' && matches && !isBusy) onConfirm(); }}
+              autoFocus
+              disabled={isBusy}
+              placeholder={confirmWord}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 disabled:opacity-50 dark:border-navy-600 dark:bg-navy-900 dark:text-white"
+            />
+          </div>
+        </div>
+        <div className="flex gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-navy-700 dark:bg-navy-900">
+          <button
+            onClick={onCancel}
+            disabled={isBusy}
+            className="flex-1 rounded-lg bg-gray-300 px-4 py-2 font-semibold text-gray-900 transition-colors hover:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-600 dark:text-white dark:hover:bg-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!matches || isBusy}
+            className="flex-1 rounded-lg bg-gradient-to-r from-red-500 to-red-600 px-4 py-2 font-semibold text-white transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none"
+          >
+            {isBusy ? 'Working…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function toDatetimeLocal(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -209,6 +275,8 @@ export function DatabaseBackup() {
   const [isLoadingClearOptions, setIsLoadingClearOptions] = useState(true);
   const [clearingKey, setClearingKey] = useState<string | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
+  const [clearGroupConfirm, setClearGroupConfirm] = useState<ClearOption | null>(null);
+  const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
 
   const loadClearOptions = () => {
     setIsLoadingClearOptions(true);
@@ -223,8 +291,9 @@ export function DatabaseBackup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleClearGroup = async (option: ClearOption) => {
-    if (!window.confirm(`Permanently delete all "${option.label}" data (${option.recordCount.toLocaleString()} records)? This cannot be undone.`)) return;
+  const handleClearGroup = async () => {
+    const option = clearGroupConfirm;
+    if (!option) return;
     setClearingKey(option.key);
     try {
       const res = await apiClient.clearDataGroup(option.key);
@@ -235,12 +304,11 @@ export function DatabaseBackup() {
       showError(err.response?.data?.error || 'Failed to clear data');
     } finally {
       setClearingKey(null);
+      setClearGroupConfirm(null);
     }
   };
 
   const handleClearAll = async () => {
-    if (!window.confirm('Permanently delete ALL data across every module? User accounts and roles will NOT be affected, but everything else will be. This cannot be undone.')) return;
-    if (!window.confirm('Are you absolutely sure? This is your last chance to cancel.')) return;
     setIsClearingAll(true);
     try {
       const res = await apiClient.clearAllData();
@@ -251,6 +319,7 @@ export function DatabaseBackup() {
       showError(err.response?.data?.error || 'Failed to clear data');
     } finally {
       setIsClearingAll(false);
+      setShowClearAllConfirm(false);
     }
   };
 
@@ -427,7 +496,7 @@ export function DatabaseBackup() {
                       variant="secondary"
                       size="sm"
                       className="flex-shrink-0 !border-[#f5c2c2] !text-[#c0392b] hover:!bg-[#fdecec] dark:!border-red-900 dark:!text-red-300"
-                      onClick={() => handleClearGroup(option)}
+                      onClick={() => setClearGroupConfirm(option)}
                       disabled={clearingKey === option.key || option.recordCount === 0}
                       leftIcon={<Trash2 className="h-3.5 w-3.5" />}
                     >
@@ -444,12 +513,38 @@ export function DatabaseBackup() {
       <Button
         variant="primary"
         className="w-full !bg-[#c0392b] hover:!bg-[#a5301f]"
-        onClick={handleClearAll}
+        onClick={() => setShowClearAllConfirm(true)}
         disabled={isClearingAll}
         leftIcon={<Trash2 className="h-4 w-4" />}
       >
         {isClearingAll ? 'Clearing everything…' : 'Clear All Data — Every Module'}
       </Button>
+
+      {clearGroupConfirm && (
+        <TypedConfirmModal
+          title={`Clear "${clearGroupConfirm.label}" Data`}
+          message={`Permanently delete all "${clearGroupConfirm.label}" data (${clearGroupConfirm.recordCount.toLocaleString()} record${clearGroupConfirm.recordCount === 1 ? '' : 's'})?`}
+          warning="This cannot be undone."
+          confirmWord="DELETE"
+          confirmLabel="Clear Data"
+          isBusy={clearingKey === clearGroupConfirm.key}
+          onConfirm={handleClearGroup}
+          onCancel={() => setClearGroupConfirm(null)}
+        />
+      )}
+
+      {showClearAllConfirm && (
+        <TypedConfirmModal
+          title="Clear All Data — Every Module"
+          message="Permanently delete ALL data across every module — Document Library, C-Doc Workflow, PCAR/Tasks, Reminders, Notifications, Announcements, Groups, Company Data, Audit Trail, Platform Settings, and Google Calendar Sync."
+          warning="User accounts and roles will NOT be affected, but everything else will be permanently gone. This cannot be undone."
+          confirmWord="DELETE ALL"
+          confirmLabel="Clear Everything"
+          isBusy={isClearingAll}
+          onConfirm={handleClearAll}
+          onCancel={() => setShowClearAllConfirm(false)}
+        />
+      )}
 
       {/* System Controls */}
       <div className="pt-2 text-center">

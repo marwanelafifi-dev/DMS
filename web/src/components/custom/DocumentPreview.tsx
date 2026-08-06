@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
+import { statusLabels, statusStyles } from '../../utils/documentStatus';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
 import { EditDocumentModal } from './EditDocumentModal';
@@ -104,6 +105,8 @@ function buildSearchGroups(preview: MockLibraryDocument['preview']): SearchGroup
           text: cell,
         }))),
       ]);
+    case 'image':
+      return preview.ocrText ? [{ key: 'ocr', pageIndex: 0, text: preview.ocrText }] : [];
     default:
       return [];
   }
@@ -143,30 +146,6 @@ interface DocumentPreviewProps {
   permissions?: RolePermissionFlags | null;
   onDocumentUpdated?: () => void;
 }
-
-const statusStyles: Record<string, string> = {
-  draft: 'bg-[#edf1f5] text-[#62718a]',
-  pending_approval: 'bg-[#fff1c9] text-[#b96a08]',
-  qa_review: 'bg-[#fff1c9] text-[#b96a08]',
-  manager_review: 'bg-[#fde9c8] text-[#a15c1f]',
-  correction_in_progress: 'bg-[#fde1e2] text-[#c73c44]',
-  qa_final_review: 'bg-[#dbe9fb] text-[#2f6f9f]',
-  released: 'bg-[#d8f5e4] text-[#27885a]',
-  rejected: 'bg-[#fde1e2] text-[#c73c44]',
-  archived: 'bg-slate-100 text-slate-500',
-};
-
-const statusLabels: Record<string, string> = {
-  draft: 'Draft',
-  pending_approval: 'In Review',
-  qa_review: 'In Review — QA',
-  manager_review: 'In Review — Manager',
-  correction_in_progress: 'Correction Needed',
-  qa_final_review: 'In Review — Final Release',
-  released: 'Released',
-  rejected: 'Rejected',
-  archived: 'Archived',
-};
 
 function PreviewFallback({ message, onDownload }: { message?: string; onDownload: () => void }) {
   return (
@@ -208,11 +187,17 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
 
   const isRetryableLoad = document.preview.kind === 'pdf' || document.preview.kind === 'image';
   const isPdf = document.preview.kind === 'pdf';
+  const isImage = document.preview.kind === 'image';
+  // The image's own OCR/Docling text loads in the background after the image
+  // itself is already showing — the search box appears right away (like every
+  // other kind), but shows "Indexing…" instead of a match count until that
+  // text is ready, matching the PDF viewer's own indexing state below.
+  const isImageIndexing = isImage && !document.preview.ocrText;
   // The PDF's own searchable text only exists inside PdfJsViewer (parsed via
   // pdf.js), so its match navigation is delegated there via pdfViewerRef/
   // onMatchInfoChange — but the search *input* itself still lives in this shared
   // header, same as every other kind, for one consistent search location.
-  const isSearchable = SEARCHABLE_KINDS.has(document.preview.kind) || isPdf;
+  const isSearchable = SEARCHABLE_KINDS.has(document.preview.kind) || isPdf || isImage;
   const isZoomable = ZOOMABLE_KINDS.has(document.preview.kind);
   const isMarkdown = document.preview.kind === 'markdown';
   const canPaginate = document.preview.kind === 'word' || document.preview.kind === 'presentation' || document.preview.kind === 'spreadsheet';
@@ -543,6 +528,16 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                 <img key={retryKey} src={document.preview.url} alt={document.preview.alt} className="max-h-[65vh] max-w-full rounded object-contain shadow-lg" onLoad={() => setIsLoading(false)} onError={() => { setIsLoading(false); setHasError(true); }} />
               </div>
             </div>
+            {document.preview.ocrText ? (
+              <div className="max-h-40 flex-shrink-0 overflow-auto border-t border-[#e2e8f0] bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[#8494ac] dark:text-slate-500">Extracted text (searchable)</p>
+                <pre className="whitespace-pre-wrap font-mono text-sm leading-6 text-[#334155] dark:text-slate-200">{renderSearchable('ocr', document.preview.ocrText)}</pre>
+              </div>
+            ) : (
+              <p className="flex-shrink-0 border-t border-[#e2e8f0] bg-white px-4 py-2 text-xs text-[#8494ac] dark:border-white/10 dark:bg-slate-900 dark:text-slate-500">
+                Extracting text from this image for search…
+              </p>
+            )}
           </div>
         );
       case 'pdf':
@@ -797,12 +792,12 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                   return (
                     <>
                       <span className="whitespace-nowrap px-1 text-xs text-[#718198] dark:text-slate-400">
-                        {isPdf && pdfMatchInfo.isIndexing ? 'Indexing…' : totalMatches > 0 ? `${Math.min(currentIndex, totalMatches - 1) + 1}/${totalMatches}` : '0/0'}
+                        {(isPdf && pdfMatchInfo.isIndexing) || isImageIndexing ? 'Indexing…' : totalMatches > 0 ? `${Math.min(currentIndex, totalMatches - 1) + 1}/${totalMatches}` : '0/0'}
                       </span>
-                      <button type="button" onClick={handlePrevMatch} disabled={totalMatches === 0} aria-label="Previous match" title="Previous match (Shift+Enter)" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-900">
+                      <button type="button" onClick={handlePrevMatch} disabled={totalMatches === 0 || isImageIndexing} aria-label="Previous match" title="Previous match (Shift+Enter)" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-900">
                         <ChevronUp className="h-3.5 w-3.5" />
                       </button>
-                      <button type="button" onClick={handleNextMatch} disabled={totalMatches === 0} aria-label="Next match" title="Next match (Enter)" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-900">
+                      <button type="button" onClick={handleNextMatch} disabled={totalMatches === 0 || isImageIndexing} aria-label="Next match" title="Next match (Enter)" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-900">
                         <ChevronDown className="h-3.5 w-3.5" />
                       </button>
                       <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" title="Clear search" className="border-l border-[#dbe2ec] p-1.5 text-[#52627a] hover:bg-white dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-900">

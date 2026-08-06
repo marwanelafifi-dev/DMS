@@ -18,6 +18,15 @@ public class DmsPageAccessRole
     public bool CanViewPcar { get; set; }
     public bool CanViewAdminPanel { get; set; }
     public bool BypassFolderPermissions { get; set; }
+    // Weaker, tiered versions of BypassFolderPermissions — automatic
+    // visibility (and, for the write variant, upload/edit rights) on every
+    // folder with no per-folder grant needed, but capped well short of Admin
+    // (no delete, no permission management). A per-folder grant or an
+    // explicit Deny override still takes precedence, same as
+    // BypassFolderPermissions. Mutually exclusive in practice (the stronger
+    // one wins if both are somehow set) — see BaseController.GetEffectiveRoleAsync.
+    public bool CanReadAllFolders { get; set; }
+    public bool CanReadWriteAllFolders { get; set; }
     // Blanket, role-wide flags — every user assigned this role can Edit
     // document metadata / manage File and Folder Permissions everywhere,
     // without needing a per-folder Access Override grant.
@@ -33,6 +42,10 @@ public class DmsPageAccessRole
     // button and assign a task to anyone, without also granting the ability
     // to edit/complete/delete tasks that already belong to other people.
     public bool CanCreateTasks { get; set; }
+    // Independent from CanManageAllTasks — lets a role change an existing
+    // task's Assignee (user or group) without also granting edit/complete/
+    // delete over tasks that already belong to other people.
+    public bool CanReassignTasks { get; set; }
     // Scopes CanViewApprovals down to specific C-Doc Workflow stage tabs —
     // e.g. Manager only needs Stage 2, Quality only needs Stage 1 and Stage 3.
     // Enforced both in the frontend tab list and in ApprovalsController's
@@ -46,6 +59,10 @@ public class DmsPageAccessRole
     // actions only (upload/rename/copy/cut/delete/...), never approve/reject.
     public bool CanApprove { get; set; }
     public bool CanReject { get; set; }
+    // Independent of CanApprove/CanViewQaStage — lets a role manually enter or
+    // system-generate a document's Original Document ID at QA Triage, without
+    // also needing the broader QA Accept/Reject action rights.
+    public bool CanResolveDocumentId { get; set; }
     // Whether this role can post to the Send Announcement page — independent
     // of any per-folder grant, same as the other blanket role-wide flags above.
     public bool CanSendAnnouncements { get; set; }

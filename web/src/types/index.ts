@@ -117,6 +117,12 @@ export interface Task {
   description?: string;
   taskType: 'correction' | 'rca' | 'audit_action';
   documentId?: string;
+  // Only set for a correction task spawned by a QA/Manager rejection in the
+  // Document Workflow — those genuinely need the corrected file re-uploaded
+  // before resubmission. A self-filed PCAR can reference a document (for
+  // context) without ever having one; requiring a re-upload from it too
+  // would block it from ever being submitted at all.
+  approvalId?: string;
   document?: Document;
   // Exactly one of assignedTo / assignedToGroupId is ever set — a group
   // assignment is one shared task visible to every member.
@@ -126,7 +132,12 @@ export interface Task {
   assignedToGroupName?: string;
   assignedBy: string;
   assignedByUser?: User;
-  status: 'open' | 'in_progress' | 'done';
+  status: 'open' | 'in_progress' | 'submitted' | 'done';
+  rcaText?: string;
+  correctionText?: string;
+  preventiveActions?: string;
+  qaReviewNotes?: string;
+  qaReviewedAt?: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   dueDate: string;
   createdAt: string;
