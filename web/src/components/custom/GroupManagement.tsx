@@ -269,11 +269,10 @@ export function GroupManagement() {
             <tr className="text-left text-xs uppercase text-[#64748b] dark:text-slate-400">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Group Name</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Description</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Edit</th>
-              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Delete</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Manage Users</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Manage Sub-groups</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Subgroups</th>
+              <th className="px-6 py-4 text-center font-semibold text-sm tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
@@ -285,24 +284,6 @@ export function GroupManagement() {
                 >
                   <td className="px-6 py-4 font-semibold text-navy-900 dark:text-white">{group.name}</td>
                   <td className="px-6 py-4 text-gray-600 dark:text-navy-300 max-w-xs truncate">{group.description || '—'}</td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => openEdit(group)}
-                      className="p-1.5 hover:bg-gray-200 dark:hover:bg-navy-700 rounded-lg transition-colors text-blue-600 dark:text-blue-400"
-                      title="Edit group"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => setDeleteConfirm({ groupId: group.groupId, name: group.name })}
-                      className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600 dark:text-red-400"
-                      title="Delete group"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
                   <td className="px-6 py-4">
                     <button onClick={() => openMembers(group)} className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
                       Manage Users
@@ -317,11 +298,29 @@ export function GroupManagement() {
                   <td className="px-6 py-4 text-gray-500 dark:text-navy-400 text-sm">
                     {group.subgroupCount > 0 ? `${group.subgroupCount} subgroup${group.subgroupCount !== 1 ? 's' : ''}` : 'Group currently has no subgroups.'}
                   </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => openEdit(group)}
+                        className="p-1.5 hover:bg-gray-200 dark:hover:bg-navy-700 rounded-lg transition-colors text-blue-600 dark:text-blue-400"
+                        title="Edit group"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm({ groupId: group.groupId, name: group.name })}
+                        className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600 dark:text-red-400"
+                        title="Delete group"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-navy-400">
+                <td colSpan={6} className="px-6 py-12 text-center text-gray-500 dark:text-navy-400">
                   No groups yet
                 </td>
               </tr>
