@@ -12,11 +12,11 @@ import { useToast } from '../../hooks/useToast';
 // delete, rename, etc.) — those are governed entirely by per-folder grants
 // and File/Folder Permission overrides, set from the Document Library.
 const PERMISSION_KEYS = [
-  'canViewDashboard', 'canViewDocumentLibrary', 'canViewReminders',
-  'canViewApprovals', 'canViewPcar', 'canViewAdminPanel', 'bypassFolderPermissions',
-  'canReadAllFolders', 'canReadWriteAllFolders',
-  'canManageFolderPermissions', 'canManageFilePermissions', 'canManageAllTasks', 'canCreateTasks', 'canReassignTasks',
-  'canSendAnnouncements',
+  'canViewDashboard', 'canViewDocumentLibrary', 'canViewApprovals', 'canViewPcar', 'canViewReminders',
+  'canSendAnnouncements', 'canViewAdminPanel',
+  'canReadAllFolders', 'canReadWriteAllFolders', 'bypassFolderPermissions',
+  'canManageFolderPermissions', 'canManageFilePermissions',
+  'canCreateTasks', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
@@ -26,13 +26,14 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewPcar: 'PCAR / Corrective Action',
   canViewAdminPanel: 'Admin Panel',
   bypassFolderPermissions: 'Full Access to All Folders',
-  canReadAllFolders: 'Read Only to all folder',
-  canReadWriteAllFolders: 'Read and Write only to all folder',
+  canReadAllFolders: 'Read Only to All Folders',
+  canReadWriteAllFolders: 'Read and Write to All folders',
   canManageFolderPermissions: 'Manage Folder Permissions',
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',
   canCreateTasks: 'Create New PCAR',
-  canReassignTasks: 'Reassign Tasks / PCARs',
+  canReassignMyTasks: 'Reassign My Tasks Only',
+  canReassignTasks: 'Reassign All Tasks',
   canSendAnnouncements: 'Send Announcements',
 };
 

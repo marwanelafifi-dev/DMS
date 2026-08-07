@@ -57,6 +57,8 @@ export function UserManagement() {
 
   const [deactivateConfirm, setDeactivateConfirm] = useState<{ userId?: string; fullName?: string }>({});
   const [deleteConfirm, setDeleteConfirm] = useState<{ userId?: string; fullName?: string }>({});
+  const [transferToUserId, setTransferToUserId] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
   const [resetPasswordFor, setResetPasswordFor] = useState<{ userId?: string; fullName?: string }>({});
   const [newPassword, setNewPassword] = useState('');
 
@@ -225,9 +227,43 @@ export function UserManagement() {
       await apiClient.deleteUserPermanently(deleteConfirm.userId);
       showSuccess('User deleted');
       setDeleteConfirm({});
+      setTransferToUserId('');
       loadUsers();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to delete user');
+    }
+  };
+
+  // Hands every folder/document owned, task assigned/managed, and other live
+  // work reference this user holds over to the selected user first, then
+  // retries the permanent delete — the two-step path for exactly the case
+  // the delete-rejected error message points at ("deactivate them instead"
+  // is no longer the only option once their live work has somewhere to go).
+  const handleTransferAndDelete = async () => {
+    if (!deleteConfirm.userId || !transferToUserId) return;
+    setIsTransferring(true);
+    try {
+      const transferRes = await apiClient.transferOwnership(deleteConfirm.userId, transferToUserId);
+      if (!transferRes.success) {
+        showError(transferRes.error || 'Failed to transfer ownership');
+        return;
+      }
+      showSuccess('Ownership transferred');
+      if (transferRes.data?.note) {
+        // E-signatures/reminders are compliance history and can never be
+        // reassigned — surface the warning but still attempt the delete,
+        // since everything else may have been cleared regardless.
+        showError(transferRes.data.note);
+      }
+      await apiClient.deleteUserPermanently(deleteConfirm.userId);
+      showSuccess('User deleted');
+      setDeleteConfirm({});
+      setTransferToUserId('');
+      loadUsers();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to transfer ownership and delete user');
+    } finally {
+      setIsTransferring(false);
     }
   };
 
@@ -741,20 +777,47 @@ export function UserManagement() {
               <p className="text-sm text-red-700 dark:text-red-400 font-medium">
                 This cannot be undone. If this user still owns documents, tasks, or e-signatures, the deletion will be rejected — deactivate them instead in that case.
               </p>
+              <div className="pt-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Or transfer their owned folders/documents/tasks to another user first
+                </label>
+                <select
+                  value={transferToUserId}
+                  onChange={(e) => setTransferToUserId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-gray-900 dark:text-white"
+                >
+                  <option value="">Select a user…</option>
+                  {users
+                    .filter((u) => u.userId !== deleteConfirm.userId && u.isActive)
+                    .map((u) => (
+                      <option key={u.userId} value={u.userId}>{u.fullName}</option>
+                    ))}
+                </select>
+              </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
               <button
-                onClick={() => setDeleteConfirm({})}
+                onClick={() => { setDeleteConfirm({}); setTransferToUserId(''); }}
                 className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-700 transition-colors"
               >
                 Cancel
               </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
-              >
-                Delete Permanently
-              </button>
+              {transferToUserId ? (
+                <button
+                  onClick={handleTransferAndDelete}
+                  disabled={isTransferring}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-60"
+                >
+                  {isTransferring ? 'Transferring…' : 'Transfer & Delete'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleConfirmDelete}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+                >
+                  Delete Permanently
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -141,6 +141,10 @@ export interface Task {
   priority: 'low' | 'medium' | 'high' | 'critical';
   dueDate: string;
   createdAt: string;
+  // Advances on every status change — for a submitted/resubmitted PCAR this
+  // is the real submission timestamp, since nothing else tracks that
+  // separately.
+  updatedAt?: string;
   completedAt?: string;
   completedBy?: string;
 }

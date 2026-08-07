@@ -43,9 +43,14 @@ public class DmsPageAccessRole
     // to edit/complete/delete tasks that already belong to other people.
     public bool CanCreateTasks { get; set; }
     // Independent from CanManageAllTasks — lets a role change an existing
-    // task's Assignee (user or group) without also granting edit/complete/
-    // delete over tasks that already belong to other people.
+    // task's Assignee (user or group) on ANY task, own or not, without also
+    // granting edit/complete/delete over tasks that already belong to other
+    // people.
     public bool CanReassignTasks { get; set; }
+    // Narrower sibling of CanReassignTasks — lets a role reassign only tasks
+    // it already owns (is the assignee or manager of) to someone else, with
+    // no visibility or action on other people's tasks at all.
+    public bool CanReassignMyTasks { get; set; }
     // Scopes CanViewApprovals down to specific C-Doc Workflow stage tabs —
     // e.g. Manager only needs Stage 2, Quality only needs Stage 1 and Stage 3.
     // Enforced both in the frontend tab list and in ApprovalsController's

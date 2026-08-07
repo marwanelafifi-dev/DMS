@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, AlertCircle, ClipboardList } from 'lucide-react';
 import { Button, Badge } from '../ui';
 import { apiClient } from '../../utils/api';
@@ -35,9 +36,15 @@ const STATUS_BADGE: Record<string, 'default' | 'warning' | 'success'> = {
 // Workflow cycle, oldest edits included — the point is to see the full
 // history, not just whatever's currently open.
 export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTasksModalProps) {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<RelatedTaskRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const goToTask = (taskId: string) => {
+    onClose();
+    navigate(`/tasks?highlight=${taskId}`);
+  };
 
   const load = () => {
     setIsLoading(true);
@@ -85,7 +92,14 @@ export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTask
                 <div key={task.taskId} className="rounded border border-gray-200 px-4 py-3 dark:border-slate-700">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-navy-900 dark:text-white">{task.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => goToTask(task.taskId)}
+                        className="truncate text-left text-sm font-semibold text-navy-900 hover:underline dark:text-white"
+                        title="Open this task"
+                      >
+                        {task.title}
+                      </button>
                       {task.description && <p className="mt-0.5 whitespace-pre-wrap text-xs text-gray-500 dark:text-slate-400">{task.description}</p>}
                     </div>
                     <Badge status={STATUS_BADGE[task.status] ?? 'default'} variant="outline">{task.status.replace('_', ' ')}</Badge>

@@ -31,6 +31,8 @@ interface ApprovalDocumentDetail {
   versionNumber?: string | null;
   fileSizeBytes?: number | null;
   sha256Hash?: string | null;
+  linkedTask?: { taskId: string; title: string; status: string; assigneeName?: string | null } | null;
+  blocked?: boolean;
 }
 
 interface ApprovalDetailViewProps {
@@ -309,6 +311,15 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                 {new Date(item.createdAt).toLocaleString()}
               </div>
 
+              {item.linkedTask && (
+                <div className="flex items-start gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300">
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <div>
+                    <strong>Blocked by an open task</strong> — "{item.linkedTask.title}" is still {item.linkedTask.status}, assigned to {item.linkedTask.assigneeName ?? 'Unassigned'}. This document can't be approved until it's completed.
+                  </div>
+                </div>
+              )}
+
               <Card className="overflow-hidden">
                 <CardBody className="space-y-2 !py-3">
                   <div className="flex items-start justify-between gap-3">
@@ -372,7 +383,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
               {/* ---- Stage 1: QA Review ---- */}
               {item.currentStage === 'qa_review' && mode === 'view' && (
                 <div className="flex gap-3">
-                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
+                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove || item?.blocked} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Accept &amp; Send to Manager
                   </Button>
                   <Button onClick={() => setMode('correction')} disabled={isSubmitting || !canReject} title={!canReject ? 'Your role does not have Reject permission' : undefined} variant="secondary" className="flex-1">
@@ -388,7 +399,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onSubmit={handleQaAccept}
                   submitLabel="Confirm Accept"
                   isSubmitting={isSubmitting}
-                  submitDisabled={!docIdResolved || !canApprove}
+                  submitDisabled={!docIdResolved || !canApprove || item?.blocked}
                   submitTitle={!canApprove ? 'Your role does not have Approve permission' : 'This document needs a Document ID before QA can accept'}
                 >
                   <DocIdResolutionPanel
@@ -429,7 +440,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
               {/* ---- Stage 2: Manager Review ---- */}
               {item.currentStage === 'manager_review' && mode === 'view' && (
                 <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
+                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove || item?.blocked} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Approve
                   </Button>
                   <Button onClick={() => setMode('correction')} disabled={isSubmitting || !canReject} title={!canReject ? 'Your role does not have Reject permission' : undefined} variant="secondary" className="flex-1">
@@ -448,7 +459,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onSubmit={handleManagerApprove}
                   submitLabel="Confirm Approve"
                   isSubmitting={isSubmitting}
-                  submitDisabled={!canApprove}
+                  submitDisabled={!canApprove || item?.blocked}
                   submitTitle={!canApprove ? 'Your role does not have Approve permission' : undefined}
                 >
                   <TextAreaField label="Notes (optional)" value={notes} onChange={setNotes} />
@@ -502,7 +513,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
               {/* ---- Stage 3: Final Release ---- */}
               {item.currentStage === 'final_release' && mode === 'view' && (
                 <div className="flex gap-3">
-                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
+                  <Button onClick={() => setMode('accept')} disabled={isSubmitting || !canApprove || item?.blocked} title={!canApprove ? 'Your role does not have Approve permission' : undefined} className="flex-1">
                     <FileCheck2 className="mr-1.5 inline h-4 w-4" /> Final Release
                   </Button>
                   <Button onClick={() => setMode('correction')} disabled={isSubmitting || !canReject} title={!canReject ? 'Your role does not have Reject permission' : undefined} variant="secondary" className="flex-1">
@@ -518,7 +529,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   onSubmit={handleFinalRelease}
                   submitLabel="Release Document"
                   isSubmitting={isSubmitting}
-                  submitDisabled={!canApprove}
+                  submitDisabled={!canApprove || item?.blocked}
                   submitTitle={!canApprove ? 'Your role does not have Approve permission' : undefined}
                 >
                   <TextAreaField label="Release notes (optional)" value={releaseNotes} onChange={setReleaseNotes} />

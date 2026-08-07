@@ -45,6 +45,37 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         _ => true, // released/rejected — already out of the stage-gated part of the workflow
     };
 
+    // A document can have an open task tied to it two ways: a real correction
+    // task from a QA/Manager rejection (ApprovalId set, drives the approval-
+    // document's own Status), or a self-filed PCAR that just references the
+    // document for context (ApprovalId null) — either kind blocks the
+    // document from advancing while it's genuinely still open, and both are
+    // surfaced to reviewers the same way (see BuildStageQueueAsync's
+    // linkedTask field and the per-action guard below). Only "open" blocks —
+    // once the assignee submits it (self-filed PCAR "submitted", awaiting its
+    // own QA decision) the assignee's own part is done, so it stops holding
+    // up this document; a real correction task never passes through
+    // "submitted" at all (ResubmitForReview moves it straight to
+    // "completed"), so this doesn't change that path.
+    private async Task<object?> GetOpenLinkedTaskAsync(Guid documentId)
+    {
+        var task = await context.Tasks
+            .Where(t => t.DocumentId == documentId && t.Status == "open")
+            .Include(t => t.AssignedTo)
+            .Include(t => t.AssignedToGroup)
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefaultAsync();
+        if (task == null) return null;
+
+        return new
+        {
+            task.TaskId,
+            task.Title,
+            task.Status,
+            assigneeName = task.AssignedTo?.FullName ?? task.AssignedToGroup?.Name,
+        };
+    }
+
     // A correction task assigned to a Group has no single inbox — every member
     // is notified individually instead of just the (nonexistent) single assignee.
     private async Task NotifyTaskAssigneeAsync(DmsTask task, Guid actorUserId, string title)
@@ -58,30 +89,6 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             foreach (var memberId in await taskService.GetGroupMemberIdsAsync(task.AssignedToGroupId.Value))
                 await notificationService.NotifyAsync(memberId, actorUserId, title, task.Title, taskId: task.TaskId);
         }
-    }
-
-    // Every stage-advancing action (QA accept, Manager approve, Manager
-    // self-correct) previously only notified the document's original
-    // submitter — nobody at the *next* stage ever got told a document was
-    // now sitting in their queue; they'd only find out by opening the page
-    // and happening to look. Notifies every active user whose page-access
-    // role can view the target stage (same flag the queue endpoints
-    // themselves gate on), skipping the actor via NotifyAsync's own
-    // self-skip.
-    private async Task NotifyStageReviewersAsync(Guid actorUserId, Guid documentId, string title, string? body, Func<DmsPageAccessRole, bool> stageFlagSelector)
-    {
-        var roles = await context.PageAccessRoles.AsNoTracking().ToListAsync();
-        var reviewerRoleNames = roles.Where(stageFlagSelector).Select(r => r.Role).ToList();
-        if (reviewerRoleNames.Count == 0)
-            return;
-
-        var reviewerIds = await context.Users.AsNoTracking()
-            .Where(u => u.IsActive && u.Role != null && reviewerRoleNames.Contains(u.Role!))
-            .Select(u => u.UserId)
-            .ToListAsync();
-
-        foreach (var reviewerId in reviewerIds)
-            await notificationService.NotifyAsync(reviewerId, actorUserId, title, body, documentId: documentId);
     }
 
     // A correction task represents "please fix this specific rejection" — it's
@@ -169,6 +176,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     DocumentId = version.DocumentId,
                     VersionId = version.VersionId,
                     CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
                     CurrentStage = "qa_review",
                     Status = "pending",
                 });
@@ -246,6 +254,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument.Document != null && !await HasFolderReadAccessAsync(context, accessOverrideService, userId, approvalDocument.Document.FolderId))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have access to this document's folder" });
 
+            var linkedTask = await GetOpenLinkedTaskAsync(documentId);
+
             return Ok(new
             {
                 success = true,
@@ -256,7 +266,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     approvalDocument.VersionId,
                     CreatedBy = approvalDocument.Approval?.CreatedBy,
                     createdByUserName = approvalDocument.Approval?.CreatedByUser?.FullName,
-                    approvalDocument.CreatedAt,
+                    // Reflects when this document last entered its current stage/
+                    // status (see BuildStageQueueAsync) — not the batch's one-time
+                    // original creation timestamp.
+                    CreatedAt = approvalDocument.UpdatedAt,
                     approvalDocument.CurrentStage,
                     // Named ApprovalStatus (not Status) — Document?.Status below is the
                     // document's own generic lifecycle status and needs its own JSON key;
@@ -274,6 +287,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     versionNumber = approvalDocument.Version?.VersionNumber,
                     fileSizeBytes = approvalDocument.Version?.FileSizeBytes,
                     sha256Hash = approvalDocument.Version?.Sha256Hash,
+                    linkedTask,
+                    blocked = linkedTask != null,
                 },
             });
         }
@@ -292,13 +307,19 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     {
         var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, userId, accessOverrideService);
 
+        // Previously only "pending" rows showed at all — a document sitting at
+        // "correction_requested" (an open task assigned back to the submitter)
+        // silently vanished from the reviewer's queue with no trace, which read
+        // as "nothing to review" rather than "blocked, waiting on someone else".
+        // Included here as a read-only, annotated row instead (see linkedTask
+        // below) so the reviewer can see what it's waiting on.
         var query = context.ApprovalDocuments
-            .Where(ad => ad.CurrentStage == stage && ad.Status == "pending")
+            .Where(ad => ad.CurrentStage == stage && (ad.Status == "pending" || ad.Status == "correction_requested"))
             .Where(ad => accessibleFolderIds == null || accessibleFolderIds.Contains(ad.Document!.FolderId))
             .Include(ad => ad.Approval).ThenInclude(a => a!.CreatedByUser)
             .Include(ad => ad.Document).ThenInclude(d => d!.Owner)
             .Include(ad => ad.Version)
-            .OrderByDescending(ad => ad.CreatedAt);
+            .OrderByDescending(ad => ad.UpdatedAt);
 
         var totalCount = await query.CountAsync();
 
@@ -307,18 +328,33 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             .Take(pageSize)
             .ToListAsync();
 
-        var data = items.Select(ad => new
+        var data = new List<object>();
+        foreach (var ad in items)
         {
-            ApprovalId = ad.ApprovalId,
-            CreatedBy = ad.Approval?.CreatedBy,
-            createdByUserName = ad.Approval?.CreatedByUser?.FullName,
-            CreatedAt = ad.CreatedAt,
-            Status = ad.Status,
-            QaNotes = ad.QaNotes,
-            ManagerNotes = ad.ManagerNotes,
-            documentCount = 1,
-            documents = new[] { ToQueueDocument(ad) },
-        });
+            // Any open task tied to this document — a real correction task
+            // (ApprovalId set) or an unrelated self-filed PCAR that just
+            // references it — blocks the reviewer's action (see the
+            // qa-accept/manager-approve/manager-self-correct/qa-final-release
+            // guards) and is surfaced here so the row explains why.
+            var linkedTask = await GetOpenLinkedTaskAsync(ad.DocumentId);
+            data.Add(new
+            {
+                ApprovalId = ad.ApprovalId,
+                CreatedBy = ad.Approval?.CreatedBy,
+                createdByUserName = ad.Approval?.CreatedByUser?.FullName,
+                // "Submitted" in the queue reflects when this document last entered its
+                // current stage/status (UpdatedAt) — not the batch's one-time original
+                // creation timestamp, which never advances on a resubmitted correction.
+                CreatedAt = ad.UpdatedAt,
+                Status = ad.Status,
+                QaNotes = ad.QaNotes,
+                ManagerNotes = ad.ManagerNotes,
+                documentCount = 1,
+                documents = new[] { ToQueueDocument(ad) },
+                linkedTask,
+                blocked = linkedTask != null,
+            });
+        }
 
         return new
         {
@@ -418,8 +454,13 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument.CurrentStage != "qa_review")
                 return BadRequest(new { success = false, error = "This document is not in QA review stage" });
 
+            var qaAcceptBlockingTask = await GetOpenLinkedTaskAsync(documentId);
+            if (qaAcceptBlockingTask != null)
+                return BadRequest(new { success = false, error = "This document has an open task that must be completed first", blockingTask = qaAcceptBlockingTask });
+
             approvalDocument.CurrentStage = "manager_review";
             approvalDocument.Status = "pending";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
             approvalDocument.QaNotes = request.Notes;
 
             await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
@@ -436,7 +477,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
 
             var acceptedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
-            await NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Manager Review", acceptedDocTitle, r => r.CanViewManagerStage);
+            await notificationService.NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Manager Review", acceptedDocTitle, r => r.CanViewManagerStage);
 
             return Ok(new
             {
@@ -485,6 +526,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             approvalDocument.QaNotes = request.Notes;
             approvalDocument.Status = "correction_requested";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
 
             var task = new DmsTask
             {
@@ -568,8 +610,13 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument.CurrentStage != "manager_review")
                 return BadRequest(new { success = false, error = "This document is not in manager review stage" });
 
+            var managerApproveBlockingTask = await GetOpenLinkedTaskAsync(documentId);
+            if (managerApproveBlockingTask != null)
+                return BadRequest(new { success = false, error = "This document has an open task that must be completed first", blockingTask = managerApproveBlockingTask });
+
             approvalDocument.CurrentStage = "final_release";
             approvalDocument.Status = "pending";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
             approvalDocument.ManagerNotes = request.Notes;
 
             await CompleteOpenTasksForApprovalAsync(approvalId, documentId, userId);
@@ -586,7 +633,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
 
             var managerApprovedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
-            await NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Final Release", managerApprovedDocTitle, r => r.CanViewFinalReleaseStage);
+            await notificationService.NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Final Release", managerApprovedDocTitle, r => r.CanViewFinalReleaseStage);
 
             return Ok(new
             {
@@ -634,6 +681,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });
 
             approvalDocument.Status = "correction_requested";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
             approvalDocument.ManagerNotes = request.RejectionReason;
 
             var task = new DmsTask
@@ -725,6 +773,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument.CurrentStage != "manager_review")
                 return BadRequest(new { success = false, error = "This document is not in manager review stage" });
 
+            var selfCorrectBlockingTask = await GetOpenLinkedTaskAsync(documentId);
+            if (selfCorrectBlockingTask != null)
+                return BadRequest(new { success = false, error = "This document has an open task that must be completed first", blockingTask = selfCorrectBlockingTask });
+
             var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId);
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
@@ -769,6 +821,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             approvalDocument.CurrentStage = "final_release";
             approvalDocument.Status = "pending";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
             approvalDocument.ManagerNotes = rejectionReason;
 
             await CompleteOpenTasksForApprovalAsync(approvalId, document.DocumentId, userId);
@@ -785,7 +838,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(document.DocumentId, userId, "The Manager corrected your document directly", "Now moving to Final Release.");
-            await NotifyStageReviewersAsync(userId, document.DocumentId, "A document is waiting for Final Release", document.Title, r => r.CanViewFinalReleaseStage);
+            await notificationService.NotifyStageReviewersAsync(userId, document.DocumentId, "A document is waiting for Final Release", document.Title, r => r.CanViewFinalReleaseStage);
 
             return Ok(new
             {
@@ -833,6 +886,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (approvalDocument.CurrentStage != "final_release")
                 return BadRequest(new { success = false, error = "This document is not in final release stage" });
 
+            var releaseBlockingTask = await GetOpenLinkedTaskAsync(documentId);
+            if (releaseBlockingTask != null)
+                return BadRequest(new { success = false, error = "This document has an open task that must be completed first", blockingTask = releaseBlockingTask });
+
             var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId);
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
@@ -841,6 +898,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             approvalDocument.CurrentStage = "released";
             approvalDocument.Status = "approved";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
             approvalDocument.ReleaseNotes = request.ReleaseNotes;
 
             // Safety net: QaAcceptAsync/ManagerApproveAsync/ManagerSelfCorrectAsync
@@ -924,6 +982,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });
 
             approvalDocument.Status = "correction_requested";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
             approvalDocument.ReleaseNotes = request.RejectionReason;
 
             var task = new DmsTask

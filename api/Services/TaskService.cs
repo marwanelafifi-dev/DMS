@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Services;
 
-public class TaskService(DmsContext context, AuditService auditService, ILogger<TaskService> logger)
+public class TaskService(DmsContext context, AuditService auditService, NotificationService notificationService, ILogger<TaskService> logger)
 {
     // A task assigned to a Group is one shared item visible to every member —
     // whoever gets to it first can act on it, not a fan-out of per-member
@@ -144,7 +144,8 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
                     t.QaReviewNotes,
                     t.QaReviewedAt,
                     IsOverdue = t.DueDate.HasValue && t.DueDate < today && t.Status != "completed",
-                    t.CreatedAt
+                    t.CreatedAt,
+                    t.UpdatedAt
                 })
                 .ToListAsync();
 
@@ -208,7 +209,7 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
         }
     }
 
-    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? correction = null, string? preventiveActions = null, Guid? assignedToId = null, Guid? assignedToGroupId = null)
+    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? correction = null, string? preventiveActions = null, Guid? assignedToId = null, Guid? assignedToGroupId = null, string? taskType = null)
     {
         try
         {
@@ -253,6 +254,14 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             if (!string.IsNullOrWhiteSpace(riskSeverity))
                 task.RiskSeverity = riskSeverity.Trim().ToLowerInvariant();
+
+            if (!string.IsNullOrWhiteSpace(taskType))
+            {
+                var normalizedType = taskType.Trim().ToLowerInvariant();
+                if (normalizedType is not ("correction" or "rca" or "audit_action"))
+                    return TaskResult.Invalid("Type must be correction, rca, or audit_action");
+                task.TaskType = normalizedType;
+            }
 
             if (!string.IsNullOrWhiteSpace(status))
             {
@@ -301,12 +310,15 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
     }
 
     // The Root Cause Analysis / Immediate Correction / Preventive Action form
-    // on the PCAR page — moves the task into a real 'submitted' state with
-    // its own reviewer queue (see GetPcarReviewQueueAsync/ApprovePcarAsync/
-    // RejectPcarAsync below) instead of the previous UpdateTaskAsync misuse,
-    // which concatenated all three fields into Description as plain text —
-    // harmless on a first submit, but re-running it on every click (nothing
-    // stopped resubmission) kept prepending onto the same string forever.
+    // on the PCAR page. A self-filed PCAR has no separate reviewer on the
+    // other end — Document Workflow already governs the real document
+    // approval, and per explicit design decision this filing step is purely
+    // documentation, so submitting completes the task immediately instead of
+    // waiting on a manual QA Approve/Reject step (the previous QA Review
+    // Queue). Replaces the older UpdateTaskAsync misuse, which concatenated
+    // all three fields into Description as plain text — harmless on a first
+    // submit, but re-running it on every click (nothing stopped resubmission)
+    // kept prepending onto the same string forever.
     public async Task<TaskResult> SubmitPcarAsync(Guid taskId, Guid userId, string rca, string correction, string preventiveActions, DateTime targetDate)
     {
         try
@@ -330,7 +342,9 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
             task.CorrectionText = correction.Trim();
             task.PreventiveActions = preventiveActions.Trim();
             task.DueDate = targetDate;
-            task.Status = "submitted";
+            task.Status = "completed";
+            task.CompletedById = userId;
+            task.CompletedAt = DateTime.UtcNow;
             task.UpdatedAt = DateTime.UtcNow;
 
             context.Tasks.Update(task);
@@ -338,118 +352,13 @@ public class TaskService(DmsContext context, AuditService auditService, ILogger<
 
             await auditService.LogAsync(userId, AuditActions.PCAR_SUBMITTED, new { task.TaskId, task.Title, task.DocumentId });
 
-            logger.LogInformation("PCAR {TaskId} submitted for QA review by {UserId}", taskId, userId);
+            logger.LogInformation("PCAR {TaskId} submitted and closed out by {UserId}", taskId, userId);
 
             return TaskResult.Ok(new { task.TaskId, task.Status, task.UpdatedAt });
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error submitting PCAR {TaskId}", taskId);
-            return TaskResult.Fail(ex.Message);
-        }
-    }
-
-    // The QA/reviewer-facing queue — every PCAR sitting in 'submitted',
-    // across every assignee, not just the caller's own tasks (unlike
-    // GetMyTasksAsync). Permission gating (CanApprove) happens in the
-    // controller, same split as the rest of this service.
-    public async Task<(List<object> Items, int TotalCount)> GetPcarReviewQueueAsync(int page = 1, int pageSize = 50)
-    {
-        var query = context.Tasks.Where(t => t.Status == "submitted");
-        var totalCount = await query.CountAsync();
-
-        var tasks = await query
-            .OrderBy(t => t.UpdatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(t => new
-            {
-                t.TaskId,
-                t.DocumentId,
-                Document = t.Document == null ? null : new { t.Document.DocumentId, t.Document.Title },
-                t.Title,
-                t.Description,
-                t.TaskType,
-                Priority = t.RiskSeverity ?? "medium",
-                t.AssignedToId,
-                AssignedToName = t.AssignedTo == null ? null : t.AssignedTo.FullName,
-                t.AssignedToGroupId,
-                AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
-                t.DueDate,
-                t.RcaText,
-                t.CorrectionText,
-                t.PreventiveActions,
-                t.UpdatedAt
-            })
-            .ToListAsync();
-
-        return (tasks.Cast<object>().ToList(), totalCount);
-    }
-
-    public async Task<TaskResult> ApprovePcarAsync(Guid taskId, Guid reviewerId, string? notes)
-    {
-        try
-        {
-            var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
-            if (task == null)
-                return TaskResult.NotFound("Task not found");
-            if (task.Status != "submitted")
-                return TaskResult.Invalid("This PCAR is not currently awaiting QA review");
-
-            task.Status = "completed";
-            task.CompletedById = reviewerId;
-            task.CompletedAt = DateTime.UtcNow;
-            task.QaReviewedById = reviewerId;
-            task.QaReviewedAt = DateTime.UtcNow;
-            task.QaReviewNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
-            task.UpdatedAt = DateTime.UtcNow;
-
-            context.Tasks.Update(task);
-            await context.SaveChangesAsync();
-
-            await auditService.LogAsync(reviewerId, AuditActions.PCAR_APPROVED, new { task.TaskId, task.Title, Notes = notes });
-
-            return TaskResult.Ok(new { task.TaskId, task.Status, task.QaReviewedAt });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error approving PCAR {TaskId}", taskId);
-            return TaskResult.Fail(ex.Message);
-        }
-    }
-
-    // Rejecting bounces the PCAR back to the assignee (status -> 'open') to
-    // revise and resubmit — mirrors the Document Workflow's QA-reject shape,
-    // just without a separate correction-task spawn since this already IS
-    // the corrective-action record.
-    public async Task<TaskResult> RejectPcarAsync(Guid taskId, Guid reviewerId, string notes)
-    {
-        try
-        {
-            var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
-            if (task == null)
-                return TaskResult.NotFound("Task not found");
-            if (task.Status != "submitted")
-                return TaskResult.Invalid("This PCAR is not currently awaiting QA review");
-            if (string.IsNullOrWhiteSpace(notes))
-                return TaskResult.Invalid("Rejection notes are required so the assignee knows what to fix");
-
-            task.Status = "open";
-            task.QaReviewedById = reviewerId;
-            task.QaReviewedAt = DateTime.UtcNow;
-            task.QaReviewNotes = notes.Trim();
-            task.UpdatedAt = DateTime.UtcNow;
-
-            context.Tasks.Update(task);
-            await context.SaveChangesAsync();
-
-            await auditService.LogAsync(reviewerId, AuditActions.PCAR_REJECTED, new { task.TaskId, task.Title, Notes = notes });
-
-            return TaskResult.Ok(new { task.TaskId, task.Status, task.QaReviewedAt, task.QaReviewNotes });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error rejecting PCAR {TaskId}", taskId);
             return TaskResult.Fail(ex.Message);
         }
     }

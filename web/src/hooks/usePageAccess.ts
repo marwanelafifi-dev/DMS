@@ -21,6 +21,7 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canManageAllTasks: false,
   canCreateTasks: false,
   canReassignTasks: false,
+  canReassignMyTasks: false,
   canViewQaStage: false,
   canViewManagerStage: false,
   canViewFinalReleaseStage: false,

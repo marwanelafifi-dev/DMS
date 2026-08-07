@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardBody, Button, Badge } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye } from 'lucide-react';
+import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye, UserCog } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { usePageAccess } from '../../hooks/usePageAccess';
 import type { Document, Folder, Task } from '../../types';
 import { TaskAttachmentsModal } from '../custom/TaskAttachmentsModal';
+import { UploadNewVersionModal } from '../custom/UploadNewVersionModal';
 
 const PAGE_SIZE = 10;
 
@@ -44,9 +45,13 @@ export function Tasks() {
   const pageAccess = usePageAccess();
   const canManageAllTasks = pageAccess?.canManageAllTasks ?? false;
   const canCreateTasks = (pageAccess?.canCreateTasks || pageAccess?.canManageAllTasks) ?? false;
+  // canReassignTasks: reassign ANY task, own or not. canReassignMyTasksOnly:
+  // reassign only a task this user is already the assignee/manager of — two
+  // independent flags; canManageAllTasks/canReassignTasks both already imply
+  // the "any task" case, so canReassignMyTasksOnly only ever adds reach for
+  // someone who has neither of those.
   const canReassignTasks = (pageAccess?.canReassignTasks || pageAccess?.canManageAllTasks) ?? false;
-  const canReviewPcars = pageAccess?.canApprove ?? false;
-  const canRejectPcars = pageAccess?.canReject ?? false;
+  const canReassignMyTasksOnly = pageAccess?.canReassignMyTasks ?? false;
   const linkedDocFileInputRef = useRef<HTMLInputElement>(null);
   const [searchParams] = useSearchParams();
   const highlightTaskId = searchParams.get('highlight');
@@ -94,78 +99,6 @@ export function Tasks() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-
-  // "My PCARs" (the register below) vs the QA reviewer's own queue of
-  // submitted PCARs awaiting a decision — only reachable by a role with
-  // CanApprove, same flag the Document Workflow queues already gate on.
-  const [pcarViewMode, setPcarViewMode] = useState<'my' | 'review'>('my');
-  const [reviewQueue, setReviewQueue] = useState<any[]>([]);
-  const [isReviewQueueLoading, setIsReviewQueueLoading] = useState(false);
-  const [reviewQueueError, setReviewQueueError] = useState<string | null>(null);
-  const [rejectingTaskId, setRejectingTaskId] = useState<string | null>(null);
-  const [rejectNotes, setRejectNotes] = useState('');
-  const [reviewActionBusyId, setReviewActionBusyId] = useState<string | null>(null);
-
-  const loadReviewQueue = async () => {
-    if (!canReviewPcars) return;
-    setIsReviewQueueLoading(true);
-    setReviewQueueError(null);
-    try {
-      const res = await apiClient.getPcarReviewQueue();
-      setReviewQueue(res.data || []);
-    } catch (err: any) {
-      setReviewQueueError(err.response?.data?.error || 'Failed to load the PCAR review queue');
-    } finally {
-      setIsReviewQueueLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (canReviewPcars) loadReviewQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canReviewPcars]);
-
-  const handleApprovePcar = async (taskId: string) => {
-    setReviewActionBusyId(taskId);
-    try {
-      const res = await apiClient.approvePcar(taskId);
-      if (!res.success) {
-        showError(res.error || 'Failed to approve PCAR');
-        return;
-      }
-      showSuccess('PCAR approved and closed out');
-      loadReviewQueue();
-      loadTasks();
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to approve PCAR');
-    } finally {
-      setReviewActionBusyId(null);
-    }
-  };
-
-  const handleRejectPcar = async (taskId: string) => {
-    if (!rejectNotes.trim()) {
-      showError('Explain what needs to be fixed before rejecting');
-      return;
-    }
-    setReviewActionBusyId(taskId);
-    try {
-      const res = await apiClient.rejectPcar(taskId, rejectNotes.trim());
-      if (!res.success) {
-        showError(res.error || 'Failed to reject PCAR');
-        return;
-      }
-      showSuccess('PCAR sent back to the assignee for revision');
-      setRejectingTaskId(null);
-      setRejectNotes('');
-      loadReviewQueue();
-      loadTasks();
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to reject PCAR');
-    } finally {
-      setReviewActionBusyId(null);
-    }
-  };
 
   const loadTasks = async (targetPage = page) => {
     setIsLoading(true);
@@ -416,42 +349,76 @@ export function Tasks() {
   // (keyed by taskId since only one PCAR is focused/worked on at a time).
   const [correctionUploadedTaskId, setCorrectionUploadedTaskId] = useState<string | null>(null);
 
-  const handleUploadUpdatedLinkedDocument = async (file: File) => {
+  // File the user picked for the linked document's updated version — set once
+  // they've cleared the gate below, opens the same metadata-collecting Upload
+  // New Version modal the Document Library uses (version label, description,
+  // tags, category, department) instead of a silent raw-bytes upload.
+  const [pendingLinkedDocFile, setPendingLinkedDocFile] = useState<File | null>(null);
+
+  const handleRequestUploadUpdatedLinkedDocument = () => {
     if (!linkedDocument || !focusedPcar) return;
     if (pcarAlreadySubmitted) {
       showError('This PCAR has already been submitted — view/download only');
       return;
     }
-    try {
-      const res = await apiClient.uploadDocument(linkedDocument.documentId, file);
-      if (!res.success) {
-        showError(res.error || 'Failed to upload the updated file');
+    // Uploading the corrected file on an approval-linked task immediately
+    // sends it back to the reviewer's queue (below) — require the RCA/
+    // correction/preventive/target-date documentation to be filled in
+    // first, same bar as the self-filed "Submit for approval" path, so a
+    // correction can't reach the reviewer with none of that filled in.
+    if (isApprovalLinked) {
+      if (pcarDraft.rootCause.trim().length < 20) {
+        showError('Fill in the Root Cause Analysis (at least 20 characters) before uploading the corrected file');
         return;
       }
+      if (!pcarDraft.correction.trim() || !pcarDraft.preventiveAction.trim() || !pcarDraft.targetDate) {
+        showError('Complete the immediate correction, preventive action, and target closure date before uploading the corrected file');
+        return;
+      }
+    }
+    linkedDocFileInputRef.current?.click();
+  };
 
-      setCorrectionUploadedTaskId(focusedPcar.taskId);
+  // Runs after UploadNewVersionModal has already uploaded the file and saved
+  // its metadata — mirrors what the old direct-upload handler did once the
+  // upload itself succeeded.
+  const handleLinkedDocumentVersionUploaded = async () => {
+    if (!linkedDocument || !focusedPcar) return;
+    setCorrectionUploadedTaskId(focusedPcar.taskId);
+    loadDocuments();
 
-      // If this task came from a QA/Manager correction request, send the
-      // approval batch back to that reviewer's queue. Tasks created the
-      // regular way (not tied to an approval) simply skip this — the
-      // backend rejects it with a 400 we treat as a no-op, not an error.
+    // If this task came from a QA/Manager correction request, persist the
+    // documentation fields validated above, then send the approval batch
+    // back to that reviewer's queue. Tasks created the regular way (not
+    // tied to an approval) simply skip this.
+    if (isApprovalLinked) {
+      try {
+        await apiClient.updateTask(focusedPcar.taskId, {
+          rcaText: pcarDraft.rootCause.trim(),
+          correctionText: pcarDraft.correction.trim(),
+          preventiveActions: pcarDraft.preventiveAction.trim(),
+          dueDate: pcarDraft.targetDate,
+        });
+      } catch {
+        // non-fatal — Save Documentation can retry this afterwards
+      }
+
       try {
         const resubmitRes = await apiClient.resubmitTaskForReview(focusedPcar.taskId);
         if (resubmitRes.success) {
           showSuccess(`Uploaded the updated file — sent back to ${resubmitRes.data?.currentStage === 'manager_review' ? 'the Manager' : 'QA'} for review.`);
-          loadDocuments();
           loadTasks();
           return;
         }
-      } catch {
-        // not linked to an approval workflow — fall through to the plain upload message
+        showError(resubmitRes.error || 'Uploaded the file, but could not resubmit it for review');
+        return;
+      } catch (err: any) {
+        showError(err.response?.data?.error || 'Uploaded the file, but could not resubmit it for review');
+        return;
       }
-
-      showSuccess(`Uploaded the updated file for "${linkedDocument.fileName}".`);
-      loadDocuments();
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to upload the updated file');
     }
+
+    showSuccess(`Uploaded the updated file for "${linkedDocument.fileName}".`);
   };
 
   useEffect(() => {
@@ -512,7 +479,7 @@ export function Tasks() {
         showError(res.error || 'Failed to submit PCAR');
         return;
       }
-      showSuccess('PCAR submitted — now awaiting QA review');
+      showSuccess('PCAR submitted and closed out');
       loadTasks();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to submit PCAR');
@@ -630,6 +597,7 @@ export function Tasks() {
     setEditData({
       title: task.title,
       description: task.description,
+      taskType: task.taskType,
       priority: task.priority,
       dueDate: task.dueDate,
       assignedTo: getAssignedToId(task) ?? '',
@@ -640,16 +608,25 @@ export function Tasks() {
   const handleSaveEdit = async () => {
     if (!editingId) return;
     try {
-      const payload: Record<string, unknown> = {
-        title: editData.title,
-        description: editData.description,
-        dueDate: editData.dueDate,
-        riskSeverity: editData.priority,
-      };
+      const payload: Record<string, unknown> = {};
+      // A reassign-only role (CanReassignTasks without the blanket
+      // CanManageAllTasks) is only allowed to touch the assignment fields on
+      // someone else's task — the backend rejects the request outright if any
+      // other field comes through, so only include them when the caller can
+      // actually edit them.
+      if (canManageAllTasks) {
+        payload.title = editData.title;
+        payload.description = editData.description;
+        payload.dueDate = editData.dueDate;
+        payload.riskSeverity = editData.priority;
+        payload.taskType = editData.taskType;
+      }
       // Reassignment is its own permission, gated separately server-side too —
       // only send it when the field was actually editable, so a save with no
       // reassignment intent never triggers the reassign-specific 403.
-      if (canReassignTasks) {
+      const editingTask = tasks.find((t) => t.taskId === editingId);
+      const canReassignThisTask = canReassignTasks || (canReassignMyTasksOnly && !!editingTask && isTaskMine(editingTask));
+      if (canReassignThisTask) {
         if (editData.assignedToGroupId) payload.assignedToGroupId = editData.assignedToGroupId;
         else if (editData.assignedTo) payload.assignedToId = editData.assignedTo;
       }
@@ -664,8 +641,12 @@ export function Tasks() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await apiClient.completeTask(taskId);
-      showSuccess('Task marked as complete');
+      const res = await apiClient.deleteTask(taskId);
+      if (!res.success) {
+        showError(res.error || 'Failed to delete task');
+        return;
+      }
+      showSuccess('Task deleted');
       setDeleteConfirm({});
       loadTasks();
     } catch (err: any) {
@@ -780,7 +761,8 @@ export function Tasks() {
           <div className="space-y-4">
             <Card>
               <CardBody className="p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <h1 className="text-lg font-semibold text-[#26334d] dark:text-white">{focusedPcar.title}</h1>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="section-heading">Issue Description</h2>
                   {getAssignedToName(focusedPcar) && (
                     <span className={`rounded-[4px] px-2 py-1 text-xs font-medium ${focusedPcarIsMine ? 'bg-[#eef4fb] text-[#3f8bca] dark:bg-blue-500/15 dark:text-blue-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>
@@ -816,7 +798,7 @@ export function Tasks() {
                           ref={linkedDocFileInputRef}
                           type="file"
                           className="hidden"
-                          onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadUpdatedLinkedDocument(file); e.target.value = ''; }}
+                          onChange={(e) => { const file = e.target.files?.[0]; if (file) setPendingLinkedDocFile(file); e.target.value = ''; }}
                         />
                         <Button variant="secondary" size="sm" onClick={handleViewLinkedDocument} leftIcon={<Eye className="h-3.5 w-3.5" />}>View</Button>
                         <Button variant="secondary" size="sm" onClick={handleDownloadLinkedDocument} leftIcon={<Download className="h-3.5 w-3.5" />}>Download</Button>
@@ -833,7 +815,7 @@ export function Tasks() {
                         <Button
                           variant="secondary"
                           size="sm"
-                          onClick={() => linkedDocFileInputRef.current?.click()}
+                          onClick={handleRequestUploadUpdatedLinkedDocument}
                           leftIcon={<Upload className="h-3.5 w-3.5" />}
                           disabled={pcarAlreadySubmitted}
                           title={pcarAlreadySubmitted ? 'This PCAR has already been submitted — view/download only' : undefined}
@@ -850,10 +832,8 @@ export function Tasks() {
             )}
             <Card>
               <CardBody className="p-5">
-                <h2 className="section-heading">Root Cause Analysis {!isApprovalLinked && <span className="text-[#e24c53]">*</span>}</h2>
-                <p className="mt-2 text-xs text-[#718198] dark:text-slate-400">
-                  {isApprovalLinked ? 'Optional documentation. Use the 5-Whys method.' : 'Mandatory. Minimum 20 characters. Use the 5-Whys method.'}
-                </p>
+                <h2 className="section-heading">Root Cause Analysis <span className="text-[#e24c53]">*</span></h2>
+                <p className="mt-2 text-xs text-[#718198] dark:text-slate-400">Mandatory. Minimum 20 characters. Use the 5-Whys method.</p>
                 <textarea disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-3 min-h-[116px] w-full py-3 disabled:cursor-not-allowed disabled:opacity-60" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
                 <div className="mt-2 text-xs text-[#94a3b8] dark:text-slate-400">{pcarDraft.rootCause.trim().length} / 20 min</div>
               </CardBody>
@@ -861,9 +841,9 @@ export function Tasks() {
             <Card>
               <CardBody className="space-y-4 p-5">
                 <h2 className="section-heading">Corrective &amp; Preventive Action</h2>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction<input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action<input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date<input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} type="date" className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction <span className="text-[#e24c53]">*</span><input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action <span className="text-[#e24c53]">*</span><input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date <span className="text-[#e24c53]">*</span><input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} type="date" className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
               </CardBody>
             </Card>
           </div>
@@ -895,7 +875,7 @@ export function Tasks() {
               <>
                 <Card>
                   <CardBody className="p-5">
-                    <h2 className="section-heading">QA Review</h2>
+                    <h2 className="section-heading">PCAR Status</h2>
                     <div className="mt-4 flex items-center gap-2 text-sm text-[#52627a] dark:text-slate-300">
                       <span className={`h-2.5 w-2.5 rounded-full ${
                         focusedPcar.status === 'done' ? 'bg-[#3aa66a]'
@@ -903,13 +883,18 @@ export function Tasks() {
                           : 'bg-[#cbd5e3]'
                       }`} />
                       {focusedPcar.status === 'done'
-                        ? 'Approved and closed'
+                        ? 'Submitted and closed'
                         : focusedPcar.status === 'submitted'
                           ? 'Submitted — awaiting QA decision'
                           : focusedPcar.qaReviewNotes
                             ? 'Sent back for revision'
                             : 'Not yet submitted'}
                     </div>
+                    {(focusedPcar.status === 'submitted' || focusedPcar.status === 'done') && focusedPcar.updatedAt && (
+                      <p className="mt-2 text-xs text-[#94a3b8] dark:text-slate-400">
+                        Submitted on {new Date(focusedPcar.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
                   </CardBody>
                 </Card>
                 <Button
@@ -920,18 +905,18 @@ export function Tasks() {
                     !focusedPcarIsMine
                       ? `Only ${getAssignedToName(focusedPcar) ?? 'the assignee'} can submit this PCAR`
                       : pcarAlreadySubmitted
-                        ? (focusedPcar.status === 'done' ? 'Already approved and closed' : 'Already submitted for approval')
+                        ? (focusedPcar.status === 'done' ? 'Already submitted and closed' : 'Already submitted for approval')
                         : needsCorrectionUpload
                           ? 'Upload the corrected file first — see Linked Document above'
                           : undefined
                   }
                 >
-                  {focusedPcar.status === 'done' ? 'Approved' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Submit for approval'}
+                  {focusedPcar.status === 'done' ? 'Submitted' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Submit'}
                 </Button>
                 {pcarAlreadySubmitted ? (
                   <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">
                     {focusedPcar.status === 'done'
-                      ? 'This PCAR has been approved and closed.'
+                      ? 'This PCAR has been submitted and closed.'
                       : 'This PCAR has already been submitted and is awaiting a QA decision.'}
                   </p>
                 ) : needsCorrectionUpload && focusedPcarIsMine && (
@@ -943,111 +928,6 @@ export function Tasks() {
         </div>
       )}
 
-      {canReviewPcars && (
-        <div className="flex gap-2 border-b border-[#e2e8f0] pb-2 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => setPcarViewMode('my')}
-            className={`rounded-[4px] px-3 py-1.5 text-sm font-medium ${pcarViewMode === 'my' ? 'bg-[#2f3e83] text-white' : 'text-[#52627a] hover:bg-[#f1f4f8] dark:text-slate-300 dark:hover:bg-slate-800'}`}
-          >
-            My PCARs
-          </button>
-          <button
-            type="button"
-            onClick={() => setPcarViewMode('review')}
-            className={`rounded-[4px] px-3 py-1.5 text-sm font-medium ${pcarViewMode === 'review' ? 'bg-[#2f3e83] text-white' : 'text-[#52627a] hover:bg-[#f1f4f8] dark:text-slate-300 dark:hover:bg-slate-800'}`}
-          >
-            QA Review Queue{reviewQueue.length > 0 ? ` (${reviewQueue.length})` : ''}
-          </button>
-        </div>
-      )}
-
-      {pcarViewMode === 'review' && canReviewPcars && (
-        <Card>
-          <CardBody className="p-5">
-            <h2 className="section-heading">PCAR Review Queue</h2>
-            <p className="mt-1 text-xs text-[#718198] dark:text-slate-400">Every self-filed PCAR currently submitted and awaiting a QA decision.</p>
-            {reviewQueueError ? (
-              <div className="mt-4 rounded-[4px] bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
-                {reviewQueueError}
-                <Button variant="secondary" size="sm" onClick={loadReviewQueue} className="ml-3">Retry</Button>
-              </div>
-            ) : isReviewQueueLoading ? (
-              <div className="mt-4"><SkeletonTable /></div>
-            ) : reviewQueue.length === 0 ? (
-              <p className="mt-4 text-sm text-[#94a3b8] dark:text-slate-400">Nothing waiting for review right now.</p>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {reviewQueue.map((item) => (
-                  <div key={item.taskId} className="rounded-[5px] border border-[#e2e8f0] p-4 dark:border-slate-800">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-[#26334d] dark:text-white">{item.title}</p>
-                        <p className="text-xs text-[#718198] dark:text-slate-400">
-                          Submitted by {item.assignedToName ?? item.assignedToGroupName ?? 'Unknown'} · Due {item.dueDate ? formatDate(item.dueDate) : '—'}
-                        </p>
-                      </div>
-                      <span className={`rounded-[4px] px-2 py-1 text-xs font-semibold ${item.priority === 'critical' ? 'bg-[#fde1e2] text-[#c73c44] dark:bg-red-500/15 dark:text-red-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>
-                        {item.priority}
-                      </span>
-                    </div>
-                    <div className="mt-3 space-y-2 text-sm text-[#52627a] dark:text-slate-300">
-                      <p><span className="font-medium text-[#26334d] dark:text-white">Root cause:</span> {item.rcaText}</p>
-                      <p><span className="font-medium text-[#26334d] dark:text-white">Immediate correction:</span> {item.correctionText}</p>
-                      <p><span className="font-medium text-[#26334d] dark:text-white">Preventive action:</span> {item.preventiveActions}</p>
-                    </div>
-                    {rejectingTaskId === item.taskId ? (
-                      <div className="mt-3 space-y-2">
-                        <textarea
-                          className="field-control w-full min-h-[80px] py-2"
-                          placeholder="Explain what needs to be fixed..."
-                          value={rejectNotes}
-                          onChange={(e) => setRejectNotes(e.target.value)}
-                          autoFocus
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button variant="secondary" size="sm" onClick={() => { setRejectingTaskId(null); setRejectNotes(''); }}>Cancel</Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => handleRejectPcar(item.taskId)}
-                            disabled={reviewActionBusyId === item.taskId}
-                          >
-                            Confirm Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-3 flex justify-end gap-2">
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          disabled={!canRejectPcars || reviewActionBusyId === item.taskId}
-                          title={!canRejectPcars ? 'Your role does not have permission to reject PCARs' : undefined}
-                          onClick={() => { setRejectingTaskId(item.taskId); setRejectNotes(''); }}
-                        >
-                          Reject
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          disabled={reviewActionBusyId === item.taskId}
-                          onClick={() => handleApprovePcar(item.taskId)}
-                        >
-                          Approve
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-      )}
-
-      {pcarViewMode === 'my' && (
-      <>
       <div className="flex items-center justify-between pt-1"><h2 className="section-heading">PCAR Register</h2></div>
 
       {/* Filters */}
@@ -1116,7 +996,7 @@ export function Tasks() {
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Priority</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Due Date</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Type</th>
-                  {canManageAllTasks && (
+                  {(canManageAllTasks || canReassignTasks) && (
                     <th className="px-6 py-3 text-center text-sm font-semibold text-navy-900 dark:text-white">Actions</th>
                   )}
                 </tr>
@@ -1124,7 +1004,7 @@ export function Tasks() {
               <tbody>
                 {filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={canManageAllTasks ? 8 : 7} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={(canManageAllTasks || canReassignTasks) ? 8 : 7} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                       No tasks found
                     </td>
                   </tr>
@@ -1138,7 +1018,7 @@ export function Tasks() {
                       } hover:bg-gray-100 dark:hover:bg-slate-800/60 transition-colors ${focusedPcar?.taskId === task.taskId ? 'ring-1 ring-inset ring-[#3f8bca]' : ''}`}
                     >
                       <td className="px-6 py-4">
-                        {editingId === task.taskId ? (
+                        {editingId === task.taskId && canManageAllTasks ? (
                           <input
                             type="text"
                             value={editData.title || ''}
@@ -1168,7 +1048,7 @@ export function Tasks() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === task.taskId && canReassignTasks ? (
+                        {editingId === task.taskId && (canReassignTasks || (canReassignMyTasksOnly && isTaskMine(task))) ? (
                           <select
                             value={editData.assignedToGroupId ? `group:${editData.assignedToGroupId}` : `user:${editData.assignedTo}`}
                             onChange={(e) => {
@@ -1202,7 +1082,7 @@ export function Tasks() {
                         </Badge>
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === task.taskId ? (
+                        {editingId === task.taskId && canManageAllTasks ? (
                           <select
                             value={editData.priority || 'medium'}
                             onChange={(e) => setEditData({ ...editData, priority: e.target.value as any })}
@@ -1220,7 +1100,7 @@ export function Tasks() {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === task.taskId ? (
+                        {editingId === task.taskId && canManageAllTasks ? (
                           <input
                             type="date"
                             value={editData.dueDate || task.dueDate?.split('T')[0]}
@@ -1239,9 +1119,21 @@ export function Tasks() {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">{task.taskType.replace('_', ' ')}</span>
+                        {editingId === task.taskId && canManageAllTasks ? (
+                          <select
+                            value={editData.taskType || task.taskType}
+                            onChange={(e) => setEditData({ ...editData, taskType: e.target.value as any })}
+                            className="px-3 py-2 border border-gray-200 dark:border-navy-700 rounded bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                          >
+                            <option value="correction">Correction</option>
+                            <option value="rca">RCA</option>
+                            <option value="audit_action">Audit Action</option>
+                          </select>
+                        ) : (
+                          <span className="text-sm text-gray-600 dark:text-gray-400">{task.taskType.replace('_', ' ')}</span>
+                        )}
                       </td>
-                      {canManageAllTasks && (
+                      {(canManageAllTasks || canReassignTasks || canReassignMyTasksOnly) && (
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
                           {editingId === task.taskId ? (
@@ -1263,7 +1155,7 @@ export function Tasks() {
                                 Cancel
                               </Button>
                             </>
-                          ) : (
+                          ) : canManageAllTasks ? (
                             <>
                               {task.status !== 'done' && (
                                 <button
@@ -1281,15 +1173,32 @@ export function Tasks() {
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={() => setDeleteConfirm({ taskId: task.taskId, taskTitle: task.title })}
-                                className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors text-red-600"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {task.status === 'open' ? (
+                                <button
+                                  onClick={() => setDeleteConfirm({ taskId: task.taskId, taskTitle: task.title })}
+                                  className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors text-red-600"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <span
+                                  className="p-2 text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                                  title="Only open tasks can be deleted — this one has already been submitted, is in progress, or is completed"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </span>
+                              )}
                             </>
-                          )}
+                          ) : canReassignTasks || (canReassignMyTasksOnly && isTaskMine(task)) ? (
+                            <button
+                              onClick={() => handleEditTask(task)}
+                              className="p-2 hover:bg-gray-200 dark:hover:bg-navy-700 rounded transition-colors text-gray-600 dark:text-gray-300"
+                              title="Reassign"
+                            >
+                              <UserCog className="w-4 h-4" />
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                       )}
@@ -1329,8 +1238,6 @@ export function Tasks() {
             </div>
           )}
         </Card>
-      )}
-      </>
       )}
 
       {/* Add Task Modal */}
@@ -1583,6 +1490,15 @@ export function Tasks() {
           taskId={attachmentsFor.taskId}
           taskTitle={attachmentsFor.title}
           onClose={() => setAttachmentsFor(null)}
+        />
+      )}
+
+      {pendingLinkedDocFile && linkedDocument && (
+        <UploadNewVersionModal
+          documentId={linkedDocument.documentId}
+          file={pendingLinkedDocFile}
+          onClose={() => setPendingLinkedDocFile(null)}
+          onUploaded={handleLinkedDocumentVersionUploaded}
         />
       )}
     </div>

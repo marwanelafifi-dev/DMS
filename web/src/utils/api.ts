@@ -67,6 +67,7 @@ export interface PageAccessRoleFlags {
   canManageAllTasks: boolean;
   canCreateTasks: boolean;
   canReassignTasks: boolean;
+  canReassignMyTasks: boolean;
   // Scopes canViewApprovals down to specific C-Doc Workflow stage tabs.
   canViewQaStage: boolean;
   canViewManagerStage: boolean;
@@ -307,6 +308,11 @@ class APIClient {
 
   async deleteUserPermanently(userId: string) {
     const { data } = await this.client.delete<ApiResponse>(`/users/${userId}/permanent`);
+    return data;
+  }
+
+  async transferOwnership(userId: string, toUserId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/users/${userId}/transfer-ownership`, { toUserId });
     return data;
   }
 
@@ -628,6 +634,11 @@ class APIClient {
     return data;
   }
 
+  async deleteTask(taskId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/tasks/${taskId}`);
+    return data;
+  }
+
   async resubmitTaskForReview(taskId: string) {
     const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/resubmit-for-review`, {});
     return data;
@@ -650,21 +661,6 @@ class APIClient {
       preventiveActions: payload.preventiveActions,
       targetDate: payload.targetDate,
     });
-    return data;
-  }
-
-  async getPcarReviewQueue(params?: any) {
-    const { data } = await this.client.get<ApiResponse>('/tasks/pcar-review-queue', { params });
-    return data;
-  }
-
-  async approvePcar(taskId: string, notes?: string) {
-    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/qa-approve`, { notes });
-    return data;
-  }
-
-  async rejectPcar(taskId: string, notes: string) {
-    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/qa-reject`, { notes });
     return data;
   }
 

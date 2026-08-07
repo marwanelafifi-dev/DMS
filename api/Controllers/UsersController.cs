@@ -403,6 +403,91 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
         }
     }
 
+    // POST /api/users/{id}/transfer-ownership — hands every folder/document
+    // owned, task assigned/managed, in-flight checkout, and other live-work
+    // reference held by this user over to a different active user, so the
+    // account can then actually be permanently deleted instead of just
+    // deactivated. Deliberately does NOT touch dms_esignatures.user_id or
+    // dms_reminders.recipient_id — both are WORM-protected (UPDATE is
+    // rejected at the DB trigger level) since they're historical compliance
+    // records, not live ownership; an account that has ever signed or been
+    // reminded about something will still block permanent deletion even
+    // after a transfer, by design — that's what Deactivate is for.
+    [HttpPost("{id}/transfer-ownership")]
+    public async Task<ActionResult<object>> TransferOwnership(Guid id, [FromBody] TransferOwnershipRequest req)
+    {
+        try
+        {
+            if (req.ToUserId == Guid.Empty)
+                return BadRequest(new { success = false, error = "toUserId is required" });
+            if (req.ToUserId == id)
+                return BadRequest(new { success = false, error = "Source and destination user must be different" });
+
+            var fromUser = await context.Users.FirstOrDefaultAsync(u => u.UserId == id);
+            if (fromUser == null)
+                return NotFound(new { success = false, error = "Source user not found" });
+
+            var toUser = await context.Users.FirstOrDefaultAsync(u => u.UserId == req.ToUserId);
+            if (toUser == null)
+                return NotFound(new { success = false, error = "Destination user not found" });
+            if (!toUser.IsActive)
+                return BadRequest(new { success = false, error = "Cannot transfer ownership to an inactive user" });
+
+            await using var transaction = await context.Database.BeginTransactionAsync();
+
+            var updatedCounts = new Dictionary<string, int>();
+            async Task RunAsync(string label, FormattableString sql)
+            {
+                var rows = await context.Database.ExecuteSqlInterpolatedAsync(sql);
+                if (rows > 0) updatedCounts[label] = rows;
+            }
+
+            await RunAsync("foldersOwned", $"UPDATE dms_folders SET owner_id = {req.ToUserId} WHERE owner_id = {id}");
+            await RunAsync("folderPermissionsGrantedBy", $"UPDATE dms_folder_permissions SET granted_by_id = {req.ToUserId} WHERE granted_by_id = {id}");
+            await RunAsync("documentsOwned", $"UPDATE dms_documents SET owner_id = {req.ToUserId} WHERE owner_id = {id}");
+            await RunAsync("versionCheckouts", $"UPDATE dms_document_versions SET checked_out_by = {req.ToUserId} WHERE checked_out_by = {id}");
+            await RunAsync("versionSubmissions", $"UPDATE dms_document_versions SET submitted_by_id = {req.ToUserId} WHERE submitted_by_id = {id}");
+            await RunAsync("versionApprovals", $"UPDATE dms_document_versions SET approved_by_id = {req.ToUserId} WHERE approved_by_id = {id}");
+            await RunAsync("workflowStepsAssigned", $"UPDATE dms_workflow_steps SET assigned_to_id = {req.ToUserId} WHERE assigned_to_id = {id}");
+            await RunAsync("workflowStepsCompleted", $"UPDATE dms_workflow_steps SET completed_by_id = {req.ToUserId} WHERE completed_by_id = {id}");
+            await RunAsync("tasksAssigned", $"UPDATE dms_tasks SET assigned_to_id = {req.ToUserId} WHERE assigned_to_id = {id}");
+            await RunAsync("tasksManaged", $"UPDATE dms_tasks SET manager_id = {req.ToUserId} WHERE manager_id = {id}");
+            await RunAsync("tasksCompleted", $"UPDATE dms_tasks SET completed_by_id = {req.ToUserId} WHERE completed_by_id = {id}");
+            await RunAsync("tasksQaReviewed", $"UPDATE dms_tasks SET qa_reviewed_by_id = {req.ToUserId} WHERE qa_reviewed_by_id = {id}");
+            await RunAsync("approvalsCreated", $"UPDATE dms_approvals SET created_by = {req.ToUserId} WHERE created_by = {id}");
+            await RunAsync("accessOverridesCreated", $"UPDATE dms_access_overrides SET created_by = {req.ToUserId} WHERE created_by = {id}");
+            await RunAsync("auditCalendarEventsPosted", $"UPDATE dms_audit_calendar_events SET posted_by = {req.ToUserId} WHERE posted_by = {id}");
+            await RunAsync("taskAttachmentsUploaded", $"UPDATE dms_task_attachments SET uploaded_by = {req.ToUserId} WHERE uploaded_by = {id}");
+
+            await transaction.CommitAsync();
+
+            var currentUserId = GetCurrentUserId();
+            await auditService.LogAsync(currentUserId, USER_OWNERSHIP_TRANSFERRED, new
+            {
+                FromUserId = id,
+                FromEmail = fromUser.Email,
+                ToUserId = req.ToUserId,
+                ToEmail = toUser.Email,
+                Updated = updatedCounts,
+            });
+
+            logger.LogInformation("Transferred ownership from user {FromUserId} to {ToUserId}", id, req.ToUserId);
+
+            var remainingEsignatures = await context.Database.SqlQuery<int>($"SELECT COUNT(*)::int AS \"Value\" FROM dms_esignatures WHERE user_id = {id}").FirstOrDefaultAsync();
+            var remainingReminders = await context.Database.SqlQuery<int>($"SELECT COUNT(*)::int AS \"Value\" FROM dms_reminders WHERE recipient_id = {id}").FirstOrDefaultAsync();
+            string? note = null;
+            if (remainingEsignatures > 0 || remainingReminders > 0)
+                note = "This user still has e-signatures and/or reminders on record — those are permanent compliance history and can't be reassigned, so this account still can't be permanently deleted. Deactivate it instead.";
+
+            return Ok(new { success = true, updated = updatedCounts, note });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error transferring ownership from user {FromUserId} to {ToUserId}", id, req.ToUserId);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     // DELETE /api/users/{id}/permanent — permanent delete (cannot be undone)
     [HttpDelete("{id}/permanent")]
     public async Task<ActionResult<object>> DeleteUserPermanently(Guid id)
@@ -452,3 +537,4 @@ public record CreateUserRequest(string Email, string FullName, string? SsoSubjec
 public record UpdateUserRequest(string? FullName = null, bool? IsActive = null);
 public record UpdateUserRoleRequest(string? Role);
 public record ResetPasswordRequest(string NewPassword);
+public record TransferOwnershipRequest(Guid ToUserId);

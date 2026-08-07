@@ -184,123 +184,6 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         }
     }
 
-    // GET /api/tasks/pcar-review-queue — every PCAR currently awaiting QA
-    // review, across all assignees. Reuses the same CanApprove flag the
-    // Document Workflow already gates its stage queues on, decoupled from
-    // folder permissions (tasks aren't folder-scoped) — same reasoning as
-    // that system's own reviewer access.
-    [HttpGet("pcar-review-queue")]
-    public async Task<ActionResult<object>> GetPcarReviewQueue([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
-    {
-        try
-        {
-            var userId = GetCurrentUserId();
-            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-            if (pageAccessRole?.CanApprove != true)
-                return StatusCode(403, new { success = false, error = "You do not have permission to review PCARs" });
-
-            page = Math.Max(1, page);
-            pageSize = Math.Clamp(pageSize, 1, 200);
-            var result = await taskService.GetPcarReviewQueueAsync(page, pageSize);
-
-            return Ok(new { success = true, data = result.Items, count = result.TotalCount, totalCount = result.TotalCount, page, pageSize });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error retrieving PCAR review queue");
-            return StatusCode(500, new { success = false, error = ex.Message });
-        }
-    }
-
-    // POST /api/tasks/{id}/qa-approve — closes the PCAR out (status ->
-    // 'completed'). Gated on CanApprove, same flag as the queue itself.
-    [HttpPost("{id}/qa-approve")]
-    public async Task<ActionResult<object>> ApprovePcar(Guid id, [FromBody] PcarReviewDecisionRequest? req)
-    {
-        try
-        {
-            var userId = GetCurrentUserId();
-            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-            if (pageAccessRole?.CanApprove != true)
-                return StatusCode(403, new { success = false, error = "You do not have permission to approve PCARs" });
-
-            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.TaskId == id);
-            var result = await taskService.ApprovePcarAsync(id, userId, req?.Notes);
-            if (!result.Success)
-            {
-                return result.Error switch
-                {
-                    "NotFound" => NotFound(new { success = false, error = result.Message }),
-                    _ => BadRequest(new { success = false, error = result.Message })
-                };
-            }
-
-            if (task != null)
-            {
-                if (task.AssignedToId.HasValue)
-                    await notificationService.NotifyAsync(task.AssignedToId.Value, userId, "Your PCAR was approved", task.Title, taskId: id);
-                else if (task.AssignedToGroupId.HasValue)
-                {
-                    var memberIds = await context.GroupMembers.Where(gm => gm.GroupId == task.AssignedToGroupId.Value).Select(gm => gm.UserId).ToListAsync();
-                    foreach (var memberId in memberIds)
-                        await notificationService.NotifyAsync(memberId, userId, "Your PCAR was approved", task.Title, taskId: id);
-                }
-            }
-
-            return Ok(new { success = true, data = result.Data });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error approving PCAR {TaskId}", id);
-            return StatusCode(500, new { success = false, error = ex.Message });
-        }
-    }
-
-    // POST /api/tasks/{id}/qa-reject — bounces the PCAR back to the assignee
-    // (status -> 'open') with required notes explaining what to fix. Gated
-    // on CanReject, mirroring the Document Workflow's own approve/reject split.
-    [HttpPost("{id}/qa-reject")]
-    public async Task<ActionResult<object>> RejectPcar(Guid id, [FromBody] PcarReviewDecisionRequest req)
-    {
-        try
-        {
-            var userId = GetCurrentUserId();
-            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-            if (pageAccessRole?.CanReject != true)
-                return StatusCode(403, new { success = false, error = "You do not have permission to reject PCARs" });
-
-            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.TaskId == id);
-            var result = await taskService.RejectPcarAsync(id, userId, req.Notes ?? "");
-            if (!result.Success)
-            {
-                return result.Error switch
-                {
-                    "NotFound" => NotFound(new { success = false, error = result.Message }),
-                    _ => BadRequest(new { success = false, error = result.Message })
-                };
-            }
-
-            if (task != null)
-            {
-                if (task.AssignedToId.HasValue)
-                    await notificationService.NotifyAsync(task.AssignedToId.Value, userId, "Your PCAR needs revision", req.Notes, taskId: id);
-                else if (task.AssignedToGroupId.HasValue)
-                {
-                    var memberIds = await context.GroupMembers.Where(gm => gm.GroupId == task.AssignedToGroupId.Value).Select(gm => gm.UserId).ToListAsync();
-                    foreach (var memberId in memberIds)
-                        await notificationService.NotifyAsync(memberId, userId, "Your PCAR needs revision", req.Notes, taskId: id);
-                }
-            }
-
-            return Ok(new { success = true, data = result.Data });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error rejecting PCAR {TaskId}", id);
-            return StatusCode(500, new { success = false, error = ex.Message });
-        }
-    }
-
     // POST /api/tasks — create a new task
     [HttpPost]
     public async Task<ActionResult<object>> CreateTask([FromBody] CreateTaskRequest req)
@@ -418,23 +301,42 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             // The assignee can work their own PCAR (fill in RCA, submit for
             // approval) and the manager/QA who created it can track/adjust it,
             // same as GetMyTasksAsync's visibility rule — anyone else needs
-            // the blanket CanManageAllTasks flag (Admin-equivalent).
+            // the blanket CanManageAllTasks flag (Admin-equivalent), OR
+            // CanReassignTasks on its own, but only to touch the assignment
+            // fields on someone else's task, nothing more.
             var isOwnTask = await taskService.IsAssigneeAsync(task, userId) || task.ManagerId == userId;
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            var isReassigning = req.AssignedToId.HasValue || req.AssignedToGroupId.HasValue;
+            // CanReassignTasks: any task, own or not. CanReassignMyTasks: only
+            // a task this caller is already the assignee/manager of — two
+            // independent, separately-grantable flags per explicit request.
+            var canReassignAny = pageAccessRole?.CanManageAllTasks == true || pageAccessRole?.CanReassignTasks == true;
+            var canReassignMyTasksOnly = pageAccessRole?.CanReassignMyTasks == true;
+
             if (!isOwnTask && pageAccessRole?.CanManageAllTasks != true)
-                return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+            {
+                if (!isReassigning || !canReassignAny)
+                    return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+
+                var touchesOtherFields = req.Title != null || req.Description != null || req.DueDate.HasValue
+                    || req.RiskSeverity != null || req.Status != null || req.RcaText != null
+                    || req.CorrectionText != null || req.PreventiveActions != null || req.TaskType != null;
+                if (touchesOtherFields)
+                    return StatusCode(403, new { success = false, error = "Your reassign-only permission only allows changing who this task is assigned to" });
+            }
 
             // Reassigning to a different user/group is gated on its own,
-            // independent flag (or the broader CanManageAllTasks, which already
-            // implies it) — separate from the base "can edit this task at all"
-            // check above, since a task's own assignee/manager shouldn't
-            // automatically be able to hand it off to someone else.
-            var isReassigning = req.AssignedToId.HasValue || req.AssignedToGroupId.HasValue;
+            // independent flag(s) — separate from the base "can edit this task
+            // at all" check above, since a task's own assignee/manager
+            // shouldn't automatically be able to hand it off to someone else
+            // without CanReassignMyTasks (or the broader CanReassignTasks/
+            // CanManageAllTasks, which both already imply it).
             if (isReassigning)
             {
                 if (req.AssignedToId.HasValue == req.AssignedToGroupId.HasValue)
                     return BadRequest(new { success = false, error = "Exactly one of assignedToId or assignedToGroupId is required to reassign" });
-                if (pageAccessRole?.CanManageAllTasks != true && pageAccessRole?.CanReassignTasks != true)
+                var allowedToReassign = canReassignAny || (isOwnTask && canReassignMyTasksOnly);
+                if (!allowedToReassign)
                     return StatusCode(403, new { success = false, error = "You do not have permission to reassign tasks" });
             }
 
@@ -449,7 +351,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.CorrectionText,
                 req.PreventiveActions,
                 req.AssignedToId,
-                req.AssignedToGroupId);
+                req.AssignedToGroupId,
+                req.TaskType);
 
             if (!result.Success)
             {
@@ -476,6 +379,58 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         catch (Exception ex)
         {
             logger.LogError(ex, "Error updating task {TaskId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // DELETE /api/tasks/{id} — permanently delete a task. Gated on
+    // CanManageAllTasks (same permission that shows the Edit/Delete/Complete
+    // action set at all) and, per explicit request, restricted to tasks that
+    // are still 'open' — once a task has been submitted, is in progress, or
+    // completed, it's already real corrective-action/audit history and
+    // should never just disappear; reassign or let it run its course instead.
+    [HttpDelete("{id}")]
+    public async Task<ActionResult<object>> DeleteTask(Guid id)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (pageAccessRole?.CanManageAllTasks != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to delete tasks" });
+
+            var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == id);
+            if (task == null)
+                return NotFound(new { success = false, error = "Task not found" });
+
+            if (task.Status != "open")
+                return BadRequest(new { success = false, error = "Only open tasks can be deleted — this one has already been submitted, is in progress, or is completed" });
+
+            var attachments = await context.TaskAttachments.Where(a => a.TaskId == id).ToListAsync();
+            foreach (var attachment in attachments)
+            {
+                try
+                {
+                    await minioService.DeleteAsync(attachment.S3ObjectKey);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO while deleting task {TaskId}", attachment.S3ObjectKey, id);
+                }
+            }
+
+            context.Tasks.Remove(task);
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, TASK_DELETED, new { TaskId = id, task.Title });
+
+            logger.LogInformation("Deleted task {TaskId}", id);
+
+            return Ok(new { success = true, message = "Task deleted" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error deleting task {TaskId}", id);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
@@ -549,6 +504,11 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (approvalDocument.Status != "correction_requested")
                 return BadRequest(new { success = false, error = "This correction has already been resubmitted" });
 
+            if (string.IsNullOrWhiteSpace(task.RcaText) || task.RcaText.Trim().Length < 20)
+                return BadRequest(new { success = false, error = "Root cause analysis must contain at least 20 characters before resubmitting" });
+            if (string.IsNullOrWhiteSpace(task.CorrectionText) || string.IsNullOrWhiteSpace(task.PreventiveActions) || task.DueDate == null)
+                return BadRequest(new { success = false, error = "Complete the immediate correction, preventive action, and target date before resubmitting" });
+
             // The corrected file was uploaded as a new document version before this
             // call (bumping dms_documents.current_version_id) — but nothing had ever
             // pointed the approval-document row at it, so the reviewer's queue kept
@@ -558,6 +518,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 approvalDocument.VersionId = document.CurrentVersionId.Value;
 
             approvalDocument.Status = "pending";
+            approvalDocument.UpdatedAt = DateTime.UtcNow;
             // "completed" (not "done") is the canonical value TaskService.CompleteTaskAsync
             // and every overdue/status check elsewhere in the app actually compare against —
             // this line previously wrote "done" instead, which no other check recognized.
@@ -576,9 +537,10 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 approvalDocument.CurrentStage,
             });
 
+            var reviewerLabel = approvalDocument.CurrentStage == "manager_review" ? "Manager" : "QA";
+
             if (task.ManagerId.HasValue)
             {
-                var reviewerLabel = approvalDocument.CurrentStage == "manager_review" ? "Manager" : "QA";
                 await notificationService.NotifyAsync(
                     task.ManagerId.Value,
                     userId,
@@ -587,6 +549,21 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     documentId: task.DocumentId,
                     taskId: task.TaskId);
             }
+
+            // Everyone who can act on this document's current stage — not just
+            // the manager who assigned the correction — so the reviewer who's
+            // actually blocked on this document finds out it's ready again,
+            // instead of only discovering it by happening to reopen the queue.
+            var resubmittedDocTitle = document?.Title;
+            Func<DmsPageAccessRole, bool> resubmitStageSelector = approvalDocument.CurrentStage == "manager_review"
+                ? r => r.CanViewManagerStage
+                : r => r.CanViewQaStage;
+            await notificationService.NotifyStageReviewersAsync(
+                userId,
+                task.DocumentId!.Value,
+                $"A corrected document is back in the {reviewerLabel} queue",
+                resubmittedDocTitle,
+                resubmitStageSelector);
 
             return Ok(new
             {
@@ -744,7 +721,6 @@ public record CreateTaskRequest(
 );
 
 public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate);
-public record PcarReviewDecisionRequest(string? Notes);
 
 public record UpdateTaskRequest(
     string? Title = null,
@@ -756,7 +732,8 @@ public record UpdateTaskRequest(
     string? CorrectionText = null,
     string? PreventiveActions = null,
     Guid? AssignedToId = null,
-    Guid? AssignedToGroupId = null
+    Guid? AssignedToGroupId = null,
+    string? TaskType = null
 );
 
 public record CompleteTaskRequest(

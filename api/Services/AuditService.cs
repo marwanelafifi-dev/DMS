@@ -105,6 +105,7 @@ public static class AuditActions
     public const string DOCUMENT_REJECTED = "DOCUMENT_REJECTED";
 
     public const string TASK_COMPLETED = "TASK_COMPLETED";
+    public const string TASK_DELETED = "TASK_DELETED";
     public const string TASK_REASSIGNED = "TASK_REASSIGNED";
     public const string CORRECTION_TASK_COMPLETED = "CORRECTION_TASK_COMPLETED";
     public const string PCAR_SUBMITTED = "PCAR_SUBMITTED";
@@ -130,6 +131,7 @@ public static class AuditActions
     public const string USER_DEACTIVATED = "USER_DEACTIVATED";
     public const string USER_DELETED = "USER_DELETED";
     public const string USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
+    public const string USER_OWNERSHIP_TRANSFERRED = "USER_OWNERSHIP_TRANSFERRED";
     public const string USER_LOGIN = "USER_LOGIN";
 
     public const string GROUP_CREATED = "GROUP_CREATED";

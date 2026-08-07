@@ -6,6 +6,8 @@ import { useToast } from '../../hooks/useToast';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { doclingApi } from '../../services/doclingApi';
 import { MarkdownViewer } from './MarkdownViewer';
+import { parseExcelDocument } from '../../utils/officeParser';
+import type { SpreadsheetSheet } from '../../fixtures/documentLibrary';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 'csv']);
@@ -16,11 +18,15 @@ const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 
 // with a bare "<!-- image -->" placeholder) is only the fallback if the
 // sidecar is unreachable or the PDF conversion itself fails.
 const OFFICE_PDF_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx']);
-const OFFICE_TEXT_EXTENSIONS = new Set(['xls', 'xlsx']);
+// Excel renders as a real spreadsheet grid (same parser the main Document
+// Library preview uses) instead of Docling's flattened markdown pipe-table,
+// which mangles multi-sheet workbooks and mislabels columns.
+const OFFICE_SPREADSHEET_EXTENSIONS = new Set(['xls', 'xlsx']);
 
 type ReviewContent =
   | { kind: 'image' | 'pdf'; url: string }
-  | { kind: 'text' | 'markdown'; content: string };
+  | { kind: 'text' | 'markdown'; content: string }
+  | { kind: 'spreadsheet'; sheets: SpreadsheetSheet[] };
 
 interface VersionRow {
   versionId: string;
@@ -46,6 +52,7 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
   const [error, setError] = useState<string | null>(null);
   const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<{ versionLabel: string; content: ReviewContent } | null>(null);
+  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const reviewObjectUrlRef = useRef<string | null>(null);
 
   const load = () => {
@@ -83,6 +90,7 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
   // Revert.
   const handleReview = async (versionId: string, versionLabel: string) => {
     setBusyVersionId(versionId);
+    setActiveSheetIndex(0);
     try {
       const { blob, fileName: versionFileName } = await apiClient.getDocumentFile(documentId, versionId);
       const extension = versionFileName.split('.').pop()?.toLowerCase() ?? '';
@@ -120,7 +128,13 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
         return;
       }
 
-      if (OFFICE_TEXT_EXTENSIONS.has(extension)) {
+      if (OFFICE_SPREADSHEET_EXTENSIONS.has(extension)) {
+        const preview = await parseExcelDocument(blob, '');
+        if (preview?.kind === 'spreadsheet') {
+          setReviewing({ versionLabel, content: { kind: 'spreadsheet', sheets: preview.sheets } });
+          return;
+        }
+        // Unparseable workbook — fall back to Docling's plain text extraction.
         const converted = await doclingApi.convertDocument(file);
         setReviewing({ versionLabel, content: { kind: 'markdown', content: converted.content } });
         return;
@@ -162,8 +176,14 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
-      <div className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900 ${reviewing ? 'max-w-4xl' : 'max-w-2xl'}`}>
+    <div
+      className={
+        reviewing
+          ? 'fixed inset-y-0 right-0 left-0 top-0 z-[80] overflow-hidden bg-black/50 lg:left-[286px]'
+          : 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
+      }
+    >
+      <div className={`flex h-full max-h-full w-full flex-col overflow-hidden bg-white shadow-xl dark:bg-slate-900 ${reviewing ? '' : 'max-h-[85vh] max-w-2xl rounded-lg'}`}>
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <div className="flex min-w-0 items-center gap-3">
             {reviewing && (
@@ -189,7 +209,7 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
               <img src={reviewing.content.url} alt={reviewing.versionLabel} className="mx-auto max-w-full rounded shadow" />
             )}
             {reviewing.content.kind === 'pdf' && (
-              <iframe src={reviewing.content.url} title={reviewing.versionLabel} className="h-[70vh] w-full rounded border-0 bg-white" />
+              <iframe src={reviewing.content.url} title={reviewing.versionLabel} className="h-full w-full rounded border-0 bg-white" />
             )}
             {reviewing.content.kind === 'text' && (
               <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-4 text-sm text-navy-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{reviewing.content.content}</pre>
@@ -199,6 +219,67 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
                 <MarkdownViewer content={reviewing.content.content} />
               </div>
             )}
+            {reviewing.content.kind === 'spreadsheet' && (() => {
+              const sheets = reviewing.content.sheets;
+              const safeSheetIndex = Math.min(activeSheetIndex, sheets.length - 1);
+              const activeSheet = sheets[safeSheetIndex];
+              return (
+                <div className="flex h-full w-full flex-col rounded border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead className="sticky top-0 z-10 bg-[#eff6f1] text-[#3f5e49] dark:bg-emerald-950/40 dark:text-emerald-100">
+                        <tr>
+                          {activeSheet.rowNumbers && (
+                            <th className="sticky left-0 z-20 w-10 border-b border-r border-[#dbe2ec] bg-[#eff6f1] px-2 py-3 text-center font-semibold dark:border-white/10 dark:bg-emerald-950/40" />
+                          )}
+                          {activeSheet.columns.map((column) => (
+                            <th key={column} className={`border-b border-r border-[#dbe2ec] px-4 py-3 font-semibold last:border-r-0 dark:border-white/10 ${activeSheet.rowNumbers ? 'text-center' : ''}`}>
+                              {column}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeSheet.rows.map((row, rowIndex) => (
+                          <tr key={row.join('-') + rowIndex} className={rowIndex % 2 ? 'bg-[#fbfcfe] dark:bg-slate-800/50' : ''}>
+                            {activeSheet.rowNumbers && (
+                              <th scope="row" className="sticky left-0 z-10 w-10 border-b border-r border-[#dbe2ec] bg-[#eff6f1] px-2 py-3 text-center font-semibold text-[#3f5e49] dark:border-white/10 dark:bg-emerald-950/40 dark:text-emerald-100">
+                                {activeSheet.rowNumbers[rowIndex]}
+                              </th>
+                            )}
+                            {row.map((cell, cellIndex) => (
+                              <td key={`${cell}-${cellIndex}`} className="border-b border-r border-[#edf1f5] px-4 py-3 text-[#52627a] last:border-r-0 dark:border-white/10 dark:text-slate-200">
+                                {cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {sheets.length > 1 && (
+                    <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto border-t border-[#dbe2ec] bg-[#f1f5f9] px-2 py-1.5 dark:border-white/10 dark:bg-slate-800" role="tablist" aria-label="Spreadsheet sheets">
+                      {sheets.map((sheet, index) => (
+                        <button
+                          key={sheet.name}
+                          type="button"
+                          role="tab"
+                          aria-selected={index === safeSheetIndex}
+                          onClick={() => setActiveSheetIndex(index)}
+                          className={`flex-shrink-0 whitespace-nowrap rounded-t-[4px] border-x border-t px-3 py-1.5 text-xs font-medium transition-colors ${
+                            index === safeSheetIndex
+                              ? 'border-[#dbe2ec] bg-white text-[#27885a] dark:border-white/10 dark:bg-slate-900 dark:text-emerald-300'
+                              : 'border-transparent text-[#718198] hover:bg-white/60 dark:text-slate-400 dark:hover:bg-slate-900/40'
+                          }`}
+                        >
+                          {sheet.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : (
         <div className="flex-1 overflow-y-auto px-6 py-4">

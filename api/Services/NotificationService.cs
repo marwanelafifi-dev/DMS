@@ -56,4 +56,27 @@ public class NotificationService(DmsContext context, ILogger<NotificationService
             logger.LogError(ex, "Error notifying owner of document {DocumentId}", documentId);
         }
     }
+
+    // Every stage-advancing action (QA accept, Manager approve, Manager
+    // self-correct) — and now a task submitted/resubmitted against a
+    // document — notifies every active user whose page-access role can view
+    // the target stage (same flag the queue endpoints themselves gate on),
+    // not just the document's original submitter. Shared between
+    // ApprovalsController (stage transitions) and TaskService/TasksController
+    // (PCAR submit / correction resubmit), so both paths use one definition.
+    public async Task NotifyStageReviewersAsync(Guid actorUserId, Guid documentId, string title, string? body, Func<DmsPageAccessRole, bool> stageFlagSelector)
+    {
+        var roles = await context.PageAccessRoles.AsNoTracking().ToListAsync();
+        var reviewerRoleNames = roles.Where(stageFlagSelector).Select(r => r.Role).ToList();
+        if (reviewerRoleNames.Count == 0)
+            return;
+
+        var reviewerIds = await context.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Role != null && reviewerRoleNames.Contains(u.Role!))
+            .Select(u => u.UserId)
+            .ToListAsync();
+
+        foreach (var reviewerId in reviewerIds)
+            await NotifyAsync(reviewerId, actorUserId, title, body, documentId: documentId);
+    }
 }

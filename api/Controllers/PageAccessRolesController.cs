@@ -67,6 +67,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageAllTasks = req.CanManageAllTasks,
                 CanCreateTasks = req.CanCreateTasks,
                 CanReassignTasks = req.CanReassignTasks,
+                CanReassignMyTasks = req.CanReassignMyTasks,
                 CanViewQaStage = req.CanViewQaStage,
                 CanViewManagerStage = req.CanViewManagerStage,
                 CanViewFinalReleaseStage = req.CanViewFinalReleaseStage,
@@ -118,6 +119,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanManageAllTasks = req.CanManageAllTasks;
             entity.CanCreateTasks = req.CanCreateTasks;
             entity.CanReassignTasks = req.CanReassignTasks;
+            entity.CanReassignMyTasks = req.CanReassignMyTasks;
             entity.CanViewQaStage = req.CanViewQaStage;
             entity.CanViewManagerStage = req.CanViewManagerStage;
             entity.CanViewFinalReleaseStage = req.CanViewFinalReleaseStage;
@@ -189,6 +191,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageAllTasks = entity.CanManageAllTasks,
                 CanCreateTasks = entity.CanCreateTasks,
                 CanReassignTasks = entity.CanReassignTasks,
+                CanReassignMyTasks = entity.CanReassignMyTasks,
                 CanViewQaStage = entity.CanViewQaStage,
                 CanViewManagerStage = entity.CanViewManagerStage,
                 CanViewFinalReleaseStage = entity.CanViewFinalReleaseStage,
@@ -262,7 +265,7 @@ public record UpdatePageAccessRoleRequest(
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false,
+    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false);
 
@@ -274,6 +277,6 @@ public record CreatePageAccessRoleRequest(
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false,
+    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false);

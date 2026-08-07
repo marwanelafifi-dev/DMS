@@ -10,6 +10,10 @@ public class DmsApprovalDocument
     public Guid DocumentId { get; set; }
     public Guid VersionId { get; set; }  // The version submitted for approval
     public DateTime CreatedAt { get; set; }
+    // When this row last entered/re-entered its current stage/status — updated
+    // on every stage transition and resubmission, unlike CreatedAt (set once,
+    // at the row's initial insert). The queue's "Submitted" column reads this.
+    public DateTime UpdatedAt { get; set; }
 
     // Per-document C-Doc Workflow progress — deliberately independent of every
     // other document in the same batch. QA/Manager/Release actions target one

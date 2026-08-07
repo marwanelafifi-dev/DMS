@@ -22,6 +22,13 @@ interface QueueDocument {
   hasDocId?: boolean;
 }
 
+interface LinkedTask {
+  taskId: string;
+  title: string;
+  status: string;
+  assigneeName?: string | null;
+}
+
 interface QueueApproval {
   approvalId: string;
   createdAt: string;
@@ -32,6 +39,8 @@ interface QueueApproval {
   approvalNotes?: string;
   qaNotes?: string;
   documents: QueueDocument[];
+  linkedTask?: LinkedTask | null;
+  blocked?: boolean;
 }
 
 const formatDate = (dateString: string) => {
@@ -433,7 +442,7 @@ function ApprovalQueueTable({
             {rows.map(({ approval, doc }, index) => (
               <tr
                 key={doc.documentId}
-                className={`${index % 2 ? 'bg-[#f8fafc] dark:bg-slate-800/35' : 'bg-white dark:bg-slate-900'} hover:bg-[#f2f6fa] dark:hover:bg-slate-800/60`}
+                className={`${approval.blocked ? 'bg-[#fffaf0] dark:bg-amber-900/10' : index % 2 ? 'bg-[#f8fafc] dark:bg-slate-800/35' : 'bg-white dark:bg-slate-900'} hover:bg-[#f2f6fa] dark:hover:bg-slate-800/60`}
               >
                 <td className="text-[#52627a] dark:text-slate-200">
                   {doc.originalDocumentId ? (
@@ -454,6 +463,14 @@ function ApprovalQueueTable({
                   <span className={`rounded px-2 py-1 text-xs font-medium ${statusStyles[approval.status] ?? 'bg-[#edf1f5] text-[#62718a]'}`}>
                     {statusLabel(approval.status)}
                   </span>
+                  {approval.linkedTask && (
+                    <div className="mt-1 flex items-center gap-1 text-[11px] text-[#b96a08] dark:text-amber-300">
+                      <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate" title={`Task: ${approval.linkedTask.title} — ${approval.linkedTask.assigneeName ?? 'Unassigned'}`}>
+                        Task: {approval.linkedTask.title} — {approval.linkedTask.assigneeName ?? 'Unassigned'}
+                      </span>
+                    </div>
+                  )}
                 </td>
                 <td className="text-[11px] text-[#718198]">{formatDate(approval.createdAt)}</td>
                 <td className="text-right">
@@ -478,8 +495,14 @@ function ApprovalQueueTable({
                     </button>
                     <button
                       type="button"
+                      disabled={approval.blocked}
+                      title={approval.blocked ? `Blocked — open task "${approval.linkedTask?.title}" must be completed first` : undefined}
                       onClick={() => onAction(approval.approvalId, doc.documentId)}
-                      className="rounded-[4px] bg-[#2f3e83] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#263472] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+                      className={`rounded-[4px] px-3 py-1.5 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] ${
+                        approval.blocked
+                          ? 'cursor-not-allowed bg-[#c7d0dc] dark:bg-slate-700'
+                          : 'bg-[#2f3e83] hover:bg-[#263472]'
+                      }`}
                     >
                       {actionLabel}
                     </button>

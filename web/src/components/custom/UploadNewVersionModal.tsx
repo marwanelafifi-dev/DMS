@@ -5,6 +5,12 @@ import { apiClient } from '../../utils/api';
 
 const inputClass = 'w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 
+function splitFileName(name: string): { base: string; ext: string } {
+  const dotIndex = name.lastIndexOf('.');
+  if (dotIndex <= 0) return { base: name, ext: '' };
+  return { base: name.slice(0, dotIndex), ext: name.slice(dotIndex) };
+}
+
 interface UploadNewVersionModalProps {
   documentId: string;
   file: File;
@@ -21,9 +27,11 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
   const [error, setError] = useState<string | null>(null);
 
   const [description, setDescription] = useState('');
-  const [tag, setTag] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [customTags, setCustomTags] = useState('');
   const [versionLabel, setVersionLabel] = useState('');
+  const { ext: fileExtension } = splitFileName(file.name);
+  const [fileNameBase, setFileNameBase] = useState(() => splitFileName(file.name).base);
   const [currentVersionDisplay, setCurrentVersionDisplay] = useState<string | null>(null);
   const [category, setCategory] = useState('');
   const [department, setDepartment] = useState('');
@@ -59,13 +67,15 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
         const fetchedTagOptions: string[] = (tagRes.data || []).map((i: { label: string }) => i.label);
         setTagOptions(fetchedTagOptions);
 
+        // Pre-select whichever of the document's existing tags are known
+        // presets — any that aren't (custom, ad-hoc tags) go into the "Other"
+        // free-text field instead of being silently dropped, so the user can
+        // add new tags or remove old ones without losing what's already there.
         const existingTags: string[] = doc.tags || [];
-        if (existingTags.length === 1 && fetchedTagOptions.includes(existingTags[0])) {
-          setTag(existingTags[0]);
-        } else if (existingTags.length > 0) {
-          setTag('OTHER');
-          setCustomTags(existingTags.join(', '));
-        }
+        const knownExisting = existingTags.filter((t) => fetchedTagOptions.includes(t));
+        const unknownExisting = existingTags.filter((t) => !fetchedTagOptions.includes(t));
+        setTags(unknownExisting.length > 0 ? [...knownExisting, 'OTHER'] : knownExisting);
+        if (unknownExisting.length > 0) setCustomTags(unknownExisting.join(', '));
       } catch (err: any) {
         if (!cancelled) setError(err?.response?.data?.error || err.message || 'Failed to load document');
       } finally {
@@ -75,17 +85,21 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
     return () => { cancelled = true; };
   }, [documentId]);
 
-  const isOtherTag = tag === 'OTHER';
-  const tagList = isOtherTag
-    ? customTags.split(',').map((t) => t.trim()).filter(Boolean)
-    : (tag ? [tag] : []);
+  const isOtherTag = tags.includes('OTHER');
+  const toggleTag = (value: string) => {
+    setTags((current) => (current.includes(value) ? current.filter((t) => t !== value) : [...current, value]));
+  };
+  const tagList = [
+    ...tags.filter((t) => t !== 'OTHER'),
+    ...(isOtherTag ? customTags.split(',').map((t) => t.trim()).filter(Boolean) : []),
+  ];
 
   const isFormValid = Boolean(
     versionLabel.trim()
     && description.trim()
-    && tagList.length > 0
     && category
-    && department,
+    && department
+    && fileNameBase.trim(),
   );
 
   const handleUpload = async () => {
@@ -96,7 +110,9 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
     setIsSaving(true);
     setError(null);
     try {
-      const uploadRes = await apiClient.uploadDocument(documentId, file, versionLabel);
+      const finalFileName = `${fileNameBase.trim()}${fileExtension}`;
+      const fileToUpload = finalFileName === file.name ? file : new File([file], finalFileName, { type: file.type });
+      const uploadRes = await apiClient.uploadDocument(documentId, fileToUpload, versionLabel);
       if (!uploadRes.success) throw new Error(uploadRes.error);
 
       const updateRes = await apiClient.updateDocument(documentId, { description, tags: tagList, category, department });
@@ -137,27 +153,71 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
               {currentVersionDisplay && (
                 <p className="text-sm text-gray-500 dark:text-slate-400">Current version: <span className="font-medium text-navy-900 dark:text-white">{currentVersionDisplay}</span></p>
               )}
+              <Field label="File Name" required>
+                <div className="flex items-center overflow-hidden rounded border border-gray-300 bg-white dark:border-slate-600 dark:bg-slate-800">
+                  <input
+                    value={fileNameBase}
+                    onChange={(e) => setFileNameBase(e.target.value)}
+                    className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-navy-900 outline-none dark:text-white"
+                  />
+                  {fileExtension && (
+                    <span className="flex-shrink-0 whitespace-nowrap pr-3 text-sm text-gray-500 dark:text-slate-400">{fileExtension}</span>
+                  )}
+                </div>
+              </Field>
               <Field label="New Version" required>
                 <input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. v2.0, Rev B" autoFocus className={inputClass} />
               </Field>
               <Field label="Description" required>
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={inputClass} />
               </Field>
-              <Field label="Tags" required>
-                <select value={tag} onChange={(e) => setTag(e.target.value)} className={inputClass}>
-                  <option value="">Select a tag...</option>
-                  {tagOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-                  <option value="OTHER">Other</option>
-                </select>
+              <Field label="Tags">
+                <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded border border-gray-300 bg-white p-2 dark:border-slate-600 dark:bg-slate-800">
+                  {tagOptions.length === 0 && (
+                    <span className="px-1 py-0.5 text-xs text-gray-400 dark:text-slate-500">No tags configured yet</span>
+                  )}
+                  {tagOptions.map((t) => {
+                    const isSelected = tags.includes(t);
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => toggleTag(t)}
+                        aria-pressed={isSelected}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                          isSelected
+                            ? 'border-[#3f8bca] bg-[#3f8bca]/10 text-[#2b6ca3] dark:border-[#3f8bca] dark:bg-[#3f8bca]/20 dark:text-[#8fc4ea]'
+                            : 'border-gray-300 bg-white text-gray-600 hover:border-[#3f8bca]/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => toggleTag('OTHER')}
+                    aria-pressed={isOtherTag}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      isOtherTag
+                        ? 'border-[#3f8bca] bg-[#3f8bca]/10 text-[#2b6ca3] dark:border-[#3f8bca] dark:bg-[#3f8bca]/20 dark:text-[#8fc4ea]'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-[#3f8bca]/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    Other
+                  </button>
+                </div>
                 {isOtherTag && (
                   <input
                     type="text"
                     value={customTags}
                     onChange={(e) => setCustomTags(e.target.value)}
                     placeholder="Specify tags, comma-separated..."
+                    autoFocus
                     className={`mt-2 ${inputClass}`}
                   />
                 )}
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Select any number of tags, or none.</p>
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Category" required>
