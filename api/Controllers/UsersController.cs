@@ -237,6 +237,27 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
             if (!string.IsNullOrWhiteSpace(req.FullName))
                 user.FullName = req.FullName.Trim();
 
+            if (!string.IsNullOrWhiteSpace(req.Email))
+            {
+                // Email doubles as the login username for local accounts, but
+                // for an SSO account it's the identity Google itself asserts —
+                // changing it here would desync the account from what Google
+                // actually sends back on the next sign-in, so only local
+                // (no SsoSubject) accounts can have it edited.
+                if (user.SsoSubject != null)
+                    return BadRequest(new { success = false, error = "This is a Google sign-in account — its email is managed by Google, not editable here" });
+
+                var newEmail = req.Email.Trim().ToLowerInvariant();
+                if (!System.Text.RegularExpressions.Regex.IsMatch(newEmail, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+                    return BadRequest(new { success = false, error = "Enter a valid email address" });
+
+                if (newEmail != user.Email.ToLowerInvariant()
+                    && await context.Users.AnyAsync(u => u.UserId != id && u.Email.ToLower() == newEmail))
+                    return BadRequest(new { success = false, error = "Another user already has this email" });
+
+                user.Email = newEmail;
+            }
+
             if (req.IsActive.HasValue)
                 user.IsActive = req.IsActive.Value;
 
@@ -270,6 +291,10 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
                     user.UpdatedAt
                 }
             });
+        }
+        catch (DbUpdateException)
+        {
+            return BadRequest(new { success = false, error = "Another user already has this email" });
         }
         catch (Exception ex)
         {
@@ -534,7 +559,7 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
 }
 
 public record CreateUserRequest(string Email, string FullName, string? SsoSubject = null, string? Password = null);
-public record UpdateUserRequest(string? FullName = null, bool? IsActive = null);
+public record UpdateUserRequest(string? FullName = null, bool? IsActive = null, string? Email = null);
 public record UpdateUserRoleRequest(string? Role);
 public record ResetPasswordRequest(string NewPassword);
 public record TransferOwnershipRequest(Guid ToUserId);

@@ -32,13 +32,17 @@ Surveyed every page under `components/pages/` and every data-table/modal compone
 - **Real bug, unrelated to mobile specifically**: the Navbar's sign-out button was `hidden ... xl:block` — unreachable below 1280px wide, meaning no phone or tablet (and no laptop under ~1280px) had any way to sign out at all (the avatar next to it has no click handler). Made it always visible.
 - Confirmed already correct and left untouched: `Sidebar.tsx`/`Navbar.tsx`'s existing hamburger-drawer pattern (`-translate-x-full`/`lg:translate-x-0` with a tap-to-close backdrop), and every table on `Approvals.tsx`, `Search.tsx`, `Settings.tsx`, and `Tasks.tsx`'s own PCAR register, which already wrap correctly in `overflow-x-auto`.
 
+### 3. Local users can now have their email (login username) edited
+Per explicit request — the Users admin table's inline edit only ever let Full Name change; a local account's email (which also serves as its login username) had no edit path at all short of deleting and recreating the user. `PUT /api/users/{id}` now accepts an optional `Email`, validated (format check, case-insensitive uniqueness against every other user) and rejected outright for a Google-linked account (`SsoSubject != null`) — that account's email is asserted by Google on every sign-in, so editing it here would just desync the two. `UserManagement.tsx`'s inline edit row shows an editable email input under the name for a `Local` auth-type row; a `Google` row keeps the plain, non-editable text with a tooltip explaining why. Live-verified: a local user's email changed and immediately logged in with the new address; a duplicate email, an invalid format, and an attempt against a (test-simulated) Google-linked account were all correctly rejected.
+
 ### Files modified
-`web/src/components/custom/{GroupManagement,AuditTrail,UserManagement,NotificationsBell,ApprovalDetailView,EditDocumentModal,UploadNewVersionModal}.tsx`, `web/src/components/pages/{Documents,Tasks}.tsx`, `web/src/components/layout/Navbar.tsx`
+`web/src/components/custom/{GroupManagement,AuditTrail,UserManagement,NotificationsBell,ApprovalDetailView,EditDocumentModal,UploadNewVersionModal}.tsx`, `web/src/components/pages/{Documents,Tasks}.tsx`, `web/src/components/layout/Navbar.tsx`, `api/Controllers/UsersController.cs`
 
 ### Verification
 - Full audit performed via a dedicated `Explore` agent pass across every page/table/modal component, cross-checked manually before fixing (confirmed exact line numbers and current classes before editing, not applied blind from the report).
 - `npx tsc --noEmit` clean after every change (only the same five pre-existing, unrelated errors noted in every prior session).
-- `docker compose build --pull=false web` clean after every change; container rebuilt and confirmed `healthy`.
+- `docker compose build --pull=false api web` clean after every change; both containers rebuilt and confirmed `healthy`.
+- The local-user email edit was verified against the **live** running API with real curl round-trips, not just compiled: successful rename → immediate login with the new address, duplicate-email rejection, invalid-format rejection, and rejection against a test-simulated Google-linked account (`sso_subject` set directly) — all confirmed, throwaway test user cleaned up afterward.
 - **Not** verified against an actual rendered browser at mobile/tablet widths — no Playwright/Puppeteer/browser-automation tool was available in this environment. Verification was code-level (Tailwind breakpoint classes, matching patterns already proven correct elsewhere in the same app, e.g. `Approvals.tsx`'s existing `overflow-x-auto` tables).
 
 ### Known follow-ups

@@ -49,7 +49,7 @@ export function UserManagement() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editData, setEditData] = useState<{ fullName: string; isActive: boolean; role: string }>({ fullName: '', isActive: true, role: '' });
+  const [editData, setEditData] = useState<{ fullName: string; email: string; isActive: boolean; role: string }>({ fullName: '', email: '', isActive: true, role: '' });
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '', role: '', groupIds: [] as string[] });
@@ -111,14 +111,20 @@ export function UserManagement() {
 
   const handleEdit = (user: User) => {
     setEditingId(user.userId);
-    setEditData({ fullName: user.fullName, isActive: user.isActive, role: user.role ?? '' });
+    setEditData({ fullName: user.fullName, email: user.email, isActive: user.isActive, role: user.role ?? '' });
   };
 
   const handleSave = async () => {
     if (!editingId) return;
     const user = users.find(u => u.userId === editingId);
     try {
-      await apiClient.updateUser(editingId, { fullName: editData.fullName, isActive: editData.isActive });
+      const payload: Record<string, unknown> = { fullName: editData.fullName, isActive: editData.isActive };
+      // Email doubles as the login username for local accounts only — a
+      // Google-auth account's email is asserted by Google itself, so it's
+      // never sent for those (the backend rejects the field outright if it
+      // is, even unchanged, since the input is disabled for those rows).
+      if (user?.authType !== 'Google') payload.email = editData.email;
+      await apiClient.updateUser(editingId, payload);
       if (editData.role !== (user?.role ?? '')) {
         await apiClient.updateUserRole(editingId, editData.role || null);
       }
@@ -433,7 +439,22 @@ export function UserManagement() {
                       ) : (
                         <p className="font-semibold text-navy-900 dark:text-white truncate">{user.fullName}</p>
                       )}
-                      <p className="text-xs text-gray-500 dark:text-navy-400 truncate">{user.email}</p>
+                      {editingId === user.userId && user.authType !== 'Google' ? (
+                        <input
+                          type="email"
+                          value={editData.email}
+                          onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                          title="This is also this user's login username"
+                          className="mt-1 px-3 py-1 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-950 text-navy-900 dark:text-white text-xs w-full"
+                        />
+                      ) : (
+                        <p
+                          className="text-xs text-gray-500 dark:text-navy-400 truncate"
+                          title={editingId === user.userId ? 'Google sign-in accounts have their email managed by Google, not editable here' : undefined}
+                        >
+                          {user.email}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </td>
