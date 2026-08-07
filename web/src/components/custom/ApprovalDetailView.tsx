@@ -685,7 +685,7 @@ function CorrectionTaskForm({
     <DecisionForm title="Correction Task" onCancel={onCancel} onSubmit={onSubmit} submitLabel="Send Correction Task" isSubmitting={isSubmitting} submitDisabled={submitDisabled} submitTitle={submitTitle}>
       <TextField label="Task title" value={taskTitle} onChange={setTaskTitle} />
       <TextAreaField label="Task description" value={taskDescription} onChange={setTaskDescription} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Type</label>
           <select
@@ -712,7 +712,7 @@ function CorrectionTaskForm({
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Assign to</label>
           <select

@@ -219,7 +219,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
                 )}
                 <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Select any number of tags, or none.</p>
               </Field>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Category" required>
                   <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass}>
                     <option value="">Select…</option>

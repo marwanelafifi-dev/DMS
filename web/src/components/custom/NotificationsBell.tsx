@@ -114,7 +114,7 @@ export function NotificationsBell() {
           side="bottom"
           align="end"
           sideOffset={8}
-          className="z-[95] flex max-h-[520px] w-96 flex-col overflow-hidden rounded-[6px] border border-[#dbe2ec] bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+          className="z-[95] flex max-h-[520px] w-[calc(100vw-2rem)] max-w-96 flex-col overflow-hidden rounded-[6px] border border-[#dbe2ec] bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
         >
           <div className="flex items-center justify-between border-b border-[#e2e8f0] px-4 py-3 dark:border-white/10">
             <h3 className="text-sm font-semibold text-[#283a7a] dark:text-white">Notifications</h3>

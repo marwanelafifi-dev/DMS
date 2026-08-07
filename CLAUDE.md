@@ -9,7 +9,41 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Active Branch:** `Main`
 
-**Status:** Session 34 — started from an environment-recovery incident (the Postgres volume was missing four real migrations, 066–069, causing the whole app to render as if the signed-in user had almost no permissions), then moved deep into the PCAR/Corrective Action ↔ Document Workflow coupling again: closed a real gap where an assignee could upload a "corrected" file and get it silently resubmitted for review with the RCA/correction/preventive/target-date fields still empty, fixed a stale "Submitted" timestamp that never advanced past a document's original batch-creation date, and — after direct user pushback that a self-filed PCAR's own separate QA-approve/reject step was pure redundant friction — removed that whole reviewer queue in favor of Document Workflow directly surfacing and hard-blocking on any of a document's still-*open* linked tasks. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 35 — a short follow-up to Session 34's same-day work: merged the Groups admin table's separate Edit/Delete columns into one shared "Actions" column for consistency with every other table in the app, then ran a full audit of mobile/tablet responsiveness across every page and data table and fixed everything real it turned up — several tables that clipped instead of scrolled on a narrow screen, a notifications popover wider than a phone screen, cramped two-column modal forms with no mobile fallback, and two genuine, unrelated-to-mobile bugs caught in the same pass (a stats-card row on the PCAR page that could never render at any screen size, and a Navbar sign-out button that was unreachable below 1280px wide). **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 35 (2026-08-07) — Groups Actions Column, Mobile/Tablet Responsiveness Audit and Fixes
+
+**Status:** ✅ Complete — every change type-checked (`npx tsc --noEmit`, only the same five pre-existing unrelated errors) and redeployed; verified by code-level audit and Tailwind breakpoint logic rather than a rendered screenshot, since this environment has no browser-automation tool available — flagged as a follow-up to manually confirm on a real phone/tablet.
+
+**Context:** Started from "merge the delete and edit in the last right column called Actions" (a screenshot of the Groups admin table showing separate Edit/Delete columns), then a broader "fix the mobile view" request scoped to "check all pages and tables" across mobile, tablet, and desktop.
+
+### 1. Groups table — Edit/Delete merged into one Actions column
+`GroupManagement.tsx`'s table had two separate single-purpose columns ("Edit", "Delete") instead of the one shared "Actions" column pattern used everywhere else in the app (Users, Tasks/PCAR register, etc.). Merged into a single right-aligned "Actions" column with both icon buttons side by side; column count/`colSpan` on the empty-state row updated to match (7 → 6).
+
+### 2. Full responsiveness audit across every page and table
+Surveyed every page under `components/pages/` and every data-table/modal component under `components/custom/` for mobile/tablet breakage — fixed narrow columns/overflow, checked grid layouts, and confirmed the existing Sidebar/Navbar drawer pattern (already implemented, not built from scratch) actually reaches every screen. Real issues found and fixed:
+- **Document Library table** (`DocumentList.tsx`) — wrapper was `overflow-x-hidden`, the opposite of scrollable; combined with `table-fixed` percentage columns, this squeezed every column toward unreadable widths on a phone instead of letting the browser scroll. Changed to `overflow-x-auto` with a `min-w-[720px]` on the table, so columns keep their intended proportions and the container scrolls horizontally below that width instead of compressing.
+- **Audit Trail, Groups, and Users tables** (`AuditTrail.tsx`, `GroupManagement.tsx`, `UserManagement.tsx`) — all three wrapped their `<table>` in `overflow-hidden` (there only for the rounded-corner clipping, not scroll control), so columns were silently cut off on a narrow screen with no way to reach them. Added an inner `overflow-x-auto` wrapper (with a `min-w-[...]` on each table) around just the table, leaving the outer rounded-border container and any pagination footer outside the scrollable area.
+- **Notifications popover** (`NotificationsBell.tsx`) — fixed `w-96` (384px), wider than a 375px phone viewport regardless of Radix's edge-avoidance repositioning. Changed to `w-[calc(100vw-2rem)] max-w-96` so it shrinks to fit with a margin on narrow screens and caps at 384px on everything else.
+- **Six modals with un-responsive 2-column grids** — `Documents.tsx` (upload form, 2 grids), `UploadNewVersionModal.tsx`, `ApprovalDetailView.tsx` (Correction Task form, 2 grids), `EditDocumentModal.tsx`, `Tasks.tsx` (New PCAR modal), `RolePermissions.tsx` (New Role "Can see" checklist) — all used a bare `grid-cols-2` with no smaller-screen fallback, cramming two fields/columns into ~150px each on a phone. All switched to `grid-cols-1 sm:grid-cols-2`.
+- **Real bug, unrelated to mobile specifically**: the PCAR page's stats-card row (`Tasks.tsx`) was `className="hidden grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5"` — `hidden` with no breakpoint ever re-enabling it, so those five cards (Total/Open/In Progress/etc.) never rendered at *any* screen size, desktop included. Fixed to a normal `grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5`.
+- **Real bug, unrelated to mobile specifically**: the Navbar's sign-out button was `hidden ... xl:block` — unreachable below 1280px wide, meaning no phone or tablet (and no laptop under ~1280px) had any way to sign out at all (the avatar next to it has no click handler). Made it always visible.
+- Confirmed already correct and left untouched: `Sidebar.tsx`/`Navbar.tsx`'s existing hamburger-drawer pattern (`-translate-x-full`/`lg:translate-x-0` with a tap-to-close backdrop), and every table on `Approvals.tsx`, `Search.tsx`, `Settings.tsx`, and `Tasks.tsx`'s own PCAR register, which already wrap correctly in `overflow-x-auto`.
+
+### Files modified
+`web/src/components/custom/{GroupManagement,AuditTrail,UserManagement,NotificationsBell,ApprovalDetailView,EditDocumentModal,UploadNewVersionModal}.tsx`, `web/src/components/pages/{Documents,Tasks}.tsx`, `web/src/components/layout/Navbar.tsx`
+
+### Verification
+- Full audit performed via a dedicated `Explore` agent pass across every page/table/modal component, cross-checked manually before fixing (confirmed exact line numbers and current classes before editing, not applied blind from the report).
+- `npx tsc --noEmit` clean after every change (only the same five pre-existing, unrelated errors noted in every prior session).
+- `docker compose build --pull=false web` clean after every change; container rebuilt and confirmed `healthy`.
+- **Not** verified against an actual rendered browser at mobile/tablet widths — no Playwright/Puppeteer/browser-automation tool was available in this environment. Verification was code-level (Tailwind breakpoint classes, matching patterns already proven correct elsewhere in the same app, e.g. `Approvals.tsx`'s existing `overflow-x-auto` tables).
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- Manually click through the app on a real phone and tablet (or a browser's device-emulation mode) to confirm the fixes above render as intended — this session's verification was code-level only, not a rendered screenshot.
 
 ---
 

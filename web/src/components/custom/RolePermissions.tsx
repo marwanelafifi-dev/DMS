@@ -341,7 +341,7 @@ export function RolePermissions() {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Can see</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {NEW_ROLE_FLAGS.map(flag => (
                     <label key={flag.key} className="flex items-center gap-2 cursor-pointer">
                       <input

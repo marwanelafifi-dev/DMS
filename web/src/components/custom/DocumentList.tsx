@@ -208,8 +208,8 @@ export function DocumentList({
   }
 
   return (
-    <div className="w-full overflow-x-hidden">
-      <table className="data-table library-document-table w-full table-fixed" aria-label="Documents">
+    <div className="w-full overflow-x-auto">
+      <table className="data-table library-document-table w-full min-w-[720px] table-fixed" aria-label="Documents">
         <colgroup>
           <col style={{ width: `${columnWidthPercents.checkbox}%` }} />
           <col style={{ width: `${columnWidthPercents.documentId}%` }} />

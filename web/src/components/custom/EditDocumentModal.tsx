@@ -184,7 +184,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
               <Field label="Version" required>
                 <input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. v1.0, Rev A" className={inputClass} />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Category" required>
                   <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass}>
                     <option value="">Select…</option>

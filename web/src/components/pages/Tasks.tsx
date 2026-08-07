@@ -694,7 +694,7 @@ export function Tasks() {
       </div>
 
       {/* Stats Cards */}
-      <div className="hidden grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card className="bg-white dark:bg-navy-950 border-l-4 border-l-navy-700">
           <CardBody className="flex items-center justify-between">
             <div>
@@ -1313,7 +1313,7 @@ export function Tasks() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Type</label>
                   <select

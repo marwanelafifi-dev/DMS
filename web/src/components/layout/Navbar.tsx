@@ -157,7 +157,7 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
 
           <button
             onClick={logout}
-            className="hidden rounded-md p-2 text-[#718198] hover:bg-red-50 hover:text-red-600 xl:block"
+            className="flex-shrink-0 rounded-md p-2 text-[#718198] hover:bg-red-50 hover:text-red-600"
             aria-label="Sign out"
             title="Sign out"
           >

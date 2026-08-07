@@ -264,7 +264,8 @@ export function GroupManagement() {
 
       {/* Groups Table */}
       <div className="overflow-hidden rounded-[5px] border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
-        <table className="w-full text-sm bg-white dark:bg-navy-900">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm bg-white dark:bg-navy-900">
           <thead className="border-b border-[#e2e8f0] bg-[#f7f9fc] dark:border-white/10 dark:bg-slate-950">
             <tr className="text-left text-xs uppercase text-[#64748b] dark:text-slate-400">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Group Name</th>
@@ -327,6 +328,7 @@ export function GroupManagement() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Add Group Modal */}

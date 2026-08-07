@@ -1547,7 +1547,7 @@ export function Documents() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
                     Tags <span className="text-xs font-normal text-[#8ea0ba]">(Optional)</span>
@@ -1610,7 +1610,7 @@ export function Documents() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label htmlFor="upload-category" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
                     Document Category <span className="text-red-500">*</span>
