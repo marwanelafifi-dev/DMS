@@ -3,8 +3,7 @@ import type { LibraryPreview } from '../fixtures/documentLibrary';
 
 const WORD_PARAGRAPH_LIMIT = 10;
 const PRESENTATION_SLIDE_LIMIT = 10;
-const SPREADSHEET_ROW_LIMIT = 15;
-const SPREADSHEET_COLUMN_LIMIT = 8;
+const SPREADSHEET_ROW_LIMIT = 100;
 
 // Some Blob-like sources (older browsers, certain test doubles) don't implement
 // `arrayBuffer()` even though they implement the rest of the Blob contract — fall
@@ -89,7 +88,9 @@ export async function parseExcelDocument(blob: Blob, _sourceUrl: string): Promis
       // leading rows/columns instead of keeping them at their real position.
       const totalColumns = range.e.c + 1;
       const totalRows = range.e.r + 1;
-      const lastColumn = Math.min(range.e.c, SPREADSHEET_COLUMN_LIMIT - 1);
+      // No cap on columns — a sheet is rarely wide enough for it to matter,
+      // and the preview scrolls horizontally same as it does vertically.
+      const lastColumn = range.e.c;
       const lastRow = Math.min(range.e.r, SPREADSHEET_ROW_LIMIT - 1);
 
       const columns = Array.from({ length: lastColumn + 1 }, (_, columnIndex) => xlsxUtils.encode_col(columnIndex));

@@ -229,9 +229,18 @@ public class DocumentsController(
         {
             var userId = GetCurrentUserId();
 
-            // Validate input
+            // Validate input. The upload form has always required Description/
+            // Category/Department client-side, but nothing enforced it here —
+            // a direct API call could create a document with none of them set
+            // at all. Matches the frontend's own required-field set exactly.
             if (string.IsNullOrWhiteSpace(req.Title))
                 return BadRequest(new { success = false, error = "Document title is required" });
+            if (string.IsNullOrWhiteSpace(req.Description))
+                return BadRequest(new { success = false, error = "Description is required" });
+            if (string.IsNullOrWhiteSpace(req.Category))
+                return BadRequest(new { success = false, error = "Category is required" });
+            if (string.IsNullOrWhiteSpace(req.Department))
+                return BadRequest(new { success = false, error = "Department is required" });
 
             // Verify the folder exists
             var folderExists = await context.Folders
@@ -530,6 +539,13 @@ public class DocumentsController(
         {
             if (file == null || file.Length == 0)
                 return BadRequest(new { success = false, error = "File is required" });
+
+            // Both real call sites (the new-document upload form and Upload New
+            // Version/Upload Updated File) already require this client-side —
+            // enforced here too so a direct API call can't attach a version
+            // with no label at all.
+            if (string.IsNullOrWhiteSpace(versionLabel))
+                return BadRequest(new { success = false, error = "Version label is required" });
 
             // Verify the document exists
             var document = await context.Documents

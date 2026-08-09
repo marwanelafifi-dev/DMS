@@ -3,13 +3,59 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-08-07
+**Current Date:** 2026-08-09
 
 **Working Directory:** `d:\Si ware\DMS - Final`
 
 **Active Branch:** `Main`
 
-**Status:** Session 35 — a short follow-up to Session 34's same-day work: merged the Groups admin table's separate Edit/Delete columns into one shared "Actions" column for consistency with every other table in the app, then ran a full audit of mobile/tablet responsiveness across every page and data table and fixed everything real it turned up — several tables that clipped instead of scrolled on a narrow screen, a notifications popover wider than a phone screen, cramped two-column modal forms with no mobile fallback, and two genuine, unrelated-to-mobile bugs caught in the same pass (a stats-card row on the PCAR page that could never render at any screen size, and a Navbar sign-out button that was unreachable below 1280px wide). **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+**Status:** Session 36 — a screenshot-driven bug-fixing session covering the Excel preview's row/column caps, a real "no access" message when a linked document's View fails permission checks, server-side enforcement of the upload form's already-required metadata fields, a real (previously entirely fake) Reminders notification pipeline plus the reminder form's biggest bug — it could never actually remind anyone but yourself — and a round of PCAR task-attachment/UI polish. **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+---
+
+## Session 36 (2026-08-09) — Excel Preview Caps, Real Reminder Notifications, Reminder Recipient Bug, Upload Required-Field Backend Enforcement, PCAR Attachment Polish
+
+**Status:** ✅ Complete — every backend change rebuilt and live-verified via curl round-trips with real throwaway users/tasks/documents (cleaned up afterward in every case); every frontend change type-checked against a real `tsc --noEmit` run inside a Docker build-stage image and redeployed.
+
+**Context:** A long, screenshot-driven session picking up right after a `git pull` brought in a batch of teammate commits (role-reassignment permission splits, mobile/tablet responsiveness pass, local-user email editing). From there: Excel preview limits, a permission-error UX gap, then a deep dig into Reminders that started as "no notification arrives" and ended up finding the feature had never had a way to target anyone but yourself.
+
+### 1. Excel preview — raised the row cap, removed the column cap entirely
+Per explicit request ("I want the first 100 rows, and to be able to scroll between them — not just 15"): `officeParser.ts`'s `SPREADSHEET_ROW_LIMIT` raised from 15 to 100. A follow-up request to also show every column removed `SPREADSHEET_COLUMN_LIMIT` (8) entirely — a sheet is rarely wide enough for this to matter, and the preview's table container already scrolls both directions (`overflow-auto` with a sticky header and sticky row-number column), so no other layout change was needed for either fix.
+
+### 2. Real "no access" messaging instead of a broken/generic preview
+Clicking **View** on a task's linked document when access is genuinely denied (an explicit Deny override on the document's folder can still win even though a task-assignee bypass normally grants access — see Session 33 item 6) previously either silently did nothing useful or, if reached directly via a `/documents?preview=` URL, fell back to a vague "the document may be unavailable or the server may be offline" message. `Tasks.tsx`'s `handleViewLinkedDocument` now checks access via a real `GET` before navigating and shows **"You do not have access to this file — please contact your administrator"** on a 403; `Documents.tsx`'s own preview-loading fallback distinguishes a 403 from a generic failure the same way.
+
+### 3. Real bug: the upload form's "required" fields were frontend-only
+The Document Library's own upload form and `UploadNewVersionModal` (used by both "Upload New Version" and the PCAR page's "Upload Updated File") already fully enforced Description/Category/Department/Version as required client-side — but nothing enforced any of it server-side, so a direct API call could create a document or attach a new version with none of that metadata at all. Added the matching checks to `DocumentsController.CreateDocument` (Description/Category/Department, on top of the already-required Title) and `UploadVersion` (Version label) — defense in depth, not a UX change, since the UI already blocked this.
+
+### 4. Real bug: Reminders never actually notified anyone, in-app or by email
+`ReminderService.SendPendingRemindersAsync`/`MarkReminderSentAsync` only ever flipped `is_sent`/`sent_at` and wrote an audit entry — despite the `REMINDER_SENT` audit action implying otherwise, nothing was ever actually sent. Fixed both paths through one shared `SendReminderNotificationAsync` helper:
+- **APP/BOTH**: a real in-app notification via `NotificationService.NotifyAsync`, with `TaskId` set so clicking it in `NotificationsBell` navigates straight to the task (`/tasks?highlight=...`) — that click-to-navigate behavior already existed, it just never had a real reminder notification to click.
+- **EMAIL/BOTH**: a real branded email (`EmailService.BuildBrandedHtml`, same visual identity as every other DMS email) with a **"View Task"** button linking to `{frontend}/tasks?highlight={taskId}`.
+- The automatic sweep (`send-due-reminders` Hangfire job) interval was also tightened from 15 to 5 minutes — matching the cadence of this app's other time-sensitive jobs (`auto-unlock-expired-checkouts`, the ISO meeting reminder scan) — so a working reminder doesn't feel broken by sitting unsent for up to a quarter hour.
+- Live-verified: manually sent a real pending reminder and confirmed a real notification (with the correct `taskId`) appeared; confirmed the app's actual configured Gmail SMTP credentials meant the email side genuinely went out too, not just logged as skipped.
+
+### 5. Real bug found in the same investigation: reminders could never target anyone but yourself
+Even after item 4's fix, the user reported reminders "still didn't work" — root-caused to `Reminders.tsx`'s create-reminder form silently hardcoding `recipientId: DEV_USER_ID` (the logged-in user) with **no recipient field in the UI at all**. Every reminder ever created through this page could only ever remind its own creator — reminding a task's actual assignee was never possible, which is what made the feature look broken even after the real send-pipeline was fixed. Added a **"Remind"** dropdown (defaulting to the selected task's assignee, fully overridable to any active user) backed by a real `loadUsers()` call. Live-verified end to end with a real throwaway user: created a task assigned to them, created and sent a reminder targeting their ID, confirmed via a direct DB query that the resulting notification's `user_id` was the throwaway recipient's — not the admin's who created it.
+
+### 6. PCAR page polish
+- The "Submit"/"Submitted" button (left over from an earlier refactor, on the non-approval-linked self-filed-PCAR path) now reads **"Submit for approval"** before submission, matching the rest of the page's terminology.
+- Task attachments now show **inline** right below the Linked Document panel (fetched via the existing `GET /api/tasks/{id}/attachments`) with **View** (opens in a new tab via a blob URL, so images/PDFs render natively instead of forcing a download) and **Download** buttons, plus an "Add Attachment" upload control in the same spot — no need to open the separate Attachments modal just to see what's already attached.
+- Per explicit request, **removed the ability to delete an attachment everywhere in the UI** — both the new inline section and the pre-existing Attachments modal (reachable from the task register table) now only offer View/Download. `deleteTaskAttachment` was removed from the frontend API client since nothing calls it anymore; the backend `DELETE` endpoint itself was left in place (not a security-relevant change, just a UI capability removal).
+
+### Files modified
+`api/Controllers/DocumentsController.cs`, `api/Services/{BackgroundJobService,ReminderService}.cs`, `web/src/components/custom/TaskAttachmentsModal.tsx`, `web/src/components/pages/{Documents,Reminders,Tasks}.tsx`, `web/src/utils/{api,officeParser}.ts`
+
+### Verification
+- Every backend change verified against the **live** running API with real curl round-trips using real throwaway users/documents/folders/tasks/reminders (a real, separate throwaway user was created specifically to prove the reminder-recipient fix targets someone other than the caller) — all cleaned up afterward in every case.
+- Every frontend change verified with a real `npx tsc --noEmit` run inside a built Docker build-stage image (not just `vite build`, which only transpiles) — confirmed only the same four pre-existing, unrelated errors remained each time (`ocrText` in `DocumentPreview.tsx`, `unreadCount` in `NotificationsBell.tsx`, `canEditFiles` in `RolePermissions.tsx` ×2, the pre-existing `PendingApprovalItem` narrowing issue in `Dashboard.tsx`).
+- `docker compose build --pull=false api web` clean after every change (one transient Docker Hub TLS hiccup mid-session, resolved by retrying); both containers rebuilt and confirmed `healthy` repeatedly throughout.
+- Confirmed via direct DB queries (`dms_reminders`, `dms_notifications`, Hangfire's own `hangfire.hash`/`hangfire.set` tables) rather than assumption when diagnosing why reminders "still didn't work" — this is what surfaced both the pre-fix historical reminders (sent by the old no-op code, un-fixable retroactively) and the hardcoded-recipient bug.
+
+### Known follow-ups
+- Persisted PPTX preview bug from earlier sessions remains open.
+- The four pre-existing TypeScript errors flagged in Verification above remain unfixed — tracked across many prior sessions already, not in scope for this one.
+- Reminders list UI (`Reminders.tsx`'s table) doesn't yet display who a reminder's recipient is (only the task) — worth adding now that a reminder can target someone other than its creator.
 
 ---
 

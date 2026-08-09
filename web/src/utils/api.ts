@@ -686,9 +686,14 @@ class APIClient {
     URL.revokeObjectURL(url);
   }
 
-  async deleteTaskAttachment(taskId: string, attachmentId: string) {
-    const { data } = await this.client.delete<ApiResponse>(`/tasks/${taskId}/attachments/${attachmentId}`);
-    return data;
+  // Opens the attachment in a new tab instead of forcing a download — the
+  // browser renders it natively for images/PDFs, and falls back to its own
+  // download prompt for anything else, same as any other "View" action.
+  async viewTaskAttachment(taskId: string, attachmentId: string) {
+    const response = await this.client.get(`/tasks/${taskId}/attachments/${attachmentId}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([response.data]));
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   async getTasksByDocument(documentId: string) {

@@ -9,6 +9,7 @@ import { usePageAccess } from '../../hooks/usePageAccess';
 import type { Document, Folder, Task } from '../../types';
 import { TaskAttachmentsModal } from '../custom/TaskAttachmentsModal';
 import { UploadNewVersionModal } from '../custom/UploadNewVersionModal';
+import { formatDateTime, formatFileSize } from '../../utils/formatters';
 
 const PAGE_SIZE = 10;
 
@@ -315,9 +316,78 @@ export function Tasks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedPcar?.taskId, focusedPcar?.documentId, documents]);
 
-  const handleViewLinkedDocument = () => {
+  // Shown inline next to Linked Document instead of only being reachable
+  // through the separate Attachments modal — no delete here, per explicit
+  // request; View/Download only.
+  const [focusedAttachments, setFocusedAttachments] = useState<Array<{ attachmentId: string; fileName: string; fileSizeBytes?: number | null; createdAt: string; uploadedByName?: string }>>([]);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+
+  const loadFocusedAttachments = (taskId: string) => {
+    apiClient.getTaskAttachments(taskId)
+      .then((res) => setFocusedAttachments(res.data || []))
+      .catch(() => setFocusedAttachments([]));
+  };
+
+  useEffect(() => {
+    if (!focusedPcar) { setFocusedAttachments([]); return; }
+    loadFocusedAttachments(focusedPcar.taskId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedPcar?.taskId]);
+
+  const handleUploadFocusedAttachment = async (file: File) => {
+    if (!focusedPcar) return;
+    setIsUploadingAttachment(true);
+    try {
+      const res = await apiClient.uploadTaskAttachment(focusedPcar.taskId, file);
+      if (!res.success) {
+        showError(res.error || 'Failed to upload attachment');
+        return;
+      }
+      showSuccess(`Uploaded "${file.name}"`);
+      loadFocusedAttachments(focusedPcar.taskId);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to upload attachment');
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  };
+
+  const handleViewFocusedAttachment = async (attachmentId: string) => {
+    if (!focusedPcar) return;
+    try {
+      await apiClient.viewTaskAttachment(focusedPcar.taskId, attachmentId);
+    } catch {
+      showError('Failed to open this attachment');
+    }
+  };
+
+  const handleDownloadFocusedAttachment = async (attachmentId: string, fileName: string) => {
+    if (!focusedPcar) return;
+    try {
+      await apiClient.downloadTaskAttachment(focusedPcar.taskId, attachmentId, fileName);
+    } catch {
+      showError('Failed to download this attachment');
+    }
+  };
+
+  const handleViewLinkedDocument = async () => {
     if (!linkedDocument) return;
-    navigate(`/documents?preview=${encodeURIComponent(linkedDocument.documentId)}`);
+    // Check access before navigating — an explicit Deny override can still
+    // block a task's assignee from a document even though the task-linkage
+    // bypass normally grants it (see RBACMiddleware.HasAssignedOpenTaskForDocumentAsync),
+    // and the preview page itself only showed a generic "unavailable" message
+    // for this, not the real reason.
+    try {
+      await apiClient.getDocument(linkedDocument.documentId);
+      navigate(`/documents?preview=${encodeURIComponent(linkedDocument.documentId)}`);
+    } catch (err: any) {
+      if (err.response?.status === 403) {
+        showError('You do not have access to this file — please contact your administrator.');
+      } else {
+        showError('Failed to open the linked document');
+      }
+    }
   };
 
   const handleDownloadLinkedDocument = async () => {
@@ -827,6 +897,38 @@ export function Tasks() {
                   ) : (
                     <p className="mt-3 text-sm text-[#94a3b8] dark:text-slate-400">Loading linked document…</p>
                   )}
+                  <div className="mt-4 border-t border-[#e2e8f0] pt-4 dark:border-slate-800">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8] dark:text-slate-500">Attachments</h3>
+                      <input
+                        ref={attachmentInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadFocusedAttachment(file); e.target.value = ''; }}
+                      />
+                      <Button variant="secondary" size="sm" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingAttachment} leftIcon={<Paperclip className="h-3.5 w-3.5" />}>
+                        {isUploadingAttachment ? 'Uploading…' : 'Add Attachment'}
+                      </Button>
+                    </div>
+                    {focusedAttachments.length === 0 ? (
+                      <p className="mt-2 text-sm text-[#94a3b8] dark:text-slate-400">No attachments yet.</p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {focusedAttachments.map((a) => (
+                          <div key={a.attachmentId} className="flex flex-wrap items-center justify-between gap-2 rounded-[4px] border border-[#e2e8f0] px-3 py-2 dark:border-slate-800">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-[#26334d] dark:text-white">{a.fileName}</p>
+                              <p className="truncate text-xs text-[#94a3b8] dark:text-slate-400">{formatFileSize(a.fileSizeBytes ?? 0)} · {formatDateTime(a.createdAt)}{a.uploadedByName ? ` · ${a.uploadedByName}` : ''}</p>
+                            </div>
+                            <div className="flex flex-shrink-0 gap-2">
+                              <Button variant="secondary" size="sm" onClick={() => handleViewFocusedAttachment(a.attachmentId)} leftIcon={<Eye className="h-3.5 w-3.5" />}>View</Button>
+                              <Button variant="secondary" size="sm" onClick={() => handleDownloadFocusedAttachment(a.attachmentId, a.fileName)} leftIcon={<Download className="h-3.5 w-3.5" />}>Download</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </CardBody>
               </Card>
             )}
@@ -911,7 +1013,7 @@ export function Tasks() {
                           : undefined
                   }
                 >
-                  {focusedPcar.status === 'done' ? 'Submitted' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Submit'}
+                  {focusedPcar.status === 'done' ? 'Submitted' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Submit for approval'}
                 </Button>
                 {pcarAlreadySubmitted ? (
                   <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">
