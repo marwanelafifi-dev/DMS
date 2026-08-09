@@ -13,14 +13,16 @@ export function Reminders() {
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'sent'>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [newReminder, setNewReminder] = useState<{ taskId: string; reminderType: ReminderChannel; dueDate: string }>({
+  const [newReminder, setNewReminder] = useState<{ taskId: string; recipientId: string; reminderType: ReminderChannel; dueDate: string }>({
     taskId: '',
+    recipientId: DEV_USER_ID,
     reminderType: 'APP',
     dueDate: '',
   });
@@ -28,6 +30,7 @@ export function Reminders() {
   useEffect(() => {
     void loadReminders();
     void loadTasks();
+    void loadUsers();
   }, []);
 
   const loadReminders = async () => {
@@ -53,9 +56,30 @@ export function Reminders() {
     }
   };
 
+  // Real bug: this form always silently created the reminder for the
+  // logged-in user themselves (a hardcoded recipientId) with no way to pick
+  // anyone else at all — so reminding a task's actual assignee was never
+  // possible, and it looked like "reminders don't notify users" when really
+  // no reminder had ever been aimed at another user in the first place.
+  const loadUsers = async () => {
+    try {
+      const res = await apiClient.getUsers({ activeOnly: true });
+      setUsers(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      showError('Failed to load users for the reminder form');
+    }
+  };
+
+  // Defaults the recipient to whoever the task is actually assigned to —
+  // the common case — while still leaving it fully overridable below.
+  const handleSelectTask = (taskId: string) => {
+    const task = tasks.find((t) => t.taskId === taskId);
+    setNewReminder((prev) => ({ ...prev, taskId, recipientId: task?.assignedTo || prev.recipientId }));
+  };
+
   const handleCreateReminder = async () => {
-    if (!newReminder.taskId || !newReminder.dueDate) {
-      showError('Task and due date are required');
+    if (!newReminder.taskId || !newReminder.dueDate || !newReminder.recipientId) {
+      showError('Task, recipient, and due date are required');
       return;
     }
 
@@ -63,13 +87,13 @@ export function Reminders() {
     try {
       await apiClient.createReminder({
         taskId: newReminder.taskId,
-        recipientId: DEV_USER_ID,
+        recipientId: newReminder.recipientId,
         reminderType: newReminder.reminderType,
         dueDate: new Date(newReminder.dueDate).toISOString(),
       });
       showSuccess('Reminder created');
       setShowAddForm(false);
-      setNewReminder({ taskId: '', reminderType: 'APP', dueDate: '' });
+      setNewReminder({ taskId: '', recipientId: DEV_USER_ID, reminderType: 'APP', dueDate: '' });
       await loadReminders();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create reminder');
@@ -284,7 +308,7 @@ export function Reminders() {
                 <select
                   id="reminder-task"
                   value={newReminder.taskId}
-                  onChange={(e) => setNewReminder({ ...newReminder, taskId: e.target.value })}
+                  onChange={(e) => handleSelectTask(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Select a task…</option>
@@ -297,6 +321,21 @@ export function Reminders() {
                     No tasks available yet — create a task first.
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label htmlFor="reminder-recipient" className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Remind *</label>
+                <select
+                  id="reminder-recipient"
+                  value={newReminder.recipientId}
+                  onChange={(e) => setNewReminder({ ...newReminder, recipientId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select who this reminder is for…</option>
+                  {users.map((user) => (
+                    <option key={user.userId} value={user.userId}>{user.fullName}{user.userId === DEV_USER_ID ? ' (you)' : ''}</option>
+                  ))}
+                </select>
               </div>
 
               <div>

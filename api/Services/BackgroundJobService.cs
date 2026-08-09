@@ -46,13 +46,17 @@ public static class BackgroundJobExtensions
             service => service.RunAutoUnlockCheckoutsAsync(),
             Cron.MinuteInterval(5));
 
-        // Send due reminders every 15 minutes. Previously this only ran when a user
-        // manually hit "send-due" — nothing scheduled the sweep, so reminders whose
-        // due_date passed were never actually delivered.
+        // Send due reminders every 5 minutes (was 15 — matches the same cadence
+        // as auto-unlock-expired-checkouts and the ISO meeting reminder scan;
+        // a 15-minute gap made an actually-working reminder feel broken since
+        // a reminder due "now" could sit unsent for up to a quarter hour).
+        // Previously this only ran when a user manually hit "send-due" —
+        // nothing scheduled the sweep at all, so reminders whose due_date
+        // passed were never actually delivered.
         recurringJobManager.AddOrUpdate<ReminderService>(
             "send-due-reminders",
             service => service.SendPendingRemindersAsync(),
-            Cron.MinuteInterval(15));
+            Cron.MinuteInterval(5));
 
         // Push upcoming audit calendar events to every connected user's personal
         // Google Calendar once a day. Runs at 6 AM UTC — adjust the TimeZoneInfo

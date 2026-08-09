@@ -1,11 +1,76 @@
 using DMS.Api.Data;
 using DMS.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace DMS.Api.Services;
 
-public class ReminderService(DmsContext context, AuditService auditService, ILogger<ReminderService> logger)
+public class ReminderService(DmsContext context, AuditService auditService, NotificationService notificationService, EmailService emailService, IConfiguration configuration, ILogger<ReminderService> logger)
 {
+    // "Send" previously only flipped is_sent/sent_at and wrote an audit entry —
+    // it never actually notified anyone, in-app or by email, despite the
+    // REMINDER_SENT audit action implying it had. Guid.Empty is the same
+    // "system actor" sentinel GoogleMeetingReminderService already uses for
+    // background-job-triggered notifications (NotifyAsync only skips sending
+    // when recipient == actor, so a real user ID never collides with this).
+    private static readonly Guid SystemActorId = Guid.Empty;
+
+    private string BuildTaskLink(Guid taskId)
+    {
+        var frontendBaseUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
+        return $"{frontendBaseUrl}/tasks?highlight={taskId}";
+    }
+
+    // Actually notifies the recipient — in-app (with TaskId set, so
+    // NotificationsBell's existing click-to-navigate takes them straight to
+    // the task, same as any other task-linked notification) and/or email per
+    // reminder.ReminderType, instead of the previous no-op that only flipped
+    // IsSent. Never throws — a missing task/recipient or an unconfigured
+    // mailer degrades to a skipped send, not a failed one, since the
+    // is_sent/audit bookkeeping around this call must still happen either way.
+    private async Task SendReminderNotificationAsync(DmsReminder reminder)
+    {
+        if (reminder.Task == null || reminder.Recipient == null)
+        {
+            logger.LogWarning("Reminder {ReminderId} is missing its Task/Recipient — skipping notification", reminder.ReminderId);
+            return;
+        }
+
+        var taskTitle = reminder.Task.Title;
+        var taskLink = BuildTaskLink(reminder.TaskId);
+        var dueDateText = reminder.DueDate.ToString("dddd, MMMM d 'at' h:mm tt 'UTC'");
+
+        try
+        {
+            if (reminder.ReminderType is "APP" or "BOTH")
+            {
+                await notificationService.NotifyAsync(
+                    reminder.RecipientId,
+                    SystemActorId,
+                    $"Reminder: {taskTitle}",
+                    $"Due {dueDateText}",
+                    taskId: reminder.TaskId);
+            }
+
+            if (reminder.ReminderType is "EMAIL" or "BOTH")
+            {
+                var bodyHtml = $"""
+                    <p style="margin:0 0 16px;font-size:14px;color:#26334d;">This is a reminder for the following task, due <strong>{dueDateText}</strong>:</p>
+                    <p style="margin:0 0 24px;font-size:16px;color:#122344;font-weight:600;">{System.Net.WebUtility.HtmlEncode(taskTitle)}</p>
+                    <a href="{taskLink}" style="display:inline-block;background:#002E5C;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:4px;">
+                      View Task
+                    </a>
+                    """;
+                var html = EmailService.BuildBrandedHtml("Task Reminder", "#002E5C", bodyHtml);
+                await emailService.SendAsync(reminder.Recipient.Email, $"Reminder: {taskTitle}", html);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send reminder notification for {ReminderId}", reminder.ReminderId);
+        }
+    }
+
     public async Task<ReminderResult> CreateReminderAsync(Guid taskId, Guid recipientId, string reminderType, DateTime dueDate, Guid? actorUserId = null)
     {
         try
@@ -114,10 +179,12 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
                 .Cast<Guid>()
                 .ToList();
 
-            // Recipient must be eagerly loaded — without it the navigation is always null
-            // here and the REMINDER_SENT audit entry below would silently never be written.
+            // Recipient/Task must be eagerly loaded — without them the navigations are
+            // always null here, so neither a real notification/email nor the
+            // REMINDER_SENT audit entry's detail could ever be built.
             var reminders = await context.Reminders
                 .Include(r => r.Recipient)
+                .Include(r => r.Task)
                 .Where(r => reminderIds.Contains(r.ReminderId))
                 .ToListAsync();
 
@@ -126,6 +193,8 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
                 reminder.IsSent = true;
                 reminder.SentAt = DateTime.UtcNow;
                 context.Reminders.Update(reminder);
+
+                await SendReminderNotificationAsync(reminder);
 
                 await auditService.LogAsync(reminder.RecipientId, AuditActions.REMINDER_SENT, new
                 {
@@ -187,6 +256,7 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
         {
             var reminder = await context.Reminders
                 .Include(r => r.Recipient)
+                .Include(r => r.Task)
                 .FirstOrDefaultAsync(r => r.ReminderId == reminderId);
 
             if (reminder == null)
@@ -197,6 +267,9 @@ public class ReminderService(DmsContext context, AuditService auditService, ILog
 
             reminder.IsSent = true;
             reminder.SentAt = DateTime.UtcNow;
+
+            await SendReminderNotificationAsync(reminder);
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(actorUserId, AuditActions.REMINDER_SENT, new

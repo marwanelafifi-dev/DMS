@@ -591,7 +591,7 @@ export function Documents() {
           'This live document does not expose a browser-safe preview. Download the read-only source to view it locally.',
         );
         hydrateDocumentPreview(requestedDocument);
-      } catch {
+      } catch (err: any) {
         if (cancelled) return;
         const placeholder: Document = {
           documentId: previewId,
@@ -607,7 +607,9 @@ export function Documents() {
         };
         setPreviewDocument(createUnavailableLibraryDocument(
           placeholder,
-          'The preview could not be loaded. The document may be unavailable or the server may be offline.',
+          err?.response?.status === 403
+            ? 'You do not have access to this file — please contact your administrator.'
+            : 'The preview could not be loaded. The document may be unavailable or the server may be offline.',
         ));
       }
     };

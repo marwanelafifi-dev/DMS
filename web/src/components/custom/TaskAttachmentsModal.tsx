@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, AlertCircle, Download, Paperclip, Trash2, Upload } from 'lucide-react';
+import { X, AlertCircle, Download, Eye, Paperclip, Upload } from 'lucide-react';
 import { Button } from '../ui';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
@@ -70,18 +70,12 @@ export function TaskAttachmentsModal({ taskId, taskTitle, onClose }: TaskAttachm
     }
   };
 
-  const handleDelete = async (attachment: AttachmentRow) => {
+  const handleView = async (attachment: AttachmentRow) => {
     setBusyId(attachment.attachmentId);
     try {
-      const res = await apiClient.deleteTaskAttachment(taskId, attachment.attachmentId);
-      if (!res.success) {
-        showError(res.error || 'Failed to delete this attachment');
-        return;
-      }
-      setAttachments((prev) => prev.filter((a) => a.attachmentId !== attachment.attachmentId));
-      showSuccess('Attachment removed');
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to delete this attachment');
+      await apiClient.viewTaskAttachment(taskId, attachment.attachmentId);
+    } catch {
+      showError('Failed to open this attachment');
     } finally {
       setBusyId(null);
     }
@@ -122,20 +116,20 @@ export function TaskAttachmentsModal({ taskId, taskTitle, onClose }: TaskAttachm
                     </div>
                     <div className="flex flex-shrink-0 gap-2">
                       <button
+                        onClick={() => handleView(a)}
+                        disabled={isBusy}
+                        title="View"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => handleDownload(a)}
                         disabled={isBusy}
                         title="Download"
                         className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                       >
                         <Download className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(a)}
-                        disabled={isBusy}
-                        title="Delete"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-100 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:hover:bg-red-900/30"
-                      >
-                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
