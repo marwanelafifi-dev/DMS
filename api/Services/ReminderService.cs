@@ -113,6 +113,34 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
 
             logger.LogInformation("Created reminder {ReminderId} for task {TaskId}", reminder.ReminderId, taskId);
 
+            // Real gap found live: a reminder whose due date/time is already now
+            // or in the past (the common case when someone wants to be notified
+            // right away rather than scheduling something for later) previously
+            // just sat unsent until the next 5-minute automatic sweep — or
+            // forever, if nobody happened to click the separate manual "Send"
+            // button on it. Send it immediately in that case instead of leaving
+            // "create a reminder" and "actually notify someone" as two separate
+            // steps the caller has to know about.
+            if (dueDate <= DateTime.UtcNow)
+            {
+                reminder.IsSent = true;
+                reminder.SentAt = DateTime.UtcNow;
+                reminder.Task = task;
+                reminder.Recipient = recipient;
+                await SendReminderNotificationAsync(reminder);
+                await context.SaveChangesAsync();
+
+                await auditService.LogAsync(actorUserId ?? recipientId, AuditActions.REMINDER_SENT, new
+                {
+                    reminder.ReminderId,
+                    reminder.TaskId,
+                    reminder.ReminderType,
+                    reminder.DueDate,
+                    reminder.SentAt,
+                    RecipientEmail = recipient.Email
+                });
+            }
+
             return ReminderResult.Ok(new
             {
                 reminder.ReminderId,
@@ -120,7 +148,8 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
                 reminder.RecipientId,
                 reminder.ReminderType,
                 reminder.DueDate,
-                reminder.CreatedAt
+                reminder.CreatedAt,
+                reminder.IsSent,
             });
         }
         catch (Exception ex)
@@ -230,7 +259,9 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
                 {
                     r.ReminderId,
                     r.TaskId,
-                    Task = r.Task == null ? null : new { r.Task.TaskId, r.Task.Title, r.Task.Status },
+                    Task = r.Task == null ? null : new { r.Task.TaskId, r.Task.Title, r.Task.Status, r.Task.Description },
+                    r.RecipientId,
+                    Recipient = r.Recipient == null ? null : new { r.Recipient.UserId, r.Recipient.FullName, r.Recipient.Email },
                     r.ReminderType,
                     r.DueDate,
                     r.IsSent,

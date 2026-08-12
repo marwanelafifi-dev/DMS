@@ -13,6 +13,7 @@ import { useToast } from '../../hooks/useToast';
 // and File/Folder Permission overrides, set from the Document Library.
 const PERMISSION_KEYS = [
   'canViewDashboard', 'canViewDocumentLibrary', 'canViewApprovals', 'canViewPcar', 'canViewReminders',
+  'canDeleteReminders',
   'canSendAnnouncements', 'canViewAdminPanel',
   'canReadAllFolders', 'canReadWriteAllFolders', 'bypassFolderPermissions',
   'canManageFolderPermissions', 'canManageFilePermissions',
@@ -22,6 +23,7 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
   canViewDocumentLibrary: 'Document Library',
   canViewReminders: 'Reminders',
+  canDeleteReminders: 'Delete Reminders',
   canViewApprovals: 'Approvals (Document Workflow)',
   canViewPcar: 'PCAR / Corrective Action',
   canViewAdminPanel: 'Admin Panel',
@@ -320,15 +322,15 @@ export function RolePermissions() {
 
       {/* New Role Modal */}
       {showNewRoleForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
-            <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
+            <div className="flex flex-shrink-0 items-center justify-between bg-navy-900 px-6 py-4 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">New Role</h3>
               <button onClick={() => setShowNewRoleForm(false)} className="text-white/80 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="px-6 py-4 space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Role Name</label>
                 <input
@@ -375,7 +377,7 @@ export function RolePermissions() {
                 Once created, this role is immediately assignable to any user from the Users page.
               </p>
             </div>
-            <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
+            <div className="flex flex-shrink-0 gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-navy-700 dark:bg-navy-900">
               <button
                 onClick={() => setShowNewRoleForm(false)}
                 className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-700 transition-colors"
@@ -427,15 +429,15 @@ export function RolePermissions() {
 
       {/* Edit Role Modal */}
       {editingRole && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
-            <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
+            <div className="flex flex-shrink-0 items-center justify-between bg-navy-900 px-6 py-4 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Edit {editingRole.role} Access</h3>
               <button onClick={() => setEditingRole(null)} className="text-white/80 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="px-6 py-4 space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
                 <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                 <p className="text-xs text-amber-800 dark:text-amber-300">
@@ -479,7 +481,7 @@ export function RolePermissions() {
                 ))}
               </div>
             </div>
-            <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
+            <div className="flex flex-shrink-0 gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-navy-700 dark:bg-navy-900">
               <button
                 onClick={() => setEditingRole(null)}
                 className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-700 transition-colors"

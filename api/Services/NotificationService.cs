@@ -10,7 +10,7 @@ namespace DMS.Api.Services;
 // their own action.
 public class NotificationService(DmsContext context, ILogger<NotificationService> logger)
 {
-    public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null)
+    public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null, Guid? announcementId = null)
     {
         if (recipientUserId == actorUserId)
             return;
@@ -25,6 +25,7 @@ public class NotificationService(DmsContext context, ILogger<NotificationService
                 Body = body,
                 DocumentId = documentId,
                 TaskId = taskId,
+                AnnouncementId = announcementId,
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow,
             });

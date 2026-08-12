@@ -97,13 +97,13 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         }
     }
 
-    // GET /api/tasks/{id}/document — the document linked to this task, reachable
-    // by the assignee/manager regardless of whether they hold a folder-browsing
-    // grant on it. A task assignee legitimately needs to view/download/replace
-    // the file their corrective action is about even if nobody ever gave them
-    // general access to that folder in the Document Library — same decoupling
-    // already granted to Document Workflow reviewers for their queue. An
-    // explicit Deny override on the folder/document still wins over this.
+    // GET /api/tasks/{id}/document — the document linked to this task. Per
+    // explicit request, the task-assignee bypass that used to grant Read here
+    // regardless of any real folder access was removed entirely: a task
+    // pointing at a document is no longer, on its own, a reason to be able to
+    // view/download it — the caller still needs genuine folder access (a role
+    // grant, a role-wide bypass flag, or an Allow override), the exact same
+    // bar as browsing to it directly in the Document Library.
     [HttpGet("{id}/document")]
     public async Task<ActionResult<object>> GetLinkedDocument(Guid id)
     {
@@ -125,9 +125,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (document == null)
                 return NotFound(new { success = false, error = "Linked document not found" });
 
-            var allowed = await accessOverrideService.ResolveAsync(userId, document.DocumentId, document.FolderId, AccessOverrideActions.Read, true);
+            var allowed = await HasFolderReadAccessAsync(context, accessOverrideService, userId, document.FolderId);
             if (!allowed)
-                return StatusCode(403, new { success = false, error = "Access to this document has been explicitly denied" });
+                return StatusCode(403, new { success = false, error = "You do not have access to this file — please contact your administrator." });
 
             var currentVersion = document.CurrentVersionId.HasValue
                 ? await context.DocumentVersions.AsNoTracking().FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId)

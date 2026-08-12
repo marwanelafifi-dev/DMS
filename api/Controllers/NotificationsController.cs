@@ -26,6 +26,7 @@ public class NotificationsController(DmsContext context, ILogger<NotificationsCo
                     n.Body,
                     n.DocumentId,
                     n.TaskId,
+                    n.AnnouncementId,
                     n.IsRead,
                     n.CreatedAt,
                 })

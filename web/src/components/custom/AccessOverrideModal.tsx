@@ -101,6 +101,13 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
+  // Normally saving reuses this modal's own `scope` prop — but an inherited
+  // row (a folder-level File Level override, shown here only because it
+  // cascades down) actually belongs to its own folder, not this file. Saving
+  // it with this file's scope would either get rejected or silently create a
+  // brand-new file-scoped override instead of updating the real one, so an
+  // edit on an inherited row tracks and saves against its OWN folder scope.
+  const [editingOverrideScope, setEditingOverrideScope] = useState<{ folderId?: string; documentId?: string }>(scope);
   const [targetType, setTargetType] = useState<'User' | 'Group'>('User');
   const [targetId, setTargetId] = useState('');
   const [flags, setFlags] = useState<AccessOverrideFlags>({});
@@ -142,7 +149,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
       // The backend upserts on (scope, targetType, targetId), so editing an
       // existing override is the same call as creating one — it just
       // overwrites the flags in place instead of adding a duplicate.
-      const res = await apiClient.createAccessOverride({ ...scope, targetType, targetId, ...flags });
+      const res = await apiClient.createAccessOverride({ ...editingOverrideScope, targetType, targetId, ...flags });
       if (!res.success) {
         showError(res.error || 'Failed to save permission');
         return;
@@ -160,6 +167,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
   const resetForm = () => {
     setShowAddForm(false);
     setEditingOverrideId(null);
+    setEditingOverrideScope(scope);
     setTargetId('');
     setTargetType('User');
     setFlags({});
@@ -168,6 +176,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
 
   const handleEdit = (o: AccessOverride) => {
     setEditingOverrideId(o.overrideId);
+    setEditingOverrideScope(o.inheritedFromFolder ? { folderId: o.folderId ?? undefined } : scope);
     setTargetType(o.targetType);
     setTargetId(o.targetId);
     setFlags(Object.fromEntries(badgeFields.map((f) => [f.key, o[f.key] ?? null])) as AccessOverrideFlags);
@@ -219,6 +228,11 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
                     <div>
                       <span className="text-sm font-semibold text-navy-900 dark:text-white">{o.targetName}</span>
                       <span className="ml-2 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-semibold uppercase text-gray-500 dark:border-navy-600 dark:text-navy-400">{o.targetType}</span>
+                      {o.inheritedFromFolder && (
+                        <span className="ml-2 rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-700 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-300" title="Set from this file's folder's own Folder Permissions — cascades to every file in it">
+                          Via folder
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => handleEdit(o)} className="rounded p-1.5 text-navy-600 hover:bg-navy-100 dark:text-navy-300 dark:hover:bg-navy-700" title="Edit this permission">
@@ -236,6 +250,9 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
                       </span>
                     ))}
                   </div>
+                  {o.inheritedFromFolder && (
+                    <p className="mt-2 text-[11px] text-gray-400 dark:text-navy-500">Set at the folder level — editing or removing it here changes it for every file in this file's folder, not just this one.</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -244,7 +261,10 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
           {showAddForm ? (
             <div className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-navy-700">
               {editingOverrideId && (
-                <p className="text-xs font-semibold uppercase tracking-wide text-navy-500 dark:text-navy-400">Editing permission</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-navy-500 dark:text-navy-400">
+                  Editing permission
+                  {editingOverrideScope.folderId && resourceKind === 'file' && ' — this is a folder-level permission; saving updates it for every file in the folder'}
+                </p>
               )}
               <div className="flex gap-2">
                 <select disabled={!!editingOverrideId} value={targetType} onChange={(e) => { setTargetType(e.target.value as 'User' | 'Group'); setTargetId(''); }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-navy-600 dark:bg-navy-900 dark:text-white">

@@ -71,6 +71,11 @@ public class DmsPageAccessRole
     // Whether this role can post to the Send Announcement page — independent
     // of any per-folder grant, same as the other blanket role-wide flags above.
     public bool CanSendAnnouncements { get; set; }
+    // Real gap found live: deleting a reminder had no permission check at
+    // all — anyone who could see the Reminders page could delete anyone
+    // else's reminder. Without this flag, a role can still create/view
+    // reminders and mark its own as sent, just not delete any.
+    public bool CanDeleteReminders { get; set; }
     // Set once at creation (true only for the 5 original seeded roles) and
     // carried over verbatim by a rename — the stable identity that delete
     // protection checks, instead of matching against the current role name.

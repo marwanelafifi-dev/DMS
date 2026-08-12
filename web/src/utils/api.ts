@@ -79,6 +79,9 @@ export interface PageAccessRoleFlags {
   canResolveDocumentId: boolean;
   // Whether this role can post to the Send Announcement page.
   canSendAnnouncements: boolean;
+  // Whether this role can delete a reminder — without it, a role can still
+  // create/view reminders and mark its own as sent, just not delete any.
+  canDeleteReminders: boolean;
 }
 
 // Backs the Admin Panel's Notification Configuration page. Method is one of
@@ -187,6 +190,10 @@ export interface AccessOverride extends AccessOverrideFlags {
   targetId: string;
   targetName: string;
   createdAt: string;
+  // Set when this row is a folder-level File Level override shown here only
+  // because it cascades to the file being viewed — it belongs to (and can
+  // only be edited/removed from) that folder's own Folder Permissions modal.
+  inheritedFromFolder?: boolean;
 }
 
 // The id of whoever is currently logged in. Many components reference this
@@ -644,9 +651,11 @@ class APIClient {
     return data;
   }
 
-  // Fetches the document linked to a task directly — works for the task's
-  // assignee/manager even when they have no folder-browsing grant on it,
-  // unlike getDocuments() (which is scoped to folders the caller can browse).
+  // Fetches the document linked to a task directly (used as a fallback when
+  // the caller's own folder-scoped getDocuments() list doesn't include it).
+  // Per explicit request, this still requires real folder access — a task
+  // pointing at a document is no longer, on its own, enough — so this can
+  // (correctly) 403 for a task's own assignee if they hold no folder grant.
   async getTaskDocument(taskId: string) {
     const { data } = await this.client.get<ApiResponse>(`/tasks/${taskId}/document`);
     return data;
@@ -678,7 +687,11 @@ class APIClient {
 
   async downloadTaskAttachment(taskId: string, attachmentId: string, fileName: string) {
     const response = await this.client.get(`/tasks/${taskId}/attachments/${attachmentId}/download`, { responseType: 'blob' });
-    const url = URL.createObjectURL(new Blob([response.data]));
+    // response.data is already a correctly-typed Blob (axios reads the real
+    // Content-Type off the response) — re-wrapping it in `new Blob([data])`
+    // with no type option strips that off, which doesn't matter for a forced
+    // download but broke View below (browser had no idea it was a PNG).
+    const url = URL.createObjectURL(response.data);
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
@@ -686,14 +699,14 @@ class APIClient {
     URL.revokeObjectURL(url);
   }
 
-  // Opens the attachment in a new tab instead of forcing a download — the
-  // browser renders it natively for images/PDFs, and falls back to its own
-  // download prompt for anything else, same as any other "View" action.
-  async viewTaskAttachment(taskId: string, attachmentId: string) {
+  // Raw blob fetch — used by AttachmentPreviewModal, which needs the actual
+  // bytes (to run Office formats through the same client-side parser the
+  // Document Library uses) rather than a browser-navigable blob: URL, since
+  // a bare window.open() on a .docx/.xlsx/.pptx blob just forces a download
+  // (no browser can render Office formats natively) instead of "viewing" it.
+  async fetchTaskAttachmentBlob(taskId: string, attachmentId: string): Promise<Blob> {
     const response = await this.client.get(`/tasks/${taskId}/attachments/${attachmentId}/download`, { responseType: 'blob' });
-    const url = URL.createObjectURL(new Blob([response.data]));
-    window.open(url, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return response.data;
   }
 
   async getTasksByDocument(documentId: string) {

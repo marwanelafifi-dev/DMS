@@ -4,18 +4,22 @@ import { SkeletonTable } from '../ui/Skeleton';
 import { Bell, CheckCircle2, Clock, Trash2, Plus, X, Search } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+import { usePageAccess } from '../../hooks/usePageAccess';
 import type { Reminder, ReminderChannel, Task } from '../../types';
 
 const CHANNELS: ReminderChannel[] = ['APP', 'EMAIL', 'BOTH'];
 
 export function Reminders() {
   const { showSuccess, showError } = useToast();
+  const access = usePageAccess();
+  const canDeleteReminders = access?.canDeleteReminders === true;
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [viewingReminder, setViewingReminder] = useState<Reminder | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'sent'>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,13 +89,17 @@ export function Reminders() {
 
     setIsSubmitting(true);
     try {
-      await apiClient.createReminder({
+      const res = await apiClient.createReminder({
         taskId: newReminder.taskId,
         recipientId: newReminder.recipientId,
         reminderType: newReminder.reminderType,
         dueDate: new Date(newReminder.dueDate).toISOString(),
       });
-      showSuccess('Reminder created');
+      // A due date already in the past/now sends immediately (see
+      // ReminderService.CreateReminderAsync); a future due date is only
+      // scheduled — say so explicitly, since "Reminder created" alone reads
+      // like it was just sent, and the actual delivery can be minutes away.
+      showSuccess(res.data?.isSent ? 'Reminder created and sent now' : 'Reminder scheduled — it will be sent at the due date/time');
       setShowAddForm(false);
       setNewReminder({ taskId: '', recipientId: DEV_USER_ID, reminderType: 'APP', dueDate: '' });
       await loadReminders();
@@ -240,7 +248,7 @@ export function Reminders() {
       ) : (
         <div className="space-y-3">
           {filteredReminders.map((reminder) => (
-            <Card key={reminder.reminderId} className="hover:shadow-md transition-shadow">
+            <Card key={reminder.reminderId} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setViewingReminder(reminder)}>
               <CardBody>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -265,7 +273,7 @@ export function Reminders() {
                   <div className="flex gap-2 flex-shrink-0">
                     {!reminder.isSent && (
                       <button
-                        onClick={() => handleSendReminder(reminder.reminderId)}
+                        onClick={(e) => { e.stopPropagation(); handleSendReminder(reminder.reminderId); }}
                         className="p-2 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
                         title="Mark as sent"
                         aria-label={`Mark ${reminderLabel(reminder)} as sent`}
@@ -273,14 +281,16 @@ export function Reminders() {
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDeleteReminder(reminder.reminderId)}
-                      className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
-                      title="Delete"
-                      aria-label={`Delete reminder for ${reminderLabel(reminder)}`}
-                    >
-                      <Trash2 className="w-5 h-5 text-red-600" />
-                    </button>
+                    {canDeleteReminders && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteReminder(reminder.reminderId); }}
+                        className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                        title="Delete"
+                        aria-label={`Delete reminder for ${reminderLabel(reminder)}`}
+                      >
+                        <Trash2 className="w-5 h-5 text-red-600" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </CardBody>
@@ -370,6 +380,81 @@ export function Reminders() {
                 <Button variant="primary" onClick={handleCreateReminder} disabled={isSubmitting}>
                   {isSubmitting ? 'Creating...' : 'Create'}
                 </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+      {/* Reminder Details Modal */}
+      {viewingReminder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setViewingReminder(null)}>
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
+              <h2 className="flex items-center gap-2 text-lg font-serif font-bold text-navy-900 dark:text-white">
+                <Bell className="w-5 h-5" /> Reminder Details
+              </h2>
+              <button
+                onClick={() => setViewingReminder(null)}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <CardBody className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge status={viewingReminder.isSent ? 'success' : 'warning'} variant="outline">
+                  {viewingReminder.isSent ? 'Sent' : 'Pending'}
+                </Badge>
+                <Badge status="default" variant="outline">{viewingReminder.reminderType}</Badge>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Task</p>
+                <p className="font-medium text-navy-900 dark:text-white">{reminderLabel(viewingReminder)}</p>
+                {viewingReminder.task?.description && (
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{viewingReminder.task.description}</p>
+                )}
+                {viewingReminder.task?.status && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Task status: {viewingReminder.task.status}</p>
+                )}
+              </div>
+
+              {viewingReminder.recipient?.fullName && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Recipient</p>
+                  <p className="text-sm text-navy-900 dark:text-white">{viewingReminder.recipient.fullName}{viewingReminder.recipient.email ? ` (${viewingReminder.recipient.email})` : ''}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Due Date</p>
+                  <p className="text-sm text-navy-900 dark:text-white">{formatDate(viewingReminder.dueDate)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Created</p>
+                  <p className="text-sm text-navy-900 dark:text-white">{formatDate(viewingReminder.createdAt)}</p>
+                </div>
+                {viewingReminder.isSent && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Sent At</p>
+                    <p className="text-sm text-navy-900 dark:text-white">{formatDate(viewingReminder.sentAt)}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2 border-t border-gray-200 dark:border-navy-700">
+                {!viewingReminder.isSent && (
+                  <Button variant="secondary" onClick={() => { handleSendReminder(viewingReminder.reminderId); setViewingReminder(null); }}>
+                    Mark as Sent
+                  </Button>
+                )}
+                {canDeleteReminders && (
+                  <Button variant="danger" onClick={() => { handleDeleteReminder(viewingReminder.reminderId); setViewingReminder(null); }}>
+                    Delete
+                  </Button>
+                )}
+                <Button variant="primary" onClick={() => setViewingReminder(null)}>Close</Button>
               </div>
             </CardBody>
           </Card>

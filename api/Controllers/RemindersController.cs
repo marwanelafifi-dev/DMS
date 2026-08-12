@@ -1,3 +1,4 @@
+using DMS.Api.Data;
 using DMS.Api.Services;
 using Hangfire;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class RemindersController(ReminderService reminderService, ILogger<RemindersController> logger) : BaseController
+public class RemindersController(ReminderService reminderService, DmsContext context, ILogger<RemindersController> logger) : BaseController
 {
     // GET /api/reminders — my reminders
     [HttpGet]
@@ -99,7 +100,17 @@ public class RemindersController(ReminderService reminderService, ILogger<Remind
     {
         try
         {
-            var result = await reminderService.DeleteReminderAsync(id, GetCurrentUserId());
+            var userId = GetCurrentUserId();
+            // Real gap found live: this endpoint had no permission check at
+            // all — anyone who could see the Reminders page could delete any
+            // reminder, not just their own. Now gated on a dedicated,
+            // independently-grantable role flag, same pattern as the other
+            // blanket capability flags.
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (pageAccessRole?.CanDeleteReminders != true)
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to delete reminders" });
+
+            var result = await reminderService.DeleteReminderAsync(id, userId);
 
             if (!result.Success)
             {

@@ -4,6 +4,7 @@ import { Button } from '../ui';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
+import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 
 interface AttachmentRow {
   attachmentId: string;
@@ -26,6 +27,7 @@ export function TaskAttachmentsModal({ taskId, taskTitle, onClose }: TaskAttachm
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState<AttachmentRow | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
@@ -70,16 +72,7 @@ export function TaskAttachmentsModal({ taskId, taskTitle, onClose }: TaskAttachm
     }
   };
 
-  const handleView = async (attachment: AttachmentRow) => {
-    setBusyId(attachment.attachmentId);
-    try {
-      await apiClient.viewTaskAttachment(taskId, attachment.attachmentId);
-    } catch {
-      showError('Failed to open this attachment');
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const handleView = (attachment: AttachmentRow) => setPreviewing(attachment);
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
@@ -152,6 +145,15 @@ export function TaskAttachmentsModal({ taskId, taskTitle, onClose }: TaskAttachm
           <Button onClick={onClose} variant="secondary">Close</Button>
         </div>
       </div>
+
+      {previewing && (
+        <AttachmentPreviewModal
+          taskId={taskId}
+          attachmentId={previewing.attachmentId}
+          fileName={previewing.fileName}
+          onClose={() => setPreviewing(null)}
+        />
+      )}
     </div>
   );
 }

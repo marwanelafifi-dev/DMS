@@ -179,23 +179,16 @@ public class RBACMiddleware
             (roleAllowed, action) = await HasPermissionForMethodAsync(dbContext, method, path, effectiveRole, isFolder: false, isRootFolder: false, isFirstVersionUpload);
         }
 
-        // A task assignee (or the task's manager) needs to view, download,
-        // check out for editing, release that same checkout, and re-upload
-        // the specific document their own open task is about, even with
-        // zero general folder-browsing grant on it — same reasoning as GET
-        // /api/tasks/{id}/document. Deliberately narrow: covers only the
-        // actions actually needed to work the task, never rename/delete (of
-        // the document itself)/permissions-management. Releasing a checkout
-        // is DELETE .../checkout, which otherwise maps to the same FileDelete
-        // action as deleting the document outright — checked by exact path
-        // instead of IsTaskWorkAction so this bypass can never be mistaken
-        // for a general delete permission.
-        var isCheckoutRelease = method.Equals("DELETE", StringComparison.OrdinalIgnoreCase) && path.EndsWith("/checkout", StringComparison.OrdinalIgnoreCase);
-        if (!roleAllowed && (IsTaskWorkAction(action) || isCheckoutRelease) && await HasAssignedOpenTaskForDocumentAsync(dbContext, user.UserId, documentId))
-        {
-            roleAllowed = true;
-        }
-
+        // Per explicit request, the task-assignee bypass that used to live here
+        // (grant View/Download/DownloadForEditing/UploadUpdatedFile/checkout-
+        // release on a document just because the caller has an open task
+        // pointed at it, with zero real folder access) was removed entirely —
+        // a task referencing a document is no longer, on its own, a reason to
+        // be able to open it. The task's assignee now needs the exact same
+        // real folder access (a role grant, a role-wide bypass flag, or an
+        // Allow override) as anyone else browsing to it directly in the
+        // Document Library. See GET /api/tasks/{id}/document for the matching
+        // change on the metadata side.
         var finalAllowed = await accessOverrideService.ResolveAsync(user.UserId, documentId, document.FolderId, action, roleAllowed);
 
         if (!finalAllowed)
@@ -304,34 +297,6 @@ public class RBACMiddleware
         return null;
     }
 
-    private static bool IsTaskWorkAction(string action) =>
-        action == AccessOverrideActions.FileRead
-        || action == AccessOverrideActions.Download
-        || action == AccessOverrideActions.UploadUpdatedFile
-        || action == AccessOverrideActions.Write;
-
-    // Direct assignee, or a member of the assigned group, on a still-open
-    // task pointed at this document — completed tasks don't carry access
-    // forward, so finishing (or being reassigned off of) the task doesn't
-    // leave a permanent back door into the document.
-    private static async Task<bool> HasAssignedOpenTaskForDocumentAsync(DmsContext dbContext, Guid userId, Guid documentId)
-    {
-        var candidateTasks = await dbContext.Tasks
-            .Where(t => t.DocumentId == documentId && t.Status != "completed"
-                && (t.AssignedToId == userId || t.ManagerId == userId || t.AssignedToGroupId.HasValue))
-            .Select(t => new { t.AssignedToId, t.ManagerId, t.AssignedToGroupId })
-            .ToListAsync();
-
-        if (candidateTasks.Any(t => t.AssignedToId == userId || t.ManagerId == userId))
-            return true;
-
-        var candidateGroupIds = candidateTasks.Where(t => t.AssignedToGroupId.HasValue).Select(t => t.AssignedToGroupId!.Value).Distinct().ToList();
-        if (candidateGroupIds.Count == 0)
-            return false;
-
-        return await dbContext.GroupMembers.AnyAsync(gm => gm.UserId == userId && candidateGroupIds.Contains(gm.GroupId));
-    }
-
     // Maps an HTTP method (+ path shape, + entity kind) to the File/Folder
     // Permission action name it corresponds to, independent of role lookup —
     // used both to resolve the role's default and to know which override
@@ -347,7 +312,20 @@ public class RBACMiddleware
             : path.EndsWith("/force-unlock", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.Unlock
             : path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase) ? (isFirstVersionUpload ? AccessOverrideActions.Write : AccessOverrideActions.UploadUpdatedFile)
             : AccessOverrideActions.Write,
-        "PUT" => isFolder ? AccessOverrideActions.Rename : AccessOverrideActions.FileRename,
+        // Real bug found live: PUT /api/documents/{id} is the one generic
+        // "update this document" endpoint — title/description/tags/category/
+        // department/owner/fileName all go through it, and
+        // DocumentsController.UpdateDocument's own internal check already
+        // gates the whole thing on FileEdit, not FileRename (there is no
+        // separate rename-only endpoint for documents). This middleware
+        // used to gate the same request on FileRename instead — so a user
+        // granted FileEdit=Allow (but not the separate FileRename) got
+        // blocked by the middleware before the controller's own, correct
+        // check ever ran, most visibly right after a real upload succeeded
+        // (Upload New Version's own follow-up metadata PUT), which is what
+        // made the whole operation look like it failed even though the file
+        // itself had already gone through.
+        "PUT" => isFolder ? AccessOverrideActions.Rename : AccessOverrideActions.FileEdit,
         "DELETE" => isFolder ? AccessOverrideActions.Delete : AccessOverrideActions.FileDelete,
         _ => "none" // no override support for anything else — role default only
     };

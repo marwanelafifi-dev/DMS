@@ -72,7 +72,7 @@ public class AnnouncementService(
             if (notifyApp)
             {
                 foreach (var user in recipients)
-                    await notificationService.NotifyAsync(user.UserId, postedById, announcement.Title, announcement.Message);
+                    await notificationService.NotifyAsync(user.UserId, postedById, announcement.Title, announcement.Message, announcementId: announcement.AnnouncementId);
             }
 
             if (notifyEmail && await emailService.IsConfiguredAsync())

@@ -10,6 +10,7 @@ interface NotificationItem {
   body?: string | null;
   documentId?: string | null;
   taskId?: string | null;
+  announcementId?: string | null;
   isRead: boolean;
   createdAt: string;
 }
@@ -84,6 +85,8 @@ export function NotificationsBell() {
       navigate(`/tasks?highlight=${encodeURIComponent(item.taskId)}`);
     } else if (item.documentId) {
       navigate(`/documents?preview=${encodeURIComponent(item.documentId)}`);
+    } else if (item.announcementId) {
+      navigate(`/?announcement=${encodeURIComponent(item.announcementId)}`);
     } else {
       navigate('/tasks');
     }

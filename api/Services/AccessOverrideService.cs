@@ -29,13 +29,32 @@ public class AccessOverrideService(DmsContext context)
         AccessOverrideActions.DownloadZip => o => o.DownloadZip,
         AccessOverrideActions.CreateSubfolder => o => o.CreateSubfolder,
         AccessOverrideActions.Delete => o => o.Delete,
-        AccessOverrideActions.FileRead => o => o.FileRead,
+        // Real gap found live: a folder-scoped override that grants Folder
+        // Level "Read" (Allow) made the folder — and the files listed inside
+        // it — show up, but doing nothing about the separate File Level
+        // "Read" flag meant those files still couldn't actually be opened;
+        // an admin had to remember to also flip the File Level "Read" toggle
+        // in the same modal for the same person just to let them view what
+        // they could already see was there. A folder-scoped row's own
+        // explicit FileRead decision (Allow or Deny) still wins outright when
+        // set — this only fills in when that row left FileRead on Inherit.
+        AccessOverrideActions.FileRead => o => o.FileRead ?? (o.FolderId.HasValue ? o.Read : null),
         AccessOverrideActions.FileRename => o => o.FileRename,
         AccessOverrideActions.FileCopy => o => o.FileCopy,
         AccessOverrideActions.FileCut => o => o.FileCut,
         AccessOverrideActions.Unlock => o => o.Unlock,
         AccessOverrideActions.SubmitForApproval => o => o.SubmitForApproval,
-        AccessOverrideActions.Download => o => o.Download,
+        // Real gap found live, right after fixing FileRead above: this app has
+        // no separate "stream for in-browser preview" route — the Document
+        // Library's "View" (eye icon) fetches the exact same
+        // GET .../versions/{id}/download bytes as the "Download" button, just
+        // renders them inline instead of saving to disk. So granting FileRead
+        // (View) alone still left the actual preview 403ing on this action,
+        // since Download was never touched by the FileRead fallback above —
+        // a user could be told "yes you can view this" and then have viewing
+        // itself fail. Falls back through FileRead, then folder Read, same
+        // "more specific explicit decision always wins" rule as above.
+        AccessOverrideActions.Download => o => o.Download ?? o.FileRead ?? (o.FolderId.HasValue ? o.Read : null),
         AccessOverrideActions.DownloadForEditing => o => o.DownloadForEditing,
         AccessOverrideActions.UploadUpdatedFile => o => o.UploadUpdatedFile,
         AccessOverrideActions.FileDelete => o => o.FileDelete,

@@ -23,8 +23,21 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
             if (!folderId.HasValue && !documentId.HasValue)
                 return BadRequest(new { success = false, error = "folderId or documentId is required" });
 
+            // Real gap found live: a File Level override set from the Folder
+            // Permissions modal cascades to every file inside that folder (by
+            // design — see AccessOverrideService), but this endpoint only ever
+            // matched a direct DocumentId, so opening a specific file's own
+            // "File Permissions" modal never showed who actually has access to
+            // it via that inherited folder-level grant — it looked like "no
+            // special permissions set" even when one very much applied.
+            var inheritedFolderId = documentId.HasValue
+                ? await context.Documents.Where(d => d.DocumentId == documentId).Select(d => (Guid?)d.FolderId).FirstOrDefaultAsync()
+                : null;
+
             var overrides = await context.AccessOverrides
-                .Where(o => (folderId.HasValue && o.FolderId == folderId) || (documentId.HasValue && o.DocumentId == documentId))
+                .Where(o => (folderId.HasValue && o.FolderId == folderId)
+                    || (documentId.HasValue && o.DocumentId == documentId)
+                    || (inheritedFolderId.HasValue && o.FolderId == inheritedFolderId && o.DocumentId == null))
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
 
@@ -66,6 +79,11 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
                 o.ViewHistory,
                 o.ViewRelatedTasks,
                 o.CreatedAt,
+                // True when this row is a folder-level File Level override
+                // shown here only because it cascades to the requested
+                // document — it belongs to (and can only be edited/removed
+                // from) that folder's own Folder Permissions modal, not here.
+                InheritedFromFolder = documentId.HasValue && o.DocumentId == null,
             });
 
             return Ok(new { success = true, data, count = overrides.Count });
