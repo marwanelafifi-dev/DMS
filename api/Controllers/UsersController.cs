@@ -9,7 +9,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class UsersController(DmsContext context, AuditService auditService, ILogger<UsersController> logger) : BaseController
+public class UsersController(DmsContext context, AuditService auditService, EmailService emailService, IConfiguration configuration, ILogger<UsersController> logger) : BaseController
 {
     // GET /api/users — list of users
     // Pass `page`/`pageSize` to paginate (used by the Users admin table); omit both to get
@@ -199,6 +199,40 @@ public class UsersController(DmsContext context, AuditService auditService, ILog
             });
 
             logger.LogInformation("Created user {UserId} with email {Email}", user.UserId, user.Email);
+
+            // Per explicit request, a newly created local account (one given
+            // a real password here, as opposed to an SSO-only account with
+            // none) gets a real branded welcome email with their login
+            // credentials — same shared template every other DMS email
+            // uses. Best-effort: a missing/unconfigured mailer must never
+            // fail account creation itself, only skip the notification (see
+            // EmailService.SendAsync's own no-op-on-unconfigured behavior).
+            if (!string.IsNullOrEmpty(req.Password))
+            {
+                try
+                {
+                    var portalUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
+                    var bodyHtml = $"""
+                        <p style="margin:0 0 16px;font-size:14px;color:#26334d;">Hello <strong>{System.Net.WebUtility.HtmlEncode(user.FullName)}</strong>,</p>
+                        <p style="margin:0 0 20px;font-size:14px;color:#26334d;">Your account on the <strong>Si-Ware Enterprise DMS</strong> has been created. You can now log in using the credentials below.</p>
+                        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;font-size:14px;color:#26334d;">
+                          <tr><td style="padding:4px 12px 4px 0;color:#718198;">Portal URL</td><td><a href="{portalUrl}" style="color:#3f8bca;">{portalUrl}</a></td></tr>
+                          <tr><td style="padding:4px 12px 4px 0;color:#718198;">Email</td><td>{System.Net.WebUtility.HtmlEncode(user.Email)}</td></tr>
+                          <tr><td style="padding:4px 12px 4px 0;color:#718198;">Password</td><td>{System.Net.WebUtility.HtmlEncode(req.Password)}</td></tr>
+                        </table>
+                        <a href="{portalUrl}" style="display:inline-block;background:#002E5C;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:4px;margin-bottom:16px;">
+                          Sign In to Portal
+                        </a>
+                        <p style="margin:16px 0 0;font-size:13px;color:#b96a08;">⚠ Please change your password after your first login. Keep your credentials confidential and do not share them with anyone.</p>
+                        """;
+                    var html = EmailService.BuildBrandedHtml("Your Account Credentials", "#002E5C", bodyHtml);
+                    await emailService.SendAsync(user.Email, "Si-Ware Enterprise DMS — Your Account Credentials", html);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to send welcome email to new user {UserId}", user.UserId);
+                }
+            }
 
             return CreatedAtAction(nameof(GetUser), new { id = user.UserId }, new
             {

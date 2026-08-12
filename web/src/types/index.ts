@@ -157,7 +157,7 @@ export type ReminderChannel = 'APP' | 'EMAIL' | 'BOTH';
 export interface Reminder {
   reminderId: string;
   taskId: string;
-  task?: Pick<Task, 'taskId' | 'title' | 'status'>;
+  task?: Pick<Task, 'taskId' | 'title' | 'status'> & { description?: string | null };
   recipientId?: string;
   recipient?: Pick<User, 'userId' | 'fullName' | 'email'>;
   reminderType: ReminderChannel;

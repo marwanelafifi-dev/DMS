@@ -520,15 +520,35 @@ export function Documents() {
             // No OCR text available for this image — search simply stays unavailable.
           });
       }
-    } catch (error) {
+    } catch (error: any) {
       if (sourceUrl) {
         URL.revokeObjectURL(sourceUrl);
         objectUrlsRef.current.delete(sourceUrl);
       }
       if (previewRequestRef.current !== requestId) return;
 
-      const message = error instanceof Error ? error.message : 'The stored source could not be loaded';
       console.error('Failed to restore document preview:', error);
+      // Real gap found live: fetching the document's *metadata* (loadApiDocument
+      // above) can succeed even when the actual file content is denied — the
+      // task-linked-document bypass and an explicit Deny override are resolved
+      // independently per action. This catch (the one that actually fetches the
+      // file bytes) never checked the status code at all, so a genuine 403 here
+      // fell into the generic "download the read-only source" message and just
+      // sat on the loading spinner's last-shown text forever instead of ever
+      // surfacing a real error.
+      if (error?.response?.status === 403) {
+        setPreviewDocument({
+          ...libraryDocument,
+          preview: {
+            kind: 'unavailable',
+            message: 'You do not have access to this file — please contact your administrator.',
+          },
+        });
+        showError('You do not have access to this file — please contact your administrator.');
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : 'The stored source could not be loaded';
       setPreviewDocument({
         ...libraryDocument,
         preview: {
@@ -559,6 +579,27 @@ export function Documents() {
     setSelectedFolderId(folders[0]?.folderId ?? '');
   }, [folders, selectedFolderId]);
 
+  // Real bug found live: navigating straight to a preview URL (e.g. clicking
+  // "View" on a task's Linked Document) mounts this whole page fresh — the
+  // "load real documents from the server" effect above starts from fixture
+  // data and only fills in the real list once its fetch resolves, racing
+  // against this effect's very first run. The first run usually finds
+  // nothing yet in `allDocuments` and falls back to `loadApiDocument` below —
+  // which is fine on its own — but `findLibraryDocument`'s reference changes
+  // the moment the real document list *does* arrive a moment later, and since
+  // it (and `hydrateDocumentPreview`, which is built on top of it) used to be
+  // a reactive dependency of this very effect, that alone re-triggered it —
+  // aborting whatever fetch was already in flight and restarting the file
+  // download from scratch. Stored in refs and read at effect-run time instead,
+  // so this effect only actually re-runs when the URL's own `preview` param
+  // changes, not whenever the document list happens to update in the
+  // background — which is exactly what made a fresh-navigation preview look
+  // like it was stuck loading forever with no error ever surfacing.
+  const findLibraryDocumentRef = useRef(findLibraryDocument);
+  findLibraryDocumentRef.current = findLibraryDocument;
+  const hydrateDocumentPreviewRef = useRef(hydrateDocumentPreview);
+  hydrateDocumentPreviewRef.current = hydrateDocumentPreview;
+
   useEffect(() => {
     const previewId = searchParams.get('preview');
     if (!previewId) {
@@ -574,10 +615,10 @@ export function Documents() {
       setPreviewDocument(null);
       return;
     }
-    const requestedDocument = findLibraryDocument(previewId);
+    const requestedDocument = findLibraryDocumentRef.current(previewId);
     if (requestedDocument) {
       setSelectedFolderId(requestedDocument.folderId);
-      hydrateDocumentPreview(requestedDocument);
+      hydrateDocumentPreviewRef.current(requestedDocument);
       return;
     }
 
@@ -590,7 +631,7 @@ export function Documents() {
           response.data,
           'This live document does not expose a browser-safe preview. Download the read-only source to view it locally.',
         );
-        hydrateDocumentPreview(requestedDocument);
+        hydrateDocumentPreviewRef.current(requestedDocument);
       } catch (err: any) {
         if (cancelled) return;
         const placeholder: Document = {
@@ -615,7 +656,8 @@ export function Documents() {
     };
     void loadApiDocument();
     return () => { cancelled = true; };
-  }, [findLibraryDocument, hydrateDocumentPreview, searchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const filteredDocuments = useMemo(() => documents.filter((document) => {
     const query = searchQuery.trim();

@@ -15,6 +15,8 @@ interface QueueDocument {
   documentId: string;
   versionId: string;
   fileName: string;
+  description?: string | null;
+  submissionNote?: string | null;
   ownerName: string;
   department: string;
   status: string;
@@ -454,7 +456,15 @@ function ApprovalQueueTable({
                 <td className="min-w-0">
                   <button type="button" onClick={() => handlePreview(doc.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${doc.fileName}`}>
                     <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded ${extensionStyleFor(doc.fileName)}`}><FileText className="h-4 w-4" /></span>
-                    <span className="block min-w-0 truncate text-sm font-semibold text-[#2e4083] dark:text-slate-100" title={doc.fileName}>{doc.fileName}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-[#2e4083] dark:text-slate-100" title={doc.fileName}>{doc.fileName}</span>
+                      {doc.description && (
+                        <span className="mt-0.5 block truncate text-xs text-[#718198]" title={doc.description}>{doc.description}</span>
+                      )}
+                      {doc.submissionNote && (
+                        <span className="mt-0.5 block truncate text-xs italic text-blue-600 dark:text-blue-300" title={`Approval note: ${doc.submissionNote}`}>Note: {doc.submissionNote}</span>
+                      )}
+                    </span>
                   </button>
                 </td>
                 <td className="text-[#52627a] dark:text-slate-200">{doc.ownerName}</td>

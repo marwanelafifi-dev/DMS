@@ -75,6 +75,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanReject = req.CanReject,
                 CanResolveDocumentId = req.CanResolveDocumentId,
                 CanSendAnnouncements = req.CanSendAnnouncements,
+                CanDeleteReminders = req.CanDeleteReminders,
                 IsBuiltIn = false,
                 UpdatedAt = DateTime.UtcNow,
             };
@@ -127,6 +128,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanReject = req.CanReject;
             entity.CanResolveDocumentId = req.CanResolveDocumentId;
             entity.CanSendAnnouncements = req.CanSendAnnouncements;
+            entity.CanDeleteReminders = req.CanDeleteReminders;
             entity.UpdatedAt = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
@@ -199,6 +201,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanReject = entity.CanReject,
                 CanResolveDocumentId = entity.CanResolveDocumentId,
                 CanSendAnnouncements = entity.CanSendAnnouncements,
+                CanDeleteReminders = entity.CanDeleteReminders,
                 IsBuiltIn = entity.IsBuiltIn,
                 UpdatedAt = DateTime.UtcNow,
             };
@@ -267,7 +270,8 @@ public record UpdatePageAccessRoleRequest(
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
-    bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false);
+    bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
+    bool CanDeleteReminders = false);
 
 public record RenamePageAccessRoleRequest(string NewRole);
 
@@ -279,4 +283,5 @@ public record CreatePageAccessRoleRequest(
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
-    bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false);
+    bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
+    bool CanDeleteReminders = false);

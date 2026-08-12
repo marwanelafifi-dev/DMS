@@ -8,6 +8,7 @@ import { useToast } from '../../hooks/useToast';
 import { usePageAccess } from '../../hooks/usePageAccess';
 import type { Document, Folder, Task } from '../../types';
 import { TaskAttachmentsModal } from '../custom/TaskAttachmentsModal';
+import { AttachmentPreviewModal } from '../custom/AttachmentPreviewModal';
 import { UploadNewVersionModal } from '../custom/UploadNewVersionModal';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 
@@ -296,10 +297,19 @@ export function Tasks() {
   // that list. Fall back to the dedicated per-task endpoint, which resolves
   // access via "is this task mine" instead of folder-browsing rights.
   const [linkedDocumentFallback, setLinkedDocumentFallback] = useState<{ documentId: string; fileName: string; currentVersionId?: string } | null>(null);
+  // Per explicit request, a task no longer grants its assignee any implicit
+  // access to the document it's about — real folder access (a grant, a
+  // role-wide bypass, or an Allow override) is required, same bar as browsing
+  // to it directly. This tracks that real denial so the panel can say so
+  // clearly instead of silently sitting on "Loading linked document…" forever
+  // (the previous bug: the fetch's rejection was caught and swallowed with no
+  // distinct UI state at all).
+  const [linkedDocumentAccessDenied, setLinkedDocumentAccessDenied] = useState(false);
   const linkedDocument = focusedPcar?.documentId ? documents.find((d) => d.documentId === focusedPcar.documentId) ?? linkedDocumentFallback ?? undefined : undefined;
 
   useEffect(() => {
     setLinkedDocumentFallback(null);
+    setLinkedDocumentAccessDenied(false);
     const docId = focusedPcar?.documentId;
     if (!docId || documents.some((d) => d.documentId === docId)) return;
     apiClient.getTaskDocument(focusedPcar!.taskId)
@@ -310,9 +320,11 @@ export function Tasks() {
             fileName: res.data.fileName,
             currentVersionId: res.data.currentVersionId ?? undefined,
           });
+        } else {
+          setLinkedDocumentAccessDenied(true);
         }
       })
-      .catch(() => {});
+      .catch(() => setLinkedDocumentAccessDenied(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedPcar?.taskId, focusedPcar?.documentId, documents]);
 
@@ -353,13 +365,10 @@ export function Tasks() {
     }
   };
 
-  const handleViewFocusedAttachment = async (attachmentId: string) => {
-    if (!focusedPcar) return;
-    try {
-      await apiClient.viewTaskAttachment(focusedPcar.taskId, attachmentId);
-    } catch {
-      showError('Failed to open this attachment');
-    }
+  const [previewingAttachment, setPreviewingAttachment] = useState<{ attachmentId: string; fileName: string } | null>(null);
+
+  const handleViewFocusedAttachment = (attachmentId: string, fileName: string) => {
+    setPreviewingAttachment({ attachmentId, fileName });
   };
 
   const handleDownloadFocusedAttachment = async (attachmentId: string, fileName: string) => {
@@ -373,11 +382,11 @@ export function Tasks() {
 
   const handleViewLinkedDocument = async () => {
     if (!linkedDocument) return;
-    // Check access before navigating — an explicit Deny override can still
-    // block a task's assignee from a document even though the task-linkage
-    // bypass normally grants it (see RBACMiddleware.HasAssignedOpenTaskForDocumentAsync),
-    // and the preview page itself only showed a generic "unavailable" message
-    // for this, not the real reason.
+    // Check access before navigating — a task's assignee no longer has any
+    // implicit access to the document it's about (real folder access is
+    // required, same bar as browsing to it directly), and the preview page
+    // itself only showed a generic "unavailable" message for a denial, not
+    // the real reason.
     try {
       await apiClient.getDocument(linkedDocument.documentId);
       navigate(`/documents?preview=${encodeURIComponent(linkedDocument.documentId)}`);
@@ -514,14 +523,16 @@ export function Tasks() {
   // documentation either way, saved via the plain update endpoint instead.
   const isApprovalLinked = !!focusedPcar?.approvalId;
 
-  // Only a real correction task spawned by a QA/Manager rejection (has a
-  // real approvalId) needs the corrected file re-uploaded before it can be
-  // submitted — a self-filed PCAR that merely references a document for
-  // context has nothing to "correct" on that file, so gating it on
-  // documentId alone (the old check) meant it could never be submitted at
-  // all unless something was re-uploaded onto a document that was never
-  // broken to begin with.
-  const needsCorrectionUpload = !!focusedPcar?.approvalId && correctionUploadedTaskId !== focusedPcar?.taskId;
+  // Per explicit request, any self-filed PCAR with a linked document at all
+  // (not only one spawned by a real Document Workflow rejection) must have
+  // the corrected file re-uploaded before Submit is allowed — reverted from
+  // an earlier session's narrower approvalId-only check, which let a
+  // self-filed PCAR referencing a document close out without the file ever
+  // actually being fixed. This is a same-session UX gate only (resets on
+  // reload); TaskService.SubmitPcarAsync enforces the real, persistent
+  // version of this rule server-side by comparing the document's current
+  // version's upload time against the task's own creation time.
+  const needsCorrectionUpload = !!focusedPcar?.documentId && correctionUploadedTaskId !== focusedPcar?.taskId;
 
   const handlePcarSubmit = async () => {
     if (!focusedPcar) return;
@@ -894,6 +905,8 @@ export function Tasks() {
                         </Button>
                       </div>
                     </div>
+                  ) : linkedDocumentAccessDenied ? (
+                    <p className="mt-3 text-sm text-red-600 dark:text-red-400">You do not have access to this file — please contact your administrator.</p>
                   ) : (
                     <p className="mt-3 text-sm text-[#94a3b8] dark:text-slate-400">Loading linked document…</p>
                   )}
@@ -921,7 +934,7 @@ export function Tasks() {
                               <p className="truncate text-xs text-[#94a3b8] dark:text-slate-400">{formatFileSize(a.fileSizeBytes ?? 0)} · {formatDateTime(a.createdAt)}{a.uploadedByName ? ` · ${a.uploadedByName}` : ''}</p>
                             </div>
                             <div className="flex flex-shrink-0 gap-2">
-                              <Button variant="secondary" size="sm" onClick={() => handleViewFocusedAttachment(a.attachmentId)} leftIcon={<Eye className="h-3.5 w-3.5" />}>View</Button>
+                              <Button variant="secondary" size="sm" onClick={() => handleViewFocusedAttachment(a.attachmentId, a.fileName)} leftIcon={<Eye className="h-3.5 w-3.5" />}>View</Button>
                               <Button variant="secondary" size="sm" onClick={() => handleDownloadFocusedAttachment(a.attachmentId, a.fileName)} leftIcon={<Download className="h-3.5 w-3.5" />}>Download</Button>
                             </div>
                           </div>
@@ -1592,6 +1605,15 @@ export function Tasks() {
           taskId={attachmentsFor.taskId}
           taskTitle={attachmentsFor.title}
           onClose={() => setAttachmentsFor(null)}
+        />
+      )}
+
+      {previewingAttachment && focusedPcar && (
+        <AttachmentPreviewModal
+          taskId={focusedPcar.taskId}
+          attachmentId={previewingAttachment.attachmentId}
+          fileName={previewingAttachment.fileName}
+          onClose={() => setPreviewingAttachment(null)}
         />
       )}
 

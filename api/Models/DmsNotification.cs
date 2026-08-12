@@ -8,6 +8,7 @@ public class DmsNotification
     public string? Body { get; set; }
     public Guid? DocumentId { get; set; }
     public Guid? TaskId { get; set; }
+    public Guid? AnnouncementId { get; set; }
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; }
 }

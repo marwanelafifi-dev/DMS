@@ -31,7 +31,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
   const [fileNameBase, setFileNameBase] = useState('');
   const [fileNameExtension, setFileNameExtension] = useState('');
   const [description, setDescription] = useState('');
-  const [tag, setTag] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [customTags, setCustomTags] = useState('');
   const [versionLabel, setVersionLabel] = useState('');
   const [category, setCategory] = useState('');
@@ -71,16 +71,14 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
         const fetchedTagOptions: string[] = (tagRes.data || []).map((i: { label: string }) => i.label);
         setTagOptions(fetchedTagOptions);
 
-        // The document's existing tags might not match a single known preset
-        // (e.g. multiple tags, or a tag that isn't in the list) — in that case
-        // fall back to the "Other" slot so nothing is silently dropped.
+        // Any existing tag that isn't one of the known presets falls back into
+        // the free-text "Other" field instead of being silently dropped —
+        // same split as the main upload form's own multi-select.
         const existingTags: string[] = doc.tags || [];
-        if (existingTags.length === 1 && fetchedTagOptions.includes(existingTags[0])) {
-          setTag(existingTags[0]);
-        } else if (existingTags.length > 0) {
-          setTag('OTHER');
-          setCustomTags(existingTags.join(', '));
-        }
+        const knownTags = existingTags.filter((t) => fetchedTagOptions.includes(t));
+        const unknownTags = existingTags.filter((t) => !fetchedTagOptions.includes(t));
+        setTags(unknownTags.length > 0 ? [...knownTags, 'OTHER'] : knownTags);
+        if (unknownTags.length > 0) setCustomTags(unknownTags.join(', '));
       } catch (err: any) {
         if (!cancelled) setError(err?.response?.data?.error || err.message || 'Failed to load document');
       } finally {
@@ -90,15 +88,20 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
     return () => { cancelled = true; };
   }, [documentId]);
 
-  const isOtherTag = tag === 'OTHER';
-  const tagList = isOtherTag
-    ? customTags.split(',').map((t) => t.trim()).filter(Boolean)
-    : (tag ? [tag] : []);
+  const isOtherTag = tags.includes('OTHER');
+  const toggleTag = (value: string) => {
+    setTags((current) => (current.includes(value) ? current.filter((t) => t !== value) : [...current, value]));
+  };
+  const tagList = [
+    ...tags.filter((t) => t !== 'OTHER'),
+    ...(isOtherTag ? customTags.split(',').map((t) => t.trim()).filter(Boolean) : []),
+  ];
 
+  // Tags is optional, per explicit request — matches the main upload form,
+  // which never required it either.
   const isFormValid = Boolean(
     fileNameBase.trim()
     && description.trim()
-    && tagList.length > 0
     && versionLabel.trim()
     && category
     && department
@@ -164,12 +167,30 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
               <Field label="Description" required>
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={inputClass} />
               </Field>
-              <Field label="Tags" required>
-                <select value={tag} onChange={(e) => setTag(e.target.value)} className={inputClass}>
-                  <option value="">Select a tag...</option>
-                  {tagOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-                  <option value="OTHER">Other</option>
-                </select>
+              <Field label="Tags">
+                <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded border border-gray-300 bg-white p-2 dark:border-slate-600 dark:bg-slate-800">
+                  {tagOptions.length === 0 && (
+                    <span className="px-1 py-0.5 text-xs text-gray-400 dark:text-slate-500">No tags configured yet</span>
+                  )}
+                  {[...tagOptions.map((t) => ({ value: t, label: t })), { value: 'OTHER', label: 'Other' }].map((t) => {
+                    const isSelected = tags.includes(t.value);
+                    return (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => toggleTag(t.value)}
+                        aria-pressed={isSelected}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-300'
+                            : 'border-gray-300 bg-white text-gray-600 hover:border-blue-400/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
                 {isOtherTag && (
                   <input
                     type="text"

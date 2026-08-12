@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Clock3, FileClock, Megaphone, TriangleAlert, X } from 'lucide-react';
 import { Card, CardBody } from '../ui/Card';
 import { SkeletonCard } from '../ui/Skeleton';
 import type { Task, Document } from '../../types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { apiClient } from '../../utils/api';
 import { AuditCalendarCard } from '../custom/AuditCalendarCard';
@@ -18,6 +18,9 @@ interface AnnouncementSummary {
   message: string;
   postedByName?: string | null;
   createdAt: string;
+  notifiedEmail?: boolean;
+  notifiedApp?: boolean;
+  recipientCount?: number;
 }
 
 // One document from a real Document Workflow stage queue — built straight
@@ -58,12 +61,23 @@ function flattenQueueResult(
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [recentDocs, setRecentDocs] = useState<Document[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementSummary[]>([]);
   const [showAllAnnouncements, setShowAllAnnouncements] = useState(false);
+  // Set when a real Announcement notification is clicked (see
+  // NotificationsBell) — opens the same "All Announcements" modal and
+  // scrolls/highlights the one it's about, instead of just dumping the user
+  // on the Dashboard with no indication of what the notification was for.
+  const highlightedAnnouncementId = searchParams.get('announcement');
+  const highlightedAnnouncementRef = useRef<HTMLButtonElement | null>(null);
+  // Set when a specific announcement is opened (either by clicking a row in
+  // the list, or arriving via a notification) — shows its full details
+  // instead of the truncated list-row preview.
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -118,6 +132,34 @@ export function Dashboard() {
     void loadDashboardData();
     return () => { cancelled = true; };
   }, [currentUserId]);
+
+  useEffect(() => {
+    if (!highlightedAnnouncementId || announcements.length === 0) return;
+    setShowAllAnnouncements(true);
+    // Jump straight to the full detail view for the one the notification was
+    // about, rather than just scrolling to it in the list.
+    const match = announcements.find((a) => a.announcementId === highlightedAnnouncementId);
+    if (match) {
+      setSelectedAnnouncement(match);
+      return;
+    }
+    // Fallback (e.g. the announcement was somehow not found): scroll/highlight
+    // in the list instead of doing nothing.
+    const timer = window.setTimeout(() => {
+      highlightedAnnouncementRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [highlightedAnnouncementId, announcements]);
+
+  const closeAnnouncementsModal = () => {
+    setShowAllAnnouncements(false);
+    setSelectedAnnouncement(null);
+    if (searchParams.has('announcement')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('announcement');
+      setSearchParams(next, { replace: true });
+    }
+  };
 
 
   const dueTime = (value?: string) => {
@@ -313,29 +355,60 @@ export function Dashboard() {
       </div>
 
       {showAllAnnouncements && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowAllAnnouncements(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeAnnouncementsModal}>
           <Card className="max-h-[80vh] w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-200 p-5 dark:border-navy-700">
-              <h2 className="section-heading flex items-center gap-2"><Megaphone className="h-4 w-4 text-[#3f8bca]" />All Announcements</h2>
-              <button onClick={() => setShowAllAnnouncements(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+              <h2 className="section-heading flex items-center gap-2">
+                <Megaphone className="h-4 w-4 text-[#3f8bca]" />
+                {selectedAnnouncement ? selectedAnnouncement.title : 'All Announcements'}
+              </h2>
+              <button onClick={closeAnnouncementsModal} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <CardBody className="max-h-[calc(80vh-72px)] space-y-2 overflow-y-auto">
-              {announcements.length === 0 ? (
-                <p className="px-1 py-4 text-sm text-[#718198]">No announcements yet.</p>
-              ) : (
-                announcements.map((announcement) => (
-                  <div key={announcement.announcementId} className="rounded-[4px] border-l-2 border-[#2f5f96] px-3 py-2.5">
-                    <p className="text-sm font-medium text-[#26334d] dark:text-white">{announcement.title}</p>
-                    <p className="mt-0.5 whitespace-pre-wrap text-sm text-[#52627a] dark:text-slate-300">{announcement.message}</p>
-                    <p className="mt-1.5 text-xs text-[#718198]">
-                      {announcement.postedByName ?? 'Unknown'} · {new Date(announcement.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardBody>
+
+            {selectedAnnouncement ? (
+              <CardBody className="max-h-[calc(80vh-72px)] space-y-4 overflow-y-auto">
+                <button onClick={() => setSelectedAnnouncement(null)} className="text-xs font-medium text-[#3f8bca] hover:underline">&larr; Back to all announcements</button>
+                <p className="whitespace-pre-wrap text-sm text-[#52627a] dark:text-slate-300">{selectedAnnouncement.message}</p>
+                <div className="space-y-1.5 border-t border-gray-200 pt-3 text-xs text-[#718198] dark:border-navy-700">
+                  <p>Posted by {selectedAnnouncement.postedByName ?? 'Unknown'}</p>
+                  <p>{new Date(selectedAnnouncement.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  {typeof selectedAnnouncement.recipientCount === 'number' && (
+                    <p>Sent to {selectedAnnouncement.recipientCount} recipient{selectedAnnouncement.recipientCount === 1 ? '' : 's'}</p>
+                  )}
+                  <p>
+                    Delivered via {[selectedAnnouncement.notifiedApp && 'in-app notification', selectedAnnouncement.notifiedEmail && 'email'].filter(Boolean).join(' and ') || 'no channel recorded'}
+                  </p>
+                </div>
+              </CardBody>
+            ) : (
+              <CardBody className="max-h-[calc(80vh-72px)] space-y-2 overflow-y-auto">
+                {announcements.length === 0 ? (
+                  <p className="px-1 py-4 text-sm text-[#718198]">No announcements yet.</p>
+                ) : (
+                  announcements.map((announcement) => {
+                    const isHighlighted = announcement.announcementId === highlightedAnnouncementId;
+                    return (
+                      <button
+                        key={announcement.announcementId}
+                        ref={isHighlighted ? highlightedAnnouncementRef : undefined}
+                        onClick={() => setSelectedAnnouncement(announcement)}
+                        className={`block w-full rounded-[4px] border-l-2 px-3 py-2.5 text-left transition-colors hover:bg-[#f8fafc] dark:hover:bg-white/5 ${
+                          isHighlighted ? 'border-[#3f8bca] bg-[#eaf3fb] dark:bg-[#3f8bca]/15' : 'border-[#2f5f96]'
+                        }`}
+                      >
+                        <p className="text-sm font-medium text-[#26334d] dark:text-white">{announcement.title}</p>
+                        <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-sm text-[#52627a] dark:text-slate-300">{announcement.message}</p>
+                        <p className="mt-1.5 text-xs text-[#718198]">
+                          {announcement.postedByName ?? 'Unknown'} · {new Date(announcement.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </button>
+                    );
+                  })
+                )}
+              </CardBody>
+            )}
           </Card>
         </div>
       )}

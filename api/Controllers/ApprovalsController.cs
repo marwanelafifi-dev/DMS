@@ -179,6 +179,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     UpdatedAt = DateTime.UtcNow,
                     CurrentStage = "qa_review",
                     Status = "pending",
+                    SubmissionNote = request.ApprovalNotes,
                 });
 
                 // Keep the document/version status in sync with the batch's QA-review
@@ -206,6 +207,14 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 approvalId = approval.ApprovalId,
                 documentCount = documents.Count,
             });
+
+            // Real gap found live: submitting a brand-new document never told
+            // QA anything landed in their queue at all — every later stage
+            // transition (QA accept, Manager approve, Manager self-correct)
+            // already notifies the next stage's reviewers, but the very first
+            // stage had no equivalent "something is waiting for you" ping.
+            foreach (var document in documents)
+                await notificationService.NotifyStageReviewersAsync(userId, document.DocumentId, "A document is waiting for QA Review", document.Title, r => r.CanViewQaStage);
 
             return Ok(new
             {
@@ -278,7 +287,19 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                     approvalDocument.QaNotes,
                     approvalDocument.ManagerNotes,
                     approvalDocument.ReleaseNotes,
+                    // What the submitter themselves typed into "Approval Notes
+                    // (Optional)" at submit time — real bug found live: this was
+                    // always sent by the frontend but SubmitApprovalRequest had no
+                    // field to receive it, so it was silently dropped on every
+                    // submission ever made and never reached QA/Manager/Release.
+                    approvalDocument.SubmissionNote,
                     fileName = approvalDocument.Version?.FileName ?? approvalDocument.Document?.Title ?? "Untitled document",
+                    // Real gap found live: whatever the uploader typed into the
+                    // document's own Description (the one place they can leave
+                    // context/notes about what changed) was never returned here
+                    // at all — a reviewer had no way to see it without leaving
+                    // this screen to open the Document Library separately.
+                    description = approvalDocument.Document?.Description,
                     ownerName = approvalDocument.Document?.Owner?.FullName ?? "Unknown owner",
                     department = approvalDocument.Document?.Department,
                     category = approvalDocument.Document?.Category,
@@ -535,6 +556,13 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 ApprovalId = approvalId,
                 Title = request.TaskTitle,
                 Description = request.TaskDescription,
+                // Real bug found live: the "Notes" field on this form (separate from
+                // Task description) only ever got saved onto the approval_documents
+                // row — the assignee opening their PCAR/Tasks page had no way to see
+                // it at all, since Tasks.tsx reads task fields, not approval-document
+                // fields. Reuses the same QaReviewNotes column the PCAR review queue
+                // already displays as a "why this needs fixing" banner.
+                QaReviewNotes = request.Notes,
                 TaskType = request.TaskType ?? "correction",
                 AssignedToId = request.AssignToUserId,
                 AssignedToGroupId = request.AssignToGroupId,
@@ -691,6 +719,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 ApprovalId = approvalId,
                 Title = request.TaskTitle,
                 Description = request.TaskDescription,
+                // Same fix as QaRequestCorrectionAsync — carry the rejection
+                // reason onto the task itself so the assignee actually sees it.
+                QaReviewNotes = request.RejectionReason,
                 TaskType = request.TaskType ?? "correction",
                 AssignedToId = request.AssignToUserId,
                 AssignedToGroupId = request.AssignToGroupId,
@@ -992,6 +1023,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
                 ApprovalId = approvalId,
                 Title = request.TaskTitle,
                 Description = request.TaskDescription,
+                // Same fix as QaRequestCorrectionAsync — carry the rejection
+                // reason onto the task itself so the assignee actually sees it.
+                QaReviewNotes = request.RejectionReason,
                 TaskType = request.TaskType ?? "correction",
                 AssignedToId = request.AssignToUserId,
                 AssignedToGroupId = request.AssignToGroupId,
@@ -1051,6 +1085,11 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             approvalDocument.DocumentId,
             approvalDocument.VersionId,
             fileName = version?.FileName ?? document?.Title ?? "Untitled document",
+            // Same real gap as the single-document detail endpoint — a
+            // reviewer glancing at the queue list couldn't see the
+            // uploader's own note/context at all without opening Review.
+            description = document?.Description,
+            submissionNote = approvalDocument.SubmissionNote,
             ownerName = document?.Owner?.FullName ?? "Unknown owner",
             department = document?.Department ?? "Not assigned",
             status = document?.Status ?? "pending",
@@ -1061,7 +1100,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 }
 
 // Request DTOs
-public record SubmitApprovalRequest(List<Guid> DocumentIds);
+public record SubmitApprovalRequest(List<Guid> DocumentIds, string? ApprovalNotes = null);
 public record QaActionRequest(string? Notes = null);
 public record QaCorrectionRequest(string TaskTitle, string TaskDescription, DateTime DueDate, Guid? AssignToUserId = null, Guid? AssignToGroupId = null, string? Notes = null, string? TaskType = null, string? Priority = null);
 public record ManagerActionRequest(string? Notes = null);

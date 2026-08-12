@@ -23,6 +23,8 @@ interface ApprovalDocumentDetail {
   qaNotes?: string | null;
   managerNotes?: string | null;
   releaseNotes?: string | null;
+  description?: string | null;
+  submissionNote?: string | null;
   fileName: string;
   ownerName: string;
   department?: string | null;
@@ -358,6 +360,9 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                       </button>
                     </div>
                   </div>
+                  {item.description && (
+                    <p className="mb-2 text-sm text-gray-600 dark:text-slate-300">{item.description}</p>
+                  )}
                   <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-slate-400">
                     {item.department && <Badge status="default" variant="outline">{item.department}</Badge>}
                     {item.category && <Badge status="default" variant="outline">{item.category}</Badge>}
@@ -365,6 +370,12 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   </div>
                 </CardBody>
               </Card>
+
+              {item.submissionNote && (
+                <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-900 dark:bg-blue-900/20">
+                  <p><span className="font-medium text-navy-900 dark:text-white">Approval note (from submitter):</span> {item.submissionNote}</p>
+                </div>
+              )}
 
               {(item.qaNotes || item.managerNotes) && (
                 <div className="space-y-1 rounded border border-gray-200 bg-gray-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">

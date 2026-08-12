@@ -338,6 +338,34 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (string.IsNullOrWhiteSpace(correction) || string.IsNullOrWhiteSpace(preventiveActions))
                 return TaskResult.Invalid("Complete the corrective action and preventive action");
 
+            // Real gap found live: the frontend's "upload the corrected file
+            // first" gate is pure local UI state, easily bypassed (a direct
+            // API call, or just reloading the page, which resets it) — this
+            // endpoint itself never checked anything. Per explicit request,
+            // any self-filed PCAR that references a document at all now must
+            // have a real newer version uploaded onto it since the task was
+            // created before it can be submitted; a version's own CreatedAt is
+            // a real, persistent signal (unlike the frontend's local state)
+            // that survives a reload and can't be spoofed by skipping the
+            // upload step.
+            if (task.DocumentId.HasValue)
+            {
+                var currentVersionId = await context.Documents
+                    .Where(d => d.DocumentId == task.DocumentId)
+                    .Select(d => d.CurrentVersionId)
+                    .FirstOrDefaultAsync();
+
+                var currentVersionUploadedAt = currentVersionId.HasValue
+                    ? await context.DocumentVersions
+                        .Where(v => v.VersionId == currentVersionId)
+                        .Select(v => (DateTime?)v.CreatedAt)
+                        .FirstOrDefaultAsync()
+                    : null;
+
+                if (currentVersionUploadedAt == null || currentVersionUploadedAt <= task.CreatedAt)
+                    return TaskResult.Invalid("Upload the corrected file for the linked document before submitting this PCAR");
+            }
+
             task.RcaText = rca.Trim();
             task.CorrectionText = correction.Trim();
             task.PreventiveActions = preventiveActions.Trim();

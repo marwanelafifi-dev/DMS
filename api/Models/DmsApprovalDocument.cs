@@ -24,6 +24,10 @@ public class DmsApprovalDocument
     public string? QaNotes { get; set; }
     public string? ManagerNotes { get; set; }
     public string? ReleaseNotes { get; set; }
+    // What the submitter themselves typed into "Approval Notes (Optional)"
+    // at submission time — distinct from QaNotes/ManagerNotes/ReleaseNotes,
+    // which are the *reviewer's* notes at each later stage.
+    public string? SubmissionNote { get; set; }
 
     // Navigation properties
     public DmsApproval? Approval { get; set; }
