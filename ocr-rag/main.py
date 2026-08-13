@@ -1,8 +1,10 @@
 import os
 import shutil
+import signal
 import sqlite3
 import subprocess
 import tempfile
+import threading
 from contextlib import closing
 from pathlib import Path
 
@@ -16,6 +18,16 @@ DATABASE_PATH = Path(
 ).resolve()
 
 converter = DocumentConverter()
+
+# Headless LibreOffice conversions don't scale by just launching more of them at
+# once — under real concurrent load, enough simultaneous `soffice` instances make
+# every single one of them slower than the fixed subprocess timeout below, so
+# they all fail together instead of queueing gracefully. This bounds how many
+# run at once; requests beyond that wait briefly for a free slot instead of
+# piling on more processes.
+LIBREOFFICE_MAX_CONCURRENT = int(os.environ.get("LIBREOFFICE_MAX_CONCURRENT", "3"))
+LIBREOFFICE_QUEUE_WAIT_SECONDS = int(os.environ.get("LIBREOFFICE_QUEUE_WAIT_SECONDS", "60"))
+_libreoffice_semaphore = threading.BoundedSemaphore(LIBREOFFICE_MAX_CONCURRENT)
 
 app = FastAPI(title="DMS Local Document Parsing Service", version="1.0.0")
 app.add_middleware(
@@ -90,12 +102,27 @@ def convert_to_pdf(file: UploadFile = File(...)) -> Response:
     # which would otherwise make concurrent preview requests fail intermittently.
     profile_dir = Path(tempfile.mkdtemp(prefix="lo_profile_"))
 
+    # A request that can't get a conversion slot within the wait window fails
+    # fast with a clear "try again" error instead of piling up behind an
+    # already-overloaded queue and eventually timing out anyway.
+    if not _libreoffice_semaphore.acquire(timeout=LIBREOFFICE_QUEUE_WAIT_SECONDS):
+        shutil.rmtree(work_dir, ignore_errors=True)
+        shutil.rmtree(profile_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=503,
+            detail="The document preview service is busy converting other files. Please try again shortly.",
+        )
+
     try:
         input_path = work_dir / filename
         with open(input_path, "wb") as destination:
             shutil.copyfileobj(file.file, destination)
 
-        result = subprocess.run(
+        # Run in its own process group (start_new_session) so a timeout can kill
+        # soffice's actual worker process, not just the launcher script — killing
+        # only the launcher left the real conversion running forever as an
+        # unreachable defunct/zombie process under concurrent load.
+        process = subprocess.Popen(
             [
                 "soffice",
                 "--headless",
@@ -105,20 +132,32 @@ def convert_to_pdf(file: UploadFile = File(...)) -> Response:
                 "--outdir", str(work_dir),
                 str(input_path),
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=90,
+            start_new_session=True,
         )
-
-        pdf_path = input_path.with_suffix(".pdf")
-        if result.returncode != 0 or not pdf_path.exists():
+        try:
+            stdout, stderr = process.communicate(timeout=90)
+            returncode = process.returncode
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
             raise HTTPException(
                 status_code=500,
-                detail=f"PDF conversion failed: {result.stderr or result.stdout}",
+                detail="PDF conversion timed out.",
+            )
+
+        pdf_path = input_path.with_suffix(".pdf")
+        if returncode != 0 or not pdf_path.exists():
+            raise HTTPException(
+                status_code=500,
+                detail=f"PDF conversion failed: {stderr or stdout}",
             )
 
         pdf_bytes = pdf_path.read_bytes()
     finally:
+        _libreoffice_semaphore.release()
         shutil.rmtree(work_dir, ignore_errors=True)
         shutil.rmtree(profile_dir, ignore_errors=True)
 
