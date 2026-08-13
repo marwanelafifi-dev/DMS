@@ -87,18 +87,37 @@ public class MinioService
         {
             _logger.LogInformation("Downloading object: {ObjectKey}", objectKey);
 
-            var stream = new MemoryStream();
+            // Buffered through a temp file (auto-deleted on close) instead of a
+            // MemoryStream — same "download fully, then hand back a Stream" contract
+            // every caller already relies on, but large/concurrent downloads no
+            // longer pile up directly against the API process's RAM.
+            var tempPath = Path.GetTempFileName();
+            var fileStream = new FileStream(
+                tempPath,
+                FileMode.Create,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                bufferSize: 81920,
+                FileOptions.DeleteOnClose | FileOptions.Asynchronous);
 
-            var getObjectArgs = new GetObjectArgs()
-                .WithBucket(_bucketName)
-                .WithObject(objectKey)
-                .WithCallbackStream(s => s.CopyTo(stream));
+            try
+            {
+                var getObjectArgs = new GetObjectArgs()
+                    .WithBucket(_bucketName)
+                    .WithObject(objectKey)
+                    .WithCallbackStream(s => s.CopyTo(fileStream));
 
-            await _minioClient.GetObjectAsync(getObjectArgs);
+                await _minioClient.GetObjectAsync(getObjectArgs);
 
-            stream.Seek(0, SeekOrigin.Begin);
-            _logger.LogInformation("Successfully downloaded: {ObjectKey}", objectKey);
-            return stream;
+                fileStream.Seek(0, SeekOrigin.Begin);
+                _logger.LogInformation("Successfully downloaded: {ObjectKey}", objectKey);
+                return fileStream;
+            }
+            catch
+            {
+                await fileStream.DisposeAsync();
+                throw;
+            }
         }
         catch (Exception ex)
         {

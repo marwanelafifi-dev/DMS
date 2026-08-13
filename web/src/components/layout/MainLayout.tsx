@@ -1,14 +1,12 @@
 import { useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { ScheduledNoticeBanner } from './ScheduledNoticeBanner';
 
-interface MainLayoutProps {
-  children: React.ReactNode;
-}
-
-export function MainLayout({ children }: MainLayoutProps) {
+export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f3f6fa] text-[#17213a] dark:bg-slate-950 dark:text-white">
@@ -22,8 +20,11 @@ export function MainLayout({ children }: MainLayoutProps) {
         <Navbar onMenuClick={() => setSidebarOpen((open) => !open)} />
 
         <main className="flex-1 overflow-y-auto bg-[#f3f6fa] dark:bg-slate-950">
-          <div className="mx-auto w-full max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
-            {children}
+          <div
+            key={location.pathname}
+            className="page-transition mx-auto w-full max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7"
+          >
+            <Outlet />
           </div>
         </main>
       </div>

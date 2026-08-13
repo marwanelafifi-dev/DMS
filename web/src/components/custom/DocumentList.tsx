@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Popover from '@radix-ui/react-popover';
-import { Copy, Download, Eye, FilePen, FileText, FolderInput, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Download, Eye, FilePen, FileText, FolderInput, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
@@ -134,6 +134,13 @@ export function DocumentList({
   const [sortBy, setSortBy] = useState<SortKey>('fileName');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
+  // Display-only pagination: search/sort/selection/folder-scoping are all
+  // unchanged and still operate on the full `documents` list exactly as
+  // before — this only limits how many <tr> rows get drawn into the DOM at
+  // once, which is what actually made a large folder feel heavy to scroll.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+
   const sortedDocuments = useMemo(() => [...documents].sort((a, b) => {
     const values: Record<SortKey, [string | number, string | number]> = {
       fileName: [a.fileName, b.fileName],
@@ -152,6 +159,19 @@ export function DocumentList({
     return sortDirection === 'asc' ? comparison : -comparison;
   }), [documents, sortBy, sortDirection]);
 
+  // Clamp against the current filtered/sorted length rather than resetting
+  // via an effect — if a search or folder change shrinks the list below the
+  // page you were on, this just falls back to the last valid page instead of
+  // rendering a blank one, with no extra state-reset logic to get wrong.
+  const totalPages = Math.max(1, Math.ceil(sortedDocuments.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pagedDocuments = sortedDocuments.slice(pageStart, pageStart + PAGE_SIZE);
+
+  // Selection semantics are unchanged on purpose: "select all" still means
+  // every document matching the current filter/folder, not just this page —
+  // otherwise a bulk delete/move after paging through would silently miss
+  // whatever wasn't on the page the user happened to be looking at.
   const selectedVisibleCount = documents.filter((document) => selectedDocumentIds.has(document.documentId)).length;
   const allVisibleSelected = documents.length > 0 && selectedVisibleCount === documents.length;
 
@@ -244,7 +264,7 @@ export function DocumentList({
           </tr>
         </thead>
         <tbody>
-          {sortedDocuments.map((document, index) => (
+          {pagedDocuments.map((document, index) => (
             <tr key={document.documentId} className={`${index % 2 ? 'bg-[#f8fafc] dark:bg-slate-800/35' : 'bg-white dark:bg-slate-900'} hover:bg-[#f2f6fa] dark:hover:bg-slate-800/60`}>
               <td className="px-3">
                 <SelectionCheckbox checked={selectedDocumentIds.has(document.documentId)} onChange={() => toggleSelected(document.documentId)} label={`Select ${document.fileName}`} />
@@ -362,6 +382,37 @@ export function DocumentList({
           ))}
         </tbody>
       </table>
+
+      <div className="flex items-center justify-between border-t border-[#e2e8f0] bg-[#f7f9fc] px-4 py-2.5 dark:border-white/10 dark:bg-slate-950">
+        <p className="text-xs text-[#718198] dark:text-slate-400">
+          {sortedDocuments.length === 0
+            ? 'No documents'
+            : `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, sortedDocuments.length)} of ${sortedDocuments.length}`}
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[#718198] dark:text-slate-400">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={currentPage <= 1}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[4px] text-[#52627a] hover:bg-[#edf2f8] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+            disabled={currentPage >= totalPages}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[4px] text-[#52627a] hover:bg-[#edf2f8] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

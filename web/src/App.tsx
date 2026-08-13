@@ -57,169 +57,56 @@ function App() {
           <Route path="/login" element={<Login />} />
 
           <Route element={<RequireAuth />}>
-            <Route
-              path="/"
-              element={
-                <MainLayout>
-                  <Dashboard />
-                </MainLayout>
-              }
-            />
+            {/* MainLayout (Sidebar + Navbar) is now a single shared parent
+                route rendered once via <Outlet/> — it no longer unmounts and
+                remounts on every navigation the way it did when each route
+                below wrapped its own separate <MainLayout> instance. */}
+            <Route element={<MainLayout />}>
+              <Route path="/" element={<Dashboard />} />
 
-            {/* Tasks (sidebar label: PCAR / Corrective Action) */}
-            <Route element={<RequirePageAccess flag="canViewPcar" />}>
-              <Route
-                path="/tasks"
-                element={
-                  <MainLayout>
-                    <Tasks />
-                  </MainLayout>
-                }
-              />
+              {/* Tasks (sidebar label: PCAR / Corrective Action) */}
+              <Route element={<RequirePageAccess flag="canViewPcar" />}>
+                <Route path="/tasks" element={<Tasks />} />
+              </Route>
+
+              {/* Documents */}
+              <Route path="/documents" element={<Documents />} />
+
+              {/* Approvals (sidebar label: C-Doc Workflow) */}
+              <Route element={<RequirePageAccess flag="canViewApprovals" />}>
+                <Route path="/approvals" element={<Approvals />} />
+              </Route>
+
+              {/* Reminders */}
+              <Route path="/reminders" element={<Reminders />} />
+
+              {/* Send Announcement — posting is Full Access/Quality by default,
+                  but role-editable via the new CanSendAnnouncements flag */}
+              <Route element={<RequirePageAccess flag="canSendAnnouncements" />}>
+                <Route path="/send-announcement" element={<SendAnnouncement />} />
+              </Route>
+
+              {/* Search */}
+              <Route path="/search" element={<Search />} />
+
+              {/* Admin Panel */}
+              <Route element={<RequirePageAccess flag="canViewAdminPanel" />}>
+                <Route path="/admin/users" element={<Settings defaultTab="users" />} />
+                <Route path="/admin/roles" element={<Settings defaultTab="roles" />} />
+                <Route path="/admin/groups" element={<Settings defaultTab="groups" />} />
+                <Route path="/admin/audit" element={<Settings defaultTab="audit" />} />
+                <Route path="/admin/settings" element={<Settings defaultTab="settings" />} />
+                <Route path="/admin/notifications" element={<Settings defaultTab="notifications" />} />
+                <Route path="/admin/company-data" element={<Settings defaultTab="company-data" />} />
+                <Route path="/admin/database" element={<Settings defaultTab="database" />} />
+              </Route>
+
+              {/* Legacy settings routes */}
+              <Route path="/settings/*" element={<Settings />} />
+
+              {/* 404 */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
-
-            {/* Documents */}
-            <Route
-              path="/documents"
-              element={
-                <MainLayout>
-                  <Documents />
-                </MainLayout>
-              }
-            />
-
-            {/* Approvals (sidebar label: C-Doc Workflow) */}
-            <Route element={<RequirePageAccess flag="canViewApprovals" />}>
-              <Route
-                path="/approvals"
-                element={
-                  <MainLayout>
-                    <Approvals />
-                  </MainLayout>
-                }
-              />
-            </Route>
-
-            {/* Reminders */}
-            <Route
-              path="/reminders"
-              element={
-                <MainLayout>
-                  <Reminders />
-                </MainLayout>
-              }
-            />
-
-            {/* Send Announcement — posting is Full Access/Quality by default,
-                but role-editable via the new CanSendAnnouncements flag */}
-            <Route element={<RequirePageAccess flag="canSendAnnouncements" />}>
-              <Route
-                path="/send-announcement"
-                element={
-                  <MainLayout>
-                    <SendAnnouncement />
-                  </MainLayout>
-                }
-              />
-            </Route>
-
-            {/* Search */}
-            <Route
-              path="/search"
-              element={
-                <MainLayout>
-                  <Search />
-                </MainLayout>
-              }
-            />
-
-            {/* Admin Panel */}
-            <Route element={<RequirePageAccess flag="canViewAdminPanel" />}>
-              <Route
-                path="/admin/users"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="users" />
-                  </MainLayout>
-                }
-              />
-
-              <Route
-                path="/admin/roles"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="roles" />
-                  </MainLayout>
-                }
-              />
-
-              <Route
-                path="/admin/groups"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="groups" />
-                  </MainLayout>
-                }
-              />
-
-              <Route
-                path="/admin/audit"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="audit" />
-                  </MainLayout>
-                }
-              />
-
-              <Route
-                path="/admin/settings"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="settings" />
-                  </MainLayout>
-                }
-              />
-
-              <Route
-                path="/admin/notifications"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="notifications" />
-                  </MainLayout>
-                }
-              />
-
-              <Route
-                path="/admin/company-data"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="company-data" />
-                  </MainLayout>
-                }
-              />
-
-              <Route
-                path="/admin/database"
-                element={
-                  <MainLayout>
-                    <Settings defaultTab="database" />
-                  </MainLayout>
-                }
-              />
-            </Route>
-
-            {/* Legacy settings routes */}
-            <Route
-              path="/settings/*"
-              element={
-                <MainLayout>
-                  <Settings />
-                </MainLayout>
-              }
-            />
-
-            {/* 404 */}
-            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
       </AuthProvider>
