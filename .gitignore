@@ -29,3 +29,8 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+# KnowledgeTree migration working files (local only)
+migration/source/
+migration/output/
+migration/logs/

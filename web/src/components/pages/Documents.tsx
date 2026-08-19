@@ -959,6 +959,28 @@ export function Documents() {
         }
       }
 
+      // Rename previously had the exact same "looks like it worked, nothing was ever
+      // persisted" problem as Move and Delete — a renamed item reverted to the
+      // original name on reload. Real documents/folders now get a real API call first.
+      if (action === 'rename' && value) {
+        const realDocumentIds = [...librarySelection.documentIds].filter(isServerDocumentId);
+        const realFolderIds = [...librarySelection.folderIds].filter(isServerDocumentId);
+        for (const docId of realDocumentIds) {
+          const res = await apiClient.renameDocument(docId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to rename a document',
+          }));
+          if (!res.success) return res.error || 'Failed to rename a document';
+        }
+        for (const folderId of realFolderIds) {
+          const res = await apiClient.renameFolder(folderId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to rename a folder',
+          }));
+          if (!res.success) return res.error || 'Failed to rename a folder';
+        }
+      }
+
       // Delete had the exact same "looks like it worked, nothing was ever
       // persisted" problem as Move — a deleted item reappeared on reload.
       // Real documents are deleted first; a real folder is only deletable

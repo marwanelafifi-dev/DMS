@@ -247,13 +247,10 @@ export function Tasks() {
   // *act* on a task (fill in RCA, submit for approval), so it should default
   // to a task actually assigned to me, not one I merely handed off to someone else.
   // A row click (selectedTask) always wins next, since that's an explicit choice.
-  const myAssignedTasks = filteredTasks.filter((task) => isTaskMine(task));
-  const focusedPcar = highlightedTask
-    || selectedTask
-    || myAssignedTasks.find((task) => task.priority === 'critical')
-    || myAssignedTasks[0]
-    || filteredTasks.find((task) => task.priority === 'critical')
-    || filteredTasks[0];
+  // The PCAR detail view only opens as an explicit modal (row click, or a
+  // ?highlight= deep link) — it no longer auto-picks a task to show inline,
+  // so the register table is always what's visible first on this page.
+  const focusedPcar = highlightedTask || selectedTask;
   const focusedPcarIsMine = focusedPcar ? isTaskMine(focusedPcar) : true;
   // Only 'submitted' (awaiting a QA decision) and 'completed' (already
   // approved) actually mean "this PCAR is locked" — 'in_progress' is a
@@ -838,7 +835,19 @@ export function Tasks() {
       </div>
 
       {focusedPcar && (
-        <div className={`grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(290px,1fr)] ${highlightedTask && focusedPcar.taskId === highlightedTask.taskId ? 'rounded-lg ring-2 ring-[#3f8bca] ring-offset-2 dark:ring-offset-slate-950' : ''}`}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
+          <div className="w-full max-w-5xl rounded-lg bg-[#f4f6fa] p-4 dark:bg-slate-950 sm:p-5">
+            <div className="mb-3 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => { setSelectedTaskId(null); if (highlightTaskId) navigate('/tasks', { replace: true }); }}
+                className="rounded-full p-1.5 text-[#52627a] hover:bg-black/5 dark:text-slate-300 dark:hover:bg-white/10"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(290px,1fr)]">
           <div className="space-y-4">
             <Card>
               <CardBody className="p-5">
@@ -1039,6 +1048,8 @@ export function Tasks() {
                 )}
               </>
             )}
+          </div>
+            </div>
           </div>
         </div>
       )}

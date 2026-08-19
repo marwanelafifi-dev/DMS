@@ -361,6 +361,16 @@ class APIClient {
     return data;
   }
 
+  async renameFolder(folderId: string, newName: string) {
+    const { data } = await this.client.put<ApiResponse>(`/folders/${folderId}`, { name: newName });
+    return data;
+  }
+
+  async renameDocument(documentId: string, newFileName: string) {
+    const { data } = await this.client.put<ApiResponse>(`/documents/${documentId}`, { fileName: newFileName });
+    return data;
+  }
+
   // Documents
   async getDocuments(folderId?: string, params?: any) {
     const { data } = await this.client.get<ApiResponse>(

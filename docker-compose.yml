@@ -84,6 +84,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    labels:
+      # Purely additive — same as web's labels above: the direct API_PORT
+      # mapping keeps working unchanged. Higher priority than dms-web's
+      # catch-all so /api/* is routed straight here instead of to web/nginx.
+      - "traefik.enable=true"
+      - "traefik.http.routers.dms-api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.dms-api.priority=10"
+      - "traefik.http.services.dms-api.loadbalancer.server.port=8080"
 
   ocr-rag:
     build: ./ocr-rag
@@ -112,6 +120,51 @@ services:
       - "${WEB_PORT:-5173}:80"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    labels:
+      # Purely additive — the existing WEB_PORT mapping above is untouched and
+      # keeps working exactly as before. These labels only give Traefik (new,
+      # optional entry point below) something to route to.
+      - "traefik.enable=true"
+      - "traefik.http.routers.dms-web.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.dms-web.priority=1"
+      - "traefik.http.services.dms-web.loadbalancer.server.port=80"
+
+  # Single public entry point (API Gateway), fronting web + api — and, per the
+  # move to vCenter/microcloud, the natural place to plug in future services
+  # later (any new container just needs its own traefik.* labels, no change
+  # needed here). Purely additive: does not replace or reconfigure the direct
+  # WEB_PORT/API_PORT access above, which keeps working unchanged.
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    environment:
+      # Docker Desktop's bind-mounted-socket proxy returns a blank error on
+      # its own recent API version during Traefik's client handshake — pinning
+      # to a known-good version sidesteps it. Harmless/unneeded on a real Linux
+      # Docker Engine (Ubuntu/vCenter), which doesn't have this proxy layer.
+      DOCKER_API_VERSION: "1.44"
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      # Only containers with an explicit traefik.enable=true label are routed —
+      # postgres/redis/minio/ocr-rag are never exposed through this, on purpose.
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--api.insecure=true"
+      - "--ping=true"
+    ports:
+      - "${GATEWAY_PORT:-8888}:80"
+      - "${GATEWAY_DASHBOARD_PORT:-8090}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - web
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ping"]
       interval: 10s
       timeout: 5s
       retries: 10
