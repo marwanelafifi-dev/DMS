@@ -494,6 +494,48 @@ describe('Document Library', () => {
     expect(doclingApi.uploadDocument).not.toHaveBeenCalled();
   });
 
+  it('routes a persisted macro-enabled Word document through PDF conversion', async () => {
+    const user = userEvent.setup();
+    const persistedMacroDocument = {
+      documentId: 'persisted-word-macro',
+      currentVersionId: 'persisted-word-macro-version',
+      folderId: 'folder-1',
+      name: 'PAC Phase 1 Test Report',
+      title: 'PAC Phase 1 Test Report',
+      fileName: 'PAC_Phase1_TestReport_20121216_rev1p0.docm',
+      fileSize: 6584044,
+      contentType: 'application/vnd.ms-word.document.macroenabled.12',
+      status: 'draft',
+      uploadedBy: TEST_USER_ID,
+      uploadedAt: '2012-11-20T09:40:00.000Z',
+      createdAt: '2012-11-20T09:40:00.000Z',
+      updatedAt: '2012-12-18T13:36:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [persistedMacroDocument],
+    });
+    vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['macro-enabled-word'], { type: persistedMacroDocument.contentType }),
+      fileName: persistedMacroDocument.fileName,
+    });
+    vi.mocked(doclingApi.isAvailable).mockResolvedValue(true);
+    const convertToPdf = vi.spyOn(doclingApi, 'convertToPdf').mockResolvedValue(
+      new Blob(['converted-pdf'], { type: 'application/pdf' }),
+    );
+
+    renderDocumentLibrary();
+    await user.click(await screen.findByRole('button', { name: `Preview ${persistedMacroDocument.fileName}` }));
+
+    await waitFor(() => {
+      expect(convertToPdf).toHaveBeenCalledWith(
+        expect.any(Blob),
+        persistedMacroDocument.fileName,
+      );
+    });
+    expect(doclingApi.convertDocument).not.toHaveBeenCalled();
+  });
+
   it('cancels a persisted Office conversion when the preview closes', async () => {
     const user = userEvent.setup();
     const persistedOfficeDocument = {

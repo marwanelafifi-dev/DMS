@@ -92,7 +92,10 @@ async function createNativePreview(
   if (contentType.startsWith('image/') || IMAGE_PREVIEW_EXTENSIONS.has(extension)) {
     return { kind: 'image', url: sourceUrl, alt: fileName };
   }
-  const isWord = extension === 'docx' || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const isWord = extension === 'docx'
+    || extension === 'docm'
+    || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    || contentType === 'application/vnd.ms-word.document.macroenabled.12';
   const isPowerPoint = extension === 'pptx' || contentType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
   if (isWord || isPowerPoint) {
     // Real Word/PowerPoint rendering: convert to PDF locally (LibreOffice, via the
