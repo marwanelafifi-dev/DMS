@@ -34,3 +34,4 @@ Thumbs.db
 migration/source/
 migration/output/
 migration/logs/
+migration/backups/
