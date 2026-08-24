@@ -752,12 +752,15 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
     <ModalOverlay onClose={onClose} data-testid="document-preview-overlay" className="fixed inset-y-0 right-0 left-0 top-0 z-[70] overflow-hidden transition-[left] duration-200 lg:left-[var(--dms-sidebar-width,286px)]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
       <section ref={dialogRef} className="h-screen flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
         <header className="flex flex-shrink-0 flex-col gap-2 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-2">
             <div className="flex flex-shrink-0 items-center gap-2">
               <h2 id="document-preview-title" className="whitespace-nowrap text-base font-semibold leading-5 text-[#283a7a] dark:text-white">{document.fileName}</h2>
               <span className="inline-flex items-center gap-1 rounded bg-[#d8f5e4] px-2 py-0.5 text-xs font-medium text-[#27885a]"><Lock className="h-3 w-3" />View Only</span>
             </div>
-          <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div
+            data-testid="document-preview-actions"
+            className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1 [&>*]:shrink-0"
+          >
             {isSearchable && (
               <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-[#f7fafc] dark:border-white/10 dark:bg-slate-800">
                 <Search className="ml-2 h-3.5 w-3.5 text-[#8494ac]" />
