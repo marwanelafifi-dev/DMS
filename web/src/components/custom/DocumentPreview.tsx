@@ -23,6 +23,7 @@ import { Button } from '../ui';
 import type { PdfJsViewerHandle, PdfMatchInfo } from './PdfJsViewer';
 import { PreviewToolbar } from './PreviewToolbar';
 import { LegacyMetadataHistoryAction } from './LegacyMetadataHistoryAction';
+import { CompactTagList } from './CompactTagList';
 import { ModalOverlay } from '../ui/ModalOverlay';
 
 const PdfJsViewer = lazy(() => import('./PdfJsViewer').then((module) => ({ default: module.PdfJsViewer })));
@@ -752,11 +753,11 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
       <section ref={dialogRef} className="h-screen flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
         <header className="flex flex-shrink-0 flex-col gap-2 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <h2 id="document-preview-title" className="min-w-0 max-w-full whitespace-normal break-words text-base font-semibold leading-5 text-[#283a7a] dark:text-white">{document.fileName}</h2>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <h2 id="document-preview-title" className="whitespace-nowrap text-base font-semibold leading-5 text-[#283a7a] dark:text-white">{document.fileName}</h2>
               <span className="inline-flex items-center gap-1 rounded bg-[#d8f5e4] px-2 py-0.5 text-xs font-medium text-[#27885a]"><Lock className="h-3 w-3" />View Only</span>
             </div>
-          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
             {isSearchable && (
               <div className="flex items-center overflow-hidden rounded-[4px] border border-[#dbe2ec] bg-[#f7fafc] dark:border-white/10 dark:bg-slate-800">
                 <Search className="ml-2 h-3.5 w-3.5 text-[#8494ac]" />
@@ -968,12 +969,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
               {document.tags && document.tags.length > 0 && (
                 <div>
                   <p className="font-medium text-[#34425b] dark:text-slate-200">Tags</p>
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {document.tags.slice(0, 2).map((tag) => (
-                      <span key={tag} className="rounded-full bg-[#edf2f8] px-2 py-0.5 text-xs font-medium text-[#52627a] dark:bg-slate-800 dark:text-slate-200">{tag}</span>
-                    ))}
-                    {document.tags.length > 2 && <span className="text-[#52627a] dark:text-slate-300">+{document.tags.length - 2}</span>}
-                  </div>
+                  <div className="mt-0.5"><CompactTagList tags={document.tags} /></div>
                 </div>
               )}
               <div>
