@@ -98,8 +98,8 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
                 <img src="/api/branding/logo/header" alt={headerConfig.logoAltText} className="h-9 w-auto max-w-[200px] object-contain" />
               ) : (
                 <>
-                  <img src="/images/si-ware-logo.png" alt={headerConfig.logoAltText} className="block h-9 w-auto max-w-[200px] object-contain dark:hidden" />
-                  <img src="/images/si-ware-logo-dark.png" alt={headerConfig.logoAltText} className="hidden h-9 w-auto max-w-[200px] object-contain dark:block" />
+                  <img src="/images/si-ware-logo.png" alt={headerConfig.logoAltText} width="129" height="36" className="block h-9 w-auto max-w-[200px] object-contain dark:hidden" />
+                  <img src="/images/si-ware-logo-dark.png" alt={headerConfig.logoAltText} width="129" height="36" loading="lazy" className="hidden h-9 w-auto max-w-[200px] object-contain dark:block" />
                 </>
               )}
             </button>

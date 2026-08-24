@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Archive, Download, Eye, FileArchive, X } from 'lucide-react';
 import type { LegacyAssociatedFile, LegacyMetadataHistory } from '../../types';
 import { apiClient } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
 import { Button } from '../ui';
 import { ModalOverlay } from '../ui/ModalOverlay';
-import { ReadOnlyFilePreviewModal } from './ReadOnlyFilePreviewModal';
+
+const ReadOnlyFilePreviewModal = lazy(() => import('./ReadOnlyFilePreviewModal').then((module) => ({
+  default: module.ReadOnlyFilePreviewModal,
+})));
 
 interface LegacyMetadataHistoryActionProps {
   documentId: string;
@@ -281,12 +284,14 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
         </ModalOverlay>
       )}
       {previewFile && (
-        <ReadOnlyFilePreviewModal
-          fileName={previewFile.originalFileName}
-          loadBlob={async () => (await apiClient.getLegacyContentFile(documentId, previewFile.legacyContentVersionId, 'view')).blob}
-          onDownload={() => handleDownload(previewFile)}
-          onClose={() => setPreviewFile(null)}
-        />
+        <Suspense fallback={null}>
+          <ReadOnlyFilePreviewModal
+            fileName={previewFile.originalFileName}
+            loadBlob={async () => (await apiClient.getLegacyContentFile(documentId, previewFile.legacyContentVersionId, 'view')).blob}
+            onDownload={() => handleDownload(previewFile)}
+            onClose={() => setPreviewFile(null)}
+          />
+        </Suspense>
       )}
     </>
   );

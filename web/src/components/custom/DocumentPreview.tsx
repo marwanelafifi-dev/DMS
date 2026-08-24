@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AlertCircle,
   ChevronDown,
@@ -19,16 +19,18 @@ import type { RolePermissionFlags } from '../../utils/api';
 import { statusLabels, statusStyles } from '../../utils/documentStatus';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { Button } from '../ui';
-import { EditDocumentModal } from './EditDocumentModal';
-import { MarkdownViewer } from './MarkdownViewer';
-import { OcrPanel } from './OcrPanel';
-import { PdfJsViewer, type PdfJsViewerHandle, type PdfMatchInfo } from './PdfJsViewer';
+import type { PdfJsViewerHandle, PdfMatchInfo } from './PdfJsViewer';
 import { PreviewToolbar } from './PreviewToolbar';
-import { UploadNewVersionModal } from './UploadNewVersionModal';
-import { VersionHistoryModal } from './VersionHistoryModal';
-import { RelatedTasksModal } from './RelatedTasksModal';
 import { LegacyMetadataHistoryAction } from './LegacyMetadataHistoryAction';
 import { ModalOverlay } from '../ui/ModalOverlay';
+
+const PdfJsViewer = lazy(() => import('./PdfJsViewer').then((module) => ({ default: module.PdfJsViewer })));
+const MarkdownViewer = lazy(() => import('./MarkdownViewer').then((module) => ({ default: module.MarkdownViewer })));
+const OcrPanel = lazy(() => import('./OcrPanel').then((module) => ({ default: module.OcrPanel })));
+const EditDocumentModal = lazy(() => import('./EditDocumentModal').then((module) => ({ default: module.EditDocumentModal })));
+const UploadNewVersionModal = lazy(() => import('./UploadNewVersionModal').then((module) => ({ default: module.UploadNewVersionModal })));
+const VersionHistoryModal = lazy(() => import('./VersionHistoryModal').then((module) => ({ default: module.VersionHistoryModal })));
+const RelatedTasksModal = lazy(() => import('./RelatedTasksModal').then((module) => ({ default: module.RelatedTasksModal })));
 
 const ZOOM_STEP = 10;
 const MIN_ZOOM = 50;
@@ -183,7 +185,6 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const activeMatchRef = useRef<HTMLElement | null>(null);
-  const pdfIframeRef = useRef<HTMLIFrameElement>(null);
   const markdownContainerRef = useRef<HTMLDivElement>(null);
   const pdfViewerRef = useRef<PdfJsViewerHandle>(null);
 
@@ -194,7 +195,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
   // itself is already showing — the search box appears right away (like every
   // other kind), but shows "Indexing…" instead of a match count until that
   // text is ready, matching the PDF viewer's own indexing state below.
-  const isImageIndexing = isImage && !document.preview.ocrText;
+  const isImageIndexing = document.preview.kind === 'image' && !document.preview.ocrText;
   // The PDF's own searchable text only exists inside PdfJsViewer (parsed via
   // pdf.js), so its match navigation is delegated there via pdfViewerRef/
   // onMatchInfoChange — but the search *input* itself still lives in this shared
@@ -389,12 +390,17 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
 
   function handlePrint() {
     if (document.preview.kind === 'pdf' || document.preview.kind === 'office-embed') {
-      const frameWindow = pdfIframeRef.current?.contentWindow;
-      if (frameWindow) {
-        frameWindow.focus();
-        frameWindow.print();
-        return;
-      }
+      const printFrame = window.document.createElement('iframe');
+      printFrame.src = document.preview.url;
+      printFrame.title = 'Print document';
+      printFrame.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-9999px';
+      printFrame.onload = () => {
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+        window.setTimeout(() => printFrame.remove(), 1_000);
+      };
+      window.document.body.appendChild(printFrame);
+      return;
     }
     window.print();
   }
@@ -491,7 +497,9 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
             />
             <div className="min-h-0 flex-1 overflow-auto p-6">
               <div ref={markdownContainerRef} style={getZoomStyle(zoom) as ZoomableStyle}>
-                <MarkdownViewer content={document.preview.content} />
+                <Suspense fallback={<div className="h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" />}>
+                  <MarkdownViewer content={document.preview.content} />
+                </Suspense>
               </div>
             </div>
           </div>
@@ -540,7 +548,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
         );
       case 'pdf':
         return (
-          <>
+          <Suspense fallback={<div className="flex h-full items-center justify-center bg-[#eef2f7] dark:bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" /></div>}>
             <PdfJsViewer
               key={retryKey}
               ref={pdfViewerRef}
@@ -550,18 +558,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
               onError={() => { setIsLoading(false); setHasError(true); }}
               onMatchInfoChange={setPdfMatchInfo}
             />
-            {/* Hidden — exists only so Print can trigger the browser's native PDF
-                print dialog via contentWindow.print(); the visible viewer above is
-                the pdf.js canvas renderer, which has no print API of its own. */}
-            <iframe
-              ref={pdfIframeRef}
-              src={document.preview.url}
-              title=""
-              aria-hidden="true"
-              tabIndex={-1}
-              style={{ position: 'fixed', width: 0, height: 0, border: 'none', left: '-9999px' }}
-            />
-          </>
+          </Suspense>
         );
       case 'word': {
         const pages = chunkArray(document.preview.paragraphs, PARAGRAPHS_PER_PAGE);
@@ -720,7 +717,6 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
       case 'office-embed':
         return (
           <iframe
-            ref={pdfIframeRef}
             src={document.preview.url}
             title={`Preview of ${document.fileName}`}
             className="block h-full w-full rounded-[4px] border border-[#dbe2ec] bg-white dark:border-white/10"
@@ -738,7 +734,9 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                 server still has the file, so offer to re-run extraction on demand. */}
             {document.currentVersionId && (
               <div className="border-t border-[#e2e8f0] pt-6 dark:border-white/10">
-                <OcrPanel documentId={document.documentId} versionId={document.currentVersionId} fileName={document.fileName} />
+                <Suspense fallback={<div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" />}>
+                  <OcrPanel documentId={document.documentId} versionId={document.currentVersionId} fileName={document.fileName} />
+                </Suspense>
               </div>
             )}
           </div>
@@ -820,8 +818,8 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                 onClick={() => onSubmitForApproval(document)}
                 disabled={!permissions?.submitForApproval}
                 title={!permissions?.submitForApproval ? 'Your role does not have Submit for Approval permission' : undefined}
-                className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#399a68] px-3 text-xs font-medium text-white hover:bg-[#2f895b] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#399a68]"
-                aria-label={`Submit ${document.fileName} for approval`}
+                className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#2f7d57] px-3 text-xs font-medium text-white hover:bg-[#286b4b] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7d57]"
+                aria-label={`Submit for Approval: ${document.fileName}`}
               >
                 Submit for Approval
               </button>
@@ -836,7 +834,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
               <FilePen className="h-4 w-4" /> Edit
             </button>
             {permissions?.downloadForEditing && onDownloadForEditing && (
-              <button onClick={() => onDownloadForEditing(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download ${document.fileName} for editing`} title="Download the original file for editing — locks it for you for 1 hour">
+              <button onClick={() => onDownloadForEditing(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download for Editing: ${document.fileName}`} title="Download the original file for editing — locks it for you for 1 hour">
                 <PencilLine className="h-4 w-4" /> Download for Editing
               </button>
             )}
@@ -905,7 +903,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
               )}
               <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Type</p>
-                <p className="uppercase font-semibold text-[#3f8bca]">{document.extension}</p>
+                <p className="uppercase font-semibold text-[#2f6f9f]">{document.extension}</p>
               </div>
               <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Folder</p>
@@ -1009,6 +1007,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
         </div>
       </section>
 
+      <Suspense fallback={null}>
       {showEditModal && (
         <EditDocumentModal
           documentId={document.documentId}
@@ -1044,6 +1043,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
           onClose={() => setShowRelatedTasks(false)}
         />
       )}
+      </Suspense>
     </ModalOverlay>
   );
 }

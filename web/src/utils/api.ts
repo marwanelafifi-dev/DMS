@@ -492,6 +492,14 @@ class APIClient {
     return { blob: response.data as Blob, fileName };
   }
 
+  async getDocumentPreview(documentId: string, versionId: string, signal?: AbortSignal) {
+    const response = await this.client.get(`/documents/${documentId}/versions/${versionId}/preview`, {
+      responseType: 'blob',
+      signal,
+    });
+    return response.data as Blob;
+  }
+
   async downloadDocument(documentId: string, versionId: string) {
     const { blob, fileName } = await this.getDocumentFile(documentId, versionId);
     const objectUrl = URL.createObjectURL(blob);

@@ -3,6 +3,7 @@ using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using static DMS.Api.Services.AuditActions;
@@ -19,8 +20,16 @@ public class DocumentsController(
     ApprovalService approvalService,
     AccessOverrideService accessOverrideService,
     NotificationService notificationService,
+    IHttpClientFactory httpClientFactory,
     ILogger<DocumentsController> logger) : BaseController
 {
+    private static readonly HashSet<string> PdfPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".doc", ".docx", ".docm",
+        ".ppt", ".pptx", ".pptm", ".pot", ".potx", ".potm", ".pps", ".ppsx", ".ppsm", ".ppam",
+        ".xls", ".xlsm", ".xlsb", ".xlt", ".xltm",
+    };
+
     // GET /api/documents — list of documents
     [HttpGet]
     public async Task<ActionResult<object>> GetDocuments(
@@ -1176,6 +1185,82 @@ public class DocumentsController(
     }
 
     // GET /api/documents/{id}/download — download a file
+    // The browser receives only the generated PDF, not the original file plus
+    // a second browser-to-renderer upload.
+    [HttpGet("{id}/versions/{versionId}/preview")]
+    public async Task<ActionResult> PreviewVersion(Guid id, Guid versionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var version = await context.DocumentVersions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    dv => dv.VersionId == versionId && dv.DocumentId == id,
+                    cancellationToken);
+
+            if (version == null)
+                return NotFound(new { success = false, error = "Version not found" });
+
+            if (string.IsNullOrEmpty(version.S3ObjectKey))
+                return BadRequest(new { success = false, error = "File has not been uploaded yet" });
+
+            if (!PdfPreviewExtensions.Contains(Path.GetExtension(version.FileName)))
+                return StatusCode(StatusCodes.Status415UnsupportedMediaType, new
+                {
+                    success = false,
+                    error = "This file type does not use the generated PDF preview endpoint",
+                });
+
+            await using var sourceStream = await minioService.DownloadAsync(version.S3ObjectKey);
+            using var multipart = new MultipartFormDataContent();
+            using var fileContent = new StreamContent(sourceStream);
+            if (MediaTypeHeaderValue.TryParse(version.MimeType, out var sourceContentType))
+                fileContent.Headers.ContentType = sourceContentType;
+            multipart.Add(fileContent, "file", version.FileName);
+
+            var previewClient = httpClientFactory.CreateClient("OcrRag");
+            using var previewResponse = await previewClient.PostAsync(
+                "api/documents/convert-to-pdf",
+                multipart,
+                cancellationToken);
+
+            if (!previewResponse.IsSuccessStatusCode)
+            {
+                var detail = await previewResponse.Content.ReadAsStringAsync(cancellationToken);
+                logger.LogWarning(
+                    "Preview conversion failed for document {DocumentId}, version {VersionId}: {Status} {Detail}",
+                    id,
+                    versionId,
+                    previewResponse.StatusCode,
+                    detail);
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    success = false,
+                    error = "The document preview service could not render this file",
+                });
+            }
+
+            var pdfBytes = await previewResponse.Content.ReadAsByteArrayAsync(cancellationToken);
+            Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+            if (previewResponse.Headers.TryGetValues("X-Preview-Cache", out var cacheValues))
+                Response.Headers["X-Preview-Cache"] = cacheValues.FirstOrDefault();
+            Response.Headers.ContentDisposition =
+                $"inline; filename=\"{Path.GetFileNameWithoutExtension(version.FileName)}.pdf\"";
+
+            return File(pdfBytes, "application/pdf");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error previewing version {VersionId} of document {DocumentId}", versionId, id);
+            return StatusCode(500, new { success = false, error = "Document preview failed" });
+        }
+    }
+
+    // Download the immutable original file bytes.
     [HttpGet("{id}/versions/{versionId}/download")]
     public async Task<ActionResult> DownloadVersion(Guid id, Guid versionId)
     {

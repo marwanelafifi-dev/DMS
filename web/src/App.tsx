@@ -1,18 +1,28 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { MainLayout } from './components/layout/MainLayout';
-import { Dashboard } from './components/pages/Dashboard';
-import { Documents } from './components/pages/Documents';
-import { Settings } from './components/pages/Settings';
-import { Tasks } from './components/pages/Tasks';
-import { Approvals } from './components/pages/Approvals';
-import { Reminders } from './components/pages/Reminders';
-import { SendAnnouncement } from './components/pages/SendAnnouncement';
-import { Search } from './components/pages/Search';
-import { Login } from './components/pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { usePageAccess } from './hooks/usePageAccess';
 import type { PageAccessRoleFlags } from './utils/api';
 import { Toaster } from 'sonner';
+
+const MainLayout = lazy(() => import('./components/layout/MainLayout').then((module) => ({ default: module.MainLayout })));
+const Dashboard = lazy(() => import('./components/pages/Dashboard').then((module) => ({ default: module.Dashboard })));
+const Documents = lazy(() => import('./components/pages/Documents').then((module) => ({ default: module.Documents })));
+const Settings = lazy(() => import('./components/pages/Settings').then((module) => ({ default: module.Settings })));
+const Tasks = lazy(() => import('./components/pages/Tasks').then((module) => ({ default: module.Tasks })));
+const Approvals = lazy(() => import('./components/pages/Approvals').then((module) => ({ default: module.Approvals })));
+const Reminders = lazy(() => import('./components/pages/Reminders').then((module) => ({ default: module.Reminders })));
+const SendAnnouncement = lazy(() => import('./components/pages/SendAnnouncement').then((module) => ({ default: module.SendAnnouncement })));
+const Search = lazy(() => import('./components/pages/Search').then((module) => ({ default: module.Search })));
+const Login = lazy(() => import('./components/pages/Login').then((module) => ({ default: module.Login })));
+
+function RouteLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-white dark:bg-slate-950" role="status" aria-label="Loading page">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" />
+    </div>
+  );
+}
 
 function RequireAuth() {
   const { user, isLoading } = useAuth();
@@ -53,6 +63,7 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        <Suspense fallback={<RouteLoading />}>
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -109,6 +120,7 @@ function App() {
             </Route>
           </Route>
         </Routes>
+        </Suspense>
       </AuthProvider>
 
       {/* Toast notifications */}

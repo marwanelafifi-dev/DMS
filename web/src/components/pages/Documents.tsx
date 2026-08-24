@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { LoaderCircle, UploadCloud, X } from 'lucide-react';
@@ -6,12 +6,7 @@ import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
-import { DocumentPreview } from '../custom/DocumentPreview';
-import { AccessOverrideModal } from '../custom/AccessOverrideModal';
-import { BulkOperationsModal } from '../custom/BulkOperationsModal';
-import { UploadApprovalModal } from '../custom/UploadApprovalModal';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
-import { EditDocumentModal } from '../custom/EditDocumentModal';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
@@ -34,8 +29,13 @@ import {
 } from '../../services/documentLibraryOperations';
 import { doclingApi } from '../../services/doclingApi';
 import { downloadFolderAsZip } from '../../utils/folderDownload';
-import { parseWordDocument, parseExcelDocument, parsePowerPointDocument } from '../../utils/officeParser';
 import { ModalOverlay, preventModalOutsideDismiss } from '../ui/ModalOverlay';
+
+const DocumentPreview = lazy(() => import('../custom/DocumentPreview').then((module) => ({ default: module.DocumentPreview })));
+const AccessOverrideModal = lazy(() => import('../custom/AccessOverrideModal').then((module) => ({ default: module.AccessOverrideModal })));
+const BulkOperationsModal = lazy(() => import('../custom/BulkOperationsModal').then((module) => ({ default: module.BulkOperationsModal })));
+const UploadApprovalModal = lazy(() => import('../custom/UploadApprovalModal').then((module) => ({ default: module.UploadApprovalModal })));
+const EditDocumentModal = lazy(() => import('../custom/EditDocumentModal').then((module) => ({ default: module.EditDocumentModal })));
 
 function readBlobAsText(blob: Blob): Promise<string> {
   if (typeof blob.text === 'function') return blob.text();
@@ -56,9 +56,48 @@ function readBlobAsText(blob: Blob): Promise<string> {
 const PENDING_STAGE_STATUSES = new Set(['qa_review', 'manager_review', 'correction_in_progress', 'qa_final_review']);
 const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log']);
 const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+const WORD_PDF_PREVIEW_EXTENSIONS = new Set(['doc', 'docx', 'docm']);
+const PRESENTATION_PDF_PREVIEW_EXTENSIONS = new Set([
+  'ppt', 'pptx', 'pptm', 'pot', 'potx', 'potm', 'pps', 'ppsx', 'ppsm', 'ppam',
+]);
+const SPREADSHEET_PDF_PREVIEW_EXTENSIONS = new Set(['xls', 'xlsm', 'xlsb', 'xlt', 'xltm']);
+const SPREADSHEET_GRID_PREVIEW_EXTENSIONS = new Set(['xlsx', 'xltx', 'ods']);
+const WORD_PDF_PREVIEW_CONTENT_TYPES = new Set([
+  'application/msword',
+  'application/vnd.ms-word.document.macroenabled.12',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const PRESENTATION_PDF_PREVIEW_CONTENT_TYPES = new Set([
+  'application/vnd.ms-powerpoint',
+  'application/vnd.ms-powerpoint.addin.macroenabled.12',
+  'application/vnd.ms-powerpoint.presentation.macroenabled.12',
+  'application/vnd.ms-powerpoint.slideshow.macroenabled.12',
+  'application/vnd.ms-powerpoint.template.macroenabled.12',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+  'application/vnd.openxmlformats-officedocument.presentationml.template',
+]);
+const SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES = new Set([
+  'application/vnd.ms-excel',
+  'application/vnd.ms-excel.addin.macroenabled.12',
+  'application/vnd.ms-excel.sheet.binary.macroenabled.12',
+  'application/vnd.ms-excel.sheet.macroenabled.12',
+  'application/vnd.ms-excel.template.macroenabled.12',
+]);
 
 function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
+}
+
+function usesGeneratedPdfPreview(fileName: string, contentType = ''): boolean {
+  const extension = getFileExtension(fileName);
+  const normalizedContentType = contentType.toLowerCase().split(';', 1)[0].trim();
+  return WORD_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || PRESENTATION_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || SPREADSHEET_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || WORD_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType)
+    || PRESENTATION_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType)
+    || SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
 }
 
 function splitFileName(fileName: string): { base: string; ext: string } {
@@ -79,6 +118,7 @@ async function createNativePreview(
   // as .xlsx so it gets the spreadsheet table/sheet-tab UI instead of a raw
   // comma-separated dump in a monospace <pre>.
   if (extension === 'csv' || contentType === 'text/csv') {
+    const { parseExcelDocument } = await import('../../utils/officeParser');
     return parseExcelDocument(source, sourceUrl);
   }
   if (contentType.startsWith('text/') || TEXT_PREVIEW_EXTENSIONS.has(extension)) {
@@ -93,13 +133,15 @@ async function createNativePreview(
   if (contentType.startsWith('image/') || IMAGE_PREVIEW_EXTENSIONS.has(extension)) {
     return { kind: 'image', url: sourceUrl, alt: fileName };
   }
-  const isWord = extension === 'docx'
-    || extension === 'docm'
-    || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    || contentType === 'application/vnd.ms-word.document.macroenabled.12';
-  const isPowerPoint = extension === 'pptx' || contentType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-  if (isWord || isPowerPoint) {
-    // Real Word/PowerPoint rendering: convert to PDF locally (LibreOffice, via the
+  const normalizedContentType = contentType.toLowerCase().split(';', 1)[0].trim();
+  const isWord = WORD_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || WORD_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
+  const isPowerPoint = PRESENTATION_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || PRESENTATION_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
+  const isLegacySpreadsheet = SPREADSHEET_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
+  if (isWord || isPowerPoint || isLegacySpreadsheet) {
+    // Real Office rendering: convert to PDF locally (LibreOffice, via the
     // OCR sidecar) and reuse the same pdf.js viewer already used for real PDFs —
     // true layout/fonts/images/tables instead of a plain-text reconstruction.
     // Health-check the sidecar up front instead of always attempting the network
@@ -121,13 +163,22 @@ async function createNativePreview(
       console.warn(`Local document renderer is unreachable; falling back to text extraction for ${fileName}`);
       renderNotice = 'Live rendering is unavailable right now — showing extracted text only.';
     }
-    const fallback = isWord ? await parseWordDocument(source, sourceUrl) : await parsePowerPointDocument(source, sourceUrl);
+    const { parseWordDocument, parseExcelDocument, parsePowerPointDocument } = await import('../../utils/officeParser');
+    const fallback = isWord
+      ? await parseWordDocument(source, sourceUrl)
+      : isPowerPoint
+        ? await parsePowerPointDocument(source, sourceUrl)
+        : await parseExcelDocument(source, sourceUrl);
     if (fallback && (fallback.kind === 'word' || fallback.kind === 'presentation')) {
       return { ...fallback, renderNotice };
     }
     return fallback;
   }
-  if (extension === 'xlsx' || contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+  if (SPREADSHEET_GRID_PREVIEW_EXTENSIONS.has(extension)
+    || normalizedContentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || normalizedContentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.template'
+    || normalizedContentType === 'application/vnd.oasis.opendocument.spreadsheet') {
+    const { parseExcelDocument } = await import('../../utils/officeParser');
     return parseExcelDocument(source, sourceUrl);
   }
   return null;
@@ -137,6 +188,7 @@ export function Documents() {
   const { showSuccess, showError } = useToast();
   const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const directPreviewId = searchParams.get('preview');
   const [folders, setFolders] = useState<Folder[]>([]);
   const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
@@ -196,6 +248,8 @@ export function Documents() {
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const previewRequestRef = useRef(0);
   const previewAbortControllerRef = useRef<AbortController | null>(null);
+  const startedWithDirectPreviewRef = useRef(Boolean(directPreviewId));
+  const serverDocumentsLoadStartedRef = useRef(false);
   // Bounds how many documents' preview blob URLs (source file + any locally
   // converted PDF) stay alive at once. Without this, browsing many documents in
   // one session accumulated unbounded live blob URLs since they were previously
@@ -404,12 +458,36 @@ export function Documents() {
         if (!cancelled) setIsLoadingFolders(false);
       }
 
-      if (!cancelled) await refreshServerDocuments(loadedFolders);
+      // Preserve the original, deterministic initial-load sequence for the
+      // normal library. A direct preview deliberately skips this expensive
+      // 1000+ document fetch until the preview has been closed.
+      if (!cancelled && !startedWithDirectPreviewRef.current) {
+        serverDocumentsLoadStartedRef.current = true;
+        await refreshServerDocuments(loadedFolders);
+      }
+
     };
     void loadLibrary();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showError]);
+
+  // A deep link opens one document immediately. Loading, parsing and rendering
+  // the complete 1000+ document library behind its full-screen preview added
+  // several seconds of main-thread work without changing anything visible.
+  // Defer that list until the preview closes; normal library navigation still
+  // starts it as soon as the folder hierarchy is ready.
+  useEffect(() => {
+    if (
+      directPreviewId
+      || !startedWithDirectPreviewRef.current
+      || folders.length === 0
+      || serverDocumentsLoadStartedRef.current
+    ) return;
+
+    serverDocumentsLoadStartedRef.current = true;
+    void refreshServerDocuments(folders);
+  }, [directPreviewId, folders, refreshServerDocuments]);
 
   useEffect(() => {
     setIsLoadingDocs(true);
@@ -447,6 +525,38 @@ export function Documents() {
 
     let sourceUrl: string | undefined;
     try {
+      if (usesGeneratedPdfPreview(libraryDocument.fileName, libraryDocument.contentType)) {
+        showLoadingPreview(`Preparing ${libraryDocument.fileName} for secure viewing...`);
+        try {
+          const previewBlob = await apiClient.getDocumentPreview(
+            libraryDocument.documentId,
+            libraryDocument.currentVersionId,
+            signal,
+          );
+          if (signal.aborted || previewRequestRef.current !== requestId) return;
+
+          sourceUrl = URL.createObjectURL(previewBlob);
+          objectUrlsRef.current.add(sourceUrl);
+          const restoredDocument: MockLibraryDocument = {
+            ...libraryDocument,
+            sourceUrl,
+            preview: { kind: 'pdf', url: sourceUrl },
+          };
+          setAllDocuments((current) => current.map((document) =>
+            document.documentId === restoredDocument.documentId ? restoredDocument : document,
+          ));
+          setPreviewDocument(restoredDocument);
+          documentObjectUrlsRef.current.set(restoredDocument.documentId, [sourceUrl]);
+          touchPreviewCache(restoredDocument.documentId);
+          return;
+        } catch (previewError: any) {
+          if (signal.aborted || previewRequestRef.current !== requestId) return;
+          if (previewError?.response?.status === 403) throw previewError;
+          console.warn('Server PDF preview failed; falling back to the original client path:', previewError);
+          showLoadingPreview(`Loading ${libraryDocument.fileName} from secure storage...`);
+        }
+      }
+
       const { blob, fileName } = await apiClient.getDocumentFile(
         libraryDocument.documentId,
         libraryDocument.currentVersionId,
@@ -1319,6 +1429,11 @@ export function Documents() {
 
   return (
     <div className="flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-hidden bg-white dark:bg-slate-950 md:flex-row">
+      <div
+        className="flex min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
+        aria-hidden={directPreviewId ? 'true' : undefined}
+        style={{ contentVisibility: directPreviewId ? 'hidden' : 'visible' }}
+      >
       {/* Folders Sidebar */}
       {isLoadingFolders ? (
         <div className="max-h-56 w-full flex-shrink-0 space-y-2 overflow-hidden border-b border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-56 md:border-b-0 md:border-r" role="status" aria-label="Loading folders">
@@ -1368,7 +1483,7 @@ export function Documents() {
                     : 'Upload files to the selected folder'
               }
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:w-auto sm:px-4"
+              className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#2f6f9f] px-3 text-sm font-medium text-white hover:bg-[#255b84] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:w-auto sm:px-4"
             >
               <UploadCloud className="h-4 w-4" /> Upload
             </button>
@@ -1448,7 +1563,18 @@ export function Documents() {
           </Card>
         </div>
       </div>
+      </div>
+      {directPreviewId && !previewDocument && (
+        <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading document preview">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" />
+        </div>
+      )}
 
+      <Suspense fallback={(
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-white/90 dark:bg-slate-950/90" role="status" aria-label="Loading document dialog">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" />
+        </div>
+      )}>
       {previewDocument && (
         <DocumentPreview
           document={previewDocument}
@@ -1518,6 +1644,7 @@ export function Documents() {
           onSaved={() => void refreshServerDocuments(folders)}
         />
       )}
+      </Suspense>
 
       {newFolderRequest && (
         <ModalOverlay onClose={() => setNewFolderRequest(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

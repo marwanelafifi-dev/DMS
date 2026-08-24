@@ -12,12 +12,18 @@ import type { Document } from '../types';
 // name and owner; if either of those calls fails independently, real
 // documents still show up (just with whatever raw data they already carry)
 // instead of the whole feature silently degrading to fixture-only data.
-export function useAllDmsDocuments() {
+export function useAllDmsDocuments(enabled = true) {
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(enabled);
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false);
+      return undefined;
+    }
+
     let cancelled = false;
+    setIsLoading(true);
 
     const load = async () => {
       const [documentsResult, foldersResult, usersResult] = await Promise.allSettled([
@@ -63,7 +69,7 @@ export function useAllDmsDocuments() {
     };
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [enabled]);
 
   return { documents, isLoading };
 }

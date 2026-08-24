@@ -49,6 +49,13 @@ describe('Document Library', () => {
       success: true,
       data: [],
     });
+    vi.spyOn(apiClient, 'getDropdownLists').mockResolvedValue({
+      success: true,
+      data: { department: [], category: [], tag: [] },
+    });
+    // Existing client-conversion tests deliberately exercise the fallback.
+    // The dedicated server-preview test overrides this with a successful PDF.
+    vi.spyOn(apiClient, 'getDocumentPreview').mockRejectedValue({ response: { status: 502 } });
     // Mock fixture documents are native New-DMS records by default, so the
     // optional KnowledgeTree archive action remains hidden unless a test opts
     // a specific fixture into legacy history.
@@ -548,6 +555,90 @@ describe('Document Library', () => {
     expect(doclingApi.convertDocument).not.toHaveBeenCalled();
   });
 
+  it('loads a persisted Office preview through the server without downloading the source into the browser', async () => {
+    const persistedOfficeDocument = {
+      documentId: '11111111-1111-4111-8111-111111111111',
+      currentVersionId: '22222222-2222-4222-8222-222222222222',
+      folderId: 'folder-1',
+      name: 'Large legacy document',
+      title: 'Large legacy document',
+      fileName: 'Large legacy document.doc',
+      fileSize: 8_000_000,
+      contentType: 'application/msword',
+      status: 'draft',
+      uploadedBy: TEST_USER_ID,
+      uploadedAt: '2012-11-20T09:40:00.000Z',
+      createdAt: '2012-11-20T09:40:00.000Z',
+      updatedAt: '2012-12-18T13:36:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockReset().mockResolvedValue({ success: true, data: [] });
+    vi.spyOn(apiClient, 'getDocument').mockResolvedValue({
+      success: true,
+      data: persistedOfficeDocument,
+    });
+    const fetchDocumentFile = vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['large-legacy-source'], { type: persistedOfficeDocument.contentType }),
+      fileName: persistedOfficeDocument.fileName,
+    });
+    const fetchPreview = vi.mocked(apiClient.getDocumentPreview).mockResolvedValue(
+      new Blob(['server-rendered-pdf'], { type: 'application/pdf' }),
+    );
+    const clientConversion = vi.spyOn(doclingApi, 'convertToPdf');
+
+    renderDocumentLibrary(`/documents?preview=${persistedOfficeDocument.documentId}`);
+
+    await waitFor(() => expect(fetchPreview).toHaveBeenCalledWith(
+      persistedOfficeDocument.documentId,
+      persistedOfficeDocument.currentVersionId,
+      expect.any(AbortSignal),
+    ));
+    expect(fetchDocumentFile).not.toHaveBeenCalled();
+    expect(clientConversion).not.toHaveBeenCalled();
+    expect(apiClient.getDocuments).not.toHaveBeenCalled();
+  });
+
+  it('routes a persisted legacy Excel workbook through PDF conversion', async () => {
+    const user = userEvent.setup();
+    const persistedLegacyWorkbook = {
+      documentId: 'persisted-legacy-workbook',
+      currentVersionId: 'persisted-legacy-workbook-version',
+      folderId: 'folder-1',
+      name: 'NeoMEMS Gyro Workbook',
+      title: 'NeoMEMS Gyro Workbook',
+      fileName: 'CW.NeoMEMS.2-Axis Gyro.4-21-13.xls',
+      fileSize: 35328,
+      contentType: 'application/vnd.ms-excel',
+      status: 'draft',
+      uploadedBy: TEST_USER_ID,
+      uploadedAt: '2014-03-03T22:09:00.000Z',
+      createdAt: '2013-12-21T01:45:00.000Z',
+      updatedAt: '2014-03-03T22:09:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [persistedLegacyWorkbook],
+    });
+    vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['legacy-excel'], { type: persistedLegacyWorkbook.contentType }),
+      fileName: persistedLegacyWorkbook.fileName,
+    });
+    vi.mocked(doclingApi.isAvailable).mockResolvedValue(true);
+    const convertToPdf = vi.spyOn(doclingApi, 'convertToPdf').mockResolvedValue(
+      new Blob(['converted-pdf'], { type: 'application/pdf' }),
+    );
+
+    renderDocumentLibrary();
+    await user.click(await screen.findByRole('button', { name: `Preview ${persistedLegacyWorkbook.fileName}` }));
+
+    await waitFor(() => {
+      expect(convertToPdf).toHaveBeenCalledWith(
+        expect.any(Blob),
+        persistedLegacyWorkbook.fileName,
+      );
+    });
+    expect(doclingApi.convertDocument).not.toHaveBeenCalled();
+  });
+
   it('cancels a persisted Office conversion when the preview closes', async () => {
     const user = userEvent.setup();
     const persistedOfficeDocument = {
@@ -743,7 +834,10 @@ describe('Document Library', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Production Shift Handover.txt' });
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Folder 1' })).toBeInTheDocument();
+    // The library remains mounted so closing the modal restores the same
+    // selection/focus, but is correctly hidden from assistive technology while
+    // the full-screen document dialog owns focus.
+    expect(screen.getByTestId('folder-section')).toBeInTheDocument();
     expect(screen.getByText(/Production Shift Handover/, { selector: 'pre' })).toBeInTheDocument();
     expect(screen.getByText('3.4 KB')).toBeInTheDocument();
     expect(within(dialog).getByText('Daily production handover notes')).toBeInTheDocument();

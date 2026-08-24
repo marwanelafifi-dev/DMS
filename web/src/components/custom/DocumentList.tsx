@@ -277,11 +277,11 @@ export function DocumentList({
                 <WrappingCellText value={document.originalDocumentId} monospace />
               </td>
               <td className="min-w-0">
-                <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}`}>
+                <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}${document.description ? ` ${document.description}` : ''}`}>
                   <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded ${extensionStyles[document.extension]}`}><FileText className="h-4 w-4" /></span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold text-[#2e4083] dark:text-slate-100" title={document.fileName}>{document.fileName}</span>
-                    <span className="mt-0.5 block truncate text-xs text-[#718198]">{document.description}</span>
+                    <span className="mt-0.5 block truncate text-xs text-[#52627a]">{document.description}</span>
                   </span>
                 </button>
               </td>
@@ -289,7 +289,7 @@ export function DocumentList({
               {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.department} /></td>}
               {visibleColumns.has('category') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.category} /></td>}
               {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.owner.fullName} /></td>}
-              {visibleColumns.has('modifiedAt') && <td className="text-[11px] text-[#718198]"><ExpandableCellText value={formatDateTime(document.modifiedAt)} /></td>}
+              {visibleColumns.has('modifiedAt') && <td className="text-[11px] text-[#52627a]"><ExpandableCellText value={formatDateTime(document.modifiedAt)} /></td>}
               {visibleColumns.has('tags') && (
                 <td>
                   {document.tags.length ? (
@@ -389,13 +389,13 @@ export function DocumentList({
       </table>
 
       <div className="flex items-center justify-between border-t border-[#e2e8f0] bg-[#f7f9fc] px-4 py-2.5 dark:border-white/10 dark:bg-slate-950">
-        <p className="text-xs text-[#718198] dark:text-slate-400">
+        <p className="text-xs text-[#52627a] dark:text-slate-400">
           {sortedDocuments.length === 0
             ? 'No documents'
             : `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, sortedDocuments.length)} of ${sortedDocuments.length}`}
         </p>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-[#718198] dark:text-slate-400">
+          <span className="text-xs text-[#52627a] dark:text-slate-400">
             Page {currentPage} of {totalPages}
           </span>
           <button
