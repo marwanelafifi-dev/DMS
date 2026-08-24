@@ -1,5 +1,13 @@
 # Migration Changelog
 
+## 2026-08-25 — Migrated document deletion
+
+- Enabled permanent deletion for migrated and native New-DMS documents.
+- Added one-way legacy target tombstones so deleted New-DMS document/version UUIDs remain traceable.
+- Preserved all KnowledgeTree metadata snapshots, content-version rows, and archived physical files.
+- Made PostgreSQL document deletion transactional and delayed MinIO cleanup until after commit.
+- Added database and live API delete regression checks.
+
 ## 2026-08-24 — Full controlled migration
 
 - Added exact metadata-snapshot to content-version/file association in the Legacy Metadata History API and UI.

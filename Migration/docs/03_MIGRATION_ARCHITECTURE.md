@@ -14,4 +14,6 @@ For each source document it:
 
 The archive schema separates source registration from active document mapping, so an exception can retain evidence without pretending migration success. Archive provenance tables are append-only. `dms_legacy_content_file_details` retains observed physical dates, and `dms_legacy_migration_exceptions` stores exact unresolved reasons.
 
+An active New-DMS document may be permanently deleted without deleting its KnowledgeTree evidence. `082_legacy_document_delete_tombstones.sql` changes only the live target references to `ON DELETE SET NULL`; a guarded one-way trigger preserves the deleted document/version UUIDs and first deletion time in immutable tombstone columns. Metadata snapshots, legacy content rows, and archived physical files remain unchanged.
+
 The API joins each metadata snapshot's real `legacy_content_version_id` to its content record. Historical View/Download reads the archive namespace and never creates a native New-DMS version.

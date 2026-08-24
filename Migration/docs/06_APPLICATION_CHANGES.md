@@ -21,3 +21,7 @@ The read endpoints reuse the document's existing access checks and constrain con
 - The static Compliance heading, ISO items, and On-Premises Vault label were removed from the sidebar. The normal navigation and build/version text remain.
 
 The additive PCAR schema change is `infra/db/init/081_task_tags.sql`. Existing task rows receive an empty tag array and no migration document/archive data is modified.
+
+## Migrated document deletion (2026-08-25)
+
+Permanent delete now works for both native and migrated New-DMS documents. PostgreSQL document/version deletion and its audit row commit atomically before MinIO cleanup. For migrated documents, the active mapping is tombstoned while the separate KnowledgeTree Legacy Archive remains immutable. The additive schema change is `infra/db/init/082_legacy_document_delete_tombstones.sql`.

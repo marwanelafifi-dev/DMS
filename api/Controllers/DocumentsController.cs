@@ -23,14 +23,10 @@ public class DocumentsController(
     IHttpClientFactory httpClientFactory,
     ILogger<DocumentsController> logger) : BaseController
 {
-    private const string LegacyMigrationDeleteBlockedMessage =
-        "This document has protected legacy migration history and cannot be permanently deleted.";
-
     private enum DocumentDeleteStatus
     {
         Deleted,
         NotFound,
-        ProtectedLegacyDocument,
     }
 
     private static readonly HashSet<string> PdfPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -1502,9 +1498,6 @@ public class DocumentsController(
         try
         {
             var (status, error) = await DeleteDocumentInternalAsync(id, GetCurrentUserId());
-            if (status == DocumentDeleteStatus.ProtectedLegacyDocument)
-                return Conflict(new { success = false, error });
-
             if (status == DocumentDeleteStatus.NotFound)
                 return NotFound(new { success = false, error });
 
@@ -1524,16 +1517,6 @@ public class DocumentsController(
         var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
         if (document == null)
             return (DocumentDeleteStatus.NotFound, "Document not found");
-
-        // Legacy migration provenance is immutable and intentionally holds
-        // restrictive foreign keys to both the active document and version.
-        // Reject the operation before touching MinIO so a failed database
-        // delete cannot leave a migrated document pointing at a missing file.
-        var hasProtectedLegacyHistory = await context.LegacyDocumentMappings
-            .AsNoTracking()
-            .AnyAsync(mapping => mapping.NewDocumentId == id);
-        if (hasProtectedLegacyHistory)
-            return (DocumentDeleteStatus.ProtectedLegacyDocument, LegacyMigrationDeleteBlockedMessage);
 
         var versions = await context.DocumentVersions
             .Where(v => v.DocumentId == id)
