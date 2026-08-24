@@ -1,3 +1,5 @@
+import hashlib
+import logging
 import os
 import shutil
 import signal
@@ -13,9 +15,19 @@ from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 
+logger = logging.getLogger("dms.preview")
 DATABASE_PATH = Path(
     os.environ.get("DMS_DB_PATH", Path(__file__).with_name("dms.db"))
 ).resolve()
+PREVIEW_CACHE_DIR = Path(
+    os.environ.get("DMS_PREVIEW_CACHE_DIR", DATABASE_PATH.parent / "preview-cache")
+).resolve()
+PREVIEW_CACHE_FORMAT_VERSION = os.environ.get(
+    "DMS_PREVIEW_CACHE_FORMAT_VERSION", "libreoffice-pdf-v1"
+)
+PREVIEW_CACHE_MAX_BYTES = int(
+    os.environ.get("DMS_PREVIEW_CACHE_MAX_BYTES", str(5 * 1024 * 1024 * 1024))
+)
 
 converter = DocumentConverter()
 
@@ -27,7 +39,24 @@ converter = DocumentConverter()
 # piling on more processes.
 LIBREOFFICE_MAX_CONCURRENT = int(os.environ.get("LIBREOFFICE_MAX_CONCURRENT", "3"))
 LIBREOFFICE_QUEUE_WAIT_SECONDS = int(os.environ.get("LIBREOFFICE_QUEUE_WAIT_SECONDS", "60"))
+LIBREOFFICE_CONVERSION_TIMEOUT_SECONDS = int(
+    os.environ.get("LIBREOFFICE_CONVERSION_TIMEOUT_SECONDS", "90")
+)
+PREVIEW_CACHE_WAIT_SECONDS = (
+    LIBREOFFICE_QUEUE_WAIT_SECONDS + LIBREOFFICE_CONVERSION_TIMEOUT_SECONDS + 5
+)
 _libreoffice_semaphore = threading.BoundedSemaphore(LIBREOFFICE_MAX_CONCURRENT)
+_preview_cache_locks_guard = threading.Lock()
+_preview_cache_storage_guard = threading.Lock()
+
+
+class PreviewCacheLockEntry:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.users = 0
+
+
+_preview_cache_locks: dict[str, PreviewCacheLockEntry] = {}
 
 app = FastAPI(title="DMS Local Document Parsing Service", version="1.0.0")
 app.add_middleware(
@@ -56,6 +85,89 @@ def initialize_database() -> None:
 
 
 initialize_database()
+PREVIEW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def read_cached_pdf(cache_path: Path) -> bytes | None:
+    with _preview_cache_storage_guard:
+        try:
+            cached_pdf = cache_path.read_bytes()
+        except OSError:
+            return None
+
+        if not (
+            cached_pdf.startswith(b"%PDF-")
+            and cached_pdf.rstrip().endswith(b"%%EOF")
+        ):
+            cache_path.unlink(missing_ok=True)
+            return None
+
+        try:
+            os.utime(cache_path, None)
+        except OSError:
+            pass
+        return cached_pdf
+
+
+def write_cached_pdf(cache_path: Path, pdf_bytes: bytes) -> bool:
+    if len(pdf_bytes) > PREVIEW_CACHE_MAX_BYTES:
+        return False
+
+    temporary_cache_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=PREVIEW_CACHE_DIR,
+            prefix=f"{cache_path.stem}_",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_cache_file:
+            temporary_cache_path = Path(temporary_cache_file.name)
+            temporary_cache_file.write(pdf_bytes)
+
+        with _preview_cache_storage_guard:
+            cached_files = sorted(
+                PREVIEW_CACHE_DIR.glob("*.pdf"),
+                key=lambda path: path.stat().st_mtime,
+            )
+            cached_bytes = sum(path.stat().st_size for path in cached_files)
+            for oldest_cache_path in cached_files:
+                if cached_bytes + len(pdf_bytes) <= PREVIEW_CACHE_MAX_BYTES:
+                    break
+                oldest_size = oldest_cache_path.stat().st_size
+                oldest_cache_path.unlink(missing_ok=True)
+                cached_bytes -= oldest_size
+
+            os.replace(temporary_cache_path, cache_path)
+        return True
+    except OSError as error:
+        logger.warning("Preview PDF could not be cached at %s: %s", cache_path, error)
+        return False
+    finally:
+        if temporary_cache_path is not None:
+            temporary_cache_path.unlink(missing_ok=True)
+
+
+def acquire_preview_cache_lock(cache_key: str) -> PreviewCacheLockEntry | None:
+    with _preview_cache_locks_guard:
+        entry = _preview_cache_locks.setdefault(cache_key, PreviewCacheLockEntry())
+        entry.users += 1
+
+    if entry.lock.acquire(timeout=PREVIEW_CACHE_WAIT_SECONDS):
+        return entry
+
+    with _preview_cache_locks_guard:
+        entry.users -= 1
+        if entry.users == 0 and _preview_cache_locks.get(cache_key) is entry:
+            _preview_cache_locks.pop(cache_key, None)
+    return None
+
+
+def release_preview_cache_lock(cache_key: str, entry: PreviewCacheLockEntry) -> None:
+    entry.lock.release()
+    with _preview_cache_locks_guard:
+        entry.users -= 1
+        if entry.users == 0 and _preview_cache_locks.get(cache_key) is entry:
+            _preview_cache_locks.pop(cache_key, None)
 
 
 def convert_uploaded_file(file: UploadFile) -> tuple[str, str]:
@@ -97,26 +209,57 @@ def convert_to_pdf(file: UploadFile = File(...)) -> Response:
     """
     filename = Path(file.filename or "document").name
     work_dir = Path(tempfile.mkdtemp(prefix="lo_convert_"))
-    # Each conversion gets its own LibreOffice user profile — headless soffice
-    # refuses to start a second instance against a profile that's already in use,
-    # which would otherwise make concurrent preview requests fail intermittently.
-    profile_dir = Path(tempfile.mkdtemp(prefix="lo_profile_"))
-
-    # A request that can't get a conversion slot within the wait window fails
-    # fast with a clear "try again" error instead of piling up behind an
-    # already-overloaded queue and eventually timing out anyway.
-    if not _libreoffice_semaphore.acquire(timeout=LIBREOFFICE_QUEUE_WAIT_SECONDS):
-        shutil.rmtree(work_dir, ignore_errors=True)
-        shutil.rmtree(profile_dir, ignore_errors=True)
-        raise HTTPException(
-            status_code=503,
-            detail="The document preview service is busy converting other files. Please try again shortly.",
-        )
+    profile_dir: Path | None = None
+    acquired_conversion_slot = False
+    cache_key: str | None = None
+    cache_lock_entry: PreviewCacheLockEntry | None = None
 
     try:
         input_path = work_dir / filename
+        source_hash = hashlib.sha256()
         with open(input_path, "wb") as destination:
-            shutil.copyfileobj(file.file, destination)
+            while chunk := file.file.read(1024 * 1024):
+                destination.write(chunk)
+                source_hash.update(chunk)
+
+        source_digest = source_hash.hexdigest()
+        cache_identity = (
+            f"{PREVIEW_CACHE_FORMAT_VERSION}\0{input_path.suffix.lower()}\0{source_digest}"
+        )
+        cache_key = hashlib.sha256(cache_identity.encode("utf-8")).hexdigest()
+        cache_path = PREVIEW_CACHE_DIR / f"{cache_key}.pdf"
+        cache_lock_entry = acquire_preview_cache_lock(cache_key)
+        if cache_lock_entry is None:
+            raise HTTPException(
+                status_code=503,
+                detail="This document preview is already being prepared. Please try again shortly.",
+            )
+
+        # The lock serializes duplicate requests for the same source. Re-check
+        # after acquiring it because another request may just have populated the
+        # cache while this one was waiting.
+        cached_pdf = read_cached_pdf(cache_path)
+        if cached_pdf is not None:
+            return Response(
+                content=cached_pdf,
+                media_type="application/pdf",
+                headers={"X-Preview-Cache": "HIT"},
+            )
+
+        # Each conversion gets its own LibreOffice user profile — headless soffice
+        # refuses to start a second instance against a profile that's already in use.
+        profile_dir = Path(tempfile.mkdtemp(prefix="lo_profile_"))
+
+        # Cache hits bypass this limited resource entirely. A genuine cache miss
+        # still waits for a bounded conversion slot instead of overloading soffice.
+        acquired_conversion_slot = _libreoffice_semaphore.acquire(
+            timeout=LIBREOFFICE_QUEUE_WAIT_SECONDS
+        )
+        if not acquired_conversion_slot:
+            raise HTTPException(
+                status_code=503,
+                detail="The document preview service is busy converting other files. Please try again shortly.",
+            )
 
         # Run in its own process group (start_new_session) so a timeout can kill
         # soffice's actual worker process, not just the launcher script — killing
@@ -138,7 +281,9 @@ def convert_to_pdf(file: UploadFile = File(...)) -> Response:
             start_new_session=True,
         )
         try:
-            stdout, stderr = process.communicate(timeout=90)
+            stdout, stderr = process.communicate(
+                timeout=LIBREOFFICE_CONVERSION_TIMEOUT_SECONDS
+            )
             returncode = process.returncode
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
@@ -156,12 +301,21 @@ def convert_to_pdf(file: UploadFile = File(...)) -> Response:
             )
 
         pdf_bytes = pdf_path.read_bytes()
+        write_cached_pdf(cache_path, pdf_bytes)
     finally:
-        _libreoffice_semaphore.release()
+        if acquired_conversion_slot:
+            _libreoffice_semaphore.release()
+        if cache_key is not None and cache_lock_entry is not None:
+            release_preview_cache_lock(cache_key, cache_lock_entry)
         shutil.rmtree(work_dir, ignore_errors=True)
-        shutil.rmtree(profile_dir, ignore_errors=True)
+        if profile_dir is not None:
+            shutil.rmtree(profile_dir, ignore_errors=True)
 
-    return Response(content=pdf_bytes, media_type="application/pdf")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"X-Preview-Cache": "MISS"},
+    )
 
 
 @app.post("/api/documents/convert")

@@ -98,6 +98,8 @@ services:
     restart: unless-stopped
     environment:
       DMS_DB_PATH: /data/dms.db
+      DMS_PREVIEW_CACHE_DIR: /data/preview-cache
+      DMS_PREVIEW_CACHE_MAX_BYTES: ${DMS_PREVIEW_CACHE_MAX_BYTES:-5368709120}
     volumes:
       - ocrdata:/data
     ports:
