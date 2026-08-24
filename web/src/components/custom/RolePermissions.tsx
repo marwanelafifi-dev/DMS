@@ -4,6 +4,7 @@ import { SkeletonTable } from '../ui/Skeleton';
 import { AlertCircle, Check, Edit2, Plus, Shield, Trash2, X } from 'lucide-react';
 import { apiClient, type PageAccessRole } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 // Rendered as checkmarked tags per role card, and as checkboxes in the Edit
 // modal. Editing these changes what a user assigned this role actually sees
@@ -322,7 +323,7 @@ export function RolePermissions() {
 
       {/* New Role Modal */}
       {showNewRoleForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <ModalOverlay onClose={() => setShowNewRoleForm(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
             <div className="flex flex-shrink-0 items-center justify-between bg-navy-900 px-6 py-4 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">New Role</h3>
@@ -394,12 +395,12 @@ export function RolePermissions() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Delete Role Confirmation Modal */}
       {deleteConfirm.role && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setDeleteConfirm({})} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Delete Role</h3>
@@ -424,12 +425,12 @@ export function RolePermissions() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Edit Role Modal */}
       {editingRole && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <ModalOverlay onClose={() => setEditingRole(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
             <div className="flex flex-shrink-0 items-center justify-between bg-navy-900 px-6 py-4 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Edit {editingRole.role} Access</h3>
@@ -493,7 +494,7 @@ export function RolePermissions() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

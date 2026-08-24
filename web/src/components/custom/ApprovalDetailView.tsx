@@ -7,6 +7,7 @@ import { apiClient } from '../../utils/api';
 import { doclingApi } from '../../services/doclingApi';
 import { EditDocumentModal } from './EditDocumentModal';
 import { usePageAccess } from '../../hooks/usePageAccess';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 // One document's place in the C-Doc Workflow — stage/status is tracked per
 // document (see 058_approval_document_stage_tracking.sql), independent of any
@@ -267,7 +268,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
   const handleDownload = () => { if (item) apiClient.downloadDocument(documentId, item.versionId).catch(() => {}); };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
+    <ModalOverlay onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
       <div className="flex h-[97vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-6 py-3 dark:border-slate-700">
           <div>
@@ -587,7 +588,7 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
           onSaved={load}
         />
       )}
-    </div>
+    </ModalOverlay>
   );
 }
 

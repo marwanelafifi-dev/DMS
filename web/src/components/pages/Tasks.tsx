@@ -11,6 +11,8 @@ import { TaskAttachmentsModal } from '../custom/TaskAttachmentsModal';
 import { AttachmentPreviewModal } from '../custom/AttachmentPreviewModal';
 import { UploadNewVersionModal } from '../custom/UploadNewVersionModal';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
+import { TagSelector } from '../custom/TagSelector';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const PAGE_SIZE = 10;
 
@@ -24,6 +26,7 @@ interface TaskForm {
   assignedTo: string;
   assignedToGroupId: string;
   documentId?: string;
+  tags: string[];
 }
 
 interface PcarDraft {
@@ -31,6 +34,7 @@ interface PcarDraft {
   correction: string;
   preventiveAction: string;
   targetDate: string;
+  tags: string[];
 }
 
 const PRIORITY_COLORS = {
@@ -86,6 +90,7 @@ export function Tasks() {
     assignedTo: DEV_USER_ID,
     assignedToGroupId: '',
     documentId: '',
+    tags: [],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newTaskAttachment, setNewTaskAttachment] = useState<File | null>(null);
@@ -96,7 +101,7 @@ export function Tasks() {
 
   const [statusChangeConfirm, setStatusChangeConfirm] = useState<{ taskId?: string; newStatus?: Task['status']; taskTitle?: string }>({});
   const [deleteConfirm, setDeleteConfirm] = useState<{ taskId?: string; taskTitle?: string }>({});
-  const [pcarDraft, setPcarDraft] = useState<PcarDraft>({ rootCause: '', correction: '', preventiveAction: '', targetDate: '' });
+  const [pcarDraft, setPcarDraft] = useState<PcarDraft>({ rootCause: '', correction: '', preventiveAction: '', targetDate: '', tags: [] });
 
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -214,7 +219,9 @@ export function Tasks() {
     }).length,
   };
 
-  const highlightedTask = (highlightTaskId ? tasks.find((task) => task.taskId === highlightTaskId) : undefined) ?? fetchedHighlightTask ?? undefined;
+  const highlightedTask = highlightTaskId
+    ? tasks.find((task) => task.taskId === highlightTaskId) ?? fetchedHighlightTask ?? undefined
+    : undefined;
   const selectedTask = selectedTaskId ? tasks.find((task) => task.taskId === selectedTaskId) : undefined;
   const getAssignedToId = (task: Task) => (task as any).assignedToId as string | undefined;
   const getAssignedToGroupId = (task: Task) => (task as any).assignedToGroupId as string | undefined;
@@ -474,6 +481,7 @@ export function Tasks() {
           correctionText: pcarDraft.correction.trim(),
           preventiveActions: pcarDraft.preventiveAction.trim(),
           dueDate: pcarDraft.targetDate,
+          tags: pcarDraft.tags,
         });
       } catch {
         // non-fatal — Save Documentation can retry this afterwards
@@ -504,6 +512,7 @@ export function Tasks() {
       correction: focusedPcar.correctionText || '',
       preventiveAction: focusedPcar.preventiveActions || '',
       targetDate: focusedPcar.dueDate.slice(0, 10),
+      tags: focusedPcar.tags || [],
     });
     setCorrectionUploadedTaskId(null);
   }, [focusedPcar?.taskId]);
@@ -552,6 +561,7 @@ export function Tasks() {
         correction: pcarDraft.correction.trim(),
         preventiveActions: pcarDraft.preventiveAction.trim(),
         targetDate: pcarDraft.targetDate,
+        tags: pcarDraft.tags,
       });
       if (!res.success) {
         showError(res.error || 'Failed to submit PCAR');
@@ -577,6 +587,7 @@ export function Tasks() {
         correctionText: pcarDraft.correction.trim() || undefined,
         preventiveActions: pcarDraft.preventiveAction.trim() || undefined,
         dueDate: pcarDraft.targetDate || undefined,
+        tags: pcarDraft.tags,
       });
       if (!res.success) {
         showError(res.error || 'Failed to save');
@@ -618,6 +629,7 @@ export function Tasks() {
         assignedToId: newTask.assignedToGroupId ? undefined : newTask.assignedTo,
         assignedToGroupId: newTask.assignedToGroupId || undefined,
         dueDate: newTask.dueDate,
+        tags: newTask.tags,
       });
 
       const newTaskId = res.data?.taskId;
@@ -640,6 +652,7 @@ export function Tasks() {
         assignedTo: DEV_USER_ID,
         assignedToGroupId: '',
         documentId: '',
+        tags: [],
       });
       setNewTaskAttachment(null);
       setDocSearchQuery('');
@@ -680,6 +693,7 @@ export function Tasks() {
       dueDate: task.dueDate,
       assignedTo: getAssignedToId(task) ?? '',
       assignedToGroupId: getAssignedToGroupId(task) ?? '',
+      tags: task.tags || [],
     });
   };
 
@@ -698,6 +712,7 @@ export function Tasks() {
         payload.dueDate = editData.dueDate;
         payload.riskSeverity = editData.priority;
         payload.taskType = editData.taskType;
+        payload.tags = editData.tags;
       }
       // Reassignment is its own permission, gated separately server-side too —
       // only send it when the field was actually editable, so a save with no
@@ -835,7 +850,7 @@ export function Tasks() {
       </div>
 
       {focusedPcar && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
+        <ModalOverlay onClose={() => { setSelectedTaskId(null); if (highlightTaskId) navigate('/tasks', { replace: true }); }} className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
           <div className="w-full max-w-5xl rounded-lg bg-[#f4f6fa] p-4 dark:bg-slate-950 sm:p-5">
             <div className="mb-3 flex items-center justify-end">
               <button
@@ -861,6 +876,10 @@ export function Tasks() {
                   )}
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">Tags</p>
+                  <TagSelector value={pcarDraft.tags} onChange={(tags) => setPcarDraft({ ...pcarDraft, tags })} disabled={!focusedPcarIsMine || pcarAlreadySubmitted} />
+                </div>
                 {focusedPcar.status === 'open' && focusedPcar.qaReviewNotes && (
                   <p className="mt-3 rounded-[4px] bg-[#fde1e2] px-3 py-2 text-xs text-[#c73c44] dark:bg-red-500/10 dark:text-red-300">
                     <strong>Sent back for revision:</strong> {focusedPcar.qaReviewNotes}
@@ -1051,7 +1070,7 @@ export function Tasks() {
           </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       <div className="flex items-center justify-between pt-1"><h2 className="section-heading">PCAR Register</h2></div>
@@ -1156,6 +1175,9 @@ export function Tasks() {
                             <p className="font-medium text-navy-900 dark:text-white">{task.title}</p>
                             {task.description && (
                               <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
+                            )}
+                            {(task.tags?.length ?? 0) > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">{(task.tags || []).map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-[#52627a] dark:bg-slate-800 dark:text-slate-300">{tag}</span>)}</div>
                             )}
                             {canManageAllTasks && (
                               <button
@@ -1368,8 +1390,8 @@ export function Tasks() {
 
       {/* Add Task Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md">
+        <ModalOverlay onClose={() => setShowAddForm(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="max-h-[90vh] w-full max-w-md overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
               <h2 className="text-xl font-serif font-bold text-navy-900 dark:text-white">Create New Task</h2>
               <button
@@ -1399,6 +1421,11 @@ export function Tasks() {
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Tags</label>
+                <TagSelector value={newTask.tags} onChange={(tags) => setNewTask({ ...newTask, tags })} />
               </div>
 
               <div ref={docPickerRef} className="relative">
@@ -1536,12 +1563,12 @@ export function Tasks() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Status Change Confirmation Modal */}
       {statusChangeConfirm.taskId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <ModalOverlay onClose={() => setStatusChangeConfirm({})} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-sm">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
               <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Mark as Complete</h2>
@@ -1572,12 +1599,12 @@ export function Tasks() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm.taskId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <ModalOverlay onClose={() => setDeleteConfirm({})} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-sm">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
               <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Delete Task</h2>
@@ -1608,7 +1635,7 @@ export function Tasks() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
 
       {attachmentsFor && (

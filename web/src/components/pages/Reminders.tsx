@@ -6,6 +6,7 @@ import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { usePageAccess } from '../../hooks/usePageAccess';
 import type { Reminder, ReminderChannel, Task } from '../../types';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const CHANNELS: ReminderChannel[] = ['APP', 'EMAIL', 'BOTH'];
 
@@ -301,7 +302,7 @@ export function Reminders() {
 
       {/* Add Reminder Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <ModalOverlay onClose={() => setShowAddForm(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-md">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
               <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Create New Reminder</h2>
@@ -383,12 +384,12 @@ export function Reminders() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
       {/* Reminder Details Modal */}
       {viewingReminder && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setViewingReminder(null)}>
-          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay onClose={() => setViewingReminder(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-md">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
               <h2 className="flex items-center gap-2 text-lg font-serif font-bold text-navy-900 dark:text-white">
                 <Bell className="w-5 h-5" /> Reminder Details
@@ -458,7 +459,7 @@ export function Reminders() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

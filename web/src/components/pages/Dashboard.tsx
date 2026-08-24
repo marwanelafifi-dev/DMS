@@ -9,6 +9,7 @@ import { apiClient } from '../../utils/api';
 import { AuditCalendarCard } from '../custom/AuditCalendarCard';
 import { resolveLibraryStatus } from '../../fixtures/documentLibrary';
 import { statusLabels } from '../../utils/documentStatus';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
@@ -355,8 +356,8 @@ export function Dashboard() {
       </div>
 
       {showAllAnnouncements && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeAnnouncementsModal}>
-          <Card className="max-h-[80vh] w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay onClose={closeAnnouncementsModal} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="max-h-[80vh] w-full max-w-lg overflow-hidden">
             <div className="flex items-center justify-between border-b border-gray-200 p-5 dark:border-navy-700">
               <h2 className="section-heading flex items-center gap-2">
                 <Megaphone className="h-4 w-4 text-[#3f8bca]" />
@@ -410,7 +411,7 @@ export function Dashboard() {
               </CardBody>
             )}
           </Card>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

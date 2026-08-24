@@ -8,6 +8,7 @@ import { doclingApi } from '../../services/doclingApi';
 import { MarkdownViewer } from './MarkdownViewer';
 import { parseExcelDocument } from '../../utils/officeParser';
 import type { SpreadsheetSheet } from '../../fixtures/documentLibrary';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 'csv']);
@@ -176,7 +177,8 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
   };
 
   return (
-    <div
+    <ModalOverlay
+      onClose={onClose}
       className={
         reviewing
           ? 'fixed inset-y-0 right-0 left-0 top-0 z-[80] overflow-hidden bg-black/50 lg:left-[286px]'
@@ -350,6 +352,6 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

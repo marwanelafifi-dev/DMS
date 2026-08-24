@@ -28,6 +28,7 @@ import { UploadNewVersionModal } from './UploadNewVersionModal';
 import { VersionHistoryModal } from './VersionHistoryModal';
 import { RelatedTasksModal } from './RelatedTasksModal';
 import { LegacyMetadataHistoryAction } from './LegacyMetadataHistoryAction';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const ZOOM_STEP = 10;
 const MIN_ZOOM = 50;
@@ -398,7 +399,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
     window.print();
   }
 
-  // Separate from the Escape/Tab handler below since it needs to react to
+  // Separate from the Tab focus handler below since it needs to react to
   // document/totalPages changes directly instead of stale closures.
   useEffect(() => {
     const handleKeys = (event: KeyboardEvent) => {
@@ -449,10 +450,6 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-        return;
-      }
       if (event.key !== 'Tab' || !dialogRef.current) return;
 
       const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, iframe, [tabindex]:not([tabindex="-1"])'))
@@ -752,7 +749,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
   };
 
   return (
-    <div data-testid="document-preview-overlay" className="fixed inset-y-0 right-0 left-0 top-0 z-[70] overflow-hidden lg:left-[286px]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+    <ModalOverlay onClose={onClose} data-testid="document-preview-overlay" className="fixed inset-y-0 right-0 left-0 top-0 z-[70] overflow-hidden lg:left-[286px]" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
       <section ref={dialogRef} className="h-screen flex flex-col overflow-hidden bg-[#f3f6fa] dark:bg-slate-950">
         <header className="flex flex-shrink-0 flex-col gap-2 border-b border-[#dbe2ec] bg-white px-6 py-3 dark:border-white/10 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1047,6 +1044,6 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
           onClose={() => setShowRelatedTasks(false)}
         />
       )}
-    </div>
+    </ModalOverlay>
   );
 }

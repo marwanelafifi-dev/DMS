@@ -35,6 +35,7 @@ import {
 import { doclingApi } from '../../services/doclingApi';
 import { downloadFolderAsZip } from '../../utils/folderDownload';
 import { parseWordDocument, parseExcelDocument, parsePowerPointDocument } from '../../utils/officeParser';
+import { ModalOverlay, preventModalOutsideDismiss } from '../ui/ModalOverlay';
 
 function readBlobAsText(blob: Blob): Promise<string> {
   if (typeof blob.text === 'function') return blob.text();
@@ -1519,7 +1520,7 @@ export function Documents() {
       )}
 
       {newFolderRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <ModalOverlay onClose={() => setNewFolderRequest(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <Card className="w-full max-w-sm mx-4">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] p-4 dark:border-white/10">
               <h3 className="section-heading">{newFolderRequest.parentFolderId ? 'New Subfolder' : 'New Folder'}</h3>
@@ -1552,13 +1553,13 @@ export function Documents() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
 
       <Dialog.Root open={showUploadModal} onOpenChange={(open) => open ? setShowUploadModal(true) : closeUploadModal()}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
-          <Dialog.Content asChild>
+          <Dialog.Content asChild onPointerDownOutside={preventModalOutsideDismiss} onInteractOutside={preventModalOutsideDismiss}>
             <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 shadow-xl flex flex-col max-h-[95vh]">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] p-3 dark:border-white/10">
               <Dialog.Title className="section-heading">Upload Documents</Dialog.Title>

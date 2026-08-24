@@ -4,6 +4,8 @@ import type { LegacyAssociatedFile, LegacyMetadataHistory } from '../../types';
 import { apiClient } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
 import { Button } from '../ui';
+import { ModalOverlay } from '../ui/ModalOverlay';
+import { ReadOnlyFilePreviewModal } from './ReadOnlyFilePreviewModal';
 
 interface LegacyMetadataHistoryActionProps {
   documentId: string;
@@ -18,6 +20,7 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
   const [isOpen, setIsOpen] = useState(false);
   const [busyFileAction, setBusyFileAction] = useState<string | null>(null);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<LegacyAssociatedFile | null>(null);
   const actionButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -55,16 +58,12 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
     });
 
     const handleDialogKeyDown = (event: KeyboardEvent) => {
-      // DocumentPreview also listens on window for Escape/zoom/paging keys.
-      // Stop those keys during the nested archive dialog so closing or
-      // navigating this modal cannot close/change the document underneath it.
-      if (['Escape', 'Tab', 'PageUp', 'PageDown', 'Home', 'End', '+', '=', '-', '0'].includes(event.key)) {
+      // DocumentPreview also listens on window for zoom/paging keys. Stop
+      // those keys during the nested archive dialog so navigating this modal
+      // cannot change the document underneath it. Escape is owned centrally
+      // by ModalOverlay so only the top-most true dialog closes.
+      if (['Tab', 'PageUp', 'PageDown', 'Home', 'End', '+', '=', '-', '0'].includes(event.key)) {
         event.stopImmediatePropagation();
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setIsOpen(false);
-        return;
       }
       if (event.key !== 'Tab' || !dialogRef.current) return;
 
@@ -101,19 +100,8 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
 
   const handleView = async (file: LegacyAssociatedFile) => {
     if (!file.isAvailable) return;
-    const actionKey = `view-${file.legacyContentVersionId}`;
-    setBusyFileAction(actionKey);
     setFileActionError(null);
-    try {
-      const { blob } = await apiClient.getLegacyContentFile(documentId, file.legacyContentVersionId, 'view');
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch {
-      setFileActionError(`Could not open ${file.originalFileName} from the Legacy Archive.`);
-    } finally {
-      setBusyFileAction(null);
-    }
+    setPreviewFile(file);
   };
 
   const handleDownload = async (file: LegacyAssociatedFile) => {
@@ -164,7 +152,7 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4">
+        <ModalOverlay onClose={() => setIsOpen(false)} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4">
           <div
             ref={dialogRef}
             role="dialog"
@@ -290,7 +278,15 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
               <Button onClick={() => setIsOpen(false)} variant="secondary">Close</Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
+      )}
+      {previewFile && (
+        <ReadOnlyFilePreviewModal
+          fileName={previewFile.originalFileName}
+          loadBlob={async () => (await apiClient.getLegacyContentFile(documentId, previewFile.legacyContentVersionId, 'view')).blob}
+          onDownload={() => handleDownload(previewFile)}
+          onClose={() => setPreviewFile(null)}
+        />
       )}
     </>
   );

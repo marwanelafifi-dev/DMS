@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, MapPin, Paperclip, Users, Video, X } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface GoogleCalendarAttachment {
   title: string;
@@ -270,10 +271,9 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
       )}
 
       {openEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpenEvent(null)}>
+        <ModalOverlay onClose={() => setOpenEvent(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div
             className="w-full max-w-md rounded-lg bg-white shadow-2xl dark:bg-slate-800"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 p-4">
               <div className="flex items-start gap-3">
@@ -356,7 +356,7 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
               </div>
             )}
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

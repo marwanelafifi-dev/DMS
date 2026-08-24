@@ -3,6 +3,7 @@ import { Check, Minus, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '../ui';
 import { apiClient, type AccessOverride, type AccessOverrideFlags } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type FieldDef = { key: keyof AccessOverrideFlags; label: string };
 
@@ -198,7 +199,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <ModalOverlay onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
         <div className="flex items-center justify-between bg-navy-900 px-6 py-4">
           <div>
@@ -331,6 +332,6 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

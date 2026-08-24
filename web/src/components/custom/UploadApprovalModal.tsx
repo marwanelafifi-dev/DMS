@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react';
 import { Button, Card } from '../ui';
 import { useToast } from '../../hooks/useToast';
 import { apiClient } from '../../utils/api';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface UploadedFile {
   documentId: string;
@@ -99,7 +100,7 @@ export const UploadApprovalModal: React.FC<UploadApprovalModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+    <ModalOverlay onClose={onCancel} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-6 py-4">
@@ -243,6 +244,6 @@ export const UploadApprovalModal: React.FC<UploadApprovalModalProps> = ({
           </div>
         </form>
       </Card>
-    </div>
+    </ModalOverlay>
   );
 };

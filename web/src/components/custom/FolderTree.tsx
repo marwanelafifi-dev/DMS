@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronDown, ChevronRight, Folder, FolderPlus, MoreVertical, Copy, FolderInput, Trash2, Pencil, Download, ShieldCheck } from 'lucide-react';
+import { ChevronsDown, ChevronsUp, ChevronDown, ChevronRight, Folder, FolderPlus, MoreVertical, Copy, FolderInput, Trash2, Pencil, Download, ShieldCheck } from 'lucide-react';
 import type { Folder as FolderType } from '../../types';
 import type { RolePermissionFlags } from '../../utils/api';
 
@@ -81,6 +81,9 @@ export function FolderTree({
       return next;
     });
   };
+
+  const expandAll = () => setCollapsedIds(new Set());
+  const collapseAll = () => setCollapsedIds(new Set(childrenByParent.keys()));
 
   const renderFolder = (folder: FolderType, depth: number) => {
     const isCurrent = selectedFolderId === folder.folderId;
@@ -232,15 +235,23 @@ export function FolderTree({
         <h2 id="folder-section-title" className="text-xs font-semibold uppercase tracking-wide text-[#64748b] dark:text-white">
           Folders
         </h2>
-        <button
-          type="button"
-          onClick={() => onCreateFolder?.(null)}
-          aria-label="New folder"
-          title="New folder"
-          className="rounded p-1 text-[#3f8bca] hover:bg-[#eef6fd] dark:text-[#7dd3fc] dark:hover:bg-slate-800"
-        >
-          <FolderPlus className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button type="button" onClick={expandAll} aria-label="Expand all folders" title="Expand All" disabled={folders.length === 0} className="rounded p-1 text-[#64748b] hover:bg-[#eef6fd] disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
+            <ChevronsDown className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={collapseAll} aria-label="Collapse all folders" title="Collapse All" disabled={childrenByParent.size === 0} className="rounded p-1 text-[#64748b] hover:bg-[#eef6fd] disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
+            <ChevronsUp className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onCreateFolder?.(null)}
+            aria-label="New folder"
+            title="New folder"
+            className="rounded p-1 text-[#3f8bca] hover:bg-[#eef6fd] dark:text-[#7dd3fc] dark:hover:bg-slate-800"
+          >
+            <FolderPlus className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       {folders.length > 0 ? (
         <nav className="flex flex-col gap-0.5 px-2">

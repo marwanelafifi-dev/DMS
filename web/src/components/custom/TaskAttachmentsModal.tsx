@@ -5,6 +5,7 @@ import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface AttachmentRow {
   attachmentId: string;
@@ -75,7 +76,7 @@ export function TaskAttachmentsModal({ taskId, taskTitle, onClose }: TaskAttachm
   const handleView = (attachment: AttachmentRow) => setPreviewing(attachment);
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+    <ModalOverlay onClose={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <div className="min-w-0">
@@ -154,6 +155,6 @@ export function TaskAttachmentsModal({ taskId, taskTitle, onClose }: TaskAttachm
           onClose={() => setPreviewing(null)}
         />
       )}
-    </div>
+    </ModalOverlay>
   );
 }

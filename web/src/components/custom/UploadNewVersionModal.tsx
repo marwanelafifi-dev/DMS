@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../ui';
 import { X, AlertCircle, FileText } from 'lucide-react';
 import { apiClient } from '../../utils/api';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const inputClass = 'w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 
@@ -128,7 +129,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+    <ModalOverlay onClose={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <div className="min-w-0">
@@ -242,7 +243,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
           <Button onClick={onClose} disabled={isSaving} variant="secondary" className="flex-1">Cancel</Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

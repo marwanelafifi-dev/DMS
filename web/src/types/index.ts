@@ -154,6 +154,7 @@ export interface Task {
   taskId: string;
   title: string;
   description?: string;
+  tags: string[];
   taskType: 'correction' | 'rca' | 'audit_action';
   documentId?: string;
   // Only set for a correction task spawned by a QA/Manager rejection in the

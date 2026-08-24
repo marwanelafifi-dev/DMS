@@ -6,6 +6,7 @@ import { apiClient } from '../../utils/api';
 import { useAuth } from '../../hooks/useAuth';
 import { usePageAccess } from '../../hooks/usePageAccess';
 import { useToast } from '../../hooks/useToast';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface Announcement {
   announcementId: string;
@@ -187,7 +188,7 @@ export function SendAnnouncement() {
       )}
 
       {showForm && canPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <ModalOverlay onClose={() => setShowForm(false)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-navy-700">
               <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">New Announcement</h2>
@@ -266,7 +267,7 @@ export function SendAnnouncement() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

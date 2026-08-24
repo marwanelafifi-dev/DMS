@@ -6,7 +6,6 @@ import {
   Bell,
   BellRing,
   Building2,
-  Check,
   ChevronDown,
   ClipboardCheck,
   Database,
@@ -165,25 +164,10 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
             </div>
           )}
 
-          <div className="px-5 pb-2 pt-5 text-[11px] font-medium uppercase tracking-[0.1em] text-white/45">Compliance</div>
-          <div className="space-y-1 px-5">
-            <div className="flex items-center gap-2.5 py-2 text-xs text-white/65">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#58d68d]" />
-              ISO 9001:2015
-            </div>
-            <div className="flex items-center gap-2.5 py-2 text-xs text-white/65">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#58d68d]" />
-              ISO 27001:2022
-            </div>
-          </div>
         </nav>
 
-        <div className="border-t border-white/10 px-4 py-4 text-xs text-white/55">
-          <div className="flex items-center gap-2">
-            <Check className="h-4 w-4" />
-            <span>On-Premises Vault</span>
-          </div>
-          <div className="mt-2 text-[11px] text-white/35">v3.2.1 · Build 20260721</div>
+        <div className="border-t border-white/10 px-4 py-3 text-[11px] text-white/35">
+          v3.2.1 · Build 20260721
         </div>
       </aside>
     </>

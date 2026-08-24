@@ -160,6 +160,52 @@ describe('LegacyMetadataHistoryAction', () => {
     expect(within(dialog).getByText('Bassem Mortada, Mostafa Medhat')).toBeInTheDocument();
   });
 
+  it('opens View in the read-only preview without triggering Download', async () => {
+    const user = userEvent.setup();
+    const pdfHistory = {
+      ...completeHistory,
+      snapshots: [{
+        ...completeHistory.snapshots[0],
+        associatedFile: {
+          ...completeHistory.snapshots[0].associatedFile,
+          originalFileName: 'legacy-review.pdf',
+        },
+      }],
+    };
+    vi.mocked(apiClient.getLegacyMetadataHistory).mockResolvedValue({ success: true, data: pdfHistory });
+    const fileFetch = vi.spyOn(apiClient, 'getLegacyContentFile').mockResolvedValue({
+      blob: new Blob(['pdf'], { type: 'application/pdf' }),
+      fileName: 'legacy-review.pdf',
+    });
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} />);
+    await user.click(await screen.findByRole('button', { name: `View legacy metadata history of ${fileName}` }));
+    await user.click(screen.getByRole('button', { name: 'View legacy-review.pdf' }));
+
+    const previewDialog = await screen.findByRole('dialog', { name: 'Preview legacy-review.pdf' });
+    expect(previewDialog.querySelector('iframe[title="legacy-review.pdf"]')).toBeInTheDocument();
+    expect(fileFetch).toHaveBeenCalledWith(documentId, 349, 'view');
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps Download as a separate attachment action', async () => {
+    const user = userEvent.setup();
+    const fileFetch = vi.spyOn(apiClient, 'getLegacyContentFile').mockResolvedValue({
+      blob: new Blob(['original']),
+      fileName: 'SRD.doc',
+    });
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} />);
+    await user.click(await screen.findByRole('button', { name: `View legacy metadata history of ${fileName}` }));
+    await user.click(screen.getAllByRole('button', { name: 'Download SRD.doc' })[0]);
+
+    expect(fileFetch).toHaveBeenCalledWith(documentId, 349, 'download');
+    expect(anchorClick).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog', { name: 'Preview SRD.doc' })).not.toBeInTheDocument();
+  });
+
   it('hides the optional action when the document has no legacy archive', async () => {
     vi.mocked(apiClient.getLegacyMetadataHistory).mockResolvedValue({
       success: true,

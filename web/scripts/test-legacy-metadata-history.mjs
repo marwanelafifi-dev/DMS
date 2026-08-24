@@ -117,10 +117,14 @@ try {
   let commandId = 0;
   const pendingCommands = new Map();
   const pageErrors = [];
+  const networkRequests = [];
   socket.addEventListener('message', ({ data }) => {
     const message = JSON.parse(data);
     if (message.method === 'Runtime.exceptionThrown') {
       pageErrors.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
+    }
+    if (message.method === 'Network.requestWillBeSent') {
+      networkRequests.push(message.params.request.url);
     }
     const pending = pendingCommands.get(message.id);
     if (!pending) return;
@@ -155,6 +159,7 @@ try {
 
   await send('Runtime.enable');
   await send('Page.enable');
+  await send('Network.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', {
     source: `localStorage.setItem('dms_session_token', ${JSON.stringify(token)});`,
   });
@@ -176,8 +181,17 @@ try {
     );
     const headerText = await evaluate(`document.body.innerText`);
     assert(headerText.includes('Category') && headerText.includes(pilot.category), `Legacy ${pilot.legacyId}: Category ${pilot.category} is not visible`);
+    if (pilot.legacyId === 230) {
+      assert(!['COMPLIANCE', 'ISO 9001:2015', 'ISO 27001:2022', 'On-Premises Vault'].some((label) => headerText.includes(label)), 'Removed sidebar content is still visible');
+      assert(await evaluate(`Boolean(document.querySelector('button[aria-label="Expand all folders"]') && document.querySelector('button[aria-label="Collapse all folders"]'))`), 'Folder Expand All / Collapse All controls are unavailable');
+    }
     await evaluate(`Array.from(document.querySelectorAll('button')).find((button) => button.getAttribute('aria-label')?.startsWith('View legacy metadata history of '))?.click()`);
     await waitForPage(`Boolean(document.querySelector('[role="dialog"][aria-labelledby="legacy-metadata-history-title"]'))`, `Legacy ${pilot.legacyId}: dialog did not open`);
+
+    if (pilot.legacyId === 230) {
+      await evaluate(`document.querySelector('[role="dialog"][aria-labelledby="legacy-metadata-history-title"]')?.parentElement?.click()`);
+      assert(await evaluate(`Boolean(document.querySelector('[role="dialog"][aria-labelledby="legacy-metadata-history-title"]'))`), 'Legacy Metadata History closed from a backdrop click');
+    }
 
     const dialogState = await evaluate(`(() => {
       const dialog = document.querySelector('[role="dialog"][aria-labelledby="legacy-metadata-history-title"]');
@@ -203,6 +217,33 @@ try {
     if (pilot.legacyId === 230) {
       assert(dialogState.text.includes('Bassem Mortada, Mostafa Medhat'), 'Legacy 230: superseded Authors value is not visible');
       assert(dialogState.text.includes('Legacy description column'), 'Legacy 230: separate base description field is not visible');
+
+      const currentFile = body.data.snapshots.find((snapshot) => snapshot.isCurrentAtMigration && snapshot.associatedFile?.isAvailable);
+      const historicalFile = body.data.snapshots.find((snapshot) => !snapshot.isCurrentAtMigration
+        && snapshot.associatedFile?.isAvailable
+        && snapshot.legacyContentVersionId !== currentFile?.legacyContentVersionId);
+      assert(currentFile && historicalFile, 'Legacy 230: current and historical preview samples were not available');
+
+      for (const snapshot of [currentFile, historicalFile]) {
+        const requestStart = networkRequests.length;
+        const snapshotSelector = `[data-testid="legacy-metadata-snapshot-${snapshot.metadataVersion}"]`;
+        await evaluate(`document.querySelector(${JSON.stringify(snapshotSelector)})?.querySelector('button[aria-label^="View "]')?.click()`);
+        await waitForPage(`Boolean(document.querySelector('[role="dialog"][aria-label^="Preview "]'))`, `Legacy 230 content ${snapshot.legacyContentVersionId}: preview dialog did not open`);
+        await waitForPage(`(() => { const dialog = document.querySelector('[role="dialog"][aria-label^="Preview "]'); return Boolean(dialog && !dialog.querySelector('.animate-spin')); })()`, `Legacy 230 content ${snapshot.legacyContentVersionId}: preview did not resolve`, 120_000);
+
+        const previewState = await evaluate(`(() => { const dialog = document.querySelector('[role="dialog"][aria-label^="Preview "]'); return { text: dialog?.innerText || '', rendered: Boolean(dialog?.querySelector('iframe, img, pre, table')) }; })()`);
+        assert(previewState.rendered || previewState.text.includes('Preview unavailable'), `Legacy 230 content ${snapshot.legacyContentVersionId}: neither a viewer nor the normal unavailable state appeared`);
+        const actionRequests = networkRequests.slice(requestStart);
+        assert(actionRequests.some((url) => url.includes(`/legacy-content/${snapshot.legacyContentVersionId}/view`)), `Legacy 230 content ${snapshot.legacyContentVersionId}: View did not request its exact archive file`);
+        assert(!actionRequests.some((url) => url.includes(`/legacy-content/${snapshot.legacyContentVersionId}/download`)), `Legacy 230 content ${snapshot.legacyContentVersionId}: View incorrectly triggered Download`);
+
+        const downloadResponse = await fetch(`${baseUrl}/api/documents/${pilot.documentId}/legacy-content/${snapshot.legacyContentVersionId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+        assert(downloadResponse.ok && downloadResponse.headers.get('content-disposition')?.toLowerCase().includes('attachment'), `Legacy 230 content ${snapshot.legacyContentVersionId}: explicit Download is unavailable`);
+        await downloadResponse.body?.cancel();
+
+        await evaluate(`Array.from(document.querySelectorAll('button')).find((button) => button.getAttribute('aria-label')?.startsWith('Close preview of '))?.click()`);
+        await waitForPage(`!document.querySelector('[role="dialog"][aria-label^="Preview "]')`, `Legacy 230 content ${snapshot.legacyContentVersionId}: preview did not close`);
+      }
     }
 
     await evaluate(`document.querySelector('button[aria-label="Close legacy metadata history"]')?.click()`);

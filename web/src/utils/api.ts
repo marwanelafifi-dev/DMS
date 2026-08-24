@@ -694,12 +694,13 @@ class APIClient {
 
   // PCAR review — moves a task from 'open' into the real QA review queue
   // instead of just flipping status locally with no reviewer-facing effect.
-  async submitPcar(taskId: string, payload: { rca: string; correction: string; preventiveActions: string; targetDate: string }) {
+  async submitPcar(taskId: string, payload: { rca: string; correction: string; preventiveActions: string; targetDate: string; tags?: string[] }) {
     const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/submit-pcar`, {
       rca: payload.rca,
       correction: payload.correction,
       preventiveActions: payload.preventiveActions,
       targetDate: payload.targetDate,
+      tags: payload.tags,
     });
     return data;
   }
@@ -770,6 +771,7 @@ class APIClient {
       priority: task.priority ?? task.riskSeverity ?? 'medium',
       status: task.status === 'completed' ? 'done' : task.status,
       dueDate: task.dueDate ?? '',
+      tags: Array.isArray(task.tags) ? task.tags : [],
     };
   }
 

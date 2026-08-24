@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { preventModalOutsideDismiss } from '../ui/ModalOverlay';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { AlertTriangle, Check, Columns3, Copy, FolderInput, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
 import type { Folder } from '../../types';
@@ -220,7 +221,7 @@ export function LibraryBulkActions({
       }}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[5px] border border-[#dbe2ec] bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          <Dialog.Content onPointerDownOutside={preventModalOutsideDismiss} onInteractOutside={preventModalOutsideDismiss} className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[5px] border border-[#dbe2ec] bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
               <Dialog.Title className="section-heading">{actionTitle}</Dialog.Title>
               <Dialog.Close asChild><button type="button" aria-label="Close bulk action dialog" className="text-[#718198] hover:text-[#26334d]"><X className="h-5 w-5" /></button></Dialog.Close>
