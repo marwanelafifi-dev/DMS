@@ -954,6 +954,10 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
                 <p className="truncate">{document.department}</p>
               </div>
               <div>
+                <p className="font-medium text-[#34425b] dark:text-slate-200">Category</p>
+                <p className="truncate">{document.category || '\u2014'}</p>
+              </div>
+              <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Owner</p>
                 <p className="truncate">{document.owner.fullName}</p>
               </div>

@@ -51,10 +51,11 @@ function ExpandableCellText({ value, monospace }: { value?: string | null; monos
   );
 }
 
-export type OptionalDocumentColumn = 'department' | 'owner' | 'modifiedAt' | 'tags' | 'status';
+export type OptionalDocumentColumn = 'department' | 'category' | 'owner' | 'modifiedAt' | 'tags' | 'status';
 
 export const defaultVisibleDocumentColumns: ReadonlySet<OptionalDocumentColumn> = new Set([
   'department',
+  'category',
   'owner',
   'modifiedAt',
   'tags',
@@ -79,7 +80,7 @@ interface DocumentListProps {
   permissions?: RolePermissionFlags | null;
 }
 
-type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'owner' | 'modifiedAt' | 'tags' | 'status';
+type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'category' | 'owner' | 'modifiedAt' | 'tags' | 'status';
 
 const extensionStyles: Record<MockLibraryDocument['extension'], string> = {
   txt: 'bg-slate-100 text-slate-600',
@@ -147,6 +148,7 @@ export function DocumentList({
       extension: [a.extension, b.extension],
       folderName: [a.folderName, b.folderName],
       department: [a.department, b.department],
+      category: [a.category ?? '', b.category ?? ''],
       owner: [a.owner.fullName, b.owner.fullName],
       modifiedAt: [new Date(a.modifiedAt).getTime(), new Date(b.modifiedAt).getTime()],
       tags: [a.tags.join(' '), b.tags.join(' ')],
@@ -214,10 +216,10 @@ export function DocumentList({
   const columnWidthPercents = useMemo(() => {
     const weights: Record<string, number> = {
       checkbox: 3, documentId: 10, fileName: 17, folder: 7, actions: 10,
-      department: 12, owner: 12, modifiedAt: 10, tags: 6, status: 13,
+      department: 11, category: 9, owner: 11, modifiedAt: 10, tags: 6, status: 12,
     };
     const activeKeys = ['checkbox', 'documentId', 'fileName', 'folder',
-      ...(['department', 'owner', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
+      ...(['department', 'category', 'owner', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
       'actions'];
     const totalWeight = activeKeys.reduce((sum, key) => sum + weights[key], 0);
     return Object.fromEntries(activeKeys.map((key) => [key, (weights[key] / totalWeight) * 100]));
@@ -236,6 +238,7 @@ export function DocumentList({
           <col style={{ width: `${columnWidthPercents.fileName}%` }} />
           <col style={{ width: `${columnWidthPercents.folder}%` }} />
           {visibleColumns.has('department') && <col style={{ width: `${columnWidthPercents.department}%` }} />}
+          {visibleColumns.has('category') && <col style={{ width: `${columnWidthPercents.category}%` }} />}
           {visibleColumns.has('owner') && <col style={{ width: `${columnWidthPercents.owner}%` }} />}
           {visibleColumns.has('modifiedAt') && <col style={{ width: `${columnWidthPercents.modifiedAt}%` }} />}
           {visibleColumns.has('tags') && <col style={{ width: `${columnWidthPercents.tags}%` }} />}
@@ -256,6 +259,7 @@ export function DocumentList({
             <th>{header('File name', 'fileName')}</th>
             <th>{header('Folder', 'folderName')}</th>
             {visibleColumns.has('department') && <th>{header('Department', 'department')}</th>}
+            {visibleColumns.has('category') && <th>{header('Category', 'category')}</th>}
             {visibleColumns.has('owner') && <th>{header('Owner', 'owner')}</th>}
             {visibleColumns.has('modifiedAt') && <th>{header('Modified date', 'modifiedAt')}</th>}
             {visibleColumns.has('tags') && <th>{header('Tags', 'tags')}</th>}
@@ -283,6 +287,7 @@ export function DocumentList({
               </td>
               <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.folderName} /></td>
               {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.department} /></td>}
+              {visibleColumns.has('category') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.category} /></td>}
               {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.owner.fullName} /></td>}
               {visibleColumns.has('modifiedAt') && <td className="text-[11px] text-[#718198]"><ExpandableCellText value={formatDateTime(document.modifiedAt)} /></td>}
               {visibleColumns.has('tags') && (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Archive, X } from 'lucide-react';
-import type { LegacyMetadataHistory } from '../../types';
+import { Archive, Download, Eye, FileArchive, X } from 'lucide-react';
+import type { LegacyAssociatedFile, LegacyMetadataHistory } from '../../types';
 import { apiClient } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
 import { Button } from '../ui';
@@ -16,6 +16,8 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
   const [history, setHistory] = useState<LegacyMetadataHistory | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [busyFileAction, setBusyFileAction] = useState<string | null>(null);
+  const [fileActionError, setFileActionError] = useState<string | null>(null);
   const actionButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +99,43 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
   // definition of what "newest" means in the browser.
   const snapshots = history?.snapshots ?? [];
 
+  const handleView = async (file: LegacyAssociatedFile) => {
+    if (!file.isAvailable) return;
+    const actionKey = `view-${file.legacyContentVersionId}`;
+    setBusyFileAction(actionKey);
+    setFileActionError(null);
+    try {
+      const { blob } = await apiClient.getLegacyContentFile(documentId, file.legacyContentVersionId, 'view');
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      setFileActionError(`Could not open ${file.originalFileName} from the Legacy Archive.`);
+    } finally {
+      setBusyFileAction(null);
+    }
+  };
+
+  const handleDownload = async (file: LegacyAssociatedFile) => {
+    if (!file.isAvailable) return;
+    const actionKey = `download-${file.legacyContentVersionId}`;
+    setBusyFileAction(actionKey);
+    setFileActionError(null);
+    try {
+      const { blob } = await apiClient.getLegacyContentFile(documentId, file.legacyContentVersionId, 'download');
+      const objectUrl = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = file.originalFileName;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setFileActionError(`Could not download ${file.originalFileName} from the Legacy Archive.`);
+    } finally {
+      setBusyFileAction(null);
+    }
+  };
+
   if (!history) {
     return loadFailed ? (
       <button
@@ -158,6 +197,11 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
             </div>
 
             <div className="flex-1 overflow-y-auto bg-gray-50 px-6 py-5 dark:bg-slate-950">
+              {fileActionError && (
+                <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                  {fileActionError}
+                </p>
+              )}
               <div className="space-y-4">
                 {snapshots.map((snapshot) => (
                   <section
@@ -182,6 +226,52 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
                       </span>
                     </div>
 
+                    {snapshot.associatedFile ? (
+                      <div className="border-b border-gray-200 bg-blue-50/45 px-4 py-3 dark:border-slate-700 dark:bg-blue-500/5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#2f6f9f] dark:text-blue-300">
+                              <FileArchive className="h-4 w-4" /> Associated legacy file
+                            </p>
+                            <p className="mt-1 break-all text-sm font-semibold text-navy-900 dark:text-white">{snapshot.associatedFile.originalFileName}</p>
+                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-slate-300">
+                              <span>Content Version ID: {snapshot.associatedFile.legacyContentVersionId}</span>
+                              <span>File Version: {snapshot.associatedFile.versionLabel}</span>
+                              <span>File Date: {snapshot.associatedFile.fileDate ? formatDateTime(snapshot.associatedFile.fileDate) : 'Unavailable'}</span>
+                              <span>File Size: {formatLegacyFileSize(snapshot.associatedFile.fileSizeBytes)}</span>
+                            </div>
+                            <p className={`mt-1 text-xs font-medium ${snapshot.associatedFile.isAvailable ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                              File status: <span>{snapshot.associatedFile.fileStatus}</span>
+                            </p>
+                          </div>
+                          <div className="flex flex-shrink-0 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleView(snapshot.associatedFile!)}
+                              disabled={!snapshot.associatedFile.isAvailable || busyFileAction != null}
+                              className={`${SECONDARY_ACTION_CLASS} disabled:cursor-not-allowed disabled:opacity-50`}
+                              aria-label={`View ${snapshot.associatedFile.originalFileName}`}
+                            >
+                              <Eye className="h-4 w-4" /> {busyFileAction === `view-${snapshot.associatedFile.legacyContentVersionId}` ? 'Opening...' : 'View'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDownload(snapshot.associatedFile!)}
+                              disabled={!snapshot.associatedFile.isAvailable || busyFileAction != null}
+                              className={`${SECONDARY_ACTION_CLASS} disabled:cursor-not-allowed disabled:opacity-50`}
+                              aria-label={`Download ${snapshot.associatedFile.originalFileName}`}
+                            >
+                              <Download className="h-4 w-4" /> {busyFileAction === `download-${snapshot.associatedFile.legacyContentVersionId}` ? 'Downloading...' : 'Download'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                        Associated content version record is unavailable; the metadata snapshot is preserved below.
+                      </div>
+                    )}
+
                     <dl className="divide-y divide-gray-100 dark:divide-slate-800">
                       {snapshot.fields.map((field, fieldIndex) => (
                         <div key={`${field.name}-${fieldIndex}`} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(10rem,14rem)_1fr] sm:gap-4">
@@ -204,4 +294,11 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
       )}
     </>
   );
+}
+
+function formatLegacyFileSize(size?: number | null) {
+  if (size == null) return 'Unavailable';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
 }

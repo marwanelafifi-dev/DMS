@@ -242,6 +242,8 @@ public class DocumentsController(
                 {
                     item.SourceSystem,
                     item.LegacyDocumentId,
+                    item.ActiveLegacyContentVersionId,
+                    item.ActiveNewVersionId,
                 })
                 .SingleOrDefaultAsync();
 
@@ -269,6 +271,34 @@ public class DocumentsController(
                 .ThenByDescending(snapshot => snapshot.LegacyMetadataVersionId)
                 .ToListAsync();
 
+            // Join each metadata snapshot through its real KnowledgeTree
+            // content_version_id. Do not derive a file from metadata sequence:
+            // several snapshots can correctly point at the same content row.
+            var linkedContentIds = archivedSnapshots
+                .Where(snapshot => snapshot.LegacyContentVersionId.HasValue)
+                .Select(snapshot => snapshot.LegacyContentVersionId!.Value)
+                .Distinct()
+                .ToList();
+            var contentById = await context.LegacyContentVersions
+                .AsNoTracking()
+                .Where(content =>
+                    content.SourceSystem == mapping.SourceSystem &&
+                    content.LegacyDocumentId == mapping.LegacyDocumentId &&
+                    linkedContentIds.Contains(content.LegacyContentVersionId))
+                .ToDictionaryAsync(content => content.LegacyContentVersionId);
+            var fileDateByContentId = await context.LegacyContentFileDetails
+                .AsNoTracking()
+                .Where(detail =>
+                    detail.SourceSystem == mapping.SourceSystem &&
+                    linkedContentIds.Contains(detail.LegacyContentVersionId))
+                .ToDictionaryAsync(
+                    detail => detail.LegacyContentVersionId,
+                    detail => detail.SourceFileModifiedAt);
+            var activeVersion = await context.DocumentVersions
+                .AsNoTracking()
+                .Where(version => version.VersionId == mapping.ActiveNewVersionId && version.DocumentId == id)
+                .SingleOrDefaultAsync();
+
             var snapshots = archivedSnapshots.Select(snapshot => new
             {
                 MetadataVersionId = snapshot.LegacyMetadataVersionId,
@@ -277,6 +307,15 @@ public class DocumentsController(
                 LegacyContentVersionId = snapshot.LegacyContentVersionId,
                 IsCurrentAtMigration = snapshot.IsCurrentSnapshot,
                 snapshot.SourceSystem,
+                AssociatedFile = snapshot.LegacyContentVersionId.HasValue &&
+                    contentById.TryGetValue(snapshot.LegacyContentVersionId.Value, out var content)
+                        ? BuildLegacyAssociatedFile(
+                            id,
+                            mapping.ActiveLegacyContentVersionId,
+                            content,
+                            fileDateByContentId.GetValueOrDefault(content.LegacyContentVersionId),
+                            activeVersion)
+                        : null,
                 Fields = BuildLegacyMetadataFields(snapshot),
             }).ToList();
 
@@ -304,6 +343,150 @@ public class DocumentsController(
             return StatusCode(500, new { success = false, error = "Failed to load legacy metadata history" });
         }
     }
+
+    // GET /api/documents/{id}/legacy-content/{contentVersionId}/view
+    // Historical bytes are read only from the Legacy Archive namespace. The
+    // current-at-migration content is read from its normal current New-DMS
+    // version. Neither route creates a New-DMS version/history row.
+    [HttpGet("{id}/legacy-content/{contentVersionId:long}/view")]
+    public async Task<ActionResult> ViewLegacyContent(Guid id, long contentVersionId)
+    {
+        var target = await ResolveLegacyContentTargetAsync(id, contentVersionId);
+        if (target == null)
+            return NotFound(new { success = false, error = "Legacy content file is not available for this document" });
+
+        try
+        {
+            var stream = await minioService.DownloadAsync(target.ObjectKey);
+            return new FileStreamResult(stream, LegacyContentType(target.FileName))
+            {
+                EnableRangeProcessing = true,
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to view legacy content {ContentVersionId} for document {DocumentId}", contentVersionId, id);
+            return StatusCode(500, new { success = false, error = "Legacy archive file could not be read" });
+        }
+    }
+
+    // GET /api/documents/{id}/legacy-content/{contentVersionId}/download
+    [HttpGet("{id}/legacy-content/{contentVersionId:long}/download")]
+    public async Task<ActionResult> DownloadLegacyContent(Guid id, long contentVersionId)
+    {
+        var target = await ResolveLegacyContentTargetAsync(id, contentVersionId);
+        if (target == null)
+            return NotFound(new { success = false, error = "Legacy content file is not available for this document" });
+
+        try
+        {
+            var stream = await minioService.DownloadAsync(target.ObjectKey);
+            return new FileStreamResult(stream, LegacyContentType(target.FileName))
+            {
+                FileDownloadName = target.FileName,
+                EnableRangeProcessing = true,
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to download legacy content {ContentVersionId} for document {DocumentId}", contentVersionId, id);
+            return StatusCode(500, new { success = false, error = "Legacy archive file could not be read" });
+        }
+    }
+
+    private async Task<LegacyContentTarget?> ResolveLegacyContentTargetAsync(Guid documentId, long contentVersionId)
+    {
+        // Resolve through the caller-visible New-DMS document UUID first, then
+        // constrain the content row to the same source document. A content ID
+        // copied from another document can never cross this boundary.
+        var mapping = await context.LegacyDocumentMappings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.NewDocumentId == documentId);
+        if (mapping == null)
+            return null;
+
+        var content = await context.LegacyContentVersions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item =>
+                item.SourceSystem == mapping.SourceSystem &&
+                item.LegacyDocumentId == mapping.LegacyDocumentId &&
+                item.LegacyContentVersionId == contentVersionId);
+        if (content == null)
+            return null;
+
+        if (content.PhysicalFileStatus == "archived" && !string.IsNullOrWhiteSpace(content.ArchiveObjectKey))
+            return new LegacyContentTarget(content.ArchiveObjectKey, content.OriginalFilename);
+
+        if (content.PhysicalFileStatus == "active_in_new_dms" &&
+            content.LegacyContentVersionId == mapping.ActiveLegacyContentVersionId)
+        {
+            var version = await context.DocumentVersions
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item =>
+                    item.VersionId == mapping.ActiveNewVersionId &&
+                    item.DocumentId == documentId);
+            if (version != null && !string.IsNullOrWhiteSpace(version.S3ObjectKey))
+                return new LegacyContentTarget(version.S3ObjectKey, content.OriginalFilename);
+        }
+
+        return null;
+    }
+
+    private static LegacyAssociatedFile BuildLegacyAssociatedFile(
+        Guid documentId,
+        long activeLegacyContentVersionId,
+        DmsLegacyContentVersion content,
+        DateTime? fileDate,
+        DmsDocumentVersion? activeVersion)
+    {
+        var isArchivedAvailable = content.PhysicalFileStatus == "archived" &&
+            !string.IsNullOrWhiteSpace(content.ArchiveObjectKey);
+        var isActiveAvailable = content.PhysicalFileStatus == "active_in_new_dms" &&
+            content.LegacyContentVersionId == activeLegacyContentVersionId &&
+            activeVersion != null &&
+            !string.IsNullOrWhiteSpace(activeVersion.S3ObjectKey);
+        var isAvailable = isArchivedAvailable || isActiveAvailable;
+        var fileStatus = content.PhysicalFileStatus switch
+        {
+            "archived" when isArchivedAvailable => "Available in Legacy Archive",
+            "active_in_new_dms" when isActiveAvailable => "Available as migrated current file",
+            "source_file_missing" => "Not available in legacy export",
+            "source_file_zero_byte" => "Not available: zero-byte legacy export file",
+            "source_md5_mismatch" => "Not available: legacy MD5 mismatch",
+            _ => "Not available in legacy export",
+        };
+        var baseUrl = $"/api/documents/{documentId}/legacy-content/{content.LegacyContentVersionId}";
+
+        return new LegacyAssociatedFile(
+            content.LegacyContentVersionId,
+            content.OriginalFilename,
+            content.MajorVersion,
+            content.MinorVersion,
+            $"{content.MajorVersion}.{content.MinorVersion}",
+            fileDate,
+            content.SourceSizeBytes,
+            fileStatus,
+            isAvailable,
+            isAvailable ? $"{baseUrl}/view" : null,
+            isAvailable ? $"{baseUrl}/download" : null);
+    }
+
+    private static string LegacyContentType(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
+    {
+        ".pdf" => "application/pdf",
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".txt" => "text/plain",
+        ".csv" => "text/csv",
+        ".doc" => "application/msword",
+        ".docx" or ".docm" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xls" => "application/vnd.ms-excel",
+        ".xlsx" or ".xlsm" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".ppt" => "application/vnd.ms-powerpoint",
+        ".pptx" or ".pptm" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        _ => "application/octet-stream",
+    };
 
     private static IReadOnlyList<LegacyMetadataField> BuildLegacyMetadataFields(
         DmsLegacyMetadataSnapshot snapshot)
@@ -1738,3 +1921,16 @@ public record BulkDownloadRequest(List<Guid> DocumentIds);
 public record ExtractDocIdRequest(string? Text);
 public record SetDocIdRequest(string OriginalDocumentId);
 public sealed record LegacyMetadataField(string Name, string? Value);
+public sealed record LegacyAssociatedFile(
+    long LegacyContentVersionId,
+    string OriginalFileName,
+    int MajorVersion,
+    int MinorVersion,
+    string VersionLabel,
+    DateTime? FileDate,
+    long? FileSizeBytes,
+    string FileStatus,
+    bool IsAvailable,
+    string? ViewUrl,
+    string? DownloadUrl);
+public sealed record LegacyContentTarget(string ObjectKey, string FileName);

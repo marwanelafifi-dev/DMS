@@ -38,11 +38,11 @@ const unsignedToken = `${base64Url({ alg: 'HS256', typ: 'JWT' })}.${base64Url({
 const token = `${unsignedToken}.${createHmac('sha256', jwtSecret).update(unsignedToken).digest('base64url')}`;
 
 const pilots = [
-  { legacyId: 230, documentId: '4f4cdd06-0ce3-556a-8232-b199898d1941', snapshots: 16 },
-  { legacyId: 177, documentId: 'fde5493c-f00a-52e3-b752-9ac36afa42d6', snapshots: 4 },
-  { legacyId: 238, documentId: 'f88e136e-c9f8-52ab-a67c-4d795e850796', snapshots: 15 },
-  { legacyId: 497, documentId: 'd2d7f714-c34d-53ac-8a63-48dfdb9355a9', snapshots: 5 },
-  { legacyId: 24, documentId: 'e3155116-692d-519b-b1b2-57188de1e52b', snapshots: 26 },
+  { legacyId: 230, documentId: '4f4cdd06-0ce3-556a-8232-b199898d1941', snapshots: 16, category: 'Process' },
+  { legacyId: 177, documentId: 'fde5493c-f00a-52e3-b752-9ac36afa42d6', snapshots: 4, category: 'Review' },
+  { legacyId: 238, documentId: 'f88e136e-c9f8-52ab-a67c-4d795e850796', snapshots: 15, category: 'Template' },
+  { legacyId: 497, documentId: 'd2d7f714-c34d-53ac-8a63-48dfdb9355a9', snapshots: 5, category: 'Standard' },
+  { legacyId: 24, documentId: 'e3155116-692d-519b-b1b2-57188de1e52b', snapshots: 26, category: 'Process' },
 ];
 
 const chromeCandidates = [
@@ -167,12 +167,15 @@ try {
     const body = await response.json();
     assert(body.data?.legacyDocumentId === pilot.legacyId, `Legacy ${pilot.legacyId}: archive mapping mismatch`);
     assert(body.data?.snapshots?.length === pilot.snapshots, `Legacy ${pilot.legacyId}: API snapshot count mismatch`);
+    assert(body.data.snapshots.every((snapshot) => snapshot.associatedFile?.legacyContentVersionId === snapshot.legacyContentVersionId), `Legacy ${pilot.legacyId}: metadata/content relationship mismatch`);
 
     await send('Page.navigate', { url: `${baseUrl}/documents?preview=${pilot.documentId}` });
     await waitForPage(
       `location.pathname === '/documents' && Array.from(document.querySelectorAll('button')).some((button) => button.getAttribute('aria-label')?.startsWith('View legacy metadata history of '))`,
       `Legacy ${pilot.legacyId}: Metadata History action did not appear`,
     );
+    const headerText = await evaluate(`document.body.innerText`);
+    assert(headerText.includes('Category') && headerText.includes(pilot.category), `Legacy ${pilot.legacyId}: Category ${pilot.category} is not visible`);
     await evaluate(`Array.from(document.querySelectorAll('button')).find((button) => button.getAttribute('aria-label')?.startsWith('View legacy metadata history of '))?.click()`);
     await waitForPage(`Boolean(document.querySelector('[role="dialog"][aria-labelledby="legacy-metadata-history-title"]'))`, `Legacy ${pilot.legacyId}: dialog did not open`);
 
@@ -184,12 +187,15 @@ try {
         snapshotCount: dialog?.querySelectorAll('[data-testid^="legacy-metadata-snapshot-"]').length || 0,
         currentCount: Array.from(dialog?.querySelectorAll('span') || []).filter((node) => node.textContent?.trim() === 'CURRENT AT MIGRATION').length,
         historicalCount: Array.from(dialog?.querySelectorAll('span') || []).filter((node) => node.textContent?.trim() === 'HISTORICAL').length,
+        associatedFileCount: Array.from(dialog?.querySelectorAll('span') || []).filter((node) => node.textContent?.startsWith('Content Version ID:')).length,
       };
     })()`);
     assert(dialogState.text.includes(`Legacy document #${pilot.legacyId}`), `Legacy ${pilot.legacyId}: wrong document provenance`);
     assert(dialogState.currentCount === 1, `Legacy ${pilot.legacyId}: current snapshot label missing or duplicated`);
     assert(dialogState.historicalCount === pilot.snapshots - 1, `Legacy ${pilot.legacyId}: historical labels mismatch`);
     assert(dialogState.snapshotCount === pilot.snapshots, `Legacy ${pilot.legacyId}: UI snapshot count mismatch`);
+    assert(dialogState.associatedFileCount === pilot.snapshots, `Legacy ${pilot.legacyId}: associated files are not shown for every snapshot`);
+    assert(dialogState.text.includes('File status:'), `Legacy ${pilot.legacyId}: file availability is not visible`);
     for (const fieldName of ['Authors', 'IP number', 'Internal/External']) {
       assert(dialogState.text.includes(fieldName), `Legacy ${pilot.legacyId}: ${fieldName} is not visible`);
     }

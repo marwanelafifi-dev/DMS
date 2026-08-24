@@ -79,7 +79,22 @@ export interface LegacyMetadataSnapshot {
   legacyContentVersionId?: number | null;
   isCurrentAtMigration: boolean;
   sourceSystem: string;
+  associatedFile?: LegacyAssociatedFile | null;
   fields: LegacyMetadataField[];
+}
+
+export interface LegacyAssociatedFile {
+  legacyContentVersionId: number;
+  originalFileName: string;
+  majorVersion: number;
+  minorVersion: number;
+  versionLabel: string;
+  fileDate?: string | null;
+  fileSizeBytes?: number | null;
+  fileStatus: string;
+  isAvailable: boolean;
+  viewUrl?: string | null;
+  downloadUrl?: string | null;
 }
 
 export interface LegacyMetadataHistory {

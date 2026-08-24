@@ -392,6 +392,20 @@ class APIClient {
     return data;
   }
 
+  async getLegacyContentFile(documentId: string, contentVersionId: number, mode: 'view' | 'download') {
+    const response = await this.client.get(
+      `/documents/${documentId}/legacy-content/${contentVersionId}/${mode}`,
+      { responseType: 'blob' },
+    );
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const encodedFileName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const quotedFileName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+    const fileName = encodedFileName
+      ? decodeURIComponent(encodedFileName)
+      : quotedFileName || `legacy-content-${contentVersionId}`;
+    return { blob: response.data as Blob, fileName };
+  }
+
   async createDocument(documentData: any) {
     const { data } = await this.client.post<ApiResponse>('/documents', documentData);
     return data;

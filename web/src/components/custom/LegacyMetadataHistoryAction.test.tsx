@@ -17,6 +17,19 @@ const completeHistory = {
       metadataVersion: 8,
       snapshotDate: '2015-08-15T10:42:00Z',
       legacyContentVersionId: 349,
+      associatedFile: {
+        legacyContentVersionId: 349,
+        originalFileName: 'SRD.doc',
+        majorVersion: 0,
+        minorVersion: 2,
+        versionLabel: '0.2',
+        fileDate: '2014-11-28T10:15:00Z',
+        fileSizeBytes: 357376,
+        fileStatus: 'Available in Legacy Archive',
+        isAvailable: true,
+        viewUrl: `/api/documents/${documentId}/legacy-content/349/view`,
+        downloadUrl: `/api/documents/${documentId}/legacy-content/349/download`,
+      },
       isCurrentAtMigration: true,
       sourceSystem: 'KnowledgeTree',
       fields: [
@@ -32,6 +45,19 @@ const completeHistory = {
       metadataVersion: 7,
       snapshotDate: '2014-12-02T14:20:00Z',
       legacyContentVersionId: 349,
+      associatedFile: {
+        legacyContentVersionId: 349,
+        originalFileName: 'SRD.doc',
+        majorVersion: 0,
+        minorVersion: 2,
+        versionLabel: '0.2',
+        fileDate: '2014-11-28T10:15:00Z',
+        fileSizeBytes: 357376,
+        fileStatus: 'Available in Legacy Archive',
+        isAvailable: true,
+        viewUrl: `/api/documents/${documentId}/legacy-content/349/view`,
+        downloadUrl: `/api/documents/${documentId}/legacy-content/349/download`,
+      },
       isCurrentAtMigration: false,
       sourceSystem: 'KnowledgeTree',
       fields: [
@@ -75,6 +101,11 @@ describe('LegacyMetadataHistoryAction', () => {
     expect(within(dialog).getByText('Internal/External')).toBeInTheDocument();
     expect(within(dialog).getByText('ABC123')).toBeInTheDocument();
     expect(within(dialog).getByText('Bassem Mortada, Mostafa Medhat')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('SRD.doc')).toHaveLength(2);
+    expect(within(dialog).getAllByText(/File Version: 0\.2/)).toHaveLength(2);
+    expect(within(dialog).getAllByText('Available in Legacy Archive')).toHaveLength(2);
+    expect(within(dialog).getAllByRole('button', { name: 'View SRD.doc' })).toHaveLength(2);
+    expect(within(dialog).getAllByRole('button', { name: 'Download SRD.doc' })).toHaveLength(2);
     expect(within(dialog).getByText('—')).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /edit|delete|restore|make current/i })).not.toBeInTheDocument();
 
@@ -91,6 +122,42 @@ describe('LegacyMetadataHistoryAction', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Legacy Metadata History' })).not.toBeInTheDocument();
     expect(action).toHaveFocus();
+  });
+
+  it('keeps the snapshot visible and disables file actions when its exact content export is absent', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getLegacyMetadataHistory).mockResolvedValue({
+      success: true,
+      data: {
+        ...completeHistory,
+        snapshots: [{
+          ...completeHistory.snapshots[1],
+          legacyContentVersionId: 245,
+          associatedFile: {
+            legacyContentVersionId: 245,
+            originalFileName: 'siware_internal_document_template_d3.docm',
+            majorVersion: 0,
+            minorVersion: 1,
+            versionLabel: '0.1',
+            fileDate: null,
+            fileSizeBytes: 239558,
+            fileStatus: 'Not available in legacy export',
+            isAvailable: false,
+            viewUrl: null,
+            downloadUrl: null,
+          },
+        }],
+      },
+    });
+
+    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} />);
+    await user.click(await screen.findByRole('button', { name: `View legacy metadata history of ${fileName}` }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Legacy Metadata History' });
+    expect(within(dialog).getByText('Not available in legacy export')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'View siware_internal_document_template_d3.docm' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Download siware_internal_document_template_d3.docm' })).toBeDisabled();
+    expect(within(dialog).getByText('Bassem Mortada, Mostafa Medhat')).toBeInTheDocument();
   });
 
   it('hides the optional action when the document has no legacy archive', async () => {

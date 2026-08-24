@@ -121,6 +121,17 @@ def get_json(path: str, token: str | None = None) -> tuple[int, dict]:
         return error.code, json.loads(payload) if payload else {}
 
 
+def get_bytes(path: str, token: str | None = None) -> tuple[int, bytes, dict[str, str]]:
+    request = urllib.request.Request(f"{API_BASE_URL}{path}")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return response.status, response.read(), dict(response.headers)
+    except urllib.error.HTTPError as error:
+        return error.code, error.read(), dict(error.headers)
+
+
 def _local_env_value(name: str, default: str) -> str:
     if not LOCAL_ENV.exists():
         return default
@@ -242,6 +253,25 @@ class LegacyMetadataHistoryApiTests(unittest.TestCase):
                         archived["isCurrentAtMigration"],
                     )
                     self.assertEqual(snapshot["sourceSystem"], archived["sourceSystem"])
+                    associated_file = snapshot["associatedFile"]
+                    self.assertEqual(
+                        associated_file["legacyContentVersionId"],
+                        snapshot["legacyContentVersionId"],
+                    )
+                    self.assertTrue(associated_file["originalFileName"])
+                    self.assertRegex(associated_file["versionLabel"], r"^\d+\.\d+$")
+                    self.assertIn("fileDate", associated_file)
+                    self.assertIn("fileSizeBytes", associated_file)
+                    if associated_file["isAvailable"]:
+                        self.assertTrue(associated_file["viewUrl"].endswith("/view"))
+                        self.assertTrue(associated_file["downloadUrl"].endswith("/download"))
+                    else:
+                        self.assertEqual(
+                            associated_file["fileStatus"],
+                            "Not available in legacy export",
+                        )
+                        self.assertIsNone(associated_file["viewUrl"])
+                        self.assertIsNone(associated_file["downloadUrl"])
 
                     returned_fields = {
                         field["name"]: field["value"] for field in snapshot["fields"]
@@ -305,6 +335,40 @@ class LegacyMetadataHistoryApiTests(unittest.TestCase):
         restricted_status, _ = get_json(path, self.restricted_token)
 
         self.assertEqual(unauthenticated_status, 401)
+        self.assertEqual(restricted_status, 403)
+
+    def test_exact_linked_content_can_be_viewed_or_downloaded_without_cross_document_access(self) -> None:
+        document_id = PILOT_DOCUMENTS[230]["new_id"]
+
+        historical_status, historical_bytes, _ = get_bytes(
+            f"/documents/{document_id}/legacy-content/348/view", self.admin_token
+        )
+        current_status, current_bytes, _ = get_bytes(
+            f"/documents/{document_id}/legacy-content/3390/view", self.admin_token
+        )
+        download_status, download_bytes, download_headers = get_bytes(
+            f"/documents/{document_id}/legacy-content/348/download", self.admin_token
+        )
+        missing_status, _, _ = get_bytes(
+            f"/documents/{PILOT_DOCUMENTS[177]['new_id']}/legacy-content/245/view",
+            self.admin_token,
+        )
+        cross_document_status, _, _ = get_bytes(
+            f"/documents/{document_id}/legacy-content/27/view", self.admin_token
+        )
+        restricted_status, _, _ = get_bytes(
+            f"/documents/{document_id}/legacy-content/348/view", self.restricted_token
+        )
+
+        self.assertEqual(historical_status, 200)
+        self.assertGreater(len(historical_bytes), 0)
+        self.assertEqual(current_status, 200)
+        self.assertGreater(len(current_bytes), 0)
+        self.assertEqual(download_status, 200)
+        self.assertEqual(download_bytes, historical_bytes)
+        self.assertIn("attachment", download_headers.get("Content-Disposition", ""))
+        self.assertEqual(missing_status, 404)
+        self.assertEqual(cross_document_status, 404)
         self.assertEqual(restricted_status, 403)
 
 
