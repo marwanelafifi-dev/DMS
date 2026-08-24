@@ -23,6 +23,16 @@ public class DocumentsController(
     IHttpClientFactory httpClientFactory,
     ILogger<DocumentsController> logger) : BaseController
 {
+    private const string LegacyMigrationDeleteBlockedMessage =
+        "This document has protected legacy migration history and cannot be permanently deleted.";
+
+    private enum DocumentDeleteStatus
+    {
+        Deleted,
+        NotFound,
+        ProtectedLegacyDocument,
+    }
+
     private static readonly HashSet<string> PdfPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".doc", ".docx", ".docm",
@@ -1491,8 +1501,11 @@ public class DocumentsController(
     {
         try
         {
-            var (success, error) = await DeleteDocumentInternalAsync(id, GetCurrentUserId());
-            if (!success)
+            var (status, error) = await DeleteDocumentInternalAsync(id, GetCurrentUserId());
+            if (status == DocumentDeleteStatus.ProtectedLegacyDocument)
+                return Conflict(new { success = false, error });
+
+            if (status == DocumentDeleteStatus.NotFound)
                 return NotFound(new { success = false, error });
 
             return Ok(new { success = true, message = "Document deleted successfully" });
@@ -1506,60 +1519,86 @@ public class DocumentsController(
 
     // Shared by the single-document delete endpoint and BulkDeleteDocuments so the
     // two paths can't silently drift (e.g. one forgetting the MinIO/version cleanup).
-    private async Task<(bool Success, string? Error)> DeleteDocumentInternalAsync(Guid id, Guid actorUserId)
+    private async Task<(DocumentDeleteStatus Status, string? Error)> DeleteDocumentInternalAsync(Guid id, Guid actorUserId)
     {
         var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
         if (document == null)
-            return (false, "Document not found");
+            return (DocumentDeleteStatus.NotFound, "Document not found");
+
+        // Legacy migration provenance is immutable and intentionally holds
+        // restrictive foreign keys to both the active document and version.
+        // Reject the operation before touching MinIO so a failed database
+        // delete cannot leave a migrated document pointing at a missing file.
+        var hasProtectedLegacyHistory = await context.LegacyDocumentMappings
+            .AsNoTracking()
+            .AnyAsync(mapping => mapping.NewDocumentId == id);
+        if (hasProtectedLegacyHistory)
+            return (DocumentDeleteStatus.ProtectedLegacyDocument, LegacyMigrationDeleteBlockedMessage);
 
         var versions = await context.DocumentVersions
             .Where(v => v.DocumentId == id)
             .ToListAsync();
 
-        foreach (var version in versions)
+        await using (var transaction = await context.Database.BeginTransactionAsync())
         {
-            if (!string.IsNullOrEmpty(version.S3ObjectKey))
+            try
             {
-                try
+                // Break the document/current-version cycle before deleting both
+                // sides of the required version-to-document relationship.
+                document.CurrentVersionId = null;
+                await context.SaveChangesAsync();
+
+                // A single-document approval batch would otherwise become an empty,
+                // permanently orphaned queue record after the document is deleted.
+                var approvalsToDelete = await context.Approvals
+                    .Where(a =>
+                        a.Documents.Any(ad => ad.DocumentId == id)
+                        && a.Documents.All(ad => ad.DocumentId == id))
+                    .ToListAsync();
+
+                context.Approvals.RemoveRange(approvalsToDelete);
+                context.DocumentVersions.RemoveRange(versions);
+                context.Documents.Remove(document);
+                await context.SaveChangesAsync();
+
+                await auditService.LogAsync(actorUserId, DOCUMENT_DELETED, new
                 {
-                    await minioService.DeleteAsync(version.S3ObjectKey);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", version.S3ObjectKey);
-                }
+                    document.DocumentId,
+                    document.Title,
+                    document.FolderId,
+                    VersionsDeleted = versions.Count,
+                    DeletedAt = DateTime.UtcNow
+                });
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
             }
         }
 
-        // Break the document/current-version cycle before deleting both
-        // sides of the required version-to-document relationship.
-        document.CurrentVersionId = null;
-        await context.SaveChangesAsync();
-
-        // A single-document approval batch would otherwise become an empty,
-        // permanently orphaned queue record after the document is deleted.
-        var approvalsToDelete = await context.Approvals
-            .Where(a =>
-                a.Documents.Any(ad => ad.DocumentId == id)
-                && a.Documents.All(ad => ad.DocumentId == id))
-            .ToListAsync();
-
-        context.Approvals.RemoveRange(approvalsToDelete);
-        context.DocumentVersions.RemoveRange(versions);
-        context.Documents.Remove(document);
-        await context.SaveChangesAsync();
-
-        await auditService.LogAsync(actorUserId, DOCUMENT_DELETED, new
+        // Database deletion is authoritative. Storage cleanup only starts after
+        // the transaction commits, so a database failure never destroys the
+        // only readable copy of a live document.
+        foreach (var version in versions)
         {
-            document.DocumentId,
-            document.Title,
-            document.FolderId,
-            VersionsDeleted = versions.Count,
-            DeletedAt = DateTime.UtcNow
-        });
+            if (string.IsNullOrEmpty(version.S3ObjectKey))
+                continue;
+
+            try
+            {
+                await minioService.DeleteAsync(version.S3ObjectKey);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", version.S3ObjectKey);
+            }
+        }
 
         logger.LogInformation("Deleted document {DocumentId}", id);
-        return (true, null);
+        return (DocumentDeleteStatus.Deleted, null);
     }
 
     // POST /api/documents/{id}/versions/{versionId}/checkout — lock the version for editing.
@@ -1925,8 +1964,8 @@ public class DocumentsController(
                 continue;
             }
 
-            var (success, error) = await DeleteDocumentInternalAsync(documentId, userId);
-            if (success) succeeded.Add(documentId);
+            var (status, error) = await DeleteDocumentInternalAsync(documentId, userId);
+            if (status == DocumentDeleteStatus.Deleted) succeeded.Add(documentId);
             else failed.Add(new { documentId, error });
         }
 
