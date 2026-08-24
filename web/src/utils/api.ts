@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import type { ApiResponse } from '../types';
+import type { ApiResponse, LegacyMetadataHistory } from '../types';
 
 const API_BASE = '/api';
 const TOKEN_STORAGE_KEY = 'dms_session_token';
@@ -382,6 +382,13 @@ class APIClient {
 
   async getDocument(documentId: string) {
     const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}`);
+    return data;
+  }
+
+  async getLegacyMetadataHistory(documentId: string) {
+    const { data } = await this.client.get<ApiResponse<LegacyMetadataHistory>>(
+      `/documents/${documentId}/legacy-metadata-history`,
+    );
     return data;
   }
 

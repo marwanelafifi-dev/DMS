@@ -27,6 +27,7 @@ import { PreviewToolbar } from './PreviewToolbar';
 import { UploadNewVersionModal } from './UploadNewVersionModal';
 import { VersionHistoryModal } from './VersionHistoryModal';
 import { RelatedTasksModal } from './RelatedTasksModal';
+import { LegacyMetadataHistoryAction } from './LegacyMetadataHistoryAction';
 
 const ZOOM_STEP = 10;
 const MIN_ZOOM = 50;
@@ -872,6 +873,10 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
             >
               <History className="h-4 w-4" /> History
             </button>
+            <LegacyMetadataHistoryAction
+              documentId={document.documentId}
+              fileName={document.fileName}
+            />
             <button
               onClick={() => setShowRelatedTasks(true)}
               disabled={!permissions?.viewOnly}

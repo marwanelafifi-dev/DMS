@@ -39,6 +39,8 @@ public class DmsContext : DbContext
     public DbSet<DmsAppSetting> AppSettings => Set<DmsAppSetting>();
     public DbSet<DmsGoogleMeetingReminder> GoogleMeetingReminders => Set<DmsGoogleMeetingReminder>();
     public DbSet<DmsAnnouncement> Announcements => Set<DmsAnnouncement>();
+    public DbSet<DmsLegacyDocumentMapping> LegacyDocumentMappings => Set<DmsLegacyDocumentMapping>();
+    public DbSet<DmsLegacyMetadataSnapshot> LegacyMetadataSnapshots => Set<DmsLegacyMetadataSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -107,6 +109,15 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsAppSetting>().ToTable("dms_app_settings").HasKey(s => s.Key);
         modelBuilder.Entity<DmsGoogleMeetingReminder>().ToTable("dms_google_meeting_reminders").HasKey(r => r.ReminderId);
         modelBuilder.Entity<DmsAnnouncement>().ToTable("dms_announcements").HasKey(a => a.AnnouncementId);
+        modelBuilder.Entity<DmsLegacyDocumentMapping>()
+            .ToTable("dms_legacy_document_mappings")
+            .HasKey(m => new { m.SourceSystem, m.LegacyDocumentId });
+        modelBuilder.Entity<DmsLegacyMetadataSnapshot>()
+            .ToTable("dms_legacy_metadata_snapshots")
+            .HasKey(s => new { s.SourceSystem, s.LegacyMetadataVersionId });
+        modelBuilder.Entity<DmsLegacyMetadataSnapshot>()
+            .Property(s => s.RawMetadata)
+            .HasColumnType("jsonb");
         modelBuilder.Entity<DmsTaskAttachment>().HasOne(a => a.UploadedByUser).WithMany().HasForeignKey(a => a.UploadedBy);
         modelBuilder.Entity<DmsApproval>().ToTable("dms_approvals").HasKey(a => a.ApprovalId);
         modelBuilder.Entity<DmsApprovalDocument>().ToTable("dms_approval_documents").HasKey(ad => ad.ApprovalDocumentId);

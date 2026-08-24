@@ -49,6 +49,18 @@ describe('Document Library', () => {
       success: true,
       data: [],
     });
+    // Mock fixture documents are native New-DMS records by default, so the
+    // optional KnowledgeTree archive action remains hidden unless a test opts
+    // a specific fixture into legacy history.
+    vi.spyOn(apiClient, 'getLegacyMetadataHistory').mockResolvedValue({
+      success: true,
+      data: {
+        hasLegacyMetadataHistory: false,
+        legacyDocumentId: null,
+        sourceSystem: null,
+        snapshots: [],
+      },
+    });
     vi.spyOn(apiClient, 'getUserPermissions').mockResolvedValue({
       success: true,
       data: [],
@@ -737,6 +749,59 @@ describe('Document Library', () => {
     expect(within(dialog).getByText('Daily production handover notes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close document preview' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Actions for selected items' })).not.toBeInTheDocument();
+  });
+
+  it('keeps native History separate and hides Metadata History for a native document', async () => {
+    const user = userEvent.setup();
+    renderDocumentLibrary();
+
+    await user.click(await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' }));
+    await waitFor(() => expect(apiClient.getLegacyMetadataHistory).toHaveBeenCalledWith('folder-1-txt'));
+
+    expect(screen.getByRole('button', { name: 'View version history of Production Shift Handover.txt' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /legacy metadata history/i })).not.toBeInTheDocument();
+  });
+
+  it('places imported Metadata History beside but separate from native Version History', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getLegacyMetadataHistory).mockResolvedValue({
+      success: true,
+      data: {
+        hasLegacyMetadataHistory: true,
+        legacyDocumentId: 230,
+        sourceSystem: 'KnowledgeTree',
+        snapshots: [{
+          metadataVersionId: 9316,
+          metadataVersion: 15,
+          snapshotDate: '2018-12-10T12:09:47Z',
+          legacyContentVersionId: 3390,
+          isCurrentAtMigration: true,
+          sourceSystem: 'KnowledgeTree',
+          fields: [{ name: 'Authors', value: 'Mostafa Medhat' }],
+        }],
+      },
+    });
+    vi.spyOn(apiClient, 'getDocument').mockResolvedValue({
+      success: true,
+      data: { versions: [] },
+    });
+    renderDocumentLibrary();
+
+    await user.click(await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' }));
+    const nativeHistory = screen.getByRole('button', { name: 'View version history of Production Shift Handover.txt' });
+    const legacyHistory = await screen.findByRole('button', { name: 'View legacy metadata history of Production Shift Handover.txt' });
+    expect(nativeHistory.compareDocumentPosition(legacyHistory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(legacyHistory);
+    expect(screen.getByRole('heading', { name: 'Legacy Metadata History' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Version History' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('heading', { name: 'Legacy Metadata History' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Production Shift Handover.txt' })).toBeInTheDocument();
+
+    await user.click(nativeHistory);
+    expect(await screen.findByRole('heading', { name: 'Version History' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Legacy Metadata History' })).not.toBeInTheDocument();
   });
 
   it('fills the preview workspace and gives the PDF viewer all remaining space', async () => {

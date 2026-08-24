@@ -4,6 +4,7 @@ using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
+using System.Text.Json;
 using static DMS.Api.Services.AuditActions;
 
 namespace DMS.Api.Controllers;
@@ -220,6 +221,181 @@ public class DocumentsController(
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
+
+    // GET /api/documents/{id}/legacy-metadata-history — immutable metadata
+    // evidence imported from KnowledgeTree. This stays deliberately separate
+    // from the New-DMS Versions collection returned by GetDocument above.
+    // RBACMiddleware treats this GET exactly like opening the document itself:
+    // the caller must have the document's FileRead/ViewOnly permission.
+    [HttpGet("{id}/legacy-metadata-history")]
+    public async Task<ActionResult<object>> GetLegacyMetadataHistory(Guid id)
+    {
+        try
+        {
+            // Resolve from the New-DMS UUID supplied in the route. Never accept
+            // a legacy document id from the caller, which could otherwise be
+            // used to probe a different document's archive.
+            var mapping = await context.LegacyDocumentMappings
+                .AsNoTracking()
+                .Where(item => item.NewDocumentId == id)
+                .Select(item => new
+                {
+                    item.SourceSystem,
+                    item.LegacyDocumentId,
+                })
+                .SingleOrDefaultAsync();
+
+            if (mapping == null)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        HasLegacyMetadataHistory = false,
+                        LegacyDocumentId = (long?)null,
+                        SourceSystem = (string?)null,
+                        Snapshots = Array.Empty<object>(),
+                    }
+                });
+            }
+
+            var archivedSnapshots = await context.LegacyMetadataSnapshots
+                .AsNoTracking()
+                .Where(snapshot =>
+                    snapshot.SourceSystem == mapping.SourceSystem &&
+                    snapshot.LegacyDocumentId == mapping.LegacyDocumentId)
+                .OrderByDescending(snapshot => snapshot.MetadataSequence)
+                .ThenByDescending(snapshot => snapshot.LegacyMetadataVersionId)
+                .ToListAsync();
+
+            var snapshots = archivedSnapshots.Select(snapshot => new
+            {
+                MetadataVersionId = snapshot.LegacyMetadataVersionId,
+                MetadataVersion = snapshot.MetadataSequence,
+                SnapshotDate = snapshot.SnapshotCreatedAt,
+                LegacyContentVersionId = snapshot.LegacyContentVersionId,
+                IsCurrentAtMigration = snapshot.IsCurrentSnapshot,
+                snapshot.SourceSystem,
+                Fields = BuildLegacyMetadataFields(snapshot),
+            }).ToList();
+
+            logger.LogInformation(
+                "Retrieved {Count} legacy metadata snapshots for document {DocumentId} (legacy {LegacyDocumentId})",
+                snapshots.Count,
+                id,
+                mapping.LegacyDocumentId);
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    HasLegacyMetadataHistory = snapshots.Count > 0,
+                    mapping.LegacyDocumentId,
+                    mapping.SourceSystem,
+                    Snapshots = snapshots,
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving legacy metadata history for document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = "Failed to load legacy metadata history" });
+        }
+    }
+
+    private static IReadOnlyList<LegacyMetadataField> BuildLegacyMetadataFields(
+        DmsLegacyMetadataSnapshot snapshot)
+    {
+        var fields = new List<LegacyMetadataField>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (snapshot.RawMetadata.RootElement.ValueKind == JsonValueKind.Object &&
+            snapshot.RawMetadata.RootElement.TryGetProperty("fields", out var rawFields) &&
+            rawFields.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in rawFields.EnumerateObject())
+            {
+                // Keep every archived key, including unknown names and keys
+                // whose value was empty. The current DMS metadata schema must
+                // never decide what is visible in this evidence view.
+                fields.Add(new LegacyMetadataField(property.Name, LegacyFieldValue(property.Value)));
+                seenNames.Add(property.Name);
+            }
+        }
+
+        AddLegacyFieldIfMissing(fields, seenNames, "Title", snapshot.Title);
+        AddLegacyFieldIfMissing(fields, seenNames, "Description", snapshot.Description);
+        AddLegacyFieldIfMissing(fields, seenNames, "Authors", snapshot.OriginalAuthors);
+        AddLegacyFieldIfMissing(fields, seenNames, "Group", snapshot.LegacyGroup);
+        AddLegacyFieldIfMissing(fields, seenNames, "Internal/External", snapshot.InternalExternal);
+        AddLegacyFieldIfMissing(fields, seenNames, "IP number", snapshot.IpNumber);
+        AddLegacyFieldIfMissing(fields, seenNames, "Tag", snapshot.LegacyTags);
+        AddLegacyFieldIfMissing(fields, seenNames, "Document #", snapshot.OriginalDocumentNumber);
+        AddLegacyFieldIfMissing(fields, seenNames, "Document Type", snapshot.LegacyDocumentType);
+
+        // document_metadata_version.description is a separate KnowledgeTree
+        // base column. When a custom "Description" field also existed and had
+        // a different value, both are historical evidence and both must remain
+        // visible instead of allowing the custom field to mask the base value.
+        if (snapshot.RawMetadata.RootElement.ValueKind == JsonValueKind.Object &&
+            snapshot.RawMetadata.RootElement.TryGetProperty("descriptionColumn", out var descriptionColumnElement))
+        {
+            var descriptionColumn = LegacyFieldValue(descriptionColumnElement);
+            var displayedDescription = fields.FirstOrDefault(field =>
+                field.Name.Equals("Description", StringComparison.OrdinalIgnoreCase))?.Value;
+            if (descriptionColumn != null &&
+                !string.Equals(descriptionColumn, displayedDescription, StringComparison.Ordinal))
+            {
+                fields.Add(new LegacyMetadataField("Legacy description column", descriptionColumn));
+            }
+        }
+
+        // Put familiar KnowledgeTree labels first while retaining every raw
+        // field (and the original order among unknown fields).
+        return fields
+            .Select((field, index) => new { field, index })
+            .OrderBy(item => LegacyFieldPriority(item.field.Name))
+            .ThenBy(item => item.index)
+            .Select(item => item.field)
+            .ToList();
+    }
+
+    private static void AddLegacyFieldIfMissing(
+        ICollection<LegacyMetadataField> fields,
+        ISet<string> seenNames,
+        string name,
+        string? value)
+    {
+        if (value == null || seenNames.Contains(name))
+            return;
+
+        fields.Add(new LegacyMetadataField(name, value));
+        seenNames.Add(name);
+    }
+
+    private static string? LegacyFieldValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        JsonValueKind.String => value.GetString(),
+        _ => value.GetRawText(),
+    };
+
+    private static int LegacyFieldPriority(string name) => name.ToUpperInvariant() switch
+    {
+        "TITLE" => 0,
+        "AUTHORS" => 1,
+        "GROUP" => 2,
+        "DESCRIPTION" => 3,
+        "LEGACY DESCRIPTION COLUMN" => 4,
+        "INTERNAL/EXTERNAL" => 5,
+        "IP NUMBER" => 6,
+        "TAG" => 7,
+        "DOCUMENT #" => 8,
+        "DOCUMENT TYPE" => 9,
+        _ => 100,
+    };
 
     // POST /api/documents — create a document without a file
     [HttpPost]
@@ -1561,3 +1737,4 @@ public record BulkDeleteRequest(List<Guid> DocumentIds);
 public record BulkDownloadRequest(List<Guid> DocumentIds);
 public record ExtractDocIdRequest(string? Text);
 public record SetDocIdRequest(string OriginalDocumentId);
+public sealed record LegacyMetadataField(string Name, string? Value);

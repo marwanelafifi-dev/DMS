@@ -65,6 +65,30 @@ export interface Document {
   versions?: DocumentVersion[];
 }
 
+// Immutable KnowledgeTree metadata imported into the separate Legacy Archive.
+// This is intentionally distinct from DocumentVersion/New-DMS workflow history.
+export interface LegacyMetadataField {
+  name: string;
+  value: string | null;
+}
+
+export interface LegacyMetadataSnapshot {
+  metadataVersionId: number;
+  metadataVersion: number;
+  snapshotDate?: string | null;
+  legacyContentVersionId?: number | null;
+  isCurrentAtMigration: boolean;
+  sourceSystem: string;
+  fields: LegacyMetadataField[];
+}
+
+export interface LegacyMetadataHistory {
+  hasLegacyMetadataHistory: boolean;
+  legacyDocumentId: number | null;
+  sourceSystem: string | null;
+  snapshots: LegacyMetadataSnapshot[];
+}
+
 // Document Version
 export interface DocumentVersion {
   versionId: string;
