@@ -1,10 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
-import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
+import { defaultVisibleDocumentColumns, DocumentList, type LibraryFolderRow, type OptionalDocumentColumn } from '../custom/DocumentList';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
@@ -87,6 +87,30 @@ const SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES = new Set([
 
 function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
+}
+
+// The folder panel used to be a fixed 14rem, which left long folder names
+// permanently truncated with no way to widen them. The width is now user-draggable
+// (and remembered), clamped so the panel can never be dragged away entirely or
+// pushed wide enough to squeeze the document table out of view.
+const FOLDER_PANE_MIN_WIDTH = 168;
+const FOLDER_PANE_MAX_WIDTH = 560;
+const FOLDER_PANE_DEFAULT_WIDTH = 224;
+const FOLDER_PANE_WIDTH_STORAGE_KEY = 'dms.documentLibrary.folderPaneWidth';
+
+function clampFolderPaneWidth(value: number): number {
+  if (!Number.isFinite(value)) return FOLDER_PANE_DEFAULT_WIDTH;
+  return Math.min(FOLDER_PANE_MAX_WIDTH, Math.max(FOLDER_PANE_MIN_WIDTH, Math.round(value)));
+}
+
+function readStoredFolderPaneWidth(): number {
+  try {
+    const stored = window.localStorage.getItem(FOLDER_PANE_WIDTH_STORAGE_KEY);
+    return stored ? clampFolderPaneWidth(Number(stored)) : FOLDER_PANE_DEFAULT_WIDTH;
+  } catch {
+    // Private-mode / storage-disabled browsers just get the default width.
+    return FOLDER_PANE_DEFAULT_WIDTH;
+  }
 }
 
 function usesGeneratedPdfPreview(fileName: string, contentType = ''): boolean {
@@ -189,6 +213,21 @@ export function Documents() {
   const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const directPreviewId = searchParams.get('preview');
+  // Warms the pdf.js chunk (~373 KB, the single largest lazy-loaded bundle in
+  // the app) as early as possible on a deep-link preview. DocumentPreview only
+  // renders <PdfJsViewer> — and therefore only triggers its own dynamic
+  // import — once the document's metadata has resolved and several other
+  // effects (folders, permissions, dropdown lists) have already committed;
+  // measured live via Lighthouse, that gap alone pushed the chunk's request
+  // out by ~850ms of otherwise-idle network time, directly inflating LCP.
+  // Every previewable kind other than plain text/images routes through this
+  // same viewer (native PDFs and every Office format, converted server-side),
+  // so prefetching it unconditionally here is a safe bet — worst case for a
+  // text/image preview, one extra ~373 KB request the user never needed.
+  useEffect(() => {
+    if (!directPreviewId) return;
+    void import('../custom/PdfJsViewer');
+  }, [directPreviewId]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
@@ -233,6 +272,10 @@ export function Documents() {
   const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [folderPaneWidth, setFolderPaneWidth] = useState(readStoredFolderPaneWidth);
+  const [isResizingFolderPane, setIsResizingFolderPane] = useState(false);
+  const folderPaneResizeOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
   const [previewDocument, setPreviewDocument] = useState<MockLibraryDocument | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
@@ -300,6 +343,27 @@ export function Documents() {
     return allDocuments.filter((document) => document.folderId === selectedFolderId);
   }, [allDocuments, selectedFolderId, showOnlyMySubmissions, currentUser?.userId]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
+  // Subfolders of the folder being browsed, shown as rows above the files so a
+  // folder containing only subfolders is no longer a dead end reading "No
+  // documents in this folder". Hidden in the cross-folder "my submissions" view,
+  // which deliberately isn't scoped to one folder.
+  const childFolderRows = useMemo<LibraryFolderRow[]>(() => {
+    if (showOnlyMySubmissions || !selectedFolderId) return [];
+    const query = searchQuery.trim().toLowerCase();
+    return folders
+      .filter((folder) => folder.parentFolderId === selectedFolderId)
+      // A status or tag filter is about document state, which a folder has none
+      // of — showing folders anyway would look like they'd matched the filter.
+      .filter(() => !statusFilter && !tagFilter)
+      .filter((folder) => !query || folder.name.toLowerCase().includes(query))
+      .map((folder) => ({
+        folderId: folder.folderId,
+        name: folder.name,
+        isRoot: !folder.parentFolderId,
+        subfolderCount: folders.filter((candidate) => candidate.parentFolderId === folder.folderId).length,
+        documentCount: allDocuments.filter((document) => document.folderId === folder.folderId).length,
+      }));
+  }, [folders, selectedFolderId, allDocuments, showOnlyMySubmissions, searchQuery, statusFilter, tagFilter]);
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
     ...folders.filter((folder) => selectedFolderIds.has(folder.folderId)).map((folder) => folder.name),
@@ -427,7 +491,15 @@ export function Documents() {
           loadedFolders = response.data as Folder[];
           if (!cancelled) {
             setFolders(loadedFolders);
-            if (loadedFolders.length > 0) {
+            // A direct preview deep-link never shows this folder at all (it's
+            // hidden behind the full-screen preview overlay until closed), so
+            // picking a "best writable folder" for it — and the extra
+            // getUserPermissions round trip that requires — is pure throwaway
+            // work competing with the preview's own network/render path for
+            // no visible benefit. Skip it here; the plain "first folder"
+            // fallback effect below picks something reasonable once the user
+            // actually starts browsing.
+            if (loadedFolders.length > 0 && !startedWithDirectPreviewRef.current) {
               // Picking loadedFolders[0] unconditionally would often default to a
               // folder the current user only has read (or no) access to, which
               // makes uploads fail with a silent 403 the moment you hit Upload
@@ -773,12 +845,85 @@ export function Documents() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Every tag actually present on a loaded document, so the filter can never
+  // offer a value that matches nothing at all. Built from the full library
+  // rather than just the current folder so the option list stays stable while
+  // navigating instead of shifting under the user between folders.
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>();
+    for (const document of allDocuments) {
+      for (const tag of document.tags) {
+        const trimmed = tag.trim();
+        if (trimmed) tags.add(trimmed);
+      }
+    }
+    return [...tags].sort((left, right) => left.localeCompare(right));
+  }, [allDocuments]);
+
   const filteredDocuments = useMemo(() => documents.filter((document) => {
     const query = searchQuery.trim();
     const matchesSearch = !query || matchesDmsMetadata(document, query);
     const matchesStatus = !statusFilter || document.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  }), [documents, searchQuery, statusFilter]);
+    // Case-insensitive so a tag typed as "Quality" still matches "quality" —
+    // tags are free text on upload, so real data mixes casing.
+    const matchesTag = !tagFilter
+      || document.tags.some((tag) => tag.trim().toLowerCase() === tagFilter.toLowerCase());
+    return matchesSearch && matchesStatus && matchesTag;
+  }), [documents, searchQuery, statusFilter, tagFilter]);
+
+  // Pointer capture (rather than window listeners) keeps the drag tracking on the
+  // handle itself, so moving fast over the table or off the window edge mid-drag
+  // doesn't drop the resize.
+  const persistFolderPaneWidth = useCallback((width: number) => {
+    try {
+      window.localStorage.setItem(FOLDER_PANE_WIDTH_STORAGE_KEY, String(width));
+    } catch {
+      // Width still applies for this session; it just won't be remembered.
+    }
+  }, []);
+
+  const startFolderPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    folderPaneResizeOriginRef.current = { pointerX: event.clientX, width: folderPaneWidth };
+    setIsResizingFolderPane(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveFolderPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const origin = folderPaneResizeOriginRef.current;
+    if (!origin) return;
+    setFolderPaneWidth(clampFolderPaneWidth(origin.width + (event.clientX - origin.pointerX)));
+  };
+
+  const endFolderPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!folderPaneResizeOriginRef.current) return;
+    folderPaneResizeOriginRef.current = null;
+    setIsResizingFolderPane(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    persistFolderPaneWidth(folderPaneWidth);
+  };
+
+  // Keyboard equivalent, so the divider isn't mouse-only.
+  const handleFolderPaneResizeKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 32 : 16;
+    let next: number | null = null;
+    if (event.key === 'ArrowLeft') next = folderPaneWidth - step;
+    else if (event.key === 'ArrowRight') next = folderPaneWidth + step;
+    else if (event.key === 'Home') next = FOLDER_PANE_MIN_WIDTH;
+    else if (event.key === 'End') next = FOLDER_PANE_MAX_WIDTH;
+    if (next === null) return;
+    event.preventDefault();
+    const clamped = clampFolderPaneWidth(next);
+    setFolderPaneWidth(clamped);
+    persistFolderPaneWidth(clamped);
+  };
+
+  const resetFolderPaneWidth = () => {
+    setFolderPaneWidth(FOLDER_PANE_DEFAULT_WIDTH);
+    persistFolderPaneWidth(FOLDER_PANE_DEFAULT_WIDTH);
+  };
 
   const clearPreviewParam = useCallback(() => {
     setSearchParams((current) => {
@@ -834,6 +979,27 @@ export function Documents() {
   // by the read-only download and the Download-for-Editing checkout flow,
   // which each need a different success message.
   const triggerFileDownload = async (libraryDocument: MockLibraryDocument) => {
+    // Real bug found live: previewing a Word/Excel/PowerPoint document caches the
+    // *server-generated PDF* (from GET .../preview, which renders the file through
+    // LibreOffice for viewing) onto the document as both `sourceUrl` and
+    // `preview.url`. Every local shortcut below then handed those PDF bytes to the
+    // browser under the document's own original name — so downloading a previewed
+    // `.doc` produced a file containing a PDF but named `.doc`, which no
+    // application can open until it's manually renamed. Verified against the live
+    // stack: the stored original really is a genuine OLE2 Word file (magic bytes
+    // d0cf11e0a1b11ae1) and GET .../download already streams it correctly with the
+    // right MIME type and Content-Disposition name — only the client was
+    // substituting the wrong bytes. The same class of substitution applied to the
+    // markdown (`fallbackDownload`) and spreadsheet-CSV shortcuts below, which
+    // would silently hand back extracted text instead of the real document.
+    // So: for any real server-backed document, always stream the immutable
+    // original from the API. The local blob shortcuts remain for the bundled
+    // sample/fixture documents, which have no server record to download from.
+    if (isServerDocumentId(libraryDocument.documentId) && libraryDocument.currentVersionId) {
+      await apiClient.downloadDocument(libraryDocument.documentId, libraryDocument.currentVersionId);
+      return;
+    }
+
     let href: string | undefined;
     let fileName = libraryDocument.fileName;
     let shouldRevoke = false;
@@ -1430,13 +1596,18 @@ export function Documents() {
   return (
     <div className="flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-hidden bg-white dark:bg-slate-950 md:flex-row">
       <div
-        className="flex min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
+        className={`flex min-w-0 flex-1 flex-col overflow-hidden md:flex-row ${isResizingFolderPane ? 'select-none' : ''}`}
         aria-hidden={directPreviewId ? 'true' : undefined}
         style={{ contentVisibility: directPreviewId ? 'hidden' : 'visible' }}
       >
       {/* Folders Sidebar */}
       {isLoadingFolders ? (
-        <div className="max-h-56 w-full flex-shrink-0 space-y-2 overflow-hidden border-b border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-56 md:border-b-0 md:border-r" role="status" aria-label="Loading folders">
+        <div
+          className="max-h-56 w-full flex-shrink-0 space-y-2 overflow-hidden border-b border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-[var(--dms-folder-pane-width,14rem)] md:border-b-0 md:border-r"
+          style={{ '--dms-folder-pane-width': `${folderPaneWidth}px` } as CSSProperties}
+          role="status"
+          aria-label="Loading folders"
+        >
           {[1, 2].map((item) => <div key={item} className="h-12 animate-skeleton rounded bg-slate-100 dark:bg-slate-800" />)}
         </div>
       ) : (
@@ -1448,8 +1619,30 @@ export function Documents() {
           onCreateFolder={(parentFolderId) => setNewFolderRequest({ parentFolderId, name: '' })}
           getFolderPermissions={getFolderPermissions}
           onRequestFolderPermissions={ensureFolderPermissionsLoaded}
+          widthPx={folderPaneWidth}
         />
       )}
+
+      {/* Draggable divider replacing the old static border between the two panes. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the folder panel"
+        aria-valuenow={folderPaneWidth}
+        aria-valuemin={FOLDER_PANE_MIN_WIDTH}
+        aria-valuemax={FOLDER_PANE_MAX_WIDTH}
+        tabIndex={0}
+        title="Drag to resize · double-click to reset"
+        onPointerDown={startFolderPaneResize}
+        onPointerMove={moveFolderPaneResize}
+        onPointerUp={endFolderPaneResize}
+        onPointerCancel={endFolderPaneResize}
+        onDoubleClick={resetFolderPaneWidth}
+        onKeyDown={handleFolderPaneResizeKeys}
+        className={`hidden w-1.5 flex-shrink-0 cursor-col-resize touch-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3f8bca] md:block ${
+          isResizingFolderPane ? 'bg-[#3f8bca]' : 'bg-transparent hover:bg-[#3f8bca]/40'
+        }`}
+      />
 
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -1515,6 +1708,17 @@ export function Documents() {
                 <option value="qa_final_review">Final Review</option>
                 <option value="released">Released</option>
               </select>
+              <select
+                className="field-control h-9 w-full sm:w-[150px]"
+                value={tagFilter}
+                onChange={(event) => setTagFilter(event.target.value)}
+                aria-label="Filter documents by tag"
+                disabled={availableTags.length === 0}
+                title={availableTags.length === 0 ? 'No tags on any document yet' : 'Filter by tag'}
+              >
+                <option value="">All tags</option>
+                {availableTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+              </select>
               <div className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
                 <LibraryBulkActions
                   selectedCount={selectedItemCount}
@@ -1542,11 +1746,19 @@ export function Documents() {
 
             {isLoadingDocs ? (
               <div className="p-4" role="status" aria-label="Loading documents"><SkeletonTable /></div>
-            ) : filteredDocuments.length === 0 ? (
+            ) : filteredDocuments.length === 0 && childFolderRows.length === 0 ? (
               <div className="p-12 text-center"><p className="text-sm text-[#718198]">{documents.length === 0 ? 'No documents in this folder' : 'No documents matching your filters'}</p></div>
             ) : (
               <DocumentList
                 documents={filteredDocuments}
+                folders={childFolderRows}
+                selectedFolderIds={selectedFolderIds}
+                onSelectedFolderIdsChange={setSelectedFolderIds}
+                onFolderOpen={handleFolderSelect}
+                onFolderAction={requestFolderAction}
+                onCreateSubfolder={(parentFolderId) => setNewFolderRequest({ parentFolderId, name: '' })}
+                getFolderPermissions={getFolderPermissions}
+                onRequestFolderPermissions={ensureFolderPermissionsLoaded}
                 selectedDocumentIds={selectedDocumentIds}
                 visibleColumns={visibleColumns}
                 onSelectedDocumentIdsChange={setSelectedDocumentIds}

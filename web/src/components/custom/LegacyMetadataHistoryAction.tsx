@@ -13,11 +13,15 @@ const ReadOnlyFilePreviewModal = lazy(() => import('./ReadOnlyFilePreviewModal')
 interface LegacyMetadataHistoryActionProps {
   documentId: string;
   fileName: string;
+  // Gated on the File/Folder Permission override "View Metadata History" —
+  // undefined (permissions not resolved yet) is treated the same as denied,
+  // so the button never appears enabled before the server has confirmed it.
+  canView?: boolean;
 }
 
 const SECONDARY_ACTION_CLASS = 'inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]';
 
-export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMetadataHistoryActionProps) {
+export function LegacyMetadataHistoryAction({ documentId, fileName, canView = false }: LegacyMetadataHistoryActionProps) {
   const [history, setHistory] = useState<LegacyMetadataHistory | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -32,6 +36,11 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
     setHistory(null);
     setLoadFailed(false);
     setIsOpen(false);
+
+    // Skip the availability check entirely when the caller isn't allowed to see
+    // this — no point revealing "there is/isn't legacy history here" to someone
+    // who couldn't open it anyway.
+    if (!canView) return;
 
     apiClient.getLegacyMetadataHistory(documentId)
       .then((response) => {
@@ -49,7 +58,7 @@ export function LegacyMetadataHistoryAction({ documentId, fileName }: LegacyMeta
       .catch(() => { if (!cancelled) setLoadFailed(true); });
 
     return () => { cancelled = true; };
-  }, [documentId]);
+  }, [documentId, canView]);
 
   useEffect(() => {
     if (!isOpen) return;

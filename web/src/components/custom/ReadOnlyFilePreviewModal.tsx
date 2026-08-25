@@ -15,9 +15,13 @@ interface ReadOnlyFilePreviewModalProps {
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'csv', 'json', 'xml', 'log']);
-const WORD_EXTENSIONS = new Set(['doc', 'docx', 'docm']);
-const PRESENTATION_EXTENSIONS = new Set(['ppt', 'pptx']);
-const SPREADSHEET_EXTENSIONS = new Set(['xls', 'xlsx']);
+const WORD_EXTENSIONS = new Set(['doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'odt', 'rtf']);
+const PRESENTATION_EXTENSIONS = new Set([
+  'ppt', 'pptx', 'pptm', 'pot', 'potx', 'potm', 'pps', 'ppsx', 'ppsm', 'ppam', 'odp',
+]);
+const SPREADSHEET_EXTENSIONS = new Set([
+  'xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'xltm', 'ods',
+]);
 
 function extensionOf(fileName: string): string {
   return fileName.split('.').pop()?.toLowerCase() ?? '';

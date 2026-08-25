@@ -876,6 +876,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
             <LegacyMetadataHistoryAction
               documentId={document.documentId}
               fileName={document.fileName}
+              canView={Boolean(permissions?.viewMetadataHistory)}
             />
             <button
               onClick={() => setShowRelatedTasks(true)}

@@ -63,6 +63,7 @@ public class AccessOverrideService(DmsContext context)
         AccessOverrideActions.FileManagePermissions => o => o.FileManagePermissions,
         AccessOverrideActions.ViewHistory => o => o.ViewHistory,
         AccessOverrideActions.ViewRelatedTasks => o => o.ViewRelatedTasks,
+        AccessOverrideActions.ViewMetadataHistory => o => o.ViewMetadataHistory,
         _ => NoSelector
     };
 

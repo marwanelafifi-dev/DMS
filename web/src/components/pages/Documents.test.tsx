@@ -89,6 +89,7 @@ describe('Document Library', () => {
         deleteParentFolder: true, deleteSubfolder: true, deleteFile: true,
         submitForApproval: true, approve: true, reject: true, adminForceUnlock: true,
         copy: true, cut: true, downloadZip: true, fileCopy: true, fileCut: true,
+        viewMetadataHistory: true,
       },
     });
     vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
@@ -121,9 +122,12 @@ describe('Document Library', () => {
     const folderSection = await screen.findByTestId('folder-section');
     const table = await screen.findByRole('table', { name: 'Documents' });
 
-    expect(folderSection).toHaveClass('w-full', 'max-h-56', 'md:w-56', 'md:max-h-none');
+    // The desktop width is user-resizable (draggable divider), so it comes from a
+    // CSS custom property with a 14rem default rather than a fixed `md:w-56`.
+    expect(folderSection).toHaveClass('w-full', 'max-h-56', 'md:w-[var(--dms-folder-pane-width,14rem)]', 'md:max-h-none');
     expect(folderSection).toBeInTheDocument();
     expect(table).toBeInTheDocument();
+    expect(screen.getByRole('separator', { name: 'Resize the folder panel' })).toBeInTheDocument();
   });
 
   it('opens the multiple file picker from the primary Upload button', async () => {
@@ -211,6 +215,50 @@ describe('Document Library', () => {
     expect(screen.getAllByText('Operations').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Production', { selector: 'span' }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\d{2} \w{3} 2026, \d{2}:\d{2}/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows complete file and folder names in the library table', async () => {
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [
+        ...mockLibraryFolders,
+        {
+          folderId: 'information-security-policies',
+          name: 'Information Security Policies and Procedures',
+          parentFolderId: 'folder-1',
+          createdAt: '2026-08-25T08:00:00.000Z',
+        },
+      ],
+    });
+    renderDocumentLibrary();
+
+    const table = await screen.findByRole('table', { name: 'Documents' });
+    const fileName = within(table).getByText('Production Shift Handover.txt');
+    const folderName = within(table).getByText('Information Security Policies and Procedures');
+
+    expect(fileName).toHaveClass('whitespace-nowrap');
+    expect(fileName).not.toHaveClass('truncate');
+    expect(folderName).toHaveClass('whitespace-normal', 'break-words');
+    expect(folderName).not.toHaveClass('truncate');
+  });
+
+  it('keeps filenames on one line and summarizes older tags behind a tooltip', async () => {
+    const user = userEvent.setup();
+    renderDocumentLibrary();
+
+    const openButton = await screen.findByRole('button', { name: /Open Calibration Procedure SOP-204\.pdf/ });
+    const row = openButton.closest('tr');
+    expect(row).not.toBeNull();
+
+    expect(within(row!).getByText('Calibration Procedure SOP-204.pdf')).toHaveClass('whitespace-nowrap');
+    expect(within(row!).getByText('Production')).toBeInTheDocument();
+    expect(within(row!).getByText('Quality')).toBeInTheDocument();
+    expect(within(row!).queryByText('Controlled')).not.toBeInTheDocument();
+
+    const remainingTags = within(row!).getByLabelText(/1 more tag.*Controlled, Quality, Production/i);
+    expect(remainingTags).toHaveTextContent('+1');
+    await user.hover(remainingTags);
+    expect(remainingTags).toHaveAttribute('title', 'All tags: Controlled, Quality, Production');
   });
 
   it('keeps Actions as the final right-aligned column inside the table scroller', async () => {
@@ -832,8 +880,20 @@ describe('Document Library', () => {
     const previewButton = await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' });
     await user.click(previewButton);
 
-    const dialog = screen.getByRole('dialog', { name: 'Production Shift Handover.txt' });
+    const dialog = await screen.findByRole(
+      'dialog',
+      { name: 'Production Shift Handover.txt' },
+      { timeout: 10_000 },
+    );
     expect(dialog).toBeInTheDocument();
+    const previewTitle = within(dialog).getByRole('heading', { name: 'Production Shift Handover.txt' });
+    expect(previewTitle).toHaveClass('whitespace-nowrap');
+    expect(previewTitle).not.toHaveClass('truncate');
+    const actionToolbar = within(dialog).getByTestId('document-preview-actions');
+    expect(actionToolbar).toHaveClass('flex-nowrap', 'overflow-x-auto');
+    expect(actionToolbar).not.toHaveClass('flex-wrap');
+    expect(screen.getByTestId('document-preview-overlay')).toHaveClass('lg:left-[var(--dms-sidebar-width,286px)]');
+    expect(screen.getByTestId('document-preview-overlay')).not.toHaveClass('lg:left-[286px]');
     // The library remains mounted so closing the modal restores the same
     // selection/focus, but is correctly hidden from assistive technology while
     // the full-screen document dialog owns focus.
@@ -843,6 +903,26 @@ describe('Document Library', () => {
     expect(within(dialog).getByText('Daily production handover notes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close document preview' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Actions for selected items' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the preview filename on one line and reveals all tags from the remainder badge', async () => {
+    const user = userEvent.setup();
+    renderDocumentLibrary();
+
+    await user.click(await screen.findByRole('button', { name: 'Preview Calibration Procedure SOP-204.pdf' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Calibration Procedure SOP-204.pdf' });
+
+    const previewTitle = within(dialog).getByRole('heading', { name: 'Calibration Procedure SOP-204.pdf' });
+    expect(previewTitle).toHaveClass('whitespace-nowrap');
+    expect(previewTitle).not.toHaveClass('truncate');
+    expect(within(dialog).getByText('Production')).toBeInTheDocument();
+    expect(within(dialog).getByText('Quality')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Controlled')).not.toBeInTheDocument();
+
+    const remainingTags = within(dialog).getByLabelText(/1 more tag.*Controlled, Quality, Production/i);
+    expect(remainingTags).toHaveTextContent('+1');
+    await user.hover(remainingTags);
+    expect(remainingTags).toHaveAttribute('title', 'All tags: Controlled, Quality, Production');
   });
 
   it('keeps native History separate and hides Metadata History for a native document', async () => {
@@ -903,7 +983,7 @@ describe('Document Library', () => {
     renderDocumentLibrary();
     await user.click(await screen.findByRole('button', { name: 'Preview Calibration Procedure SOP-204.pdf' }));
 
-    const overlay = screen.getByTestId('document-preview-overlay');
+    const overlay = await screen.findByTestId('document-preview-overlay', {}, { timeout: 10_000 });
     const body = screen.getByTestId('document-preview-body');
     const viewerWorkspace = document.getElementById('dms-printable-preview');
 

@@ -83,6 +83,7 @@ describe('LegacyMetadataHistoryAction', () => {
       <LegacyMetadataHistoryAction
         documentId={documentId}
         fileName={fileName}
+        canView
       />,
     );
 
@@ -150,7 +151,7 @@ describe('LegacyMetadataHistoryAction', () => {
       },
     });
 
-    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} />);
+    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} canView />);
     await user.click(await screen.findByRole('button', { name: `View legacy metadata history of ${fileName}` }));
 
     const dialog = screen.getByRole('dialog', { name: 'Legacy Metadata History' });
@@ -179,7 +180,7 @@ describe('LegacyMetadataHistoryAction', () => {
     });
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 
-    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} />);
+    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} canView />);
     await user.click(await screen.findByRole('button', { name: `View legacy metadata history of ${fileName}` }));
     await user.click(screen.getByRole('button', { name: 'View legacy-review.pdf' }));
 
@@ -197,7 +198,7 @@ describe('LegacyMetadataHistoryAction', () => {
     });
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
-    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} />);
+    render(<LegacyMetadataHistoryAction documentId={documentId} fileName={fileName} canView />);
     await user.click(await screen.findByRole('button', { name: `View legacy metadata history of ${fileName}` }));
     await user.click(screen.getAllByRole('button', { name: 'Download SRD.doc' })[0]);
 
@@ -221,10 +222,27 @@ describe('LegacyMetadataHistoryAction', () => {
       <LegacyMetadataHistoryAction
         documentId="native-document"
         fileName="Native document.pdf"
+        canView
       />,
     );
 
     await waitFor(() => expect(apiClient.getLegacyMetadataHistory).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('button', { name: /legacy metadata history/i })).not.toBeInTheDocument();
+  });
+
+  it('never checks for legacy history at all without the View Metadata History permission', async () => {
+    render(
+      <LegacyMetadataHistoryAction
+        documentId={documentId}
+        fileName={fileName}
+        canView={false}
+      />,
+    );
+
+    // Give any stray effect a tick to run, then confirm it genuinely never fired —
+    // not just that the button hasn't rendered yet.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(apiClient.getLegacyMetadataHistory).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /legacy metadata history/i })).not.toBeInTheDocument();
   });
 
@@ -234,6 +252,7 @@ describe('LegacyMetadataHistoryAction', () => {
       <LegacyMetadataHistoryAction
         documentId={documentId}
         fileName={fileName}
+        canView
       />,
     );
 

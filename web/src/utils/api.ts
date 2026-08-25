@@ -43,6 +43,7 @@ export interface RolePermissionFlags {
   fileManagePermissions: boolean;
   viewHistory: boolean;
   viewRelatedTasks: boolean;
+  viewMetadataHistory: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -180,6 +181,7 @@ export interface AccessOverrideFlags {
   fileManagePermissions?: boolean | null;
   viewHistory?: boolean | null;
   viewRelatedTasks?: boolean | null;
+  viewMetadataHistory?: boolean | null;
 }
 
 export interface AccessOverride extends AccessOverrideFlags {

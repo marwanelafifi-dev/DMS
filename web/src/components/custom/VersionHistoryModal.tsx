@@ -18,11 +18,16 @@ const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 
 // markdown conversion (which drops embedded images entirely, replacing them
 // with a bare "<!-- image -->" placeholder) is only the fallback if the
 // sidecar is unreachable or the PDF conversion itself fails.
-const OFFICE_PDF_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx']);
+const OFFICE_PDF_EXTENSIONS = new Set([
+  'doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'odt', 'rtf',
+  'ppt', 'pptx', 'pptm', 'pot', 'potx', 'potm', 'pps', 'ppsx', 'ppsm', 'ppam', 'odp',
+]);
 // Excel renders as a real spreadsheet grid (same parser the main Document
 // Library preview uses) instead of Docling's flattened markdown pipe-table,
 // which mangles multi-sheet workbooks and mislabels columns.
-const OFFICE_SPREADSHEET_EXTENSIONS = new Set(['xls', 'xlsx']);
+const OFFICE_SPREADSHEET_EXTENSIONS = new Set([
+  'xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'xltm', 'ods',
+]);
 
 type ReviewContent =
   | { kind: 'image' | 'pdf'; url: string }

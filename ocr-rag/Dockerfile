@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # curl for the compose healthcheck; shared libraries for RapidOCR/OpenCV;
-# LibreOffice Writer/Impress (headless) for real Word/PowerPoint -> PDF preview
+# LibreOffice Writer/Calc/Impress (headless) for real Office -> PDF preview
 # rendering, reusing the app's existing pdf.js viewer instead of a plain-text
 # reconstruction. fonts-liberation improves fidelity for Calibri/Arial-authored
 # documents converted on a Linux host with no MS fonts installed.
@@ -14,6 +14,7 @@ RUN apt-get update \
         libglib2.0-0 \
         libxcb1 \
         libreoffice-writer \
+        libreoffice-calc \
         libreoffice-impress \
         fonts-liberation \
     && rm -rf /var/lib/apt/lists/*

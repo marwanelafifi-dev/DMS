@@ -1,18 +1,56 @@
-import { useState } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { ScheduledNoticeBanner } from './ScheduledNoticeBanner';
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'dms.sidebar.collapsed';
+
+function readStoredSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1';
+  } catch {
+    // Storage-disabled browsers just start expanded every time.
+    return false;
+  }
+}
+
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Persisted so the icon rail survives a reload, the way a desktop app would.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const location = useLocation();
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, next ? '1' : '0');
+      } catch {
+        // Collapse still applies for this session; it just won't be remembered.
+      }
+      return next;
+    });
+  }, []);
+
+  // Document dialogs render in a body portal so page-entry transforms cannot
+  // turn `position: fixed` into a page-relative offset. Publish the live desktop
+  // rail width at the document root so the portal remains exactly beside the
+  // sidebar in both expanded and collapsed states.
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--dms-sidebar-width', sidebarCollapsed ? '76px' : '286px');
+    return () => {
+      document.documentElement.style.removeProperty('--dms-sidebar-width');
+    };
+  }, [sidebarCollapsed]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f3f6fa] text-[#17213a] dark:bg-slate-950 dark:text-white">
       <Sidebar
         isExpanded={sidebarOpen}
         onToggleExpand={() => setSidebarOpen((open) => !open)}
+        isCollapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapsed}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

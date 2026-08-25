@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronLeft, ChevronRight, Copy, Download, Eye, FilePen, FileText, FolderInput, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Download, Eye, FilePen, FileText, Folder as FolderIcon, FolderInput, FolderPlus, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
 import { statusLabels, statusStyles } from '../../utils/documentStatus';
+import { CompactTagList } from './CompactTagList';
 
 const rowMenuContentClass = 'z-[95] min-w-[210px] rounded-[5px] border border-[#dbe2ec] bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900';
 const rowMenuItemClass = 'flex h-9 select-none items-center gap-2 rounded-[4px] px-2.5 text-sm text-[#34425b] outline-none data-[highlighted]:bg-[#edf2f8] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 dark:text-slate-200 dark:data-[highlighted]:bg-slate-800';
@@ -62,8 +63,31 @@ export const defaultVisibleDocumentColumns: ReadonlySet<OptionalDocumentColumn> 
   'status',
 ]);
 
+// A subfolder of the folder currently being browsed, rendered as a navigable row
+// pinned above the file rows. Previously subfolders were only reachable from the
+// left-hand tree, so opening a folder whose contents were entirely subfolders
+// showed nothing but "No documents in this folder".
+export interface LibraryFolderRow {
+  folderId: string;
+  name: string;
+  isRoot: boolean;
+  subfolderCount: number;
+  documentCount: number;
+}
+
 interface DocumentListProps {
   documents: MockLibraryDocument[];
+  folders?: LibraryFolderRow[];
+  selectedFolderIds?: Set<string>;
+  onSelectedFolderIdsChange?: (ids: Set<string>) => void;
+  onFolderOpen?: (folderId: string) => void;
+  onFolderAction?: (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => void;
+  onCreateSubfolder?: (parentFolderId: string) => void;
+  // Per-folder, because a subfolder's overrides can differ from the folder being
+  // browsed. `undefined` means "not loaded yet" and is treated as "not allowed",
+  // so an action is never enabled before the server has confirmed it.
+  getFolderPermissions?: (folderId: string) => RolePermissionFlags | null | undefined;
+  onRequestFolderPermissions?: (folderId: string) => void;
   isLoading?: boolean;
   selectedDocumentIds?: Set<string>;
   visibleColumns?: Set<OptionalDocumentColumn>;
@@ -119,6 +143,14 @@ function SelectionCheckbox({ checked, indeterminate = false, onChange, label }: 
 
 export function DocumentList({
   documents,
+  folders = [],
+  selectedFolderIds = new Set(),
+  onSelectedFolderIdsChange,
+  onFolderOpen,
+  onFolderAction,
+  onCreateSubfolder,
+  getFolderPermissions,
+  onRequestFolderPermissions,
   isLoading = false,
   selectedDocumentIds = new Set(),
   visibleColumns = new Set(defaultVisibleDocumentColumns),
@@ -201,6 +233,20 @@ export function DocumentList({
     onSelectedDocumentIdsChange?.(next);
   };
 
+  const toggleSelectedFolder = (folderId: string) => {
+    const next = new Set(selectedFolderIds);
+    if (next.has(folderId)) next.delete(folderId);
+    else next.add(folderId);
+    onSelectedFolderIdsChange?.(next);
+  };
+
+  // Folders always sort by name and always sit above the files, matching how a
+  // normal file browser behaves — the column sort below applies to files only.
+  const sortedFolders = useMemo(
+    () => [...folders].sort((left, right) => left.name.localeCompare(right.name)),
+    [folders],
+  );
+
   const header = (label: string, key: SortKey) => (
     <button type="button" onClick={() => toggleSort(key)} className={sortBy === key ? 'text-[#283a7a] dark:text-white' : ''}>
       {label}
@@ -231,7 +277,7 @@ export function DocumentList({
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="data-table library-document-table w-full min-w-[720px] table-fixed" aria-label="Documents">
+      <table className="data-table library-document-table w-full min-w-[720px] table-auto" aria-label="Documents">
         <colgroup>
           <col style={{ width: `${columnWidthPercents.checkbox}%` }} />
           <col style={{ width: `${columnWidthPercents.documentId}%` }} />
@@ -268,6 +314,141 @@ export function DocumentList({
           </tr>
         </thead>
         <tbody>
+          {/* Only on the first page: subfolders are a navigation aid for the
+              folder you're in, not part of the paginated file listing, so
+              repeating them above every page of files would just be noise. */}
+          {currentPage === 1 && sortedFolders.map((folder) => {
+            const permissions = getFolderPermissions?.(folder.folderId);
+            const canDelete = Boolean(folder.isRoot ? permissions?.deleteParentFolder : permissions?.deleteSubfolder);
+            const deniedTitle = 'Your role does not have permission to do this';
+            const itemSummary = [
+              folder.subfolderCount > 0 ? `${folder.subfolderCount} subfolder${folder.subfolderCount === 1 ? '' : 's'}` : null,
+              `${folder.documentCount} file${folder.documentCount === 1 ? '' : 's'}`,
+            ].filter(Boolean).join(' · ');
+
+            return (
+              <tr key={`folder-${folder.folderId}`} className="bg-[#fbfcfe] hover:bg-[#f2f6fa] dark:bg-slate-900 dark:hover:bg-slate-800/60">
+                <td className="px-3">
+                  <SelectionCheckbox
+                    checked={selectedFolderIds.has(folder.folderId)}
+                    onChange={() => toggleSelectedFolder(folder.folderId)}
+                    label={`Select folder ${folder.name}`}
+                  />
+                </td>
+                <td className="text-[#93a4bd]">—</td>
+                <td className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => onFolderOpen?.(folder.folderId)}
+                    className="flex w-full min-w-0 items-center gap-2 text-left"
+                    aria-label={`Open folder ${folder.name}`}
+                  >
+                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-[#fdf3d9] text-[#c98a10]">
+                      <FolderIcon className="h-4 w-4 fill-current" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block whitespace-normal break-words text-sm font-semibold leading-5 text-[#2e4083] dark:text-slate-100">{folder.name}</span>
+                      <span className="mt-0.5 block truncate text-xs text-[#52627a]">{itemSummary}</span>
+                    </span>
+                  </button>
+                </td>
+                <td className="text-[#93a4bd]">—</td>
+                {visibleColumns.has('department') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('category') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('owner') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('modifiedAt') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('tags') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('status') && <td className="text-[#93a4bd]">—</td>}
+                <td className="text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      title="Open folder"
+                      onClick={() => onFolderOpen?.(folder.folderId)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#2f3e83] text-white hover:bg-[#263472] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+                      aria-label={`Browse ${folder.name}`}
+                    >
+                      <FolderIcon className="h-5 w-5" />
+                    </button>
+                    <DropdownMenu.Root onOpenChange={(open) => { if (open) onRequestFolderPermissions?.(folder.folderId); }}>
+                      <DropdownMenu.Trigger asChild>
+                        <button
+                          type="button"
+                          title="More actions"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#f1f4f8] text-[#52627a] hover:bg-[#e7ecf2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                          aria-label={`More actions for folder ${folder.name}`}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content className={rowMenuContentClass} sideOffset={6} align="end">
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!permissions?.createSubfolder}
+                            title={!permissions?.createSubfolder ? deniedTitle : undefined}
+                            onSelect={() => onCreateSubfolder?.(folder.folderId)}
+                          >
+                            <FolderPlus className="h-4 w-4" /> New Subfolder
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!permissions?.downloadZip}
+                            title={!permissions?.downloadZip ? deniedTitle : undefined}
+                            onSelect={() => onFolderAction?.('download', folder.folderId)}
+                          >
+                            <Download className="h-4 w-4" /> Download as ZIP
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!permissions?.updateFolder}
+                            title={!permissions?.updateFolder ? deniedTitle : undefined}
+                            onSelect={() => onFolderAction?.('rename', folder.folderId)}
+                          >
+                            <Pencil className="h-4 w-4" /> Rename
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!permissions?.copy}
+                            title={!permissions?.copy ? deniedTitle : undefined}
+                            onSelect={() => onFolderAction?.('copy', folder.folderId)}
+                          >
+                            <Copy className="h-4 w-4" /> Copy
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!permissions?.cut}
+                            title={!permissions?.cut ? deniedTitle : undefined}
+                            onSelect={() => onFolderAction?.('cut', folder.folderId)}
+                          >
+                            <FolderInput className="h-4 w-4" /> Move
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className={`${rowMenuItemClass} text-[#c73c44]`}
+                            disabled={!canDelete}
+                            title={!canDelete ? deniedTitle : undefined}
+                            onSelect={() => onFolderAction?.('delete', folder.folderId)}
+                          >
+                            <Trash2 className="h-4 w-4" /> Delete
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!permissions?.managePermissions}
+                            title={!permissions?.managePermissions ? deniedTitle : undefined}
+                            onSelect={() => onFolderAction?.('permissions', folder.folderId)}
+                          >
+                            <ShieldCheck className="h-4 w-4" /> Folder Permissions
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
           {pagedDocuments.map((document, index) => (
             <tr key={document.documentId} className={`${index % 2 ? 'bg-[#f8fafc] dark:bg-slate-800/35' : 'bg-white dark:bg-slate-900'} hover:bg-[#f2f6fa] dark:hover:bg-slate-800/60`}>
               <td className="px-3">
@@ -280,21 +461,19 @@ export function DocumentList({
                 <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}${document.description ? ` ${document.description}` : ''}`}>
                   <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded ${extensionStyles[document.extension]}`}><FileText className="h-4 w-4" /></span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-[#2e4083] dark:text-slate-100" title={document.fileName}>{document.fileName}</span>
+                    <span className="block min-w-max whitespace-nowrap text-sm font-semibold leading-5 text-[#2e4083] dark:text-slate-100">{document.fileName}</span>
                     <span className="mt-0.5 block truncate text-xs text-[#52627a]">{document.description}</span>
                   </span>
                 </button>
               </td>
-              <td className="text-[#52627a] dark:text-slate-200"><ExpandableCellText value={document.folderName} /></td>
+              <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.folderName} /></td>
               {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.department} /></td>}
               {visibleColumns.has('category') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.category} /></td>}
               {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.owner.fullName} /></td>}
               {visibleColumns.has('modifiedAt') && <td className="text-[11px] text-[#52627a]"><ExpandableCellText value={formatDateTime(document.modifiedAt)} /></td>}
               {visibleColumns.has('tags') && (
                 <td>
-                  {document.tags.length ? (
-                    <div className="flex flex-wrap gap-1">{document.tags.map((tag) => <span key={tag} className="rounded-full bg-[#edf2f8] px-2 py-0.5 text-[11px] font-medium text-[#52627a] dark:bg-slate-800 dark:text-slate-200">{tag}</span>)}</div>
-                  ) : <span className="text-[#93a4bd]">—</span>}
+                  <CompactTagList tags={document.tags} />
                 </td>
               )}
               {visibleColumns.has('status') && <td><span className={`inline-block whitespace-nowrap rounded px-2 py-1 text-xs font-medium ${statusStyles[document.status]}`}>{statusLabels[document.status]}</span></td>}
@@ -390,6 +569,7 @@ export function DocumentList({
 
       <div className="flex items-center justify-between border-t border-[#e2e8f0] bg-[#f7f9fc] px-4 py-2.5 dark:border-white/10 dark:bg-slate-950">
         <p className="text-xs text-[#52627a] dark:text-slate-400">
+          {sortedFolders.length > 0 && `${sortedFolders.length} folder${sortedFolders.length === 1 ? '' : 's'} · `}
           {sortedDocuments.length === 0
             ? 'No documents'
             : `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, sortedDocuments.length)} of ${sortedDocuments.length}`}

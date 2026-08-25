@@ -41,6 +41,7 @@ describe('document Category visibility', () => {
           adminForceUnlock: true, copy: true, cut: true, downloadZip: true,
           fileCopy: true, fileCut: true, edit: true, managePermissions: true,
           fileManagePermissions: true, viewHistory: true, viewRelatedTasks: true,
+          viewMetadataHistory: true,
         }}
       />,
     );

@@ -41,6 +41,7 @@ const FILE_LEVEL_FIELDS: FieldDef[] = [
   { key: 'fileManagePermissions', label: 'Manage Permissions' },
   { key: 'viewHistory', label: 'View Version History' },
   { key: 'viewRelatedTasks', label: 'View Related Tasks' },
+  { key: 'viewMetadataHistory', label: 'View Metadata History' },
 ];
 
 // Tri-state control: Inherit (no opinion, fall back to the role) / Allow / Deny.

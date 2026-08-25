@@ -79,6 +79,7 @@ const chrome = spawn(
   [
     '--headless=new',
     '--disable-gpu',
+    '--window-size=1440,1000',
     '--remote-debugging-port=0',
     `--user-data-dir=${profilePath}`,
     'about:blank',
@@ -181,9 +182,75 @@ try {
     );
     const headerText = await evaluate(`document.body.innerText`);
     assert(headerText.includes('Category') && headerText.includes(pilot.category), `Legacy ${pilot.legacyId}: Category ${pilot.category} is not visible`);
+    const previewTitleLayout = await evaluate(`(() => {
+      const title = document.getElementById('document-preview-title');
+      if (!title) return null;
+      const style = getComputedStyle(title);
+      return {
+        whiteSpace: style.whiteSpace,
+        height: title.getBoundingClientRect().height,
+        lineHeight: Number.parseFloat(style.lineHeight),
+      };
+    })()`);
+    assert(previewTitleLayout?.whiteSpace === 'nowrap', `Legacy ${pilot.legacyId}: preview filename is not kept on one line`);
+    assert(previewTitleLayout.height <= previewTitleLayout.lineHeight * 1.25, `Legacy ${pilot.legacyId}: preview filename wrapped onto multiple lines`);
+    const actionRowLayout = await evaluate(`(() => {
+      const toolbar = document.querySelector('[data-testid="document-preview-actions"]');
+      if (!toolbar) return null;
+      const visibleItems = Array.from(toolbar.children).filter((element) => element.getBoundingClientRect().width > 0);
+      const centers = visibleItems.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top + (rect.height / 2);
+      });
+      return {
+        whiteSpace: getComputedStyle(toolbar).flexWrap,
+        centerSpread: Math.max(...centers) - Math.min(...centers),
+      };
+    })()`);
+    assert(actionRowLayout?.whiteSpace === 'nowrap', `Legacy ${pilot.legacyId}: preview actions allow wrapping`);
+    assert(actionRowLayout.centerSpread <= 1, `Legacy ${pilot.legacyId}: preview action buttons rendered on multiple lines`);
     if (pilot.legacyId === 230) {
       assert(!['COMPLIANCE', 'ISO 9001:2015', 'ISO 27001:2022', 'On-Premises Vault'].some((label) => headerText.includes(label)), 'Removed sidebar content is still visible');
       assert(await evaluate(`Boolean(document.querySelector('button[aria-label="Expand all folders"]') && document.querySelector('button[aria-label="Collapse all folders"]'))`), 'Folder Expand All / Collapse All controls are unavailable');
+
+      const readPreviewAlignment = `(() => {
+        const toggle = document.querySelector('button[aria-label="Collapse navigation"], button[aria-label="Expand navigation"]');
+        const sidebar = toggle?.closest('aside');
+        const preview = document.querySelector('[data-testid="document-preview-overlay"]');
+        if (!sidebar || !preview) return null;
+        const sidebarRect = sidebar.getBoundingClientRect();
+        const previewRect = preview.getBoundingClientRect();
+        return {
+          sidebarWidth: sidebarRect.width,
+          previewLeft: previewRect.left,
+          previewRight: previewRect.right,
+          viewportWidth: window.innerWidth,
+        };
+      })()`;
+      const expandedAlignment = await evaluate(readPreviewAlignment);
+      assert(expandedAlignment && Math.abs(expandedAlignment.previewLeft - expandedAlignment.sidebarWidth) <= 1, 'Document preview is not aligned beside the expanded sidebar');
+      assert(Math.abs(expandedAlignment.previewRight - expandedAlignment.viewportWidth) <= 1, 'Document preview does not use the full available desktop width');
+
+      await evaluate(`document.querySelector('button[aria-label="Collapse navigation"]')?.click()`);
+      await waitForPage(`(() => {
+        const sidebar = document.querySelector('button[aria-label="Expand navigation"]')?.closest('aside');
+        const preview = document.querySelector('[data-testid="document-preview-overlay"]');
+        return Boolean(sidebar && preview
+          && sidebar.getBoundingClientRect().width < 100
+          && Math.abs(sidebar.getBoundingClientRect().right - preview.getBoundingClientRect().left) <= 1);
+      })()`, 'Document preview did not resize beside the collapsed sidebar');
+      const collapsedAlignment = await evaluate(readPreviewAlignment);
+      assert(collapsedAlignment.sidebarWidth < expandedAlignment.sidebarWidth, 'Sidebar did not collapse during document preview');
+      assert(Math.abs(collapsedAlignment.previewRight - collapsedAlignment.viewportWidth) <= 1, 'Collapsed-sidebar preview does not fill the remaining viewport');
+
+      await evaluate(`document.querySelector('button[aria-label="Expand navigation"]')?.click()`);
+      await waitForPage(`(() => {
+        const sidebar = document.querySelector('button[aria-label="Collapse navigation"]')?.closest('aside');
+        const preview = document.querySelector('[data-testid="document-preview-overlay"]');
+        return Boolean(sidebar && preview
+          && sidebar.getBoundingClientRect().width > 250
+          && Math.abs(sidebar.getBoundingClientRect().right - preview.getBoundingClientRect().left) <= 1);
+      })()`, 'Document preview did not resize after expanding the sidebar again');
     }
     await evaluate(`Array.from(document.querySelectorAll('button')).find((button) => button.getAttribute('aria-label')?.startsWith('View legacy metadata history of '))?.click()`);
     await waitForPage(`Boolean(document.querySelector('[role="dialog"][aria-labelledby="legacy-metadata-history-title"]'))`, `Legacy ${pilot.legacyId}: dialog did not open`);

@@ -78,6 +78,7 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
                 o.FileManagePermissions,
                 o.ViewHistory,
                 o.ViewRelatedTasks,
+                o.ViewMetadataHistory,
                 o.CreatedAt,
                 // True when this row is a folder-level File Level override
                 // shown here only because it cascades to the requested
@@ -169,6 +170,7 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
             entity.FileManagePermissions = req.FileManagePermissions;
             entity.ViewHistory = req.ViewHistory;
             entity.ViewRelatedTasks = req.ViewRelatedTasks;
+            entity.ViewMetadataHistory = req.ViewMetadataHistory;
             entity.UpdatedAt = DateTime.UtcNow;
 
             if (existing == null)
@@ -238,4 +240,4 @@ public record CreateAccessOverrideRequest(
     bool? FileRead, bool? FileRename, bool? FileCopy, bool? FileCut,
     bool? Unlock, bool? SubmitForApproval, bool? Download, bool? DownloadForEditing, bool? UploadUpdatedFile, bool? FileDelete,
     bool? FileEdit, bool? ManagePermissions, bool? FileManagePermissions,
-    bool? ViewHistory = null, bool? ViewRelatedTasks = null);
+    bool? ViewHistory = null, bool? ViewRelatedTasks = null, bool? ViewMetadataHistory = null);

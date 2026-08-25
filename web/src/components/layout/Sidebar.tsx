@@ -13,6 +13,8 @@ import {
   Folder,
   LayoutDashboard,
   Megaphone,
+  PanelLeftClose,
+  PanelLeftOpen,
   ScrollText,
   Settings as SettingsIcon,
   Shield,
@@ -24,6 +26,10 @@ import {
 interface SidebarProps {
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  // Desktop-only icon-rail mode. The mobile drawer always opens at full width,
+  // so every collapse-related class below is `lg:`-scoped on purpose.
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 const navItems: Array<{ label: string; path: string; icon: typeof LayoutDashboard; exact?: boolean; visibleWhen: keyof PageAccessRoleFlags }> = [
@@ -46,7 +52,7 @@ const adminItems = [
   { label: 'Database', path: '/admin/database', icon: Database },
 ];
 
-export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
+export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = false, onToggleCollapse }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const pageAccess = usePageAccess();
@@ -87,13 +93,17 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[286px] flex-col bg-gradient-to-b from-[#283777] via-[#1f2c5f] to-[#12193d] text-white transition-transform duration-200 lg:relative lg:z-auto lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[286px] flex-col bg-gradient-to-b from-[#283777] via-[#1f2c5f] to-[#12193d] text-white transition-transform duration-200 lg:relative lg:z-auto lg:translate-x-0 lg:transition-[width] ${
           isExpanded ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        } ${isCollapsed ? 'lg:w-[76px]' : 'lg:w-[286px]'}`}
       >
         <div className="relative flex h-[68px] flex-shrink-0 items-center justify-center border-b border-[#dbe2ec] bg-white px-5 dark:border-slate-950 dark:bg-slate-950">
           {headerConfig.showLogoInHeader && (
-            <button onClick={() => navigate('/')} className="flex items-center justify-center" aria-label="Go to dashboard">
+            <button
+              onClick={() => navigate('/')}
+              className={`flex items-center justify-center ${isCollapsed ? 'lg:hidden' : ''}`}
+              aria-label="Go to dashboard"
+            >
               {headerConfig.logoObjectKey ? (
                 <img src="/api/branding/logo/header" alt={headerConfig.logoAltText} className="h-9 w-auto max-w-[200px] object-contain" />
               ) : (
@@ -107,6 +117,19 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
           <button onClick={onToggleExpand} className="absolute right-4 rounded p-1.5 text-[#52627a] hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10 lg:hidden" aria-label="Close navigation">
             <X className="h-5 w-5" />
           </button>
+          {/* Desktop collapse toggle. Centred when the rail is collapsed (the logo
+              is hidden there), tucked to the right alongside the logo otherwise. */}
+          <button
+            onClick={onToggleCollapse}
+            className={`hidden rounded p-1.5 text-[#52627a] hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10 lg:block ${
+              isCollapsed ? '' : 'absolute right-3'
+            }`}
+            aria-label={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-expanded={!isCollapsed}
+            title={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          >
+            {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+          </button>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-3">
@@ -117,34 +140,46 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
               <button
                 key={item.label}
                 onClick={() => goTo(item.path)}
+                title={isCollapsed ? item.label : undefined}
                 className={`flex h-[43px] w-full items-center gap-3 border-l-[3px] px-5 text-left text-[15px] transition-colors ${
                   active
                     ? 'border-[#70a3e8] bg-white/[0.12] font-semibold text-white'
                     : 'border-transparent font-medium text-white/92 hover:bg-white/[0.08]'
-                }`}
+                } ${isCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
               >
                 <Icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.9} />
-                <span>{item.label}</span>
+                <span className={isCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
               </button>
             );
           })}
 
           {pageAccess?.canViewAdminPanel !== false && (
           <button
-            onClick={() => setAdminOpen((open) => !open)}
+            onClick={() => {
+              // The submenu has nowhere to render inside a 76px icon rail, so
+              // opening Admin from the collapsed state expands the rail first
+              // rather than silently doing nothing.
+              if (isCollapsed) {
+                onToggleCollapse?.();
+                setAdminOpen(true);
+                return;
+              }
+              setAdminOpen((open) => !open);
+            }}
+            title={isCollapsed ? 'Admin Panel' : undefined}
             className={`flex h-[43px] w-full items-center gap-3 border-l-[3px] px-5 text-left text-[15px] transition-colors ${
               isAdminRoute
                 ? 'border-[#70a3e8] bg-white/[0.12] font-semibold text-white'
                 : 'border-transparent font-medium text-white/92 hover:bg-white/[0.08]'
-            }`}
+            } ${isCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
           >
             <SettingsIcon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.9} />
-            <span className="flex-1">Admin Panel</span>
-            <ChevronDown className={`h-4 w-4 flex-shrink-0 text-white/60 transition-transform ${adminOpen ? 'rotate-180' : ''}`} />
+            <span className={`flex-1 ${isCollapsed ? 'lg:hidden' : ''}`}>Admin Panel</span>
+            <ChevronDown className={`h-4 w-4 flex-shrink-0 text-white/60 transition-transform ${adminOpen ? 'rotate-180' : ''} ${isCollapsed ? 'lg:hidden' : ''}`} />
           </button>
           )}
           {pageAccess?.canViewAdminPanel !== false && adminOpen && (
-            <div className="pb-1 pt-1">
+            <div className={`pb-1 pt-1 ${isCollapsed ? 'lg:hidden' : ''}`}>
               {adminItems.map((item) => {
                 const Icon = item.icon;
                 const active = location.pathname.startsWith(item.path);
@@ -167,7 +202,8 @@ export function Sidebar({ isExpanded = false, onToggleExpand }: SidebarProps) {
         </nav>
 
         <div className="border-t border-white/10 px-4 py-3 text-[11px] text-white/35">
-          v3.2.1 · Build 20260721
+          <span className={isCollapsed ? 'lg:hidden' : ''}>v3.2.1 · Build 20260721</span>
+          <span className={`hidden ${isCollapsed ? 'lg:block lg:text-center' : ''}`}>v3.2</span>
         </div>
       </aside>
     </>
