@@ -2,6 +2,7 @@
 
 On-premises Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance.
 See [docs/PRD.md](docs/PRD.md) for requirements and [docs/DEV_PLAN.md](docs/DEV_PLAN.md) for architecture and roadmap.
+See [docs/UBUNTU_DEPLOYMENT.md](docs/UBUNTU_DEPLOYMENT.md) for the controlled Ubuntu transfer and rollback procedure.
 
 ## Monorepo layout
 

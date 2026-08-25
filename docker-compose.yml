@@ -7,7 +7,7 @@ name: dms
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -17,7 +17,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/db/init:/docker-entrypoint-initdb.d:ro
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -25,7 +25,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -34,8 +34,8 @@ services:
     volumes:
       - miniodata:/data
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -43,10 +43,10 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.10-alpine
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -75,10 +75,11 @@ services:
       Google__ClientId: ${GOOGLE_CLIENT_ID}
       Google__ClientSecret: ${GOOGLE_CLIENT_SECRET}
       Google__CalendarRedirectUri: ${GOOGLE_CALENDAR_REDIRECT_URI:-http://localhost:5174/api/googlecalendar/callback}
+      Google__FrontendRedirectUrl: ${GOOGLE_FRONTEND_REDIRECT_URL:-http://localhost:5174/}
       Smtp__User: ${SMTP_USER}
       Smtp__Password: ${SMTP_PASSWORD}
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "127.0.0.1:${API_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
@@ -103,7 +104,7 @@ services:
     volumes:
       - ocrdata:/data
     ports:
-      - "${OCR_PORT:-8000}:8000"
+      - "127.0.0.1:${OCR_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -119,7 +120,7 @@ services:
     depends_on:
       - api
     ports:
-      - "${WEB_PORT:-5173}:80"
+      - "127.0.0.1:${WEB_PORT:-5173}:80"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
       interval: 10s
@@ -140,7 +141,7 @@ services:
   # needed here). Purely additive: does not replace or reconfigure the direct
   # WEB_PORT/API_PORT access above, which keeps working unchanged.
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.1.7
     restart: unless-stopped
     environment:
       # Docker Desktop's bind-mounted-socket proxy returns a blank error on
@@ -159,7 +160,7 @@ services:
       - "--ping=true"
     ports:
       - "${GATEWAY_PORT:-8888}:80"
-      - "${GATEWAY_DASHBOARD_PORT:-8090}:8080"
+      - "127.0.0.1:${GATEWAY_DASHBOARD_PORT:-8090}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

@@ -103,7 +103,7 @@ describe('Document Library', () => {
     }));
     // The Word/PowerPoint preview path health-checks the local sidecar before
     // attempting live PDF rendering — without this mock, the health check falls
-    // through to a real `fetch()` against 127.0.0.1:8000 that hangs/times out
+    // through to a real `fetch()` against the /ocr service that hangs/times out
     // under jsdom. Defaulting to "unavailable" matches these tests' existing
     // assumption that Office files fall back to text/markdown extraction.
     vi.spyOn(doclingApi, 'isAvailable').mockResolvedValue(false);

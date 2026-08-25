@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { doclingApi } from './doclingApi';
 
-describe('local Docling API client', () => {
+describe('same-origin Docling API client', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('uploads the original file as multipart form data to the local parser', async () => {
+  it('uploads the original file as multipart form data to the DMS parser', async () => {
     const parsedDocument = {
       id: 12,
       filename: 'quality policy.pdf',
@@ -26,7 +26,7 @@ describe('local Docling API client', () => {
     await expect(doclingApi.uploadDocument(file)).resolves.toEqual(parsedDocument);
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://127.0.0.1:8000/api/documents/upload');
+    expect(url).toBe('/ocr/api/documents/upload');
     expect(options.method).toBe('POST');
     expect(options.body).toBeInstanceOf(FormData);
     expect((options.body as FormData).get('file')).toBe(file);
@@ -53,7 +53,7 @@ describe('local Docling API client', () => {
     await expect(doclingApi.convertDocument(file, controller.signal)).resolves.toEqual(convertedDocument);
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://127.0.0.1:8000/api/documents/convert');
+    expect(url).toBe('/ocr/api/documents/convert');
     expect(options.method).toBe('POST');
     expect((options.body as FormData).get('file')).toBe(file);
     expect(options.signal).toBe(controller.signal);
@@ -79,7 +79,7 @@ describe('local Docling API client', () => {
     await expect(doclingApi.searchDocuments('torque & evidence')).resolves.toEqual(matches);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:8000/api/documents/search?q=torque+%26+evidence',
+      '/ocr/api/documents/search?q=torque+%26+evidence',
       expect.objectContaining({ signal: undefined }),
     );
   });
