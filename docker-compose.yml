@@ -141,14 +141,11 @@ services:
   # needed here). Purely additive: does not replace or reconfigure the direct
   # WEB_PORT/API_PORT access above, which keeps working unchanged.
   traefik:
-    image: traefik:v3.1.7
+    # Traefik 3.1 negotiates Docker API 1.24 and cannot discover routes on
+    # Docker Engine 29 (minimum API 1.40). 3.6.12 contains the compatible
+    # Docker client; keep the exact patch tag because 3.6.13 regressed it.
+    image: traefik:v3.6.12
     restart: unless-stopped
-    environment:
-      # Docker Desktop's bind-mounted-socket proxy returns a blank error on
-      # its own recent API version during Traefik's client handshake — pinning
-      # to a known-good version sidesteps it. Harmless/unneeded on a real Linux
-      # Docker Engine (Ubuntu/vCenter), which doesn't have this proxy layer.
-      DOCKER_API_VERSION: "1.44"
     command:
       - "--providers.docker=true"
       - "--providers.docker.endpoint=unix:///var/run/docker.sock"

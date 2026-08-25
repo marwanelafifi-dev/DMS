@@ -8,6 +8,7 @@ The production-style deployment runs the same Compose project on an x86_64 Ubunt
 - Application entry point during LAN validation: `http://192.168.1.185:8888`
 - Internal services (PostgreSQL, Redis, MinIO, OCR, API, direct web, and the Traefik dashboard) bind to host loopback only.
 - The browser reaches OCR through the same-origin `/ocr/` proxy. It must never call `127.0.0.1:8000` on an employee workstation.
+- The gateway is pinned to Traefik `3.6.12`. Older 3.1 releases negotiate an unsupported Docker API with Docker Engine 29, and 3.6.13 regressed the same provider behavior.
 
 ## Transfer artifacts
 
