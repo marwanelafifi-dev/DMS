@@ -38,6 +38,8 @@ Redis is intentionally not migrated because it contains transient cache/job stat
 
 The IP/port URL is for LAN validation. Before general use, put the gateway behind the company HTTPS endpoint, update `GOOGLE_CALENDAR_REDIRECT_URI` and `GOOGLE_FRONTEND_REDIRECT_URL`, and register the HTTPS callback with Google if those integrations are enabled. Do not expose ports 5432, 6379, 8000, 8080, 9000, 9001, or 8090 to the LAN.
 
+For the remotely managed Cloudflare Tunnel, keep `CLOUDFLARE_TUNNEL_TOKEN` only in the mode-`0600` `.env`, start the `tunnel` profile, and route the public hostname to `http://traefik:80` on the Compose network. The connector uses outbound connections only; do not add a public host port for `cloudflared`.
+
 ## Rollback
 
 Keep the source system and transfer artifacts intact until acceptance. Never allow users to write to both source and target. If target validation fails, stop the target stack and resume the source; if target use has already begun, take a fresh target snapshot before deciding which environment remains authoritative.

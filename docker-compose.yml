@@ -171,7 +171,8 @@ services:
 
   # Stage 2 only. Enable with: docker compose --profile tunnel up -d
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    # Pin the connector so a restart cannot silently pull a different release.
+    image: cloudflare/cloudflared:2026.7.2
     restart: unless-stopped
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run
