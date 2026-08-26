@@ -8,6 +8,7 @@ import { Card, CardBody, Button } from '../ui';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { ScheduledBackups } from './ScheduledBackups';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -46,7 +47,7 @@ function TypedConfirmModal({
   const matches = typed.trim() === confirmWord;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+    <ModalOverlay onClose={onCancel} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
         <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4">
           <h3 className="font-serif text-lg font-bold text-white">{title}</h3>
@@ -87,7 +88,7 @@ function TypedConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

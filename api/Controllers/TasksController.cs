@@ -74,6 +74,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     Document = task.Document == null ? null : new { task.Document.DocumentId, task.Document.Title },
                     task.Title,
                     task.Description,
+                    task.Tags,
                     task.TaskType,
                     task.RiskSeverity,
                     AssignedTo = task.AssignedTo == null ? null : new { task.AssignedTo.UserId, task.AssignedTo.FullName, task.AssignedTo.Email },
@@ -163,7 +164,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         try
         {
             var userId = GetCurrentUserId();
-            var result = await taskService.SubmitPcarAsync(id, userId, req.Rca ?? "", req.Correction ?? "", req.PreventiveActions ?? "", req.TargetDate);
+            var result = await taskService.SubmitPcarAsync(id, userId, req.Rca ?? "", req.Correction ?? "", req.PreventiveActions ?? "", req.TargetDate, req.Tags);
 
             if (!result.Success)
             {
@@ -221,7 +222,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.Description,
                 req.TaskType,
                 req.RiskSeverity,
-                req.DueDate);
+                req.DueDate,
+                req.Tags);
 
             if (!result.Success)
             {
@@ -320,7 +322,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
 
                 var touchesOtherFields = req.Title != null || req.Description != null || req.DueDate.HasValue
                     || req.RiskSeverity != null || req.Status != null || req.RcaText != null
-                    || req.CorrectionText != null || req.PreventiveActions != null || req.TaskType != null;
+                    || req.CorrectionText != null || req.PreventiveActions != null || req.TaskType != null
+                    || req.Tags != null;
                 if (touchesOtherFields)
                     return StatusCode(403, new { success = false, error = "Your reassign-only permission only allows changing who this task is assigned to" });
             }
@@ -352,7 +355,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.PreventiveActions,
                 req.AssignedToId,
                 req.AssignedToGroupId,
-                req.TaskType);
+                req.TaskType,
+                req.Tags);
 
             if (!result.Success)
             {
@@ -717,10 +721,11 @@ public record CreateTaskRequest(
     string? Description = null,
     string? TaskType = null,
     string? RiskSeverity = null,
-    DateTime? DueDate = null
+    DateTime? DueDate = null,
+    string[]? Tags = null
 );
 
-public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate);
+public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate, string[]? Tags = null);
 
 public record UpdateTaskRequest(
     string? Title = null,
@@ -733,7 +738,8 @@ public record UpdateTaskRequest(
     string? PreventiveActions = null,
     Guid? AssignedToId = null,
     Guid? AssignedToGroupId = null,
-    string? TaskType = null
+    string? TaskType = null,
+    string[]? Tags = null
 );
 
 public record CompleteTaskRequest(

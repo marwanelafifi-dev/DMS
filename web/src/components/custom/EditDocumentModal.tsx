@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../ui';
 import { X, AlertCircle } from 'lucide-react';
 import { apiClient } from '../../utils/api';
+import { ModalOverlay } from '../ui/ModalOverlay';
+import { TagSelector } from './TagSelector';
 
 const inputClass = 'w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 
@@ -32,14 +34,12 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
   const [fileNameExtension, setFileNameExtension] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState<string[]>([]);
-  const [customTags, setCustomTags] = useState('');
   const [versionLabel, setVersionLabel] = useState('');
   const [category, setCategory] = useState('');
   const [department, setDepartment] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
-  const [tagOptions, setTagOptions] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,12 +47,11 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
       setIsLoading(true);
       setError(null);
       try {
-        const [docRes, usersRes, categoryRes, departmentRes, tagRes] = await Promise.all([
+        const [docRes, usersRes, categoryRes, departmentRes] = await Promise.all([
           apiClient.getDocument(documentId),
           apiClient.getUsers(),
           apiClient.getDropdownList('category'),
           apiClient.getDropdownList('department'),
-          apiClient.getDropdownList('tag'),
         ]);
         if (cancelled) return;
         if (!docRes.success) throw new Error(docRes.error);
@@ -68,17 +67,11 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
         setUsers(usersRes.data || []);
         setCategoryOptions((categoryRes.data || []).map((i: { label: string }) => i.label));
         setDepartmentOptions((departmentRes.data || []).map((i: { label: string }) => i.label));
-        const fetchedTagOptions: string[] = (tagRes.data || []).map((i: { label: string }) => i.label);
-        setTagOptions(fetchedTagOptions);
+        setTags(doc.tags || []);
 
         // Any existing tag that isn't one of the known presets falls back into
         // the free-text "Other" field instead of being silently dropped —
         // same split as the main upload form's own multi-select.
-        const existingTags: string[] = doc.tags || [];
-        const knownTags = existingTags.filter((t) => fetchedTagOptions.includes(t));
-        const unknownTags = existingTags.filter((t) => !fetchedTagOptions.includes(t));
-        setTags(unknownTags.length > 0 ? [...knownTags, 'OTHER'] : knownTags);
-        if (unknownTags.length > 0) setCustomTags(unknownTags.join(', '));
       } catch (err: any) {
         if (!cancelled) setError(err?.response?.data?.error || err.message || 'Failed to load document');
       } finally {
@@ -87,15 +80,6 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
     })();
     return () => { cancelled = true; };
   }, [documentId]);
-
-  const isOtherTag = tags.includes('OTHER');
-  const toggleTag = (value: string) => {
-    setTags((current) => (current.includes(value) ? current.filter((t) => t !== value) : [...current, value]));
-  };
-  const tagList = [
-    ...tags.filter((t) => t !== 'OTHER'),
-    ...(isOtherTag ? customTags.split(',').map((t) => t.trim()).filter(Boolean) : []),
-  ];
 
   // Tags is optional, per explicit request — matches the main upload form,
   // which never required it either.
@@ -119,7 +103,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
       const res = await apiClient.updateDocument(documentId, {
         fileName: `${fileNameBase.trim()}${fileNameExtension}`,
         description,
-        tags: tagList,
+        tags,
         department,
         category,
         ownerId,
@@ -136,7 +120,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+    <ModalOverlay onClose={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <div className="min-w-0">
@@ -168,39 +152,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={inputClass} />
               </Field>
               <Field label="Tags">
-                <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded border border-gray-300 bg-white p-2 dark:border-slate-600 dark:bg-slate-800">
-                  {tagOptions.length === 0 && (
-                    <span className="px-1 py-0.5 text-xs text-gray-400 dark:text-slate-500">No tags configured yet</span>
-                  )}
-                  {[...tagOptions.map((t) => ({ value: t, label: t })), { value: 'OTHER', label: 'Other' }].map((t) => {
-                    const isSelected = tags.includes(t.value);
-                    return (
-                      <button
-                        key={t.value}
-                        type="button"
-                        onClick={() => toggleTag(t.value)}
-                        aria-pressed={isSelected}
-                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-300'
-                            : 'border-gray-300 bg-white text-gray-600 hover:border-blue-400/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {isOtherTag && (
-                  <input
-                    type="text"
-                    value={customTags}
-                    onChange={(e) => setCustomTags(e.target.value)}
-                    placeholder="Specify tags, comma-separated..."
-                    autoFocus
-                    className={`mt-2 ${inputClass}`}
-                  />
-                )}
+                <TagSelector value={tags} onChange={setTags} />
               </Field>
               <Field label="Version" required>
                 <input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. v1.0, Rev A" className={inputClass} />
@@ -234,7 +186,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
           <Button onClick={onClose} disabled={isSaving} variant="secondary" className="flex-1">Cancel</Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

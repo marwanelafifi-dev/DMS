@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import type { ApiResponse } from '../types';
+import type { ApiResponse, LegacyMetadataHistory } from '../types';
 
 const API_BASE = '/api';
 const TOKEN_STORAGE_KEY = 'dms_session_token';
@@ -43,6 +43,7 @@ export interface RolePermissionFlags {
   fileManagePermissions: boolean;
   viewHistory: boolean;
   viewRelatedTasks: boolean;
+  viewMetadataHistory: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -180,6 +181,7 @@ export interface AccessOverrideFlags {
   fileManagePermissions?: boolean | null;
   viewHistory?: boolean | null;
   viewRelatedTasks?: boolean | null;
+  viewMetadataHistory?: boolean | null;
 }
 
 export interface AccessOverride extends AccessOverrideFlags {
@@ -361,6 +363,16 @@ class APIClient {
     return data;
   }
 
+  async renameFolder(folderId: string, newName: string) {
+    const { data } = await this.client.put<ApiResponse>(`/folders/${folderId}`, { name: newName });
+    return data;
+  }
+
+  async renameDocument(documentId: string, newFileName: string) {
+    const { data } = await this.client.put<ApiResponse>(`/documents/${documentId}`, { fileName: newFileName });
+    return data;
+  }
+
   // Documents
   async getDocuments(folderId?: string, params?: any) {
     const { data } = await this.client.get<ApiResponse>(
@@ -373,6 +385,27 @@ class APIClient {
   async getDocument(documentId: string) {
     const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}`);
     return data;
+  }
+
+  async getLegacyMetadataHistory(documentId: string) {
+    const { data } = await this.client.get<ApiResponse<LegacyMetadataHistory>>(
+      `/documents/${documentId}/legacy-metadata-history`,
+    );
+    return data;
+  }
+
+  async getLegacyContentFile(documentId: string, contentVersionId: number, mode: 'view' | 'download') {
+    const response = await this.client.get(
+      `/documents/${documentId}/legacy-content/${contentVersionId}/${mode}`,
+      { responseType: 'blob' },
+    );
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const encodedFileName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const quotedFileName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+    const fileName = encodedFileName
+      ? decodeURIComponent(encodedFileName)
+      : quotedFileName || `legacy-content-${contentVersionId}`;
+    return { blob: response.data as Blob, fileName };
   }
 
   async createDocument(documentData: any) {
@@ -459,6 +492,14 @@ class APIClient {
     const quotedFileName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
     const fileName = encodedFileName ? decodeURIComponent(encodedFileName) : quotedFileName || `document-${versionId}`;
     return { blob: response.data as Blob, fileName };
+  }
+
+  async getDocumentPreview(documentId: string, versionId: string, signal?: AbortSignal) {
+    const response = await this.client.get(`/documents/${documentId}/versions/${versionId}/preview`, {
+      responseType: 'blob',
+      signal,
+    });
+    return response.data as Blob;
   }
 
   async downloadDocument(documentId: string, versionId: string) {
@@ -663,12 +704,13 @@ class APIClient {
 
   // PCAR review — moves a task from 'open' into the real QA review queue
   // instead of just flipping status locally with no reviewer-facing effect.
-  async submitPcar(taskId: string, payload: { rca: string; correction: string; preventiveActions: string; targetDate: string }) {
+  async submitPcar(taskId: string, payload: { rca: string; correction: string; preventiveActions: string; targetDate: string; tags?: string[] }) {
     const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/submit-pcar`, {
       rca: payload.rca,
       correction: payload.correction,
       preventiveActions: payload.preventiveActions,
       targetDate: payload.targetDate,
+      tags: payload.tags,
     });
     return data;
   }
@@ -739,6 +781,7 @@ class APIClient {
       priority: task.priority ?? task.riskSeverity ?? 'medium',
       status: task.status === 'completed' ? 'done' : task.status,
       dueDate: task.dueDate ?? '',
+      tags: Array.isArray(task.tags) ? task.tags : [],
     };
   }
 

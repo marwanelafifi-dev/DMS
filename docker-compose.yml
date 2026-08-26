@@ -7,7 +7,7 @@ name: dms
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -17,7 +17,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/db/init:/docker-entrypoint-initdb.d:ro
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -25,7 +25,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -34,8 +34,8 @@ services:
     volumes:
       - miniodata:/data
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -43,10 +43,10 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.10-alpine
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -75,25 +75,36 @@ services:
       Google__ClientId: ${GOOGLE_CLIENT_ID}
       Google__ClientSecret: ${GOOGLE_CLIENT_SECRET}
       Google__CalendarRedirectUri: ${GOOGLE_CALENDAR_REDIRECT_URI:-http://localhost:5174/api/googlecalendar/callback}
+      Google__FrontendRedirectUrl: ${GOOGLE_FRONTEND_REDIRECT_URL:-http://localhost:5174/}
       Smtp__User: ${SMTP_USER}
       Smtp__Password: ${SMTP_PASSWORD}
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "127.0.0.1:${API_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 10
+    labels:
+      # Purely additive — same as web's labels above: the direct API_PORT
+      # mapping keeps working unchanged. Higher priority than dms-web's
+      # catch-all so /api/* is routed straight here instead of to web/nginx.
+      - "traefik.enable=true"
+      - "traefik.http.routers.dms-api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.dms-api.priority=10"
+      - "traefik.http.services.dms-api.loadbalancer.server.port=8080"
 
   ocr-rag:
     build: ./ocr-rag
     restart: unless-stopped
     environment:
       DMS_DB_PATH: /data/dms.db
+      DMS_PREVIEW_CACHE_DIR: /data/preview-cache
+      DMS_PREVIEW_CACHE_MAX_BYTES: ${DMS_PREVIEW_CACHE_MAX_BYTES:-5368709120}
     volumes:
       - ocrdata:/data
     ports:
-      - "${OCR_PORT:-8000}:8000"
+      - "127.0.0.1:${OCR_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -109,24 +120,67 @@ services:
     depends_on:
       - api
     ports:
-      - "${WEB_PORT:-5173}:80"
+      - "127.0.0.1:${WEB_PORT:-5173}:80"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    labels:
+      # Purely additive — the existing WEB_PORT mapping above is untouched and
+      # keeps working exactly as before. These labels only give Traefik (new,
+      # optional entry point below) something to route to.
+      - "traefik.enable=true"
+      - "traefik.http.routers.dms-web.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.dms-web.priority=1"
+      - "traefik.http.services.dms-web.loadbalancer.server.port=80"
+
+  # Single public entry point (API Gateway), fronting web + api — and, per the
+  # move to vCenter/microcloud, the natural place to plug in future services
+  # later (any new container just needs its own traefik.* labels, no change
+  # needed here). Purely additive: does not replace or reconfigure the direct
+  # WEB_PORT/API_PORT access above, which keeps working unchanged.
+  traefik:
+    # Traefik 3.1 negotiates Docker API 1.24 and cannot discover routes on
+    # Docker Engine 29 (minimum API 1.40). 3.6.12 contains the compatible
+    # Docker client; keep the exact patch tag because 3.6.13 regressed it.
+    image: traefik:v3.6.12
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      # Only containers with an explicit traefik.enable=true label are routed —
+      # postgres/redis/minio/ocr-rag are never exposed through this, on purpose.
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--api.insecure=true"
+      - "--ping=true"
+    ports:
+      - "${GATEWAY_PORT:-8888}:80"
+      - "127.0.0.1:${GATEWAY_DASHBOARD_PORT:-8090}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - web
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ping"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   # Stage 2 only. Enable with: docker compose --profile tunnel up -d
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    # Pin the connector so a restart cannot silently pull a different release.
+    image: cloudflare/cloudflared:2026.7.2
     restart: unless-stopped
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
-      - web
-      - api
+      traefik:
+        condition: service_healthy
 
 volumes:
   pgdata:

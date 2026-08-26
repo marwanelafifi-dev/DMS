@@ -21,7 +21,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         return false;
     }
 
-    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid documentId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null)
+    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid documentId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null, string[]? tags = null)
     {
         try
         {
@@ -54,6 +54,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 DocumentId = documentId,
                 Title = title.Trim(),
                 Description = description?.Trim(),
+                Tags = NormalizeTags(tags),
                 TaskType = taskType ?? "correction",
                 RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,
@@ -75,6 +76,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 task.TaskId,
                 task.DocumentId,
                 task.Title,
+                task.Tags,
                 task.AssignedToId,
                 task.AssignedToGroupId,
                 task.ManagerId,
@@ -129,6 +131,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     Document = t.Document == null ? null : new { t.Document.DocumentId, t.Document.Title },
                     t.Title,
                     t.Description,
+                    t.Tags,
                     t.TaskType,
                     t.RiskSeverity,
                     Priority = t.RiskSeverity ?? "medium",
@@ -209,7 +212,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         }
     }
 
-    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? correction = null, string? preventiveActions = null, Guid? assignedToId = null, Guid? assignedToGroupId = null, string? taskType = null)
+    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? correction = null, string? preventiveActions = null, Guid? assignedToId = null, Guid? assignedToGroupId = null, string? taskType = null, string[]? tags = null)
     {
         try
         {
@@ -248,6 +251,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
 
             if (description != null)
                 task.Description = description.Trim();
+
+            if (tags != null)
+                task.Tags = NormalizeTags(tags);
 
             if (dueDate.HasValue)
                 task.DueDate = dueDate;
@@ -295,6 +301,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             {
                 task.TaskId,
                 task.Title,
+                task.Tags,
                 task.DueDate,
                 task.Status,
                 task.AssignedToId,
@@ -309,6 +316,12 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         }
     }
 
+    private static string[] NormalizeTags(string[]? tags) => tags?
+        .Where(tag => !string.IsNullOrWhiteSpace(tag))
+        .Select(tag => tag.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray() ?? Array.Empty<string>();
+
     // The Root Cause Analysis / Immediate Correction / Preventive Action form
     // on the PCAR page. A self-filed PCAR has no separate reviewer on the
     // other end — Document Workflow already governs the real document
@@ -319,7 +332,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
     // all three fields into Description as plain text — harmless on a first
     // submit, but re-running it on every click (nothing stopped resubmission)
     // kept prepending onto the same string forever.
-    public async Task<TaskResult> SubmitPcarAsync(Guid taskId, Guid userId, string rca, string correction, string preventiveActions, DateTime targetDate)
+    public async Task<TaskResult> SubmitPcarAsync(Guid taskId, Guid userId, string rca, string correction, string preventiveActions, DateTime targetDate, string[]? tags = null)
     {
         try
         {
@@ -369,6 +382,8 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             task.RcaText = rca.Trim();
             task.CorrectionText = correction.Trim();
             task.PreventiveActions = preventiveActions.Trim();
+            if (tags != null)
+                task.Tags = NormalizeTags(tags);
             task.DueDate = targetDate;
             task.Status = "completed";
             task.CompletedById = userId;

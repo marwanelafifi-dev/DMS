@@ -57,6 +57,7 @@ public class DmsAccessOverride
     public bool? FileManagePermissions { get; set; }
     public bool? ViewHistory { get; set; }
     public bool? ViewRelatedTasks { get; set; }
+    public bool? ViewMetadataHistory { get; set; }
 
     public Guid CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -90,4 +91,5 @@ public static class AccessOverrideActions
     public const string FileManagePermissions = "file_manage_permissions";
     public const string ViewHistory = "view_history";
     public const string ViewRelatedTasks = "view_related_tasks";
+    public const string ViewMetadataHistory = "view_metadata_history";
 }

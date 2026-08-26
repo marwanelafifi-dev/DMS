@@ -1,17 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
-import { defaultVisibleDocumentColumns, DocumentList, type OptionalDocumentColumn } from '../custom/DocumentList';
+import { defaultVisibleDocumentColumns, DocumentList, type LibraryFolderRow, type OptionalDocumentColumn } from '../custom/DocumentList';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
-import { DocumentPreview } from '../custom/DocumentPreview';
-import { AccessOverrideModal } from '../custom/AccessOverrideModal';
-import { BulkOperationsModal } from '../custom/BulkOperationsModal';
-import { UploadApprovalModal } from '../custom/UploadApprovalModal';
 import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
-import { EditDocumentModal } from '../custom/EditDocumentModal';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
@@ -34,7 +29,13 @@ import {
 } from '../../services/documentLibraryOperations';
 import { doclingApi } from '../../services/doclingApi';
 import { downloadFolderAsZip } from '../../utils/folderDownload';
-import { parseWordDocument, parseExcelDocument, parsePowerPointDocument } from '../../utils/officeParser';
+import { ModalOverlay, preventModalOutsideDismiss } from '../ui/ModalOverlay';
+
+const DocumentPreview = lazy(() => import('../custom/DocumentPreview').then((module) => ({ default: module.DocumentPreview })));
+const AccessOverrideModal = lazy(() => import('../custom/AccessOverrideModal').then((module) => ({ default: module.AccessOverrideModal })));
+const BulkOperationsModal = lazy(() => import('../custom/BulkOperationsModal').then((module) => ({ default: module.BulkOperationsModal })));
+const UploadApprovalModal = lazy(() => import('../custom/UploadApprovalModal').then((module) => ({ default: module.UploadApprovalModal })));
+const EditDocumentModal = lazy(() => import('../custom/EditDocumentModal').then((module) => ({ default: module.EditDocumentModal })));
 
 function readBlobAsText(blob: Blob): Promise<string> {
   if (typeof blob.text === 'function') return blob.text();
@@ -55,9 +56,72 @@ function readBlobAsText(blob: Blob): Promise<string> {
 const PENDING_STAGE_STATUSES = new Set(['qa_review', 'manager_review', 'correction_in_progress', 'qa_final_review']);
 const TEXT_PREVIEW_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log']);
 const IMAGE_PREVIEW_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+const WORD_PDF_PREVIEW_EXTENSIONS = new Set(['doc', 'docx', 'docm']);
+const PRESENTATION_PDF_PREVIEW_EXTENSIONS = new Set([
+  'ppt', 'pptx', 'pptm', 'pot', 'potx', 'potm', 'pps', 'ppsx', 'ppsm', 'ppam',
+]);
+const SPREADSHEET_PDF_PREVIEW_EXTENSIONS = new Set(['xls', 'xlsm', 'xlsb', 'xlt', 'xltm']);
+const SPREADSHEET_GRID_PREVIEW_EXTENSIONS = new Set(['xlsx', 'xltx', 'ods']);
+const WORD_PDF_PREVIEW_CONTENT_TYPES = new Set([
+  'application/msword',
+  'application/vnd.ms-word.document.macroenabled.12',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const PRESENTATION_PDF_PREVIEW_CONTENT_TYPES = new Set([
+  'application/vnd.ms-powerpoint',
+  'application/vnd.ms-powerpoint.addin.macroenabled.12',
+  'application/vnd.ms-powerpoint.presentation.macroenabled.12',
+  'application/vnd.ms-powerpoint.slideshow.macroenabled.12',
+  'application/vnd.ms-powerpoint.template.macroenabled.12',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+  'application/vnd.openxmlformats-officedocument.presentationml.template',
+]);
+const SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES = new Set([
+  'application/vnd.ms-excel',
+  'application/vnd.ms-excel.addin.macroenabled.12',
+  'application/vnd.ms-excel.sheet.binary.macroenabled.12',
+  'application/vnd.ms-excel.sheet.macroenabled.12',
+  'application/vnd.ms-excel.template.macroenabled.12',
+]);
 
 function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
+}
+
+// The folder panel used to be a fixed 14rem, which left long folder names
+// permanently truncated with no way to widen them. The width is now user-draggable
+// (and remembered), clamped so the panel can never be dragged away entirely or
+// pushed wide enough to squeeze the document table out of view.
+const FOLDER_PANE_MIN_WIDTH = 168;
+const FOLDER_PANE_MAX_WIDTH = 560;
+const FOLDER_PANE_DEFAULT_WIDTH = 224;
+const FOLDER_PANE_WIDTH_STORAGE_KEY = 'dms.documentLibrary.folderPaneWidth';
+
+function clampFolderPaneWidth(value: number): number {
+  if (!Number.isFinite(value)) return FOLDER_PANE_DEFAULT_WIDTH;
+  return Math.min(FOLDER_PANE_MAX_WIDTH, Math.max(FOLDER_PANE_MIN_WIDTH, Math.round(value)));
+}
+
+function readStoredFolderPaneWidth(): number {
+  try {
+    const stored = window.localStorage.getItem(FOLDER_PANE_WIDTH_STORAGE_KEY);
+    return stored ? clampFolderPaneWidth(Number(stored)) : FOLDER_PANE_DEFAULT_WIDTH;
+  } catch {
+    // Private-mode / storage-disabled browsers just get the default width.
+    return FOLDER_PANE_DEFAULT_WIDTH;
+  }
+}
+
+function usesGeneratedPdfPreview(fileName: string, contentType = ''): boolean {
+  const extension = getFileExtension(fileName);
+  const normalizedContentType = contentType.toLowerCase().split(';', 1)[0].trim();
+  return WORD_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || PRESENTATION_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || SPREADSHEET_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || WORD_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType)
+    || PRESENTATION_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType)
+    || SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
 }
 
 function splitFileName(fileName: string): { base: string; ext: string } {
@@ -78,6 +142,7 @@ async function createNativePreview(
   // as .xlsx so it gets the spreadsheet table/sheet-tab UI instead of a raw
   // comma-separated dump in a monospace <pre>.
   if (extension === 'csv' || contentType === 'text/csv') {
+    const { parseExcelDocument } = await import('../../utils/officeParser');
     return parseExcelDocument(source, sourceUrl);
   }
   if (contentType.startsWith('text/') || TEXT_PREVIEW_EXTENSIONS.has(extension)) {
@@ -92,10 +157,15 @@ async function createNativePreview(
   if (contentType.startsWith('image/') || IMAGE_PREVIEW_EXTENSIONS.has(extension)) {
     return { kind: 'image', url: sourceUrl, alt: fileName };
   }
-  const isWord = extension === 'docx' || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  const isPowerPoint = extension === 'pptx' || contentType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-  if (isWord || isPowerPoint) {
-    // Real Word/PowerPoint rendering: convert to PDF locally (LibreOffice, via the
+  const normalizedContentType = contentType.toLowerCase().split(';', 1)[0].trim();
+  const isWord = WORD_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || WORD_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
+  const isPowerPoint = PRESENTATION_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || PRESENTATION_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
+  const isLegacySpreadsheet = SPREADSHEET_PDF_PREVIEW_EXTENSIONS.has(extension)
+    || SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES.has(normalizedContentType);
+  if (isWord || isPowerPoint || isLegacySpreadsheet) {
+    // Real Office rendering: convert to PDF locally (LibreOffice, via the
     // OCR sidecar) and reuse the same pdf.js viewer already used for real PDFs —
     // true layout/fonts/images/tables instead of a plain-text reconstruction.
     // Health-check the sidecar up front instead of always attempting the network
@@ -117,13 +187,22 @@ async function createNativePreview(
       console.warn(`Local document renderer is unreachable; falling back to text extraction for ${fileName}`);
       renderNotice = 'Live rendering is unavailable right now — showing extracted text only.';
     }
-    const fallback = isWord ? await parseWordDocument(source, sourceUrl) : await parsePowerPointDocument(source, sourceUrl);
+    const { parseWordDocument, parseExcelDocument, parsePowerPointDocument } = await import('../../utils/officeParser');
+    const fallback = isWord
+      ? await parseWordDocument(source, sourceUrl)
+      : isPowerPoint
+        ? await parsePowerPointDocument(source, sourceUrl)
+        : await parseExcelDocument(source, sourceUrl);
     if (fallback && (fallback.kind === 'word' || fallback.kind === 'presentation')) {
       return { ...fallback, renderNotice };
     }
     return fallback;
   }
-  if (extension === 'xlsx' || contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+  if (SPREADSHEET_GRID_PREVIEW_EXTENSIONS.has(extension)
+    || normalizedContentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || normalizedContentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.template'
+    || normalizedContentType === 'application/vnd.oasis.opendocument.spreadsheet') {
+    const { parseExcelDocument } = await import('../../utils/officeParser');
     return parseExcelDocument(source, sourceUrl);
   }
   return null;
@@ -133,6 +212,22 @@ export function Documents() {
   const { showSuccess, showError } = useToast();
   const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const directPreviewId = searchParams.get('preview');
+  // Warms the pdf.js chunk (~373 KB, the single largest lazy-loaded bundle in
+  // the app) as early as possible on a deep-link preview. DocumentPreview only
+  // renders <PdfJsViewer> — and therefore only triggers its own dynamic
+  // import — once the document's metadata has resolved and several other
+  // effects (folders, permissions, dropdown lists) have already committed;
+  // measured live via Lighthouse, that gap alone pushed the chunk's request
+  // out by ~850ms of otherwise-idle network time, directly inflating LCP.
+  // Every previewable kind other than plain text/images routes through this
+  // same viewer (native PDFs and every Office format, converted server-side),
+  // so prefetching it unconditionally here is a safe bet — worst case for a
+  // text/image preview, one extra ~373 KB request the user never needed.
+  useEffect(() => {
+    if (!directPreviewId) return;
+    void import('../custom/PdfJsViewer');
+  }, [directPreviewId]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
@@ -177,6 +272,10 @@ export function Documents() {
   const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [folderPaneWidth, setFolderPaneWidth] = useState(readStoredFolderPaneWidth);
+  const [isResizingFolderPane, setIsResizingFolderPane] = useState(false);
+  const folderPaneResizeOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
   const [previewDocument, setPreviewDocument] = useState<MockLibraryDocument | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
@@ -192,6 +291,8 @@ export function Documents() {
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const previewRequestRef = useRef(0);
   const previewAbortControllerRef = useRef<AbortController | null>(null);
+  const startedWithDirectPreviewRef = useRef(Boolean(directPreviewId));
+  const serverDocumentsLoadStartedRef = useRef(false);
   // Bounds how many documents' preview blob URLs (source file + any locally
   // converted PDF) stay alive at once. Without this, browsing many documents in
   // one session accumulated unbounded live blob URLs since they were previously
@@ -242,6 +343,27 @@ export function Documents() {
     return allDocuments.filter((document) => document.folderId === selectedFolderId);
   }, [allDocuments, selectedFolderId, showOnlyMySubmissions, currentUser?.userId]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
+  // Subfolders of the folder being browsed, shown as rows above the files so a
+  // folder containing only subfolders is no longer a dead end reading "No
+  // documents in this folder". Hidden in the cross-folder "my submissions" view,
+  // which deliberately isn't scoped to one folder.
+  const childFolderRows = useMemo<LibraryFolderRow[]>(() => {
+    if (showOnlyMySubmissions || !selectedFolderId) return [];
+    const query = searchQuery.trim().toLowerCase();
+    return folders
+      .filter((folder) => folder.parentFolderId === selectedFolderId)
+      // A status or tag filter is about document state, which a folder has none
+      // of — showing folders anyway would look like they'd matched the filter.
+      .filter(() => !statusFilter && !tagFilter)
+      .filter((folder) => !query || folder.name.toLowerCase().includes(query))
+      .map((folder) => ({
+        folderId: folder.folderId,
+        name: folder.name,
+        isRoot: !folder.parentFolderId,
+        subfolderCount: folders.filter((candidate) => candidate.parentFolderId === folder.folderId).length,
+        documentCount: allDocuments.filter((document) => document.folderId === folder.folderId).length,
+      }));
+  }, [folders, selectedFolderId, allDocuments, showOnlyMySubmissions, searchQuery, statusFilter, tagFilter]);
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
     ...folders.filter((folder) => selectedFolderIds.has(folder.folderId)).map((folder) => folder.name),
@@ -369,7 +491,15 @@ export function Documents() {
           loadedFolders = response.data as Folder[];
           if (!cancelled) {
             setFolders(loadedFolders);
-            if (loadedFolders.length > 0) {
+            // A direct preview deep-link never shows this folder at all (it's
+            // hidden behind the full-screen preview overlay until closed), so
+            // picking a "best writable folder" for it — and the extra
+            // getUserPermissions round trip that requires — is pure throwaway
+            // work competing with the preview's own network/render path for
+            // no visible benefit. Skip it here; the plain "first folder"
+            // fallback effect below picks something reasonable once the user
+            // actually starts browsing.
+            if (loadedFolders.length > 0 && !startedWithDirectPreviewRef.current) {
               // Picking loadedFolders[0] unconditionally would often default to a
               // folder the current user only has read (or no) access to, which
               // makes uploads fail with a silent 403 the moment you hit Upload
@@ -400,12 +530,36 @@ export function Documents() {
         if (!cancelled) setIsLoadingFolders(false);
       }
 
-      if (!cancelled) await refreshServerDocuments(loadedFolders);
+      // Preserve the original, deterministic initial-load sequence for the
+      // normal library. A direct preview deliberately skips this expensive
+      // 1000+ document fetch until the preview has been closed.
+      if (!cancelled && !startedWithDirectPreviewRef.current) {
+        serverDocumentsLoadStartedRef.current = true;
+        await refreshServerDocuments(loadedFolders);
+      }
+
     };
     void loadLibrary();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showError]);
+
+  // A deep link opens one document immediately. Loading, parsing and rendering
+  // the complete 1000+ document library behind its full-screen preview added
+  // several seconds of main-thread work without changing anything visible.
+  // Defer that list until the preview closes; normal library navigation still
+  // starts it as soon as the folder hierarchy is ready.
+  useEffect(() => {
+    if (
+      directPreviewId
+      || !startedWithDirectPreviewRef.current
+      || folders.length === 0
+      || serverDocumentsLoadStartedRef.current
+    ) return;
+
+    serverDocumentsLoadStartedRef.current = true;
+    void refreshServerDocuments(folders);
+  }, [directPreviewId, folders, refreshServerDocuments]);
 
   useEffect(() => {
     setIsLoadingDocs(true);
@@ -443,6 +597,38 @@ export function Documents() {
 
     let sourceUrl: string | undefined;
     try {
+      if (usesGeneratedPdfPreview(libraryDocument.fileName, libraryDocument.contentType)) {
+        showLoadingPreview(`Preparing ${libraryDocument.fileName} for secure viewing...`);
+        try {
+          const previewBlob = await apiClient.getDocumentPreview(
+            libraryDocument.documentId,
+            libraryDocument.currentVersionId,
+            signal,
+          );
+          if (signal.aborted || previewRequestRef.current !== requestId) return;
+
+          sourceUrl = URL.createObjectURL(previewBlob);
+          objectUrlsRef.current.add(sourceUrl);
+          const restoredDocument: MockLibraryDocument = {
+            ...libraryDocument,
+            sourceUrl,
+            preview: { kind: 'pdf', url: sourceUrl },
+          };
+          setAllDocuments((current) => current.map((document) =>
+            document.documentId === restoredDocument.documentId ? restoredDocument : document,
+          ));
+          setPreviewDocument(restoredDocument);
+          documentObjectUrlsRef.current.set(restoredDocument.documentId, [sourceUrl]);
+          touchPreviewCache(restoredDocument.documentId);
+          return;
+        } catch (previewError: any) {
+          if (signal.aborted || previewRequestRef.current !== requestId) return;
+          if (previewError?.response?.status === 403) throw previewError;
+          console.warn('Server PDF preview failed; falling back to the original client path:', previewError);
+          showLoadingPreview(`Loading ${libraryDocument.fileName} from secure storage...`);
+        }
+      }
+
       const { blob, fileName } = await apiClient.getDocumentFile(
         libraryDocument.documentId,
         libraryDocument.currentVersionId,
@@ -659,12 +845,85 @@ export function Documents() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Every tag actually present on a loaded document, so the filter can never
+  // offer a value that matches nothing at all. Built from the full library
+  // rather than just the current folder so the option list stays stable while
+  // navigating instead of shifting under the user between folders.
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>();
+    for (const document of allDocuments) {
+      for (const tag of document.tags) {
+        const trimmed = tag.trim();
+        if (trimmed) tags.add(trimmed);
+      }
+    }
+    return [...tags].sort((left, right) => left.localeCompare(right));
+  }, [allDocuments]);
+
   const filteredDocuments = useMemo(() => documents.filter((document) => {
     const query = searchQuery.trim();
     const matchesSearch = !query || matchesDmsMetadata(document, query);
     const matchesStatus = !statusFilter || document.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  }), [documents, searchQuery, statusFilter]);
+    // Case-insensitive so a tag typed as "Quality" still matches "quality" —
+    // tags are free text on upload, so real data mixes casing.
+    const matchesTag = !tagFilter
+      || document.tags.some((tag) => tag.trim().toLowerCase() === tagFilter.toLowerCase());
+    return matchesSearch && matchesStatus && matchesTag;
+  }), [documents, searchQuery, statusFilter, tagFilter]);
+
+  // Pointer capture (rather than window listeners) keeps the drag tracking on the
+  // handle itself, so moving fast over the table or off the window edge mid-drag
+  // doesn't drop the resize.
+  const persistFolderPaneWidth = useCallback((width: number) => {
+    try {
+      window.localStorage.setItem(FOLDER_PANE_WIDTH_STORAGE_KEY, String(width));
+    } catch {
+      // Width still applies for this session; it just won't be remembered.
+    }
+  }, []);
+
+  const startFolderPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    folderPaneResizeOriginRef.current = { pointerX: event.clientX, width: folderPaneWidth };
+    setIsResizingFolderPane(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveFolderPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const origin = folderPaneResizeOriginRef.current;
+    if (!origin) return;
+    setFolderPaneWidth(clampFolderPaneWidth(origin.width + (event.clientX - origin.pointerX)));
+  };
+
+  const endFolderPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!folderPaneResizeOriginRef.current) return;
+    folderPaneResizeOriginRef.current = null;
+    setIsResizingFolderPane(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    persistFolderPaneWidth(folderPaneWidth);
+  };
+
+  // Keyboard equivalent, so the divider isn't mouse-only.
+  const handleFolderPaneResizeKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 32 : 16;
+    let next: number | null = null;
+    if (event.key === 'ArrowLeft') next = folderPaneWidth - step;
+    else if (event.key === 'ArrowRight') next = folderPaneWidth + step;
+    else if (event.key === 'Home') next = FOLDER_PANE_MIN_WIDTH;
+    else if (event.key === 'End') next = FOLDER_PANE_MAX_WIDTH;
+    if (next === null) return;
+    event.preventDefault();
+    const clamped = clampFolderPaneWidth(next);
+    setFolderPaneWidth(clamped);
+    persistFolderPaneWidth(clamped);
+  };
+
+  const resetFolderPaneWidth = () => {
+    setFolderPaneWidth(FOLDER_PANE_DEFAULT_WIDTH);
+    persistFolderPaneWidth(FOLDER_PANE_DEFAULT_WIDTH);
+  };
 
   const clearPreviewParam = useCallback(() => {
     setSearchParams((current) => {
@@ -720,6 +979,27 @@ export function Documents() {
   // by the read-only download and the Download-for-Editing checkout flow,
   // which each need a different success message.
   const triggerFileDownload = async (libraryDocument: MockLibraryDocument) => {
+    // Real bug found live: previewing a Word/Excel/PowerPoint document caches the
+    // *server-generated PDF* (from GET .../preview, which renders the file through
+    // LibreOffice for viewing) onto the document as both `sourceUrl` and
+    // `preview.url`. Every local shortcut below then handed those PDF bytes to the
+    // browser under the document's own original name — so downloading a previewed
+    // `.doc` produced a file containing a PDF but named `.doc`, which no
+    // application can open until it's manually renamed. Verified against the live
+    // stack: the stored original really is a genuine OLE2 Word file (magic bytes
+    // d0cf11e0a1b11ae1) and GET .../download already streams it correctly with the
+    // right MIME type and Content-Disposition name — only the client was
+    // substituting the wrong bytes. The same class of substitution applied to the
+    // markdown (`fallbackDownload`) and spreadsheet-CSV shortcuts below, which
+    // would silently hand back extracted text instead of the real document.
+    // So: for any real server-backed document, always stream the immutable
+    // original from the API. The local blob shortcuts remain for the bundled
+    // sample/fixture documents, which have no server record to download from.
+    if (isServerDocumentId(libraryDocument.documentId) && libraryDocument.currentVersionId) {
+      await apiClient.downloadDocument(libraryDocument.documentId, libraryDocument.currentVersionId);
+      return;
+    }
+
     let href: string | undefined;
     let fileName = libraryDocument.fileName;
     let shouldRevoke = false;
@@ -956,6 +1236,28 @@ export function Documents() {
             error: err.response?.data?.error || 'Failed to move a folder',
           }));
           if (!res.success) return res.error || 'Failed to move a folder';
+        }
+      }
+
+      // Rename previously had the exact same "looks like it worked, nothing was ever
+      // persisted" problem as Move and Delete — a renamed item reverted to the
+      // original name on reload. Real documents/folders now get a real API call first.
+      if (action === 'rename' && value) {
+        const realDocumentIds = [...librarySelection.documentIds].filter(isServerDocumentId);
+        const realFolderIds = [...librarySelection.folderIds].filter(isServerDocumentId);
+        for (const docId of realDocumentIds) {
+          const res = await apiClient.renameDocument(docId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to rename a document',
+          }));
+          if (!res.success) return res.error || 'Failed to rename a document';
+        }
+        for (const folderId of realFolderIds) {
+          const res = await apiClient.renameFolder(folderId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to rename a folder',
+          }));
+          if (!res.success) return res.error || 'Failed to rename a folder';
         }
       }
 
@@ -1293,9 +1595,19 @@ export function Documents() {
 
   return (
     <div className="flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-hidden bg-white dark:bg-slate-950 md:flex-row">
+      <div
+        className={`flex min-w-0 flex-1 flex-col overflow-hidden md:flex-row ${isResizingFolderPane ? 'select-none' : ''}`}
+        aria-hidden={directPreviewId ? 'true' : undefined}
+        style={{ contentVisibility: directPreviewId ? 'hidden' : 'visible' }}
+      >
       {/* Folders Sidebar */}
       {isLoadingFolders ? (
-        <div className="max-h-56 w-full flex-shrink-0 space-y-2 overflow-hidden border-b border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-56 md:border-b-0 md:border-r" role="status" aria-label="Loading folders">
+        <div
+          className="max-h-56 w-full flex-shrink-0 space-y-2 overflow-hidden border-b border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-[var(--dms-folder-pane-width,14rem)] md:border-b-0 md:border-r"
+          style={{ '--dms-folder-pane-width': `${folderPaneWidth}px` } as CSSProperties}
+          role="status"
+          aria-label="Loading folders"
+        >
           {[1, 2].map((item) => <div key={item} className="h-12 animate-skeleton rounded bg-slate-100 dark:bg-slate-800" />)}
         </div>
       ) : (
@@ -1307,8 +1619,30 @@ export function Documents() {
           onCreateFolder={(parentFolderId) => setNewFolderRequest({ parentFolderId, name: '' })}
           getFolderPermissions={getFolderPermissions}
           onRequestFolderPermissions={ensureFolderPermissionsLoaded}
+          widthPx={folderPaneWidth}
         />
       )}
+
+      {/* Draggable divider replacing the old static border between the two panes. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the folder panel"
+        aria-valuenow={folderPaneWidth}
+        aria-valuemin={FOLDER_PANE_MIN_WIDTH}
+        aria-valuemax={FOLDER_PANE_MAX_WIDTH}
+        tabIndex={0}
+        title="Drag to resize · double-click to reset"
+        onPointerDown={startFolderPaneResize}
+        onPointerMove={moveFolderPaneResize}
+        onPointerUp={endFolderPaneResize}
+        onPointerCancel={endFolderPaneResize}
+        onDoubleClick={resetFolderPaneWidth}
+        onKeyDown={handleFolderPaneResizeKeys}
+        className={`hidden w-1.5 flex-shrink-0 cursor-col-resize touch-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3f8bca] md:block ${
+          isResizingFolderPane ? 'bg-[#3f8bca]' : 'bg-transparent hover:bg-[#3f8bca]/40'
+        }`}
+      />
 
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -1342,7 +1676,7 @@ export function Documents() {
                     : 'Upload files to the selected folder'
               }
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-sm font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:w-auto sm:px-4"
+              className="inline-flex h-9 w-full flex-shrink-0 items-center justify-center gap-2 rounded-[4px] bg-[#2f6f9f] px-3 text-sm font-medium text-white hover:bg-[#255b84] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] sm:w-auto sm:px-4"
             >
               <UploadCloud className="h-4 w-4" /> Upload
             </button>
@@ -1374,6 +1708,17 @@ export function Documents() {
                 <option value="qa_final_review">Final Review</option>
                 <option value="released">Released</option>
               </select>
+              <select
+                className="field-control h-9 w-full sm:w-[150px]"
+                value={tagFilter}
+                onChange={(event) => setTagFilter(event.target.value)}
+                aria-label="Filter documents by tag"
+                disabled={availableTags.length === 0}
+                title={availableTags.length === 0 ? 'No tags on any document yet' : 'Filter by tag'}
+              >
+                <option value="">All tags</option>
+                {availableTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+              </select>
               <div className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
                 <LibraryBulkActions
                   selectedCount={selectedItemCount}
@@ -1401,11 +1746,19 @@ export function Documents() {
 
             {isLoadingDocs ? (
               <div className="p-4" role="status" aria-label="Loading documents"><SkeletonTable /></div>
-            ) : filteredDocuments.length === 0 ? (
+            ) : filteredDocuments.length === 0 && childFolderRows.length === 0 ? (
               <div className="p-12 text-center"><p className="text-sm text-[#718198]">{documents.length === 0 ? 'No documents in this folder' : 'No documents matching your filters'}</p></div>
             ) : (
               <DocumentList
                 documents={filteredDocuments}
+                folders={childFolderRows}
+                selectedFolderIds={selectedFolderIds}
+                onSelectedFolderIdsChange={setSelectedFolderIds}
+                onFolderOpen={handleFolderSelect}
+                onFolderAction={requestFolderAction}
+                onCreateSubfolder={(parentFolderId) => setNewFolderRequest({ parentFolderId, name: '' })}
+                getFolderPermissions={getFolderPermissions}
+                onRequestFolderPermissions={ensureFolderPermissionsLoaded}
                 selectedDocumentIds={selectedDocumentIds}
                 visibleColumns={visibleColumns}
                 onSelectedDocumentIdsChange={setSelectedDocumentIds}
@@ -1422,7 +1775,18 @@ export function Documents() {
           </Card>
         </div>
       </div>
+      </div>
+      {directPreviewId && !previewDocument && (
+        <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading document preview">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" />
+        </div>
+      )}
 
+      <Suspense fallback={(
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-white/90 dark:bg-slate-950/90" role="status" aria-label="Loading document dialog">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#dbe2ec] border-t-[#2f6f9f]" />
+        </div>
+      )}>
       {previewDocument && (
         <DocumentPreview
           document={previewDocument}
@@ -1492,9 +1856,10 @@ export function Documents() {
           onSaved={() => void refreshServerDocuments(folders)}
         />
       )}
+      </Suspense>
 
       {newFolderRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <ModalOverlay onClose={() => setNewFolderRequest(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <Card className="w-full max-w-sm mx-4">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] p-4 dark:border-white/10">
               <h3 className="section-heading">{newFolderRequest.parentFolderId ? 'New Subfolder' : 'New Folder'}</h3>
@@ -1527,13 +1892,13 @@ export function Documents() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
 
       <Dialog.Root open={showUploadModal} onOpenChange={(open) => open ? setShowUploadModal(true) : closeUploadModal()}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/50" />
-          <Dialog.Content asChild>
+          <Dialog.Content asChild onPointerDownOutside={preventModalOutsideDismiss} onInteractOutside={preventModalOutsideDismiss}>
             <Card className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 shadow-xl flex flex-col max-h-[95vh]">
             <div className="flex items-center justify-between border-b border-[#e2e8f0] p-3 dark:border-white/10">
               <Dialog.Title className="section-heading">Upload Documents</Dialog.Title>

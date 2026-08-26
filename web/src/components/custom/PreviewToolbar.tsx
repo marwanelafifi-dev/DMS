@@ -26,7 +26,7 @@ export function PreviewToolbar({
         <button type="button" onClick={onZoomOut} disabled={zoom <= minZoom} aria-label="Zoom out" title="Zoom out (-)" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">
           <ZoomOut className="h-4 w-4" />
         </button>
-        <button type="button" onClick={onZoomReset} aria-label="Reset zoom" title="Reset zoom (0)" className="min-w-[3.25rem] border-x border-[#dbe2ec] px-1 py-1.5 text-xs font-medium text-[#34425b] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800">
+        <button type="button" onClick={onZoomReset} aria-label={`Reset zoom, current zoom ${zoom}%`} title="Reset zoom (0)" className="min-w-[3.25rem] border-x border-[#dbe2ec] px-1 py-1.5 text-xs font-medium text-[#34425b] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800">
           {zoom}%
         </button>
         <button type="button" onClick={onZoomIn} disabled={zoom >= maxZoom} aria-label="Zoom in" title="Zoom in (+)" className="p-1.5 text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">

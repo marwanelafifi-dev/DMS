@@ -3,7 +3,9 @@ using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text.Json;
 using static DMS.Api.Services.AuditActions;
 
 namespace DMS.Api.Controllers;
@@ -18,8 +20,22 @@ public class DocumentsController(
     ApprovalService approvalService,
     AccessOverrideService accessOverrideService,
     NotificationService notificationService,
+    IHttpClientFactory httpClientFactory,
     ILogger<DocumentsController> logger) : BaseController
 {
+    private enum DocumentDeleteStatus
+    {
+        Deleted,
+        NotFound,
+    }
+
+    private static readonly HashSet<string> PdfPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".doc", ".docx", ".docm",
+        ".ppt", ".pptx", ".pptm", ".pot", ".potx", ".potm", ".pps", ".ppsx", ".ppsm", ".ppam",
+        ".xls", ".xlsm", ".xlsb", ".xlt", ".xltm",
+    };
+
     // GET /api/documents — list of documents
     [HttpGet]
     public async Task<ActionResult<object>> GetDocuments(
@@ -220,6 +236,364 @@ public class DocumentsController(
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
+
+    // GET /api/documents/{id}/legacy-metadata-history — immutable metadata
+    // evidence imported from KnowledgeTree. This stays deliberately separate
+    // from the New-DMS Versions collection returned by GetDocument above.
+    // RBACMiddleware treats this GET exactly like opening the document itself:
+    // the caller must have the document's FileRead/ViewOnly permission.
+    [HttpGet("{id}/legacy-metadata-history")]
+    public async Task<ActionResult<object>> GetLegacyMetadataHistory(Guid id)
+    {
+        try
+        {
+            // Resolve from the New-DMS UUID supplied in the route. Never accept
+            // a legacy document id from the caller, which could otherwise be
+            // used to probe a different document's archive.
+            var mapping = await context.LegacyDocumentMappings
+                .AsNoTracking()
+                .Where(item => item.NewDocumentId == id)
+                .Select(item => new
+                {
+                    item.SourceSystem,
+                    item.LegacyDocumentId,
+                    item.ActiveLegacyContentVersionId,
+                    item.ActiveNewVersionId,
+                })
+                .SingleOrDefaultAsync();
+
+            if (mapping == null)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        HasLegacyMetadataHistory = false,
+                        LegacyDocumentId = (long?)null,
+                        SourceSystem = (string?)null,
+                        Snapshots = Array.Empty<object>(),
+                    }
+                });
+            }
+
+            var archivedSnapshots = await context.LegacyMetadataSnapshots
+                .AsNoTracking()
+                .Where(snapshot =>
+                    snapshot.SourceSystem == mapping.SourceSystem &&
+                    snapshot.LegacyDocumentId == mapping.LegacyDocumentId)
+                .OrderByDescending(snapshot => snapshot.MetadataSequence)
+                .ThenByDescending(snapshot => snapshot.LegacyMetadataVersionId)
+                .ToListAsync();
+
+            // Join each metadata snapshot through its real KnowledgeTree
+            // content_version_id. Do not derive a file from metadata sequence:
+            // several snapshots can correctly point at the same content row.
+            var linkedContentIds = archivedSnapshots
+                .Where(snapshot => snapshot.LegacyContentVersionId.HasValue)
+                .Select(snapshot => snapshot.LegacyContentVersionId!.Value)
+                .Distinct()
+                .ToList();
+            var contentById = await context.LegacyContentVersions
+                .AsNoTracking()
+                .Where(content =>
+                    content.SourceSystem == mapping.SourceSystem &&
+                    content.LegacyDocumentId == mapping.LegacyDocumentId &&
+                    linkedContentIds.Contains(content.LegacyContentVersionId))
+                .ToDictionaryAsync(content => content.LegacyContentVersionId);
+            var fileDateByContentId = await context.LegacyContentFileDetails
+                .AsNoTracking()
+                .Where(detail =>
+                    detail.SourceSystem == mapping.SourceSystem &&
+                    linkedContentIds.Contains(detail.LegacyContentVersionId))
+                .ToDictionaryAsync(
+                    detail => detail.LegacyContentVersionId,
+                    detail => detail.SourceFileModifiedAt);
+            var activeVersion = await context.DocumentVersions
+                .AsNoTracking()
+                .Where(version => version.VersionId == mapping.ActiveNewVersionId && version.DocumentId == id)
+                .SingleOrDefaultAsync();
+
+            var snapshots = archivedSnapshots.Select(snapshot => new
+            {
+                MetadataVersionId = snapshot.LegacyMetadataVersionId,
+                MetadataVersion = snapshot.MetadataSequence,
+                SnapshotDate = snapshot.SnapshotCreatedAt,
+                LegacyContentVersionId = snapshot.LegacyContentVersionId,
+                IsCurrentAtMigration = snapshot.IsCurrentSnapshot,
+                snapshot.SourceSystem,
+                AssociatedFile = snapshot.LegacyContentVersionId.HasValue &&
+                    contentById.TryGetValue(snapshot.LegacyContentVersionId.Value, out var content)
+                        ? BuildLegacyAssociatedFile(
+                            id,
+                            mapping.ActiveLegacyContentVersionId,
+                            content,
+                            fileDateByContentId.GetValueOrDefault(content.LegacyContentVersionId),
+                            activeVersion)
+                        : null,
+                Fields = BuildLegacyMetadataFields(snapshot),
+            }).ToList();
+
+            logger.LogInformation(
+                "Retrieved {Count} legacy metadata snapshots for document {DocumentId} (legacy {LegacyDocumentId})",
+                snapshots.Count,
+                id,
+                mapping.LegacyDocumentId);
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    HasLegacyMetadataHistory = snapshots.Count > 0,
+                    mapping.LegacyDocumentId,
+                    mapping.SourceSystem,
+                    Snapshots = snapshots,
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving legacy metadata history for document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = "Failed to load legacy metadata history" });
+        }
+    }
+
+    // GET /api/documents/{id}/legacy-content/{contentVersionId}/view
+    // Historical bytes are read only from the Legacy Archive namespace. The
+    // current-at-migration content is read from its normal current New-DMS
+    // version. Neither route creates a New-DMS version/history row.
+    [HttpGet("{id}/legacy-content/{contentVersionId:long}/view")]
+    public async Task<ActionResult> ViewLegacyContent(Guid id, long contentVersionId)
+    {
+        var target = await ResolveLegacyContentTargetAsync(id, contentVersionId);
+        if (target == null)
+            return NotFound(new { success = false, error = "Legacy content file is not available for this document" });
+
+        try
+        {
+            var stream = await minioService.DownloadAsync(target.ObjectKey);
+            return new FileStreamResult(stream, LegacyContentType(target.FileName))
+            {
+                EnableRangeProcessing = true,
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to view legacy content {ContentVersionId} for document {DocumentId}", contentVersionId, id);
+            return StatusCode(500, new { success = false, error = "Legacy archive file could not be read" });
+        }
+    }
+
+    // GET /api/documents/{id}/legacy-content/{contentVersionId}/download
+    [HttpGet("{id}/legacy-content/{contentVersionId:long}/download")]
+    public async Task<ActionResult> DownloadLegacyContent(Guid id, long contentVersionId)
+    {
+        var target = await ResolveLegacyContentTargetAsync(id, contentVersionId);
+        if (target == null)
+            return NotFound(new { success = false, error = "Legacy content file is not available for this document" });
+
+        try
+        {
+            var stream = await minioService.DownloadAsync(target.ObjectKey);
+            return new FileStreamResult(stream, LegacyContentType(target.FileName))
+            {
+                FileDownloadName = target.FileName,
+                EnableRangeProcessing = true,
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to download legacy content {ContentVersionId} for document {DocumentId}", contentVersionId, id);
+            return StatusCode(500, new { success = false, error = "Legacy archive file could not be read" });
+        }
+    }
+
+    private async Task<LegacyContentTarget?> ResolveLegacyContentTargetAsync(Guid documentId, long contentVersionId)
+    {
+        // Resolve through the caller-visible New-DMS document UUID first, then
+        // constrain the content row to the same source document. A content ID
+        // copied from another document can never cross this boundary.
+        var mapping = await context.LegacyDocumentMappings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.NewDocumentId == documentId);
+        if (mapping == null)
+            return null;
+
+        var content = await context.LegacyContentVersions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item =>
+                item.SourceSystem == mapping.SourceSystem &&
+                item.LegacyDocumentId == mapping.LegacyDocumentId &&
+                item.LegacyContentVersionId == contentVersionId);
+        if (content == null)
+            return null;
+
+        if (content.PhysicalFileStatus == "archived" && !string.IsNullOrWhiteSpace(content.ArchiveObjectKey))
+            return new LegacyContentTarget(content.ArchiveObjectKey, content.OriginalFilename);
+
+        if (content.PhysicalFileStatus == "active_in_new_dms" &&
+            content.LegacyContentVersionId == mapping.ActiveLegacyContentVersionId)
+        {
+            var version = await context.DocumentVersions
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item =>
+                    item.VersionId == mapping.ActiveNewVersionId &&
+                    item.DocumentId == documentId);
+            if (version != null && !string.IsNullOrWhiteSpace(version.S3ObjectKey))
+                return new LegacyContentTarget(version.S3ObjectKey, content.OriginalFilename);
+        }
+
+        return null;
+    }
+
+    private static LegacyAssociatedFile BuildLegacyAssociatedFile(
+        Guid documentId,
+        long activeLegacyContentVersionId,
+        DmsLegacyContentVersion content,
+        DateTime? fileDate,
+        DmsDocumentVersion? activeVersion)
+    {
+        var isArchivedAvailable = content.PhysicalFileStatus == "archived" &&
+            !string.IsNullOrWhiteSpace(content.ArchiveObjectKey);
+        var isActiveAvailable = content.PhysicalFileStatus == "active_in_new_dms" &&
+            content.LegacyContentVersionId == activeLegacyContentVersionId &&
+            activeVersion != null &&
+            !string.IsNullOrWhiteSpace(activeVersion.S3ObjectKey);
+        var isAvailable = isArchivedAvailable || isActiveAvailable;
+        var fileStatus = content.PhysicalFileStatus switch
+        {
+            "archived" when isArchivedAvailable => "Available in Legacy Archive",
+            "active_in_new_dms" when isActiveAvailable => "Available as migrated current file",
+            "source_file_missing" => "Not available in legacy export",
+            "source_file_zero_byte" => "Not available: zero-byte legacy export file",
+            "source_md5_mismatch" => "Not available: legacy MD5 mismatch",
+            _ => "Not available in legacy export",
+        };
+        var baseUrl = $"/api/documents/{documentId}/legacy-content/{content.LegacyContentVersionId}";
+
+        return new LegacyAssociatedFile(
+            content.LegacyContentVersionId,
+            content.OriginalFilename,
+            content.MajorVersion,
+            content.MinorVersion,
+            $"{content.MajorVersion}.{content.MinorVersion}",
+            fileDate,
+            content.SourceSizeBytes,
+            fileStatus,
+            isAvailable,
+            isAvailable ? $"{baseUrl}/view" : null,
+            isAvailable ? $"{baseUrl}/download" : null);
+    }
+
+    private static string LegacyContentType(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
+    {
+        ".pdf" => "application/pdf",
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".txt" => "text/plain",
+        ".csv" => "text/csv",
+        ".doc" => "application/msword",
+        ".docx" or ".docm" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xls" => "application/vnd.ms-excel",
+        ".xlsx" or ".xlsm" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".ppt" => "application/vnd.ms-powerpoint",
+        ".pptx" or ".pptm" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        _ => "application/octet-stream",
+    };
+
+    private static IReadOnlyList<LegacyMetadataField> BuildLegacyMetadataFields(
+        DmsLegacyMetadataSnapshot snapshot)
+    {
+        var fields = new List<LegacyMetadataField>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (snapshot.RawMetadata.RootElement.ValueKind == JsonValueKind.Object &&
+            snapshot.RawMetadata.RootElement.TryGetProperty("fields", out var rawFields) &&
+            rawFields.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in rawFields.EnumerateObject())
+            {
+                // Keep every archived key, including unknown names and keys
+                // whose value was empty. The current DMS metadata schema must
+                // never decide what is visible in this evidence view.
+                fields.Add(new LegacyMetadataField(property.Name, LegacyFieldValue(property.Value)));
+                seenNames.Add(property.Name);
+            }
+        }
+
+        AddLegacyFieldIfMissing(fields, seenNames, "Title", snapshot.Title);
+        AddLegacyFieldIfMissing(fields, seenNames, "Description", snapshot.Description);
+        AddLegacyFieldIfMissing(fields, seenNames, "Authors", snapshot.OriginalAuthors);
+        AddLegacyFieldIfMissing(fields, seenNames, "Group", snapshot.LegacyGroup);
+        AddLegacyFieldIfMissing(fields, seenNames, "Internal/External", snapshot.InternalExternal);
+        AddLegacyFieldIfMissing(fields, seenNames, "IP number", snapshot.IpNumber);
+        AddLegacyFieldIfMissing(fields, seenNames, "Tag", snapshot.LegacyTags);
+        AddLegacyFieldIfMissing(fields, seenNames, "Document #", snapshot.OriginalDocumentNumber);
+        AddLegacyFieldIfMissing(fields, seenNames, "Document Type", snapshot.LegacyDocumentType);
+
+        // document_metadata_version.description is a separate KnowledgeTree
+        // base column. When a custom "Description" field also existed and had
+        // a different value, both are historical evidence and both must remain
+        // visible instead of allowing the custom field to mask the base value.
+        if (snapshot.RawMetadata.RootElement.ValueKind == JsonValueKind.Object &&
+            snapshot.RawMetadata.RootElement.TryGetProperty("descriptionColumn", out var descriptionColumnElement))
+        {
+            var descriptionColumn = LegacyFieldValue(descriptionColumnElement);
+            var displayedDescription = fields.FirstOrDefault(field =>
+                field.Name.Equals("Description", StringComparison.OrdinalIgnoreCase))?.Value;
+            if (descriptionColumn != null &&
+                !string.Equals(descriptionColumn, displayedDescription, StringComparison.Ordinal))
+            {
+                fields.Add(new LegacyMetadataField("Legacy description column", descriptionColumn));
+            }
+        }
+
+        // Put familiar KnowledgeTree labels first while retaining every raw
+        // field (and the original order among unknown fields).
+        return fields
+            .Select((field, index) => new { field, index })
+            .OrderBy(item => LegacyFieldPriority(item.field.Name))
+            .ThenBy(item => item.index)
+            .Select(item => item.field)
+            .ToList();
+    }
+
+    private static void AddLegacyFieldIfMissing(
+        ICollection<LegacyMetadataField> fields,
+        ISet<string> seenNames,
+        string name,
+        string? value)
+    {
+        if (value == null || seenNames.Contains(name))
+            return;
+
+        fields.Add(new LegacyMetadataField(name, value));
+        seenNames.Add(name);
+    }
+
+    private static string? LegacyFieldValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        JsonValueKind.String => value.GetString(),
+        _ => value.GetRawText(),
+    };
+
+    private static int LegacyFieldPriority(string name) => name.ToUpperInvariant() switch
+    {
+        "TITLE" => 0,
+        "AUTHORS" => 1,
+        "GROUP" => 2,
+        "DESCRIPTION" => 3,
+        "LEGACY DESCRIPTION COLUMN" => 4,
+        "INTERNAL/EXTERNAL" => 5,
+        "IP NUMBER" => 6,
+        "TAG" => 7,
+        "DOCUMENT #" => 8,
+        "DOCUMENT TYPE" => 9,
+        _ => 100,
+    };
 
     // POST /api/documents — create a document without a file
     [HttpPost]
@@ -817,6 +1191,82 @@ public class DocumentsController(
     }
 
     // GET /api/documents/{id}/download — download a file
+    // The browser receives only the generated PDF, not the original file plus
+    // a second browser-to-renderer upload.
+    [HttpGet("{id}/versions/{versionId}/preview")]
+    public async Task<ActionResult> PreviewVersion(Guid id, Guid versionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var version = await context.DocumentVersions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    dv => dv.VersionId == versionId && dv.DocumentId == id,
+                    cancellationToken);
+
+            if (version == null)
+                return NotFound(new { success = false, error = "Version not found" });
+
+            if (string.IsNullOrEmpty(version.S3ObjectKey))
+                return BadRequest(new { success = false, error = "File has not been uploaded yet" });
+
+            if (!PdfPreviewExtensions.Contains(Path.GetExtension(version.FileName)))
+                return StatusCode(StatusCodes.Status415UnsupportedMediaType, new
+                {
+                    success = false,
+                    error = "This file type does not use the generated PDF preview endpoint",
+                });
+
+            await using var sourceStream = await minioService.DownloadAsync(version.S3ObjectKey);
+            using var multipart = new MultipartFormDataContent();
+            using var fileContent = new StreamContent(sourceStream);
+            if (MediaTypeHeaderValue.TryParse(version.MimeType, out var sourceContentType))
+                fileContent.Headers.ContentType = sourceContentType;
+            multipart.Add(fileContent, "file", version.FileName);
+
+            var previewClient = httpClientFactory.CreateClient("OcrRag");
+            using var previewResponse = await previewClient.PostAsync(
+                "api/documents/convert-to-pdf",
+                multipart,
+                cancellationToken);
+
+            if (!previewResponse.IsSuccessStatusCode)
+            {
+                var detail = await previewResponse.Content.ReadAsStringAsync(cancellationToken);
+                logger.LogWarning(
+                    "Preview conversion failed for document {DocumentId}, version {VersionId}: {Status} {Detail}",
+                    id,
+                    versionId,
+                    previewResponse.StatusCode,
+                    detail);
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    success = false,
+                    error = "The document preview service could not render this file",
+                });
+            }
+
+            var pdfBytes = await previewResponse.Content.ReadAsByteArrayAsync(cancellationToken);
+            Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+            if (previewResponse.Headers.TryGetValues("X-Preview-Cache", out var cacheValues))
+                Response.Headers["X-Preview-Cache"] = cacheValues.FirstOrDefault();
+            Response.Headers.ContentDisposition =
+                $"inline; filename=\"{Path.GetFileNameWithoutExtension(version.FileName)}.pdf\"";
+
+            return File(pdfBytes, "application/pdf");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error previewing version {VersionId} of document {DocumentId}", versionId, id);
+            return StatusCode(500, new { success = false, error = "Document preview failed" });
+        }
+    }
+
+    // Download the immutable original file bytes.
     [HttpGet("{id}/versions/{versionId}/download")]
     public async Task<ActionResult> DownloadVersion(Guid id, Guid versionId)
     {
@@ -1047,8 +1497,8 @@ public class DocumentsController(
     {
         try
         {
-            var (success, error) = await DeleteDocumentInternalAsync(id, GetCurrentUserId());
-            if (!success)
+            var (status, error) = await DeleteDocumentInternalAsync(id, GetCurrentUserId());
+            if (status == DocumentDeleteStatus.NotFound)
                 return NotFound(new { success = false, error });
 
             return Ok(new { success = true, message = "Document deleted successfully" });
@@ -1062,60 +1512,76 @@ public class DocumentsController(
 
     // Shared by the single-document delete endpoint and BulkDeleteDocuments so the
     // two paths can't silently drift (e.g. one forgetting the MinIO/version cleanup).
-    private async Task<(bool Success, string? Error)> DeleteDocumentInternalAsync(Guid id, Guid actorUserId)
+    private async Task<(DocumentDeleteStatus Status, string? Error)> DeleteDocumentInternalAsync(Guid id, Guid actorUserId)
     {
         var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
         if (document == null)
-            return (false, "Document not found");
+            return (DocumentDeleteStatus.NotFound, "Document not found");
 
         var versions = await context.DocumentVersions
             .Where(v => v.DocumentId == id)
             .ToListAsync();
 
-        foreach (var version in versions)
+        await using (var transaction = await context.Database.BeginTransactionAsync())
         {
-            if (!string.IsNullOrEmpty(version.S3ObjectKey))
+            try
             {
-                try
+                // Break the document/current-version cycle before deleting both
+                // sides of the required version-to-document relationship.
+                document.CurrentVersionId = null;
+                await context.SaveChangesAsync();
+
+                // A single-document approval batch would otherwise become an empty,
+                // permanently orphaned queue record after the document is deleted.
+                var approvalsToDelete = await context.Approvals
+                    .Where(a =>
+                        a.Documents.Any(ad => ad.DocumentId == id)
+                        && a.Documents.All(ad => ad.DocumentId == id))
+                    .ToListAsync();
+
+                context.Approvals.RemoveRange(approvalsToDelete);
+                context.DocumentVersions.RemoveRange(versions);
+                context.Documents.Remove(document);
+                await context.SaveChangesAsync();
+
+                await auditService.LogAsync(actorUserId, DOCUMENT_DELETED, new
                 {
-                    await minioService.DeleteAsync(version.S3ObjectKey);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", version.S3ObjectKey);
-                }
+                    document.DocumentId,
+                    document.Title,
+                    document.FolderId,
+                    VersionsDeleted = versions.Count,
+                    DeletedAt = DateTime.UtcNow
+                });
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
             }
         }
 
-        // Break the document/current-version cycle before deleting both
-        // sides of the required version-to-document relationship.
-        document.CurrentVersionId = null;
-        await context.SaveChangesAsync();
-
-        // A single-document approval batch would otherwise become an empty,
-        // permanently orphaned queue record after the document is deleted.
-        var approvalsToDelete = await context.Approvals
-            .Where(a =>
-                a.Documents.Any(ad => ad.DocumentId == id)
-                && a.Documents.All(ad => ad.DocumentId == id))
-            .ToListAsync();
-
-        context.Approvals.RemoveRange(approvalsToDelete);
-        context.DocumentVersions.RemoveRange(versions);
-        context.Documents.Remove(document);
-        await context.SaveChangesAsync();
-
-        await auditService.LogAsync(actorUserId, DOCUMENT_DELETED, new
+        // Database deletion is authoritative. Storage cleanup only starts after
+        // the transaction commits, so a database failure never destroys the
+        // only readable copy of a live document.
+        foreach (var version in versions)
         {
-            document.DocumentId,
-            document.Title,
-            document.FolderId,
-            VersionsDeleted = versions.Count,
-            DeletedAt = DateTime.UtcNow
-        });
+            if (string.IsNullOrEmpty(version.S3ObjectKey))
+                continue;
+
+            try
+            {
+                await minioService.DeleteAsync(version.S3ObjectKey);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", version.S3ObjectKey);
+            }
+        }
 
         logger.LogInformation("Deleted document {DocumentId}", id);
-        return (true, null);
+        return (DocumentDeleteStatus.Deleted, null);
     }
 
     // POST /api/documents/{id}/versions/{versionId}/checkout — lock the version for editing.
@@ -1481,8 +1947,8 @@ public class DocumentsController(
                 continue;
             }
 
-            var (success, error) = await DeleteDocumentInternalAsync(documentId, userId);
-            if (success) succeeded.Add(documentId);
+            var (status, error) = await DeleteDocumentInternalAsync(documentId, userId);
+            if (status == DocumentDeleteStatus.Deleted) succeeded.Add(documentId);
             else failed.Add(new { documentId, error });
         }
 
@@ -1561,3 +2027,17 @@ public record BulkDeleteRequest(List<Guid> DocumentIds);
 public record BulkDownloadRequest(List<Guid> DocumentIds);
 public record ExtractDocIdRequest(string? Text);
 public record SetDocIdRequest(string OriginalDocumentId);
+public sealed record LegacyMetadataField(string Name, string? Value);
+public sealed record LegacyAssociatedFile(
+    long LegacyContentVersionId,
+    string OriginalFileName,
+    int MajorVersion,
+    int MinorVersion,
+    string VersionLabel,
+    DateTime? FileDate,
+    long? FileSizeBytes,
+    string FileStatus,
+    bool IsAvailable,
+    string? ViewUrl,
+    string? DownloadUrl);
+public sealed record LegacyContentTarget(string ObjectKey, string FileName);

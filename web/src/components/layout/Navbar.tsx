@@ -21,7 +21,10 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const { documents: allDmsDocuments } = useAllDmsDocuments();
+  // Loading all document metadata here duplicated the Document Library's own
+  // request on every page load. Suggestions only need it after the user has
+  // actually entered a searchable query.
+  const { documents: allDmsDocuments } = useAllDmsDocuments(searchQuery.trim().length >= 2);
   const { suggestions, isLoading } = useSearchSuggestions(isSuggestionsOpen ? searchQuery : '', allDmsDocuments);
   const searchContainerRef = useRef<HTMLFormElement>(null);
 
@@ -151,7 +154,7 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
             )}
             <div className="hidden min-w-[92px] sm:block">
               <div className="truncate text-sm font-semibold leading-5 text-[#17213a] dark:text-white">{user?.fullName}</div>
-              <div className="text-xs leading-4 text-[#718198]">{roleLabel(user?.role ?? 'No Access')}</div>
+              <div className="text-xs leading-4 text-[#52627a]">{roleLabel(user?.role ?? 'No Access')}</div>
             </div>
           </div>
 

@@ -4,6 +4,7 @@ import { X, AlertCircle, ClipboardList } from 'lucide-react';
 import { Button, Badge } from '../ui';
 import { apiClient } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface RelatedTaskRow {
   taskId: string;
@@ -64,7 +65,7 @@ export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTask
   }, [documentId]);
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+    <ModalOverlay onClose={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <div className="min-w-0">
@@ -123,6 +124,6 @@ export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTask
           <Button onClick={onClose} variant="secondary">Close</Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

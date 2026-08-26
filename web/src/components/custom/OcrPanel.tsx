@@ -14,8 +14,8 @@ interface OcrPanelProps {
 // Re-runs OCR/text extraction for a document that has no cached preview — most
 // often after a page reload, since the in-browser Docling parse from upload time
 // only lives in component state, not the server. There is no separate .NET OCR
-// pipeline; this fetches the stored file and sends it to the same local Docling
-// service (127.0.0.1:8000) used at upload time, via its stateless /convert route.
+// pipeline; this fetches the stored file and sends it to the same private Docling
+// service used at upload time through the same-origin /ocr proxy.
 export function OcrPanel({ documentId, versionId, fileName }: OcrPanelProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [content, setContent] = useState('');

@@ -7,7 +7,10 @@ export interface ParsedDocument {
 
 export type ConvertedDocument = Pick<ParsedDocument, 'filename' | 'content'>;
 
-const DOCLING_API_ORIGIN = 'http://127.0.0.1:8000';
+// Keep parser traffic on the application's own origin. nginx proxies /ocr/
+// to the private ocr-rag container, so remote users never try to contact a
+// parser running on their own workstation via 127.0.0.1.
+const DOCLING_API_ORIGIN = '/ocr';
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   if (response.ok) return response.json() as Promise<T>;
@@ -26,7 +29,7 @@ const HEALTH_CHECK_TIMEOUT_MS = 2500;
 
 export const doclingApi = {
   /**
-   * Cheap up-front probe for the local Docling/LibreOffice sidecar so callers can
+   * Cheap up-front probe for the DMS Docling/LibreOffice sidecar so callers can
    * skip straight to a text-based fallback with a clear message instead of waiting
    * out a multi-second conversion timeout only to fail anyway.
    */

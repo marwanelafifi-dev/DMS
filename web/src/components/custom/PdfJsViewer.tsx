@@ -15,7 +15,12 @@ const MAX_INDEXED_PAGES = 300;
 // scrolling feel continuous (the next page is usually already drawn by the
 // time it comes into view) without rendering every page in a large document
 // up front.
-const RENDER_ROOT_MARGIN = '1000px 0px';
+const RENDER_ROOT_MARGIN = '200px 0px';
+
+interface PageSize {
+  width: number;
+  height: number;
+}
 
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch);
@@ -121,11 +126,12 @@ interface PdfJsViewerProps {
 // away from the old one-page-at-a-time viewer is that scrolling should feel
 // like a normal PDF reader, not that every page renders immediately.
 function PdfPage({
-  pdfDoc, pageNumber, scale, searchQuery, localActiveIndex, registerContainer, registerTextLayer, onRendered,
+  pdfDoc, pageNumber, scale, estimatedSize, searchQuery, localActiveIndex, registerContainer, registerTextLayer, onRendered,
 }: {
   pdfDoc: PDFDocumentProxy;
   pageNumber: number;
   scale: number;
+  estimatedSize: PageSize;
   searchQuery: string;
   localActiveIndex: number;
   registerContainer: (pageNumber: number, el: HTMLDivElement | null) => void;
@@ -135,6 +141,7 @@ function PdfPage({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
+  const textLayerInstanceRef = useRef<TextLayer | null>(null);
   const [shouldRender, setShouldRender] = useState(false);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
 
@@ -164,6 +171,9 @@ function PdfPage({
         if (cancelled) return;
         const viewport = page.getViewport({ scale });
         setSize({ width: viewport.width, height: viewport.height });
+        textLayerInstanceRef.current = null;
+        registerTextLayer(pageNumber, null);
+        if (textLayerRef.current) textLayerRef.current.innerHTML = '';
 
         const canvas = canvasRef.current;
         const context = canvas?.getContext('2d');
@@ -175,24 +185,6 @@ function PdfPage({
         await renderTask.promise;
         renderTask = null;
         if (cancelled) return;
-
-        const textLayerContainer = textLayerRef.current;
-        if (textLayerContainer) {
-          textLayerContainer.innerHTML = '';
-          textLayerContainer.style.width = `${viewport.width}px`;
-          textLayerContainer.style.height = `${viewport.height}px`;
-          // pdf.js's TextLayer reads "--scale-factor" (see pdf.mjs), not a made-up name.
-          textLayerContainer.style.setProperty('--scale-factor', String(scale));
-
-          const textContent = await page.getTextContent();
-          if (cancelled) return;
-          const textLayer = new TextLayer({ textContentSource: textContent, container: textLayerContainer, viewport });
-          await textLayer.render();
-          if (cancelled) return;
-          registerTextLayer(pageNumber, textLayer);
-          applySearchHighlight(textLayer, searchQuery, localActiveIndex);
-        }
-
         onRendered(pageNumber);
       } catch (error) {
         const isCancellation = error instanceof Error && error.name === 'RenderingCancelledException';
@@ -210,11 +202,54 @@ function PdfPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldRender, scale, pageNumber, pdfDoc]);
 
+  // Text-layer construction can add thousands of positioned spans to a dense
+  // legacy Word/PDF page. It is useful for in-document search, but doing it
+  // before the first paint made opening a DOC look frozen long after its canvas
+  // was already available. Build it only when the user actually searches; the
+  // visual page stays complete and read-only without paying that startup cost.
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!shouldRender || !query) return;
+
+    const existingLayer = textLayerInstanceRef.current;
+    if (existingLayer) {
+      applySearchHighlight(existingLayer, query, localActiveIndex);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const page = await pdfDoc.getPage(pageNumber);
+      if (cancelled) return;
+      const viewport = page.getViewport({ scale });
+      const container = textLayerRef.current;
+      if (!container) return;
+      container.innerHTML = '';
+      container.style.width = `${viewport.width}px`;
+      container.style.height = `${viewport.height}px`;
+      container.style.setProperty('--scale-factor', String(scale));
+      const textContent = await page.getTextContent();
+      if (cancelled) return;
+      const textLayer = new TextLayer({ textContentSource: textContent, container, viewport });
+      await textLayer.render();
+      if (cancelled) return;
+      textLayerInstanceRef.current = textLayer;
+      registerTextLayer(pageNumber, textLayer);
+      applySearchHighlight(textLayer, query, localActiveIndex);
+    })().catch((error) => {
+      if (!cancelled) console.error(`Failed to build PDF text layer for page ${pageNumber}:`, error);
+    });
+
+    return () => { cancelled = true; };
+  }, [shouldRender, searchQuery, localActiveIndex, scale, pageNumber, pdfDoc, registerTextLayer]);
+
   return (
     <div
       ref={(el) => { wrapperRef.current = el; registerContainer(pageNumber, el); }}
       className="relative mx-auto mb-4 bg-white shadow-lg"
-      style={size ? { width: size.width, height: size.height } : { minHeight: 400, width: '100%', maxWidth: 900 }}
+      style={size
+        ? { width: size.width, height: size.height, maxWidth: '100%' }
+        : { width: estimatedSize.width, maxWidth: '100%', aspectRatio: `${estimatedSize.width} / ${estimatedSize.height}` }}
     >
       {shouldRender && (
         <>
@@ -241,6 +276,7 @@ export const PdfJsViewer = forwardRef<PdfJsViewerHandle, PdfJsViewerProps>(funct
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [baseScale, setBaseScale] = useState(1);
+  const [pageBaseSize, setPageBaseSize] = useState<PageSize | null>(null);
   const [zoomPercent, setZoomPercent] = useState(100);
   const [isDocLoading, setIsDocLoading] = useState(true);
   const [hasDocError, setHasDocError] = useState(false);
@@ -249,6 +285,7 @@ export const PdfJsViewer = forwardRef<PdfJsViewerHandle, PdfJsViewerProps>(funct
   const [isIndexing, setIsIndexing] = useState(false);
   const [isIndexed, setIsIndexed] = useState(false);
   const [indexedPageCount, setIndexedPageCount] = useState(0);
+  const hasNotifiedReadyRef = useRef(false);
 
   useEffect(() => {
     searchStateRef.current = { query: searchQuery, activeMatchIndex, pageMatchCounts };
@@ -262,9 +299,11 @@ export const PdfJsViewer = forwardRef<PdfJsViewerHandle, PdfJsViewerProps>(funct
     setNumPages(0);
     setPdfDoc(null);
     setCurrentPage(1);
+    setPageBaseSize(null);
     setActiveMatchIndex(0);
     setPageMatchCounts(null);
     setIsIndexed(false);
+    hasNotifiedReadyRef.current = false;
     pageTextCacheRef.current = new Map();
     pageContainerRefs.current = new Map();
     pageTextLayerRefs.current = new Map();
@@ -279,7 +318,6 @@ export const PdfJsViewer = forwardRef<PdfJsViewerHandle, PdfJsViewerProps>(funct
       setPdfDoc(doc);
       setNumPages(doc.numPages);
       setIsDocLoading(false);
-      onReady?.();
     }).catch((error) => {
       if (cancelled) return;
       console.error('Failed to load PDF document:', error);
@@ -305,12 +343,16 @@ export const PdfJsViewer = forwardRef<PdfJsViewerHandle, PdfJsViewerProps>(funct
       const viewport = page.getViewport({ scale: 1 });
       const containerWidth = containerRef.current?.clientWidth ?? viewport.width;
       const fitScale = Math.max(0.3, (containerWidth - 48) / viewport.width);
+      setPageBaseSize({ width: viewport.width, height: viewport.height });
       setBaseScale(fitScale);
     });
     return () => { cancelled = true; };
   }, [numPages]);
 
   const effectiveScale = baseScale * (zoomPercent / 100);
+  const estimatedSize = pageBaseSize
+    ? { width: pageBaseSize.width * effectiveScale, height: pageBaseSize.height * effectiveScale }
+    : null;
 
   // Tracks which page is most visible in the scroll container so the toolbar's
   // "Page X of Y" label reflects normal scrolling, not just explicit Prev/Next
@@ -501,17 +543,23 @@ export const PdfJsViewer = forwardRef<PdfJsViewerHandle, PdfJsViewerProps>(funct
         </div>
       )}
       <div ref={containerRef} className="min-h-0 flex-1 overflow-auto bg-[#eef2f7] p-6 dark:bg-slate-950">
-        {!isDocLoading && pdfDoc && Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
+        {!isDocLoading && pdfDoc && estimatedSize && Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
           <PdfPage
             key={pageNumber}
             pdfDoc={pdfDoc}
             pageNumber={pageNumber}
             scale={effectiveScale}
+            estimatedSize={estimatedSize}
             searchQuery={searchQuery}
             localActiveIndex={computeLocalActiveIndex(pageNumber, searchStateRef.current)}
             registerContainer={registerContainer}
             registerTextLayer={registerTextLayer}
-            onRendered={() => {}}
+            onRendered={(renderedPageNumber) => {
+              if (renderedPageNumber === 1 && !hasNotifiedReadyRef.current) {
+                hasNotifiedReadyRef.current = true;
+                onReady?.();
+              }
+            }}
           />
         ))}
       </div>

@@ -1,0 +1,890 @@
+legacy_document_id,new_document_id,active_legacy_content_version_id,new_active_version_id,migration_result,owner,active_filename
+24,e3155116-692d-519b-b1b2-57188de1e52b,3358,ea365042-8d40-5473-bd70-839716dd7949,pilot_already_migrated,Yasseen Nada,digital_design_process_r3.docm
+26,d86efe5f-8b30-5588-a280-b7c6f22bfb04,3362,135aefae-2584-56d0-a645-46857ad813d3,newly_migrated,Yasseen Nada,Verification_checklist_project_r3.xlsm
+27,9c42dd2e-fa26-52f6-be1c-8f8365e44ce1,3361,b8eaab28-926a-5a56-94ad-df18154edc73,newly_migrated,Yasseen Nada,RTL_Release_checklist_project_r3.xlsm
+28,2498875a-ff58-5483-be52-e6de09c9f0f9,3360,33f17e65-bd14-5376-9691-ceb38d05e422,newly_migrated,Yasseen Nada,SYN_checklist_project_r2.xlsm
+32,040300c5-f4cb-5fd3-8e05-2c761560239f,1591,ac5c00ed-f076-56ed-87a7-8d532ac2c5b7,newly_migrated,Yasseen Nada,project_TDD_a5.docm
+35,9e68f51e-cca6-54f2-9281-8b28676fccba,38,3ef337de-0ea5-5914-bbed-4b3b0b3db862,newly_migrated,Yasseen Nada,block_IDD.docx
+36,ea3a27b7-3496-5e00-9c4a-3f4f5b3297e2,39,3047614b-fdee-5fff-ab55-af7e455c0fe1,newly_migrated,Yasseen Nada,SWS3100_TDD.docx
+38,60195bc9-7b6e-5943-b5f3-3eb9bcc1033f,41,6824c040-5dec-5a7e-8623-8fb258dbbd2a,newly_migrated,Mohamed El Arabawy,SWS3100_DRD.docx
+39,fd099d76-9fe6-5da4-8b94-e39373bb2076,42,cc56e93a-466a-5110-82a7-4868f084ce24,newly_migrated,Yasseen Nada,Digital IP Estimation Database
+40,ef3d3fb5-142d-54ec-aa8f-5b1fb41af938,43,51e82b29-7bf0-59b9-b629-3bac7a3ae3c9,newly_migrated,Yasseen Nada,Tapeout Design Kits Record.xls
+42,07680bf4-d615-5b02-8de2-2d989ca0b54b,45,3a1f2e00-8345-5060-b106-5a3bdf5d88d1,newly_migrated,Mostafa Medhat,NDA List Example.xls
+43,ddd602ad-e5aa-57e4-81d1-f07a615bc147,46,3f78824b-aa6d-561f-9519-af803da416cb,newly_migrated,Mohamed El Arabawy,EIA557B.pdf
+44,770e65dc-d69d-5d2a-ab66-6bc699f9c196,47,c59b78aa-efc6-5d1d-a30d-bb66188528bc,newly_migrated,Mohamed El Arabawy,AEC_Q100-009B.pdf
+45,04589aff-a6b3-5805-8398-e6769e49152b,48,9b411e62-e383-5f74-b8c1-e0a5ea5cfc05,newly_migrated,Mohamed El Arabawy,AEC_Q100-010A.pdf
+46,2f4be541-f8e6-5fcc-8ab4-c8e9498d1701,49,0d9db820-83ee-5d2a-8931-7bafd0c6c0af,newly_migrated,Mohamed El Arabawy,AEC_Q100-002D.pdf
+47,af0d2173-75b6-5609-b805-970b7d28ec0d,50,5cfe9bc0-47c4-5275-ac51-5f3eb4387415,newly_migrated,Mohamed El Arabawy,AEC_Q100-006D.pdf
+48,1e83735c-a0f2-5c76-87c8-8cb88b14f151,51,df7107b5-d422-5f1e-a3a8-7997b7f1df51,newly_migrated,Mohamed El Arabawy,AEC_Q100-008A.pdf
+49,0aedb982-5b06-5275-ba25-7ec6d0467771,52,790e995a-2985-5b18-bd33-6693fa1f6dd6,newly_migrated,Mohamed El Arabawy,AEC_Q100-005C.pdf
+50,6dffb432-0e13-5ea7-8178-66d1f40b501c,53,e327525a-beda-52d5-9785-b5d379bad6d7,newly_migrated,Mohamed El Arabawy,AEC_Q100-011B.pdf
+51,9ca8e2f2-1d0b-5550-9cd5-d53f9542dda8,54,3eeda67c-f875-5242-a99c-5a2732348b33,newly_migrated,Mohamed El Arabawy,AEC_Q100-003E.pdf
+52,3f89e012-0a00-56ff-bef9-9acfb9be716d,55,217123ae-328a-56d4-a61b-1a291894976c,newly_migrated,Mohamed El Arabawy,AEC_Q100-012.pdf
+53,0385bb33-56c3-56c6-a5be-843abdff8ae5,56,b347a18c-3998-5534-be73-485db0526262,newly_migrated,Mohamed El Arabawy,AEC_Q100-007B.pdf
+54,2225ace7-aa22-5a10-aee1-7a9dc3ccccc9,57,cd42d758-2080-59d9-b466-99984f4dc13a,newly_migrated,Mohamed El Arabawy,AEC_Q100_Rev_G_Base_Document.pdf
+55,d320e20f-a1d5-5521-b79e-56588a86dc7f,58,e7043d87-a990-55cd-bc14-c9feca68d7ee,newly_migrated,Mohamed El Arabawy,AEC_Q100-001C.pdf
+56,269bc0f8-cba4-5315-bfef-dfcd151212e1,59,ea97cebf-bc66-5537-a589-adadfe79413b,newly_migrated,Mohamed El Arabawy,AEC_Q100-004C.pdf
+57,3edc9927-9122-5d8f-a238-ad9fad62e491,60,2abc906a-61b0-53ed-9180-9fc8ff52c4aa,newly_migrated,Mohamed El Arabawy,mil-std-883.pdf
+58,d0643ed7-1c7b-5aff-beb0-ae9cf636bc36,61,18785be3-b2eb-5e54-9ceb-3bd8626dc0c1,newly_migrated,Mohamed El Arabawy,22A108D.pdf
+59,fdacbdf7-a073-511e-9fd7-911a8e51ac8f,62,1c7c999f-14b3-55e0-ab7f-eb003268fc2f,newly_migrated,Mohamed El Arabawy,22A117C.pdf
+60,2651140c-105c-57f6-ac1e-5a98019237d0,63,6802adae-01b2-56a9-b887-05af8f65ea09,newly_migrated,Mohamed El Arabawy,22B118.pdf
+61,4660dd01-091d-5dd0-9ff2-ac761e85643d,64,0c116707-78a7-568b-bdf1-500d3c3c656b,newly_migrated,Mohamed El Arabawy,22A122.pdf
+62,20d3062a-af55-58ff-9213-a4e84c791d58,65,ae9209f8-6334-5c8e-86d3-f6be7bfb77e6,newly_migrated,Mohamed El Arabawy,22A118A.pdf
+63,1ff6e446-dafe-5f05-a20b-d03d288531f4,66,51a5b084-6a26-5205-82fd-93c43b8451b6,newly_migrated,Mohamed El Arabawy,22A110D.pdf
+64,d9c97d14-26c9-506e-821e-12cc205fad01,67,96abafa3-ee90-57de-80f1-9ca31d1c39b4,newly_migrated,Mohamed El Arabawy,22a113F.pdf
+65,fd7a03f5-3628-514b-bfc1-284a968ef6d7,68,cceadeda-250c-5174-97b9-2290e9d46453,newly_migrated,Mohamed El Arabawy,22A109A.pdf
+66,0d99bdfc-e767-5bcb-b56b-4177fdf33db8,69,fadd8a4b-078e-5d05-a6b1-024fee1d7a9f,newly_migrated,Mohamed El Arabawy,22A101C.pdf
+67,bb7bbf31-9328-5b9a-9249-4db8dcce4aa0,70,e028533c-a8d7-51fd-854f-c500cbca5055,newly_migrated,Mohamed El Arabawy,22B101B.pdf
+68,aeab29d6-59ec-5f1d-9e7c-b20b32550348,71,e620d471-df22-5049-9c6d-f1cffe47ff57,newly_migrated,Mohamed El Arabawy,22B103B.pdf
+69,41e71c4a-afcc-5605-a9de-c5555c7e9276,72,614697f5-aad0-5df6-8fc5-925c5a877455,newly_migrated,Mohamed El Arabawy,22A105C.pdf
+70,a670415c-d7c1-54b4-975f-9e960c40fb68,73,b8831e7b-b5d2-5aea-b4ea-22147763ee1f,newly_migrated,Mohamed El Arabawy,22A104D.pdf
+71,8f9926b0-0e34-5613-bd3c-dd9f46d033bd,74,ebb338ef-746e-51eb-9bcc-3b49e85b6882,newly_migrated,Mohamed El Arabawy,22a106b.pdf
+72,0c464016-fa61-5dc4-92df-67d8d946f219,75,cab40966-7b0f-52c6-9096-f85895d118d6,newly_migrated,Mohamed El Arabawy,22A100c.pdf
+73,42fdb666-0fcb-588d-9259-0dfd737398bf,76,cfb60910-b5d8-57fc-bf07-7b34c0c43d53,newly_migrated,Mohamed El Arabawy,22a103D.pdf
+74,db45a294-282a-5d2f-9294-1278e8077cd9,77,5c9bbfff-260c-5edb-9b90-9550df89e46c,newly_migrated,Mohamed El Arabawy,22a119.pdf
+75,1873da95-0b92-535a-99ea-ff40dab55579,78,05baedc5-889e-57fd-9b6d-b8346e0ed141,newly_migrated,Mohamed El Arabawy,JESD49A.pdf
+76,34b284ce-1973-5924-b26d-a57e774e391b,79,b6ae8443-506d-54d5-80a3-2e6be4950ead,newly_migrated,Mohamed El Arabawy,JESD16A.pdf
+77,71033538-18b5-59a2-89d3-79fbd62f405c,80,e0a5056f-98fe-5737-9bfa-d3acfdc56108,newly_migrated,Mohamed El Arabawy,JEP121A.pdf
+78,bfc7c5a6-300e-539c-9303-c2d516cb3786,81,70afdfb1-aeee-564f-b21c-40c6e438b1fa,newly_migrated,Mohamed El Arabawy,JESD47H-01.pdf
+79,afcab40d-05a3-5f0d-a1ed-5f3e8fd1dc1f,82,5fcbee45-ea62-5e93-a5b9-c348f264e0ca,newly_migrated,Mohamed El Arabawy,MIL-PRF-38535H.pdf
+80,811df5aa-6480-555f-bd96-26e9ff5d4cc7,83,bc26a0ca-dc5e-51f7-80a9-dc488a287a2d,newly_migrated,Mostafa Medhat,Si-Ware - Silex NDA.2-28-12.pdf
+81,71bf4271-4ba3-5fce-a99c-2ecb44ae4d06,84,776ed631-3c64-5785-94b2-eb5e0248c12e,newly_migrated,Mostafa Medhat,Si-Ware - B&W Tek NDA.4-27-12.Signed.pdf
+82,594336c9-1281-588e-9f91-156da34f2035,85,f4059737-74ea-5c60-842e-2c53c3435d54,newly_migrated,Mostafa Medhat,Si-Ware - On Semi NDA.2-17-12.pdf
+83,28087751-a77f-5ba2-9cb2-4e6081f8c702,86,02c37dac-b27c-5bd6-a419-d51f0dc86bdd,newly_migrated,Mostafa Medhat,Si-Ware - Brenner NDA.4-27-12.Signed.pdf
+84,a30bb1ef-1eca-51b5-97b9-2934694f3e9d,87,7c6b8204-db73-5e0d-a9f0-2cc37767b886,newly_migrated,Mostafa Medhat,Si-Ware - Cardinal NDA.2-27-12.pdf
+85,8dee88ab-90b8-54df-aae1-fd4fa2f32b2f,88,4e44ae62-f50a-5240-87af-b1c4fb8665e7,newly_migrated,Mostafa Medhat,Si-Ware - Teledyne DALSA NDA.5-29-12.Signed.pdf
+86,ad752169-2bf4-5fbf-90ae-dc0aa77878d3,89,29cc5df8-7887-5ac4-865d-e62d802d93d9,newly_migrated,Mostafa Medhat,Si-Ware - Beijing Aerospace NDA.4-9-12.Signed.pdf
+87,425ca74e-a0f6-5264-b16e-dbe2629ae767,90,40356af9-9a8f-5691-8f50-5cbc12edd803,newly_migrated,Mostafa Medhat,Si-Ware - Micralyne NDA 2-27-12 -signed.pdf
+88,a2d3f164-0cc3-54f4-9309-b55a54bddc8b,91,3725ef39-3f13-5522-b1ab-f7c6906cfcbe,newly_migrated,Mostafa Medhat,Si-Ware - CS &A NDA.4-27-12.Signed.pdf
+89,272a7cef-13ea-5737-b37a-143467a3a7a2,92,86d135cc-9104-50f8-a857-992024805205,newly_migrated,Mostafa Medhat,Si-Ware - IMT NDA.2-27-12.Signed.pdf
+90,5d7f3f89-ac45-5e54-8c4c-c487c6203213,93,57991849-6818-52bf-937b-074aed162574,newly_migrated,Mostafa Medhat,Si-Ware - Corrao Group.4-2-12.Signed.pdf
+91,ffefb5f6-5a8e-55c8-bc64-69d51f4c677b,94,eb750711-51a0-5f7c-a243-491ad6640025,newly_migrated,Mostafa Medhat,Si-Ware - Avago.CDA.5-30-12.Signed.pdf
+92,13695445-f6c5-5f96-9daf-e0694ff378c0,95,2a13badb-3ee4-59c7-870b-3bf52ba1239b,newly_migrated,Mostafa Medhat,Si-Ware - TUMEMS NDA.2-13-12.pdf
+93,2eaa8e5e-b7e1-5cd9-ab3a-fd9433f4b240,96,a4e095bd-2ef6-52e1-92d1-dd32220898d5,newly_migrated,Mostafa Medhat,Si-Ware - Abracon NDA.5-17-12.Signed.pdf
+94,42516fc2-3530-5aff-b5cd-3c5be61ace92,97,3a8387f6-d426-5e48-ac3a-f91dff2369a2,newly_migrated,Mostafa Medhat,Si-Ware - NeoMEMS NDA.4-17-12.pdf
+95,5da1785e-011f-53ac-9f7e-659e735b8acd,98,981666c7-6c8a-5a54-9b0b-c17eb303a4ee,newly_migrated,Mostafa Medhat,Si-Ware - MiraMEMS NDA.5-17-12.Signed.pdf
+97,d9d15fc6-8acc-58ae-af13-4d0f42d219df,100,649b9860-b80c-548f-88d2-98081ec0cbad,newly_migrated,Mohamed El Arabawy,JESD69B.pdf
+98,3656b659-9b12-597c-a825-d51ee29bc3be,101,985ca7b4-c096-5170-8333-9966f3571e4c,newly_migrated,Mohamed El Arabawy,JESD74A.pdf
+99,bf05abb7-e687-5dd5-aad5-39be2435e2fa,102,026f293a-bce2-5672-a333-48921e930c04,newly_migrated,Mohamed El Arabawy,JESD86A.pdf
+100,213494ff-38bf-5645-8f14-9dd89afeb976,103,305d0e40-2f84-5baa-8c67-33547770f274,newly_migrated,Mohamed El Arabawy,JESD85.pdf
+101,e875b4d9-15f8-5c1a-ab53-ec86b9a328bd,104,f1e88155-7e2a-5d19-82ec-752e74f52642,newly_migrated,Mohamed El Arabawy,jesd91a.pdf
+102,d1677a8a-8ac1-5a47-a93e-8c0701c2b603,105,4bfcb8a0-a517-5e26-8594-8c9ec3f4eefc,newly_migrated,Mohamed El Arabawy,JEP122G.pdf
+103,2207e582-cc77-5049-ba7f-aa2545f9998b,106,9f41fe44-558a-541e-bf48-2915a5b5dada,newly_migrated,Mohamed El Arabawy,JEP143B-01.pdf
+127,66e04446-2767-506c-bcf7-6d033e5ebdde,670,371abd4e-7568-527c-bfe0-2596462dadae,newly_migrated,Amr El Mosallamy,siware_internal_document_template_r2.docm
+128,b156817e-ff61-5ca5-9b10-d6b557e586d7,1793,78139e3c-9a9c-5202-8151-0a3449b17368,newly_migrated,Amr El Mosallamy,siware_ip_naming_p1.docm
+129,530c82c4-e183-5c49-a507-dcf4f1e1875e,132,08f2588f-876a-542e-8f9f-a71b8fc7207f,newly_migrated,Ahmed Gebril,version_control_digital_SVN_d1p4.pptx
+134,c014fbd7-d077-5d48-8400-c856c6389c60,146,0731d9a8-e8e5-5cd9-831f-abaf23dd3240,newly_migrated,Bassem Mortada,Mail_Outlook_Configuration_Manual_d1p1.docx
+135,69ff7154-bc4d-5a76-9719-817640fe1f27,1227,ac1bdb00-bbc2-547a-aca0-05e22d421156,newly_migrated,Tamer Elsherif,document_control_procedure_r1.docm
+139,0225775a-a681-557c-9648-4cc97c3715ef,152,8899b046-1df8-5063-a4a6-646c9323b703,newly_migrated,Yasseen Nada,swdsp_IDD.docx
+140,b20b8e1e-68b6-5751-b3ea-6c5b27e16890,154,649fbd96-a9ad-5b12-a9c5-c1798eee638e,newly_migrated,Bassem Mortada,Si-Ware ANYWHERE User Manual d1.docx
+144,1cf2fc2a-1bf3-52d4-8562-3776a8fe29e6,333,f4c3b246-60db-57b2-96c7-228b57dd8e55,newly_migrated,Ahmed Gebril,SARArevB_TDD_d1p10.docm
+145,5a229c81-9a54-5176-a196-51862e10c106,170,2e2bd076-cb20-5c0e-b676-845b4d58a81d,newly_migrated,Ahmed Gebril,siware_thabet_tracking_proposal_d1.docm
+146,ebd69590-df5e-52db-91fd-174e872183a8,172,4c3a9841-6b45-5367-bfc0-5749f38416c1,newly_migrated,Yasseen Nada,Si-Ware ARM NDA 2-5-12.pdf
+147,28b9c79a-b8c2-53d7-ac9d-e198fd6fb3b7,174,925b18ce-aa56-5c01-9d7e-380d556dc6cc,newly_migrated,Yasseen Nada,Si-Ware - DCD NDA 10-10-12.pdf
+148,e2ced9a2-0d17-54d0-9d65-ea178f90f24d,176,87472ef4-6b57-572b-99f0-9f7e238d6213,newly_migrated,Yasseen Nada,Si-Ware OpenSilicon NDA 10-11-12.pdf
+150,1fe88e96-d21d-595e-b9ab-534e29343e9d,179,6558c8f2-b41f-5880-8bdd-513e4c30b788,newly_migrated,Ahmed Gebril,155962 HBM Report - Si-Ware - SARAA0.pdf
+151,4738cb84-68a1-5eed-a0a1-1cb3fd0947b2,180,a970ecfa-32e1-5d48-8065-ef5db2d12bdd,newly_migrated,Ahmed Gebril,155964 CDM Report -Si-Ware - SARAA0.pdf
+152,eb522d91-4f91-5c14-98a6-29cf5b3d1b3c,181,a49ca9ab-89d9-5804-9369-50be1fc99e8f,newly_migrated,Ahmed Gebril,155963 MM Report - Si-Ware - SARAA0.pdf
+153,3d904a4e-4fe3-5d5c-b126-c6b46fef260f,182,7de16f03-b3b5-51e0-9d91-0567fe996e63,newly_migrated,Ahmed Gebril,155965 LU Report - Si-Ware - SARAA0.pdf
+154,2a696ba5-4395-5128-94f2-1228c542e8f0,183,eacf33bc-8c5b-5b0c-b10e-4021d2448261,newly_migrated,Ahmed Gebril,SARAA0_ESD_IV_Curves.zip
+155,d87d94be-a6ca-5aa4-8cc6-1f0e00a3ed5b,271,e9ee474f-7134-5916-b638-0d9689a22fbf,newly_migrated,Yasseen Nada,Sararevb_verificationtest_r2.xlsm
+156,aabec2ab-a337-5482-956e-c29a46958b11,270,d83db0a1-72cb-5f9e-bd3e-69339e3454b1,newly_migrated,Yasseen Nada,Sararevb_bugs_r1.xlsm
+157,5792b1cf-2b7a-502a-af43-0a9bb7c3baf5,278,ac82cd9f-3588-5c0f-b822-59345c43f5fc,newly_migrated,Yasseen Nada,Sararevb_Layout_Edits_r3.xlsm
+158,023a6239-6e64-53d0-9299-a2fdd67d2692,281,8bca0922-4842-5fff-b835-47f6f006a539,newly_migrated,Ahmed Gebril,Si-Ware.HSRI Gas Flow Sensor Proposal.ver2-1.doc
+159,61fd4e5e-3e8a-5a4d-85e6-96b779a3746f,269,e976a340-d981-50b2-92e4-f3533986b6d0,newly_migrated,Yasseen Nada,Sararevb_Verification_Review_r1.pptx
+160,c9d6a02b-9fa3-5e35-9896-c9a6b5f1f2c1,268,cf4c4e99-eddf-54ab-b6d7-a79d36463ecf,newly_migrated,Yasseen Nada,Sararevb_Verification_Action_Items_r1.pptx
+161,801d49e8-3598-5c05-8aa0-ab3508420ca3,315,816eadf6-8e47-5a1b-b378-8984e69ac3b3,newly_migrated,Yasseen Nada,Sararevb_project_DRD_r4.docm
+166,593a21da-8aa0-5aea-a4df-5726606ba86e,212,42fb9cae-0fec-561a-bc32-e841ffa47956,newly_migrated,Ahmed Gebril,SARAX_TDD_1p5.docx
+167,a22b954d-23ea-5ab4-a3cf-7c15bb45a5f5,214,b61cdff1-414d-5c6d-88d1-0c1f58de3296,newly_migrated,Ahmed Gebril,sarax_regfile_120527.xls
+168,a4996c0d-676e-51bb-b45a-8e84edcb72b0,216,f70b3e8d-557c-5f1f-9dfc-e7c2dfac002a,newly_migrated,Ahmed Gebril,sarax_verification_test_plan_vd1p2.xls
+169,001ffa4c-8a2e-5114-baa4-7f6ce29416e3,352,b511601b-8b34-577f-b74a-e9d07e2de228,newly_migrated,Ahmed Gebril,SARArevB_regfile_r1p0.xlsm
+170,b201dc36-9d9d-5985-b94f-52ea4c90917c,335,7107a6e0-295f-581c-9ce9-6d438deaf3d1,newly_migrated,Ahmed Gebril,SARArevB_Verification_Plan_r1.xlsm
+171,ba6ffa38-16e0-5e8c-9dfc-ce1d2d9d662a,263,3c980285-e7fc-5656-b59b-e7c14f426c0a,newly_migrated,Mina Gad,SPI_communication_sum_up_r1.xlsm
+174,3c3517d5-d3cd-5e03-9bf8-e5aad035af7b,235,330cdadc-70e4-5a4b-9bf8-93d71fd8ab78,newly_migrated,Mina Gad,Wafer_level_measurements_d2.docm
+177,fde5493c-f00a-52e3-b752-9ac36afa42d6,273,3a796190-b8e0-57f1-8c6e-f74d404d5789,pilot_already_migrated,Mina Gad,PAC_Phase1_TestReport_20121216_rev1p0.docm
+180,1ba17368-ed5f-55f7-9ac9-26a852f14e19,250,944cecf0-d7a7-5dd4-bf5b-0d26dcb04a72,newly_migrated,Mina Gad,PAC_status_20121126.pptx
+188,42c377cc-746a-5fd1-9839-f72130884340,274,69dfc341-83e9-5fd0-a0fe-c652cc839c34,newly_migrated,Mina Gad,PAC_Phase2_TestReport_20121226.docm
+191,2e99c6c1-bad4-522d-800f-67a6110d5581,1068,bdcc179f-cdbc-57df-ac3f-bef0d67db7ed,newly_migrated,Abdelrahman Salah,Hiring process_d1.docm
+193,beb86f5a-1e30-5ec6-8688-478652b290ac,3564,f57d5c1a-9025-5707-88f3-96068c8c70a0,newly_migrated,Abdelrahman Salah,Training process_A1.docm
+194,7623412c-acf0-5af7-b9cd-837af6b3cca3,1082,bd76c37f-6021-5f72-bec5-adf8a27c53f3,newly_migrated,Abdelrahman Salah,Objectives Review Form_d2.docm
+195,ff611a20-3bff-5ac4-98ce-1cb9812fadce,1080,28dea02d-4b0a-54b5-9e2b-44fead1af87b,newly_migrated,Abdelrahman Salah,Si-Ware Performance Appraisal Template_d1.xlsm
+196,9e83c722-550b-56e3-bf0f-f940c7d07368,1075,cf9a0146-59bd-51cf-b2f2-1f45962e86d3,newly_migrated,Abdelrahman Salah,Divisional Training needsTemplate_d1.xlsm
+198,0e337a44-40e0-56de-9e7c-820e75111d9f,1078,61417514-ba1c-5c46-b2ba-1cf17cabcff3,newly_migrated,Abdelrahman Salah,Training Plan Template_d2.xlsm
+199,445f6e01-a6b6-52cf-ae72-3dcf74a98e97,1077,ce97fac0-5bbe-5de2-9848-15f63b363f61,newly_migrated,Abdelrahman Salah,Training Course Evaluation Template_d1.xlsm
+200,501afff4-208a-52df-9e46-4eb2a25ec6a5,1066,f0463ad5-e793-5608-b30d-7313d9a0554e,newly_migrated,Abdelrahman Salah,Employment Application Form_d2.docm
+201,4f6a6b9a-21b3-51c2-ba66-583ae28ec4f0,3566,6ce4fb6d-f8d1-5510-83c8-2fad72584567,newly_migrated,Abdelrahman Salah,Candidate interview assessment form_A1.docm
+202,637faff1-9d0d-50f7-afbe-b363d891e9f7,1070,d51f73ac-8a0d-54bc-a78d-a6a45c2647ef,newly_migrated,Abdelrahman Salah,Job offer template_d2.docm
+203,a0356571-0ed3-5d48-baaf-748402d2544c,1072,db54ead7-b4d2-57be-94ea-1e1314612808,newly_migrated,Abdelrahman Salah,Job vacancy template_d2.docm
+204,291eb40f-4344-5f13-b8d8-edc2f26676f0,1071,fdcd1590-18dd-52dd-ac70-c3784e67cba1,newly_migrated,Abdelrahman Salah,Manpower Requisition Form_d2.docm
+205,b0128b33-9247-54b7-8747-fd7e346cec8d,1073,c2ef2ca1-a88b-595b-a61e-df6d7b36658d,newly_migrated,Abdelrahman Salah,New Employee setup checklist_d2.docm
+206,b9b24f07-90e2-530b-afa6-8945c1b12b28,1074,9892d2b9-b4d8-5cea-bb83-adef62f47d39,newly_migrated,Abdelrahman Salah,Notification of employment template_d2.docm
+207,51b69dd4-7633-503c-8cd6-3a72e8716f0b,3435,84a9d6dc-6eda-5036-84c8-4ebf6e2718bf,newly_migrated,Ahmed Gebril,PCB_Procedure_Doc_r5.docm
+208,e833b845-a7ff-56e5-bcc8-75793eeacda3,425,b21dcc11-77bf-5099-9aa6-28ba67cf414a,newly_migrated,Ahmed Gebril,DISD_Template_d1.docm
+209,462b21b7-bc09-5442-ad5c-3bd3e505d634,1923,5c38c53b-cdcc-5eef-b5d5-56c1225a0cd2,newly_migrated,Ahmed Gebril,Control of Monitoring_Measuring Equipmentl_r2.docm
+210,3828aef1-4ee4-5fe4-8bea-560fc1429781,867,1e1b327a-ba9b-54d9-b469-5245791762d2,newly_migrated,Ahmed Gebril,Storage_and_Preservation_procedure_a1.docm
+211,44952e17-8db8-5834-8093-f2b34bf256d9,511,9087bfa0-88a9-5650-894e-cb4a647f2473,newly_migrated,Ahmed Gebril,Purchasing_procedure_d4.docm
+212,dfe9f061-29d1-5748-bf71-50cfa369a259,1615,64ff3299-402e-53ab-84ea-2dc66f412d94,newly_migrated,Ahmed Gebril,PCBD_Template_a1.docm
+214,46559c69-6ecc-5aa3-b617-56569cd6142f,1086,58072aa7-8d7b-5455-9529-6aa5442b3ce8,newly_migrated,Ahmed Gebril,Lab_regular_Check_Template_a1.docm
+223,4cdb15fb-4136-5e9f-a49b-271822f338be,325,de9743cd-10e3-57c3-bd9a-c9d2058799f8,newly_migrated,Ahmed Gebril,Si-Ware_HSRI_GasFlowSensor_SOW_r1.0.doc
+224,6b4bc08f-91d6-5dc5-b5e9-acd1250cec93,406,3a051a61-c2da-5874-b04f-93fdcf8cd2d7,newly_migrated,Yasseen Nada,Sararevb_enhancements_r1.xlsm
+226,09039cf6-57d6-5a3a-bef8-f952009f3840,336,42814f17-3e20-503a-a22f-d77e82d26d9f,newly_migrated,Yasseen Nada,SWS_SARA_ASIC_WLM_d9.xlsm
+230,4f4cdd06-0ce3-556a-8232-b199898d1941,3390,0fa50890-6aca-5339-af3b-9aa84bbf082a,pilot_already_migrated,Mostafa Medhat,Third MDR_d2.docm
+231,6e16cac8-a1a9-5ea7-a560-ff5ddd32a9ab,3391,9b2ff8ea-7f71-501a-9189-6a35d0549115,newly_migrated,Mostafa Medhat,Fourth MDR_d2.docm
+233,209ad1d5-5ad4-5cc3-b130-0455ae710911,3431,047fd11e-562a-51a6-b790-74fbb216f550,newly_migrated,Yasseen Nada,AMS_Procedure_r3.docm
+236,f31b5d28-514d-56ca-9860-a699a67132f1,3345,8d8207f5-f57d-5b32-9aab-02267ba080f0,newly_migrated,Yasseen Nada,Chip_Definition_Document_Word_Template_r2.docm
+237,a3467dc8-d239-5bcf-8b8a-424cdab56f86,3344,fef96dae-455e-57b3-b7ae-5d56d96282f1,newly_migrated,Yasseen Nada,AMS_CVD_template_r1.xlsm
+238,f88e136e-c9f8-52ab-a67c-4d795e850796,3445,c3454469-3e72-55d8-baca-c3f844e64d80,pilot_already_migrated,Mohamed El Arabawy,Analog_Block_Design_Checklist_template_r1.xlsm
+239,40d27060-19eb-5239-8918-ace4ad20b14a,3353,6b77973c-147a-5fa9-b780-fb716217b15d,newly_migrated,Ahmed Gebril,Physical_Procedure_a1.docm
+242,e25c1346-c431-5f37-93be-94178a536c85,3357,c859c815-c031-595a-98a4-2160422de705,newly_migrated,Ahmed Gebril,project_block_BLCL_d1.xlsm
+243,23abd8f3-2c04-58df-82c2-7097e57db099,3351,9b34ea7e-5bae-544f-a7fb-6af50a60b09f,newly_migrated,Ahmed Gebril,project_CICL_a1.xlsm
+244,65eb8bf3-811e-51f3-b679-4b153a9da96e,3352,5e476241-ebd4-5b08-b8e0-5191a008192b,newly_migrated,Ahmed Gebril,project_JVCL_a1.xlsm
+247,b2ec5760-88dd-512a-a7ef-739100f873b5,2296,2a37f68d-04e7-5b8c-a7cd-28c644763542,newly_migrated,Tamer Elsherif,record_control_procedure_a1.docm
+248,090d6bbb-587c-530e-b808-b3642ccdd3ee,702,0660312a-de88-5817-982c-c4268c071753,newly_migrated,Tamer Elsherif,project_management_procedure_d2.docm
+251,17eaf3e6-15a8-51fb-96a4-99bd80e8dd8d,391,a3a10692-2d77-5daf-adf6-45c076b0ba22,newly_migrated,Yasseen Nada,Chip I-O Interface_r1.docm
+253,ef82efc9-f930-55f0-be30-c59bfcbc0719,1076,de6ac4e6-1382-5c97-bd65-311482b3f005,newly_migrated,Abdelrahman Salah,Employee Training Record_d1.xlsm
+255,ccb86bb5-39b4-57ab-b961-c733f34c8017,2564,cdb503e8-f97b-5cfe-9d8b-da072b8081be,newly_migrated,Ahmed Gebril,PO_Template_d2.xlsm
+256,a72325f3-b12a-5dfb-828c-80c0f4c4c8c4,2565,189d545a-7dc1-58dd-bf1d-ffd00a72a04c,newly_migrated,Ahmed Gebril,PR_Template_a1.xlsm
+257,3b3d7e83-9d5b-59e5-aea2-9a104647bd39,512,494a89b7-cbfd-5960-abf9-921427baeb8a,newly_migrated,Ahmed Gebril,RPIS_Template_d2.docm
+259,320e615c-d99b-5b29-8375-cdd1fec703e3,1617,35c249d3-607e-53c7-9395-55ecfc82d366,newly_migrated,Ahmed Gebril,Sch_Rev_Check_List_r1.docm
+260,849aa3fe-ea3e-547e-b6cf-af089dbadaf0,1616,40eca781-4856-5c2a-a10f-3a02e90c09de,newly_migrated,Ahmed Gebril,Layout_Rev_Check_List_d2.docm
+261,e8e0d5ec-7bb7-5e11-a969-e8aa1efb02c0,405,40160250-3dbf-5f91-bb86-8cbf556e2a9d,newly_migrated,Bassem Mortada,Xerox 5020DN Usage Manual.pptx
+262,a71a70be-2295-59a6-8a5b-6f583c6e3d75,423,278fba98-ba21-57fe-a2be-f97b25bd4053,newly_migrated,Ahmed Gebril,PCB_Info_session_d1.pptx
+263,01675c41-930e-5d5a-8996-6745c479ec15,408,dd94afd6-47e2-52b5-9325-cbbb3c131846,newly_migrated,Yasser Sabry,Functional MEMS Chips.pdf
+264,0c32b24a-ca78-5b0f-824f-59174d2f135c,409,52c642ce-9367-58e5-b232-96bee548ed69,newly_migrated,Mostafa Soliman,MEMS Design Report.docm
+265,0431fa56-6b55-5405-9825-5becb3b8587d,411,2d788986-bf76-542f-af86-1142d5d03213,newly_migrated,Diaa Khalil,Optical Testing Report.docx
+266,e6b5fe24-0add-5f43-82ff-cb016683ce0b,412,be3c6547-aa81-51cf-8136-882092661ccb,newly_migrated,Yasseen Nada,RLG Electronics System Report.docm
+267,78b3b2f2-a7eb-5a87-bda8-4cc45dda08b5,417,dc5c46ae-84dc-520e-a6f2-16cc05f8f103,newly_migrated,Yasseen Nada,RLG Initial PCB Design Report.docx
+268,cd71dc10-e11c-5da4-9f8c-11cb4802c593,456,59f3290c-7ec4-5701-9f01-b47747ec792c,newly_migrated,Tamer Elsherif,IP_Management_ipserver_and_issue_tracking_system_d7.pptx
+270,7d4a130a-3156-5e38-abf6-c1c14cb76f45,427,f972c646-3157-5807-ba69-fb3a4a21c5f9,newly_migrated,Mostafa Soliman,Business Plan 15-4-2013.doc
+271,4813da40-3a81-52a5-bdb6-6b053241f421,440,32739479-0e96-536b-a6cf-38200518f196,newly_migrated,Ahmed Gebril,BTES_d1.docm
+273,20566655-a684-517a-9a55-d68508b2ca23,767,591efdd2-dfa4-5e0b-bca3-dd42fcad3b07,newly_migrated,Ahmed Fadeel,SW_guidelines_R1.docm
+274,ea6d74de-29c6-5b59-8e79-c3c38b35ead8,563,51241d1b-4821-5a5e-bf43-76f10b7ff7fa,newly_migrated,Ahmed Gebril,Storagre & Preservation_Info_session_d1.pptx
+275,d6bdad60-e9b9-5922-8108-7f7a0182367e,564,ebc097c9-5df4-5561-a76e-9023e3f0932b,newly_migrated,Ahmed Gebril,Control of Monitoring&Measuring_Equipment_Info_session_d1.pptx
+277,44eb76d8-40c2-5aa2-a5ca-521bc818c800,445,f14e98cc-b608-5a39-895f-77b57b00170e,newly_migrated,Mostafa Medhat,status report n1.docm
+278,ff3855c4-6c83-5856-a961-3029ef75b48a,446,12543b96-e3e4-5c9c-b9c4-8e0282bb96ee,newly_migrated,Mostafa Medhat,status report n1(1).docm
+279,bd3f60ac-f849-5fb9-8e5b-41838268d96a,516,5def15c8-6985-5f40-ba3f-6935b225372e,newly_migrated,Ahmed Gebril,Purchasing_procedure_Info-Session_a1.pptx
+280,8f42caed-c4b5-5959-af99-9a40a6bcb115,1067,02a1dbc0-4f27-550a-8070-71003024ff22,newly_migrated,Abdelrahman Salah,Hiring plan_d1.xlsm
+283,c8eb4533-0d7d-5bea-8a88-17e9316100b4,690,0d07b046-d008-560b-8c81-5fcae604364b,newly_migrated,Tamer Elsherif,meeting_minutes_d1.docm
+284,9e1f322f-91ed-55c8-a0ac-b0bfd9fb08b4,3323,7c56ea76-9abb-59c6-a66c-5b93260cbfe5,newly_migrated,Yasseen Nada,block_concept_review_template_a1.pptx
+285,1aa71a74-0869-5bd7-9576-cbf43e761882,3324,fd8385e8-6235-5d7f-a6f9-21284a4fff46,newly_migrated,Yasseen Nada,first_design_review_template_a1.pptx
+286,91da8312-0850-554e-ab6d-d6ea1f087c55,3325,85a7e0e5-4935-5477-ad56-1b6d54afa578,newly_migrated,Yasseen Nada,second_design_review_template_a1.pptx
+287,ead4ddaf-480c-543e-ac22-9eec56018dd3,3326,63e52508-ef7c-5430-a9f4-e997b3ed3ac7,newly_migrated,Yasseen Nada,final_design_review_template_a1.pptx
+288,c9901de8-93f7-50f4-b7bb-5558dc1b2641,3322,be6f0de5-281c-50ce-bb4b-90ea988abed0,newly_migrated,Yasseen Nada,CRD_Template_a1.docm
+289,5c61b903-4ce0-5774-818b-388ea22514ef,467,b22c6895-657c-523d-8396-439653ed6518,newly_migrated,Mohamed El Arabawy,CVLD_template_d1.docm
+290,4e510bb2-ddf2-52ed-b07d-0634d216b82d,1064,10fb47dc-0b8d-5f18-910c-873359538782,newly_migrated,Yasseen Nada,Analog_Blocks_Naming_Convention_d3.docm
+293,adfc97d8-2ecb-57ce-a769-c87cc0dde71c,1709,93540567-53e7-58f4-b667-1f633686d5f0,newly_migrated,Tamer Elsherif,shipping_procedure_r2.docm
+294,4d8fccd4-ffa8-51c6-b83d-34e42b09b393,1277,572e6342-9432-56ce-b431-dd51f5a8e847,newly_migrated,Tamer Elsherif,ship_invoice_packing_template_a1.docm
+295,2117dca8-9e0a-516b-8281-21859a8d43f8,528,9d5396bb-a7a4-52a9-b99c-f7e7ba5a4cb8,newly_migrated,Ahmed Gebril,physical_design_procedure_d2.pptx
+296,fad82a32-b5cc-59b3-9d4f-fc56783a5256,508,f368e4be-3608-5b0d-af7d-856bc263a754,newly_migrated,Amr El Mosallamy,CC_Report_template_d2.xlsm
+297,dc569e4e-6958-5a29-bf43-476e2956f02f,513,3c85df48-513c-5d24-a4a2-0ea49d5cf1dc,newly_migrated,Ahmed Gebril,SCS_template_d2.xlsm
+299,e8b2e341-0955-5613-a587-a80d9e5d6b2b,515,0e74f68f-9573-53bc-a60a-3c705a462604,newly_migrated,Yasseen Nada,AMS_development_process_d1.pptx
+301,83d18dc5-f2f6-536d-ae5c-de958a2ab793,561,c8a80e08-8f5d-5ad6-a974-48e1c67b9c17,newly_migrated,Mostafa Medhat,Sales_and_Marketing_Procedure_d2.pptm
+302,ca21cc32-6032-5e76-af11-a46e309dd731,3547,d5f5042b-6b8a-5849-b9ff-2eca74007a03,newly_migrated,Mostafa Medhat,Marketing_and_Sales_Procedure_r1_.docm
+303,1267c225-79d4-5e4c-9928-039ad6817226,553,8981e70d-1fb4-5a60-bf56-527cc37b1937,newly_migrated,Mostafa Medhat,quote_template_d1.docm
+304,8ea61a08-f948-57a3-a8d8-fac94c86145b,3525,3b25f63b-f9ab-5ccd-b01e-ceceac36b7fe,newly_migrated,Mostafa Medhat,proposal_template_d2.docm
+305,406a68a2-1cdd-5b27-964d-09067e52ca35,3524,07d34105-f474-5085-8dd2-19368d279cff,newly_migrated,Mostafa Medhat,development_agreement_template_d1.docm
+306,76c515cb-24b3-5950-8d75-126987fcee38,1001,e20f4546-bd36-5d96-a145-75ab22c50e3e,newly_migrated,Tamer Elsherif,preventive_and_corrective_action_procedure_d1.docm
+307,3dd7560f-39e9-5cfc-baed-0538a7fc8a82,3542,9c37a1d9-cdd8-5b3d-8709-683976534eab,newly_migrated,Tamer Elsherif,siware_internal_audit_procedure_r1.docm
+308,6b5bde04-9ee6-5a22-b9a0-4aa3b8b8ebcd,3544,d4a101aa-be7d-559c-a273-509ed0026828,newly_migrated,Tamer Elsherif,sws_quality_manual_r2.docm
+309,c3d71d77-329a-51b1-b74e-3e5642787f26,3545,df31ac7d-6108-55ba-a302-bb5f3f4e0a01,newly_migrated,Tamer Elsherif,management_review_procedure_a1.docm
+310,4a10032d-dff6-5322-b28e-bbf38735c605,547,2acebe72-0fc9-5ec0-82b8-7d45d93ec0b8,newly_migrated,Mostafa Medhat,Marketing_Plan_Document_Template_d1.pptx
+311,6cab1509-acd5-5fa0-8fa2-9d48a9a16b4a,549,5cc8e517-18ff-5dfa-8e11-29e651166aa0,newly_migrated,Mostafa Medhat,SOW_template_d2.docm
+312,ba5ba98c-a78c-5d9c-82ea-747d193bb943,3523,fde13a5b-dbef-5d8d-a0a4-e202571c7d2d,newly_migrated,Mostafa Medhat,cost_work_sheet_template_d2.xlsm
+313,c193cfec-0737-552f-bac0-80ddcd9ebd52,3527,126c2ba2-14d3-541a-9f10-6182218ecfd6,newly_migrated,Mostafa Medhat,technical_assessment_document_template_d1.docm
+314,9e60b777-7757-50a3-a119-97e4aefc4032,3526,66374770-3416-5538-805c-1632d2784fc4,newly_migrated,Mostafa Medhat,supply_agreement_template_d1.docm
+315,a15d05ff-dd6c-5399-8c4e-7c8de388d974,560,43221d42-ec4c-57ad-9769-7d28af03d4cd,newly_migrated,Mostafa Medhat,NDA_template_d1.docm
+319,dcb44107-4154-52c3-b1c8-6dc88cbdd21a,588,266d339f-6395-50eb-a9a4-08b4110636bc,newly_migrated,Abdelrahman Salah,Promotion Request_d1.docm
+320,10c9f952-e0ce-5b5f-b6b4-54010d6fc0fd,590,366daeaf-175d-5d34-98af-bbb236feb0ed,newly_migrated,Abdelrahman Salah,Si-Ware Employee NDA_d1.docm
+321,bcb9d1b3-9eda-5521-8def-2581ae2f5064,3392,fbf8c233-af4c-5831-87b6-0976e13b523f,newly_migrated,Mostafa Medhat,FRD_d2.docm
+323,5037f751-07e8-54f6-a533-39f0913974bb,3388,c3965fcf-23d8-5875-b89f-c1d3eb2377d4,newly_migrated,Mostafa Medhat,FDD_d2.docm
+324,efe26a32-19b4-51b5-afec-58f7c1b08052,3328,6413acae-2c92-52fb-a5a3-0bee2f39387f,newly_migrated,Abdelrahman Salah,Technical and Managerial Career Ladder_r2.docm
+325,e6cd6af0-dc2c-5d2c-b60a-1e5406729dc2,599,80f5aa63-32c2-56a9-8a06-7e60aca45afb,newly_migrated,Mostafa Medhat,FPD_d2.docm
+328,08481f4d-3b7b-5f3e-9d74-fcca3d52cf87,3380,550966a0-c3d9-5bd6-95d0-c01f1bada430,newly_migrated,Bassem Mortada,MDD_a1.docm
+329,d4bdfbc0-b69b-5a04-8715-4afc28aa1bb8,3393,fab3ae24-f194-509a-968e-9b414f7e9f67,newly_migrated,Bassem Mortada,MSRD_d2.docm
+330,77ae8a75-09ad-5748-bc9a-1df92415892f,1733,012a77dd-3167-5ad6-9f6e-be972315f36d,newly_migrated,Bassem Mortada,MTPD_a2.docm
+331,5cb28ece-0e70-5e00-aad0-ba779cecbddd,3394,c938ce33-52f9-5bd9-8814-c4968923a104,newly_migrated,Bassem Mortada,MTRD_a2.docm
+332,105b1bcd-03f4-5e30-a027-d287946c2906,3381,6be5ef71-04ac-550a-81b3-668258f9e90f,newly_migrated,Bassem Mortada,MCL_a1.pptx
+333,623556a7-27aa-5d19-9412-5f1a8ca1cfee,3670,22301b7c-9664-538c-9224-51d12c479d1f,newly_migrated,Abdelrahman Salah,siware_systems_employee_manual_r9.docm
+334,5542505a-45ba-5a22-94e4-050fb9c1ad94,1827,4e50b95f-7d89-5ca3-bd54-6d5bc3d20142,newly_migrated,Bassem Mortada,MRD_a1.docm
+335,96207743-4bfa-5f97-91a5-ab16f36f7364,3384,12bcbb41-c8ff-5edb-afdd-bf70e4b617fa,newly_migrated,Yasseen Nada,MDR_a1.pptx
+336,6a3cfb3b-cc0e-54cb-b6a7-69fda31dee80,3389,720341f8-50ab-5bc8-849f-6c5c37387313,newly_migrated,Mostafa Medhat,Second MDR_d2.docm
+337,2e13257c-22ce-5888-ac27-e67bb979ab23,3517,a8eb8bdf-5291-5771-a89d-e5565f406e1a,newly_migrated,Bassem Mortada,MOEMS Design Procedure_r1.docm
+338,18255b27-2687-5a3e-87a8-88a65818bf66,1006,19313c13-b937-5828-81ae-e7fdbbe13d6c,newly_migrated,Tamer Elsherif,MRA_d1.docm
+340,6c94066a-5f73-513b-afbd-a09f45ec63e6,995,0ebe46f2-2393-58a1-ad75-c6df64265021,newly_migrated,Tamer Elsherif,annual_audit_program_template_d1.xlsm
+341,de3a22ac-6d5d-5355-90b5-f8a449356b82,996,e35d5fa4-2147-5861-b11b-33d1e033c4f9,newly_migrated,Tamer Elsherif,audit_checklist_template_d1.xlsm
+342,7376b086-b834-5101-9897-26b00cb6746b,631,59581799-b08b-5e19-ab9c-ba17ac959cfc,newly_migrated,Amr El Mosallamy,Product Overview.pptx
+343,aa8103c9-2586-501b-a66d-4f364ecc259f,997,9c45aed4-8c60-5dd5-b1ee-1028cc23a2a9,newly_migrated,Tamer Elsherif,audit_summary_report_template_d1.docm
+344,339d083e-437c-5d42-a57e-b3d451a6eb6a,658,453fea39-5827-5723-9bba-29136fe17290,newly_migrated,Mohamed El Arabawy,PE_Procedure_d2.docm
+345,57e40a2c-aac1-5574-8b99-4fccb3e9bb07,657,b9342cd5-d2cb-56d0-93d3-c7ad388ff681,newly_migrated,Mohamed El Arabawy,project_CPKGD_d2.docm
+346,06481ff8-04ae-5f58-a104-596dd10c25ea,659,c3f5d73e-2bc8-56b2-9fb9-ad82ad83aeda,newly_migrated,Mohamed El Arabawy,project_CTSTD_a1.docm
+347,d15d16a1-da3e-5222-9d34-69143353180e,638,33eeddfc-8503-5e89-8eb9-f6a9bcf210ae,newly_migrated,Mina Gad,WStar_Accelerometer_Evaluation_Report.doc
+348,43c90c75-abfd-5e4d-a737-c81c3484a45d,643,21c95fca-569d-5de1-9eb6-8bd9785ac8c5,newly_migrated,Bassem Mortada,MOEMS Design Procedure d2.pptx
+352,8950109f-2060-5657-aede-7b228fd50cab,650,89192ccc-32b3-51f1-8472-1a8b2e444514,newly_migrated,Tamer Elsherif,siware_internal_audit_procedure_d1.docm
+354,5b4f1c1e-98c4-550f-b911-3655c3960698,661,b5c10bb4-4019-56c2-a407-78f5a93aa3db,newly_migrated,Mohamed El Arabawy,SRD_OCT_d1.docm
+355,5b3674f4-897d-532b-91bc-3980c6ff8b48,789,a8ef531c-953e-507c-b774-4ad0387f2300,newly_migrated,Ahmed Fadeel,SDD_OCT_a1.docm
+356,5b4d9b62-924c-5598-bfd7-b268451e3e2a,674,f855d3c6-aafa-5cb5-b291-803c935f7281,newly_migrated,Ahmed Gebril,SWS1501A0_ASIC_Characterization_Report_d2.pdf
+358,d1510f5e-1a3c-5fec-b9e8-88c9426ce836,1007,d335adf6-fd9e-534c-9db5-d71442d90943,newly_migrated,Tamer Elsherif,project_plan_status_followup_template_d2.xlsm
+359,d7a49335-91f8-5dad-8d90-ef1507988076,694,22f942b4-a014-5172-af53-ba1067a5d95c,newly_migrated,Tamer Elsherif,wbs_template_d2.xlsm
+360,4e3a8e71-c0ce-5d61-a431-71725a9c5993,679,883f4f0e-977e-5d00-9a6c-658a085a2b88,newly_migrated,Ahmed Gebril,SWS1501A0_ASIC_Qualification_Report_d1.pdf
+362,e6d2a785-a99c-503f-a3cd-71d0626c9bc3,692,82c81740-f52d-5e61-93cd-aaf19a3af797,newly_migrated,Tamer Elsherif,project_managment_presentation_d2.pptx
+366,385e7f95-a949-56a1-9e16-85f1d060121e,706,ab968b91-166a-5c75-b0c4-b10d7b4e39be,newly_migrated,Tamer Elsherif,records_control_presentation_d1.pptx
+367,d70271ba-cf3f-5a65-b9be-d18b74aa9f53,708,c16898be-42ce-5aed-a2d9-ca1f2f86a5d8,newly_migrated,Tamer Elsherif,SA_MT Microsystems_06-03-2013.pdf
+368,510b30c1-c91c-538f-b43c-8289ae4139e4,1137,3afb67f2-15d3-5774-8b08-2aec45898d3c,newly_migrated,Ahmed Fadeel,MIPDriver_Interfaces_a1.docm
+369,45000a91-bfac-51db-bf23-0d5cd9007420,711,1a13d953-5407-5a78-a040-8dda7348df7f,newly_migrated,Ahmed Fadeel,ShehabUSB_Interfaces_d1.docm
+370,f9ef8cdb-9e96-568e-af60-b6dd2e3e7592,1466,5d825328-6f02-54f7-8a71-94c15b81bbd1,newly_migrated,Ahmed Fadeel,SDD_Spectrometer_Application_d4.docm
+371,3ec50631-5c1d-54c4-bd42-9881f131347d,1467,1eb26a78-1151-59ed-ae6f-32c74d3b57c7,newly_migrated,Ahmed Fadeel,SVTP_Spectrometer_Application_d2.docm
+373,6423317f-2372-5ca0-bc9a-25810437c07d,725,b1d41c8c-2b9a-5a8b-84f4-04b3c775e810,newly_migrated,Ahmed Korayem,Tiantong_DaughterBoard_DISD_d2.docm
+374,ab4f3274-3dec-59f9-b30b-57a0c3271e89,720,18fc9373-21e1-5a8d-91ac-d9e518dcad35,newly_migrated,Ahmed Korayem,Eval_G-H_Socket_DISD.docm
+375,ad645389-e2b6-539d-a821-1dafd252a19e,915,b24cb928-7edd-5c27-a296-71d220a125fb,newly_migrated,Ahmed Gebril,first_designt_review_c2v_d1.pptx
+376,dbb92ccd-ded5-537e-bf6d-0f521163cebe,916,44b6a4fb-a08a-5c8a-b912-96c350a40156,newly_migrated,Ahmed Gebril,second_designt_review_c2v_d1.pptx
+377,1e351803-8f59-5152-86cf-344afabebb0a,910,e14634a6-54da-57f5-8cab-f0347b7e83cc,newly_migrated,Ahmed Gebril,final_designt_review_c2v_d1.pptx
+378,00a09b43-57ce-595c-af54-9c1967563655,918,a832b1bb-d410-560a-ba43-d7c5d5168c98,newly_migrated,Ahmed Gebril,second_designt_review_pll_d1.pptx
+379,ddf9c633-d400-51e8-bea5-9a2b8fb7ba41,917,53625e36-9e21-5e5b-bcd3-140b1f3c0c46,newly_migrated,Ahmed Gebril,final_designt_review_pll_d1.pptx
+380,4cfc09f8-c515-5522-9714-a67ea3799beb,1016,051fd3a9-8491-5d9a-a1c5-6e26be4aef1d,newly_migrated,Mina Gad,taif_optical_adc_second_design_review.pptx
+381,7a3808b2-de60-5de4-aa43-f2d84b11490f,1017,663c90e2-735e-5c67-8004-e2bf213ae40a,newly_migrated,Mina Gad,taif_optical_adc_final_design_review.pptx
+384,6be6aa78-e256-52bb-b65e-4e856fd08e1c,962,14091e92-79b0-5a74-b1a0-825edba92eb9,newly_migrated,Ahmed Gebril,SWS-13110015.pptx
+385,b81c949e-69eb-5e3d-8a4e-9765be13eedf,963,593fd6b2-78fc-5969-ade6-8817951937e6,newly_migrated,Ahmed Gebril,SWS-13110016.pptx
+386,c20e69cb-7e8c-5aec-a492-7482fd8487b1,933,d3419737-5831-5fb7-a9b1-8e6e42b05a60,newly_migrated,Ahmed Gebril,SWS-13110017.pptx
+387,2d316f96-6a66-50bb-98a0-0c74eb2bca83,854,4f95aabe-4916-5c6c-a64f-d8fd02d109bb,newly_migrated,Yasseen Nada,OpticalPath_Concept_Review_d1.pptx
+388,5b96e0b2-e169-5950-9954-0aa85d0ce3c0,855,148556d8-5479-5850-8685-7fd43883ea1f,newly_migrated,Yasseen Nada,OpticalPath_Second_Design_Review_d2.pptx
+389,0bff90ac-f274-5caf-bbd5-ca5d502ef57e,753,5c43c359-f1b2-5dfe-9847-2c37631f9b32,newly_migrated,Yasseen Nada,DISD_MIPIII_revb_Board.docm
+393,f97008d5-4a0f-5c12-bbb5-b81d5e84c7f9,810,74c34ad8-e398-548c-b443-e4b77aeab8f9,newly_migrated,Ahmed Shebl,Concept Review_Shams_2013.pptx
+394,b3b935d9-8eab-5505-a625-863e89f35d2e,800,6bfdefed-2553-534c-9677-fc6612396a3a,newly_migrated,Ahmed Shebl,Design Review 1_Shams_2013.pptx
+395,b43b3900-fc51-5117-a47c-238249d26771,801,e93c06a3-e27c-5b91-9798-fda315c6fe8e,newly_migrated,Ahmed Shebl,Design Review 2_Shams_2013.pptx
+396,b72abebf-8141-587e-a5c1-a0e0d67e8d76,802,64bd7a2e-d97b-527c-ba9d-79b1dec2dad3,newly_migrated,Ahmed Shebl,Design Review 3_Shams_2013.pptx
+397,da2fc6b4-1580-5f91-aac2-615935928a9b,803,dd9ed044-47b8-5b4b-a44e-fbb13e20089f,newly_migrated,Ahmed Shebl,Design Review 4 (Post layout)_Shams_2013.pptx
+398,7fe85af2-179a-5556-be1e-c5e6ae979bc0,804,e3515424-7e83-5f8d-99a6-9d57497ec567,newly_migrated,Mostafa Soliman,FDD_Shams_2013.docm
+399,c855fdae-aaff-59e8-88ef-11e211e9bfef,807,90a9193a-18a6-57ad-8a25-9519bd628f37,newly_migrated,Ahmed Shebl,MRD_Shams_2013.docm
+400,e08087c4-d832-53fb-9e3d-3abdd805abf0,805,0da3bc8d-9244-5b48-928a-8cacc4f091b8,newly_migrated,Mostafa Soliman,FPD_Shams_2013.docm
+401,2246ec79-ad96-5453-ae49-691c168c561c,806,a04117b9-fecc-5181-81c8-3c95e38f47c7,newly_migrated,Mostafa Soliman,FRD_Shams_2013.docm
+402,5e240a58-8892-5432-bebb-4c2f6b8673a6,808,d8b75702-aa95-50c3-a037-a5d61f1ee9dd,newly_migrated,Mostafa Soliman,MTPD_Shams_2013.docm
+403,91730bcd-1247-5f53-a66e-f6b4cb0c66a5,809,4863809b-ccf4-5dff-85c3-1ffd1e55c75c,newly_migrated,Mostafa Soliman,MTRD_Shams_2013.docm
+404,47d0d05a-08f9-51c3-95f1-d90309110117,1095,dbbd01a7-60d2-536b-bb5b-8f2aaf0dff02,newly_migrated,Mostafa Medhat,TAD.FACI.MEMS Gyro Eval.8-13-13.xlsx
+405,01e7cbaa-459b-5f23-a277-e67fdf1b2d5a,1096,ef2810c8-2dbc-5554-88ba-9e7b098c9838,newly_migrated,Mostafa Medhat,SOW.MT Mycrosystems.GF Sensors.05-17-13.pdf
+406,7660ad40-b22a-5ed9-9862-200c2f3ab6d9,1097,f72b1236-0285-5713-a8ed-6fcb44b03117,newly_migrated,Mostafa Medhat,SOW.MT Microsystems.HP Accel.5-11-12.pdf
+407,7abb303c-f136-597a-bccd-ca1e12ba293b,1098,8d744eb4-f9a4-5021-87e0-152e2a426ae0,newly_migrated,Mostafa Medhat,CW.NeoMEMS.2-Axis Gyro.4-21-13.xls
+408,2fa0a74a-e8a9-5956-bfb5-8139b7d3f11e,1099,7dd70317-42ee-5e60-b335-5b9271ba4f56,newly_migrated,Mostafa Medhat,SOW.NeoMEMS.2-Axis Gyro.5-8-13-2.pdf
+409,a0444e0f-e220-5995-9f61-81d9877ab13e,1100,ae78d69e-cd2b-5aff-a193-4232776de16e,newly_migrated,Mostafa Medhat,TAD.Tiantong.CL Gryo Eval.11-28-12.xls
+410,9b6afa5e-aca4-529b-8f66-e9a906ddc430,1101,e2e32773-50d7-5b70-93a0-6a5df4b8ebc3,newly_migrated,Mostafa Medhat,CW.Green Instruments.MIR Development.10-8-13.xlsx
+411,1e89496d-b4e8-508c-8644-f51aa18e9095,1102,efaee3bf-236d-58fa-aada-c22b8385f16a,newly_migrated,Mostafa Medhat,SOW.Hamamatsu.ASIC 2.6-27-12.pdf
+412,eeb9d8f8-61fb-52ed-a1e3-80dd2f7db2a4,1103,894356cd-e688-57d5-a8db-866d2af64612,newly_migrated,Mostafa Medhat,CW.Smiths Detection.MIR Development.11-14-13.xlsx
+413,fa24d04f-fecd-5e0f-b51a-53b5764a3775,1974,8abd489c-3d6c-5976-adf9-aa2908aaee5d,newly_migrated,Yasseen Nada,SararevB_Datasheet_r8.docm
+414,5c9c550e-77e9-5256-a5d0-6e4fa7ec6daf,814,092fc619-db06-58c2-a0a9-f4d25315e151,newly_migrated,Ahmed Gebril,Sararevb_regfile_r1p0.xlsm
+417,f695e025-ce6a-588f-895a-cda4bea3cf4f,820,78f4be67-def5-56c1-b525-a08856ac2b59,newly_migrated,Yasseen Nada,ASASA0_ASIC_Datasheet_v2.0_AFICKE_Revised_BG.doc
+419,f9219e2e-5871-5ee8-bed7-455b7f1b9cf8,825,73335b03-5e73-5b02-b3f9-7667dfd5b885,newly_migrated,Mostafa Soliman,DAWARAN Status summary_19_12_2013.docx
+420,0458ce2b-33ad-5758-978e-af27a6f61535,826,1a6ce778-99b4-5ea3-967d-5242fd95c988,newly_migrated,Mostafa Soliman,DAWARAN Status summary_19_12_2013.docx
+421,2c8e9166-d002-5201-974a-7527c3b9e36b,827,eed434bb-8fb2-5091-b7ac-d0abf2a87ec1,newly_migrated,Mostafa Soliman,DAWARAN Status summary_19_12_2013(1).docx
+423,69dd9496-d2f8-52ff-9b59-7e3fe1627955,1047,7ee67b40-7eec-518f-a9a6-86dac3f524d5,newly_migrated,Ahmed Gebril,TAIFrevA0_VTP_20131118.xlsx
+427,82624bc8-bf59-517f-b5d8-50f896bf4efc,1043,9f798bb7-cb0e-55a2-badb-1e3133281442,newly_migrated,Ahmed Gebril,TAIFrevA_ActionItems_r1.xlsx
+428,cf0572aa-d5ed-56c9-b5c4-d76273bbc5b5,1049,ad9f1380-efb6-5411-b4b7-f57912885eb3,newly_migrated,Ahmed Gebril,TAIFrevA_Verification_Checklist_r1.xlsm
+429,5c413194-1986-5d3c-80eb-e1da8663c1a8,1048,450301fa-d995-582f-b95a-eec2da91772c,newly_migrated,Ahmed Gebril,TAIFrevA_RTL_Checklist_r1.xlsm
+430,917e35ff-aa04-527f-ae8c-f2e9ad643d94,857,26d49f35-c982-525a-bed4-7ae73e4467a3,newly_migrated,Yasseen Nada,OpticalPath_Final_Design_Review_d1.pptx
+432,3863ee74-e517-5498-9a6f-3716919ebec9,1045,84ab1fab-23cf-50ab-a3d9-7c78ac1932cf,newly_migrated,Ahmed Gebril,TAIFrevA_SYN_APR Review_checklist_r1.xlsm
+433,64efeaa4-8a3a-572d-a10b-4a5b8ed1a342,864,f19c8df5-4f9f-5b13-bcca-092e3fdadbeb,newly_migrated,Mina Gad,DISD for CSRI daughter board v0p1.docm
+445,ebfa532c-ad5c-50ce-98ae-6f39295caac9,1042,24ba0bcd-b4c9-5acb-812f-f08cd835d12b,newly_migrated,Ahmed Gebril,TAIFrevA_plan_status_followup_template_r2.xlsm
+446,71bd941d-8c74-50e7-b443-d315a8dd7a8f,889,cb70607f-455e-5a2d-b04a-d3123109116b,newly_migrated,Ahmed Gebril,MEMSLink_PCBD_d1.docm
+447,7da78545-8849-5365-8755-6b66ef6c69d1,891,a43beaa6-faa4-5928-b609-5771c332cc11,newly_migrated,Ahmed Gebril,Dawaran_PCBD_d1.docm
+448,dd7069e2-b681-581e-a2aa-8b853aa6e51f,893,0519cd86-0809-541c-8386-4575220ba4eb,newly_migrated,Ahmed Gebril,Nour_PCBD_d1.docm
+449,27e72884-05aa-50a9-b535-eee4f7e5e516,895,67d3c74a-6bb1-5ccf-9bed-d11e4bf7f0b1,newly_migrated,Ahmed Gebril,SIWA_PCBD_d1.docm
+450,eedcaad1-c9a7-5892-82eb-c75a2a9b7358,899,0259f6bd-1c46-5d00-8cbb-820a73d6d207,newly_migrated,Mostafa Soliman,DISD_Dawaran_r1_.docm
+451,022fa1e8-ba9a-5055-a99f-4e54c087b530,957,f46a3efa-77bb-5eaa-aff7-6ce4630d0188,newly_migrated,Ahmed Gebril,Fajrb_Padframe_122413.xlsx
+452,b7380d44-ebbc-505d-95ff-d3bb5bf52e4c,952,3ecb6e8f-d74b-5fb7-81d3-fcdaa4798603,newly_migrated,Ahmed Gebril,C2V_Checklist_template_d1.xlsm
+453,03cf92ec-de0c-53bb-8f51-2de349af2da9,927,601eba8e-be79-55c5-a4f9-c2d61539733a,newly_migrated,Yasseen Nada,DISD_TAIF_Board_d0.docm
+454,27ccb2cb-4f22-529f-8f82-8f86263ef3ae,953,12acdd20-e1c3-50ae-92e7-3547c4f7f29c,newly_migrated,Ahmed Gebril,PLL_Checklist_template_d1.xlsm
+455,0646dc91-6ffb-5492-b22e-224a3596ed1c,959,0fca85f7-ffc8-5114-b459-d50964aa3a17,newly_migrated,Ahmed Gebril,Fajrb_RF_Verification_Results_AIs_100913.pptx
+456,481af2df-7ba7-58f4-a91a-3539cfca48ef,958,8beab217-d80a-588c-a3c7-b9f6ce063813,newly_migrated,Ahmed Gebril,Fajrb_Chip_Verification_Results_AIs_100313.pptx
+457,60d19d2d-8f42-5363-8a1d-c7428e3456af,970,cebd314a-754f-5471-a6fd-bf743491c558,newly_migrated,Ahmed Gebril,Fajrb_Heater_Loop_FDR_072513.pptx
+458,54af6045-8ebc-53c7-97c4-eee0ef9cb80f,965,3836dbcc-7a45-5c30-88ad-78bae016c98e,newly_migrated,Ahmed Gebril,Fajrb_4G_DIV4_CML_FDR_CML_edit_110213.pptx
+459,9c0de54d-6d61-51fb-81c5-9e214be8c352,975,2b704258-6aaf-5549-a0a7-1dd870920c18,newly_migrated,Ahmed Gebril,Fajrb_4G_SF_CS_FDR _CML_edit_110213.pptx
+460,3c602cd5-b95d-5790-b7b4-2bb6fa2fb3a2,966,bf42750a-98ce-584a-9a59-0664af602090,newly_migrated,Ahmed Gebril,Fajrb_CoreB4p1_Updates_FDR_v1.4_120313.pptx
+461,ce2cdcf5-9682-5aec-ad44-084b52d52c74,961,8c10b427-d3f2-5142-ab47-77ed979eb5c6,newly_migrated,Ahmed Gebril,SWS-13120070.xlsm
+462,46011445-e660-51ca-83f6-2d49e45a23bf,968,f59da8a9-e6b8-5b2d-9171-f92a7603e1b0,newly_migrated,Ahmed Gebril,Fajrb_Cq-Reduction_FDR_093013.pptx
+463,f473700e-9c40-5a54-bace-e24d1d8128eb,974,15ac5c6a-ada2-5c2c-9399-96e42b9d822c,newly_migrated,Ahmed Gebril,Fajrb_PTAT-Core_FDR_AIs_090413.pptx
+464,dc1ba9d6-e442-5e11-9e86-6de7bc57a987,973,2d109eaf-40ea-56d5-a1f8-95d18fcf9b70,newly_migrated,Ahmed Gebril,Fajrb_LDOe_FDR_070213.pptx
+465,e820fe75-0a95-57d1-ac26-ac70eac66a05,960,1737bb48-2c0e-54cb-a331-398c9b399c14,newly_migrated,Ahmed Gebril,SWS-13120074.xlsm
+466,6d715dc4-6040-5b6e-8678-619121f8d3fc,971,68ad937c-7035-5db9-8fd7-4724339f4457,newly_migrated,Ahmed Gebril,Fajrb_LDOd_FDR_070213.pptx
+467,426545ff-8aef-5920-98be-cd1b94659bdd,964,a8ca1d7b-c4b8-5492-97ec-47cdf50c26af,newly_migrated,Ahmed Gebril,Fajrb_BG-Core_FDR_060413.pptx
+468,492f9a3e-b423-5362-8ba9-ed17dfad5042,969,ddc9bd27-ef89-51ad-ace7-3ea9b2e594c9,newly_migrated,Ahmed Gebril,Fajrb_Diff2CMOS_FDR_062013.pptx
+469,785c9fe4-6c4b-52cf-977b-67ef11656cdf,956,64369685-214f-5754-913d-871736694ce0,newly_migrated,Yasseen Nada,Fajrb_TDD_221010_v5p0.docx
+470,84f36f51-d53b-59d8-8d1d-79aa8726027e,949,66b0b6fa-9bf2-5df6-9292-106cefa3b703,newly_migrated,Abdelrahman Salah,SPEL QMS Manual.pdf
+471,32537b9f-dcb0-53b0-98c0-5e9f4dd953e1,950,32fa11e2-8b4f-55cf-8185-49dc301b1876,newly_migrated,Abdelrahman Salah,WIQ-MRP-001 (Material Review Procedure for Non-Conforming Materials).pdf
+472,666bdf83-0eed-5b90-8741-11931576bd6d,1024,28088dc5-3bc7-5825-bb9a-61e0a12596cc,newly_migrated,Yasseen Nada,DISD_NOUR2_18_11_2013.docm
+476,12b827ca-c37f-5a1e-ac75-913c5b27c6ca,1796,c76ad709-4e71-5986-bbff-99eb4c566993,newly_migrated,Mohamed El Arabawy,SWS1110_CTSTD_r5.docm
+477,cb3a701d-654d-5d81-930b-e53feb2a3c71,981,98bf801f-48e1-50b4-9968-f096bca045d0,newly_migrated,Ahmed Gebril,Chip_Verifications.xlsx
+478,de3e69d7-e617-54a8-a049-3ed9ffb973b0,983,23a0afb8-43ff-50f3-986f-da73f8bd8bc6,newly_migrated,Yasseen Nada,Optical_Path_Checklist_d1.xlsm
+479,b22e6e56-a436-5f76-a924-7b22685ff020,985,0a53cd13-7c03-5432-b732-04a03bd21c91,newly_migrated,Mina Gad,TAIF_Optical_ADC_Checklist.xlsm
+480,386477b7-8c1c-5353-88f5-2e0963fd3e37,990,326185ed-5280-5d0d-b89f-ba66a9c6afaa,newly_migrated,Mina Gad,TAIFrevA_CVD_p1.xlsm
+481,df492ccc-0403-577a-ad2f-09aa6f238e35,991,c2fff714-8cf5-57fe-af55-3854ba2766b3,newly_migrated,Bassam Saadany,taifrevA_CDD_r1.docm
+483,c38c6195-b2c0-5901-b7cd-c3e7a8ca41c2,1009,f760f419-8cab-5d83-b558-02b109fb8e1e,newly_migrated,Ahmed Gebril,Nour2_PCBD_d1.docm
+486,b13792f4-b52b-5e58-a9fa-8b5396f647dd,1011,3529b87a-50c3-5bb7-985a-1dfb53c8913b,newly_migrated,Ahmed Gebril,Taif2_PCBD_d1.docm
+496,e056dad5-169a-5826-b31a-916e55e781e7,1084,d11dc1e7-6206-5fb5-8091-970a21b692f8,newly_migrated,Bassem Mortada,DISD_NOUR2_B_d1.docm
+497,d2d7f714-c34d-53ac-8a63-48dfdb9355a9,1088,087257c7-fd45-549c-adb8-0ba57180c909,pilot_already_migrated,Yasseen Nada,CDD_Fajrb_v0.0_261213.docm
+500,bfe97cd8-a569-52ae-904c-71ce2cee1ab2,1105,e47af387-be09-57b7-a60e-dc8eb5b33ab6,newly_migrated,Bassem Mortada,DISD_NOUR2_B_d2.docm
+501,ac7a73d5-a744-52a5-b690-1af08a0267a8,1110,e1a3052d-7790-51ce-96ad-563890795a52,newly_migrated,Mina Gad,SWS1130_Datasheet_Acc_OL_200113.docm
+502,3a720c9e-b96d-5e95-9d84-981d6f15cd53,1111,3b750f74-7d11-5ab8-abaa-101028ebaee9,newly_migrated,Mina Gad,SARARevB_Usage Document_v2p2.docm
+505,ad6b9363-478f-52fc-aa9d-444c339b4970,1117,9f7246dc-88c6-5cd1-b034-0189a2b0687c,newly_migrated,Mina Gad,Micrel_FSK_Tx_20140205_v2.pdf
+506,3ab184d1-d053-5cba-814a-b99503043ea4,1118,69e1d16c-278c-5704-abff-adbc1dc14d4a,newly_migrated,Mina Gad,Micrel_FSK_Tx_20140206_d3.pptx
+508,6792fbaf-a1d1-5f89-9ae3-8db55b4be6a7,1121,ded8ee75-d932-58ca-bea1-b96ae70dff71,newly_migrated,Ahmed Fadeel,C_testing_env_d1.docm
+509,19545324-883c-5f57-b830-fb3cbfb4184e,1795,70867173-4d0f-598a-8ee3-4490255a3288,newly_migrated,Mohamed El Arabawy,TIBA_Prod_MB_DISD_r2.docm
+510,cb732ab2-5346-57f0-8de9-2df4ace36b49,1794,d3eda6f8-840a-5b4c-a815-5dd39856f3d4,newly_migrated,Mohamed El Arabawy,TIBA_Prod_DB_DISD_r2.docm
+511,367ea757-62d3-53d7-a09e-23104b23b18b,1125,cee2139c-c0e0-50fc-9f12-1c1804622dd7,newly_migrated,Ahmed Gebril,SWS3100_DoE7_Document_021614_v1.0.docm
+513,74dcb296-3d47-5fab-ab82-1650f4aaf414,1128,6be432f8-3659-542d-8a90-5f42909eabd3,newly_migrated,Mina Gad,Micrel_FSK_specsfeedback_20140219_d1.pptx
+516,9c5041fb-5498-5b36-91d8-43077c5fb529,1146,1b10fdc2-331c-5b3d-8ae8-a4d4b18f474e,newly_migrated,Ahmed Gebril,DISD_Taif_reva_Board_d2.docm
+519,f0458d91-b08d-5e5a-8d38-3841eff32ac7,1145,a4fae7c0-69d7-583b-82db-20a076be0e18,newly_migrated,Mina Gad,Micrel_FSK_specsfeedback_20140303.pptx
+524,91ab9034-8b0b-5005-a1dd-ba1002254538,1157,28cb29c8-0700-52e8-bd69-74438caca3a6,newly_migrated,Mohamed El Arabawy,PE_DR_MM_yymmdd_d1.xlsm
+525,a04d16db-1a0d-592d-8159-3f8f5a723b93,1158,5813b6fe-b45e-55d8-b26d-09d7bdba0ce0,newly_migrated,Mohamed El Arabawy,PE_DR_MM_yymmdd_d1.xlsm
+526,c037c8ca-dc56-57a1-a701-ddc36b9c4402,1161,e032c4d3-31fc-581e-b008-4a8a1bece07a,newly_migrated,Ahmed Gebril,Fajrb_V4_Summary_030414.pptx
+527,3728beb4-88b9-5491-bdfb-1a6c9d52c030,1176,994d1a57-580e-5c7b-a67d-7df2cf16879d,newly_migrated,Ahmed Fadeel,SpectroMOST_HighLevelDesign_d3.docm
+532,5dd5ba6f-f075-5f28-86c6-a7ef9c0c8577,3363,7fcc81c7-1e91-5b78-9287-0c529c5a0351,newly_migrated,Yasseen Nada,Definition_checklist_project_r2.xlsm
+533,0490480f-772b-5453-ac05-2451f6b91ec1,3364,119d9980-9633-525d-9126-5aa2b8608f35,newly_migrated,Yasseen Nada,APR_checklist_project_r2.xlsm
+534,15834423-1a62-574a-a9f0-3c13d9cb44ac,1215,7b410b99-1640-5e95-be9b-863cd9fcf6be,newly_migrated,Tamer Elsherif,control_of_customer_facing_documents_procedure_d2.docm
+535,8b728cb3-38da-5bf8-9051-2300badcf972,1178,1cc84d00-f5da-57b5-8499-ce5aaf08b355,newly_migrated,Ahmed Gebril,1p25GHz_N_Divider_FDR_AIs_061813.pptx
+536,0e500b5f-c0b0-5813-9470-6209047947ed,1180,6902d91e-b6f8-5907-b0ec-1392b0d7be01,newly_migrated,Ahmed Gebril,1p125GHz_P_Divider_FDR_AIs_061813.pptx
+537,43b609d5-61e3-546e-9c7d-7be4174afa23,1182,24a2dd17-c0c6-55c0-b1fd-a0ad3d63d622,newly_migrated,Ahmed Gebril,fajrb_diff2cmos_FDR_AIs.pptx
+538,b0eb0f05-a449-5191-aa4e-52db0d2d2865,1184,b85cacc3-a508-589e-a00a-449d6afb81d1,newly_migrated,Ahmed Gebril,fajrb_start-up_and_por_FDR_AIs_LastEdits_021714.pptx
+539,6d8f9e4e-aea7-5614-b5c9-5cbcfe62533b,1186,ff4bed4e-1f71-51dd-abf7-820a3030881e,newly_migrated,Ahmed Gebril,chip_verification_results_2nd_round.pptx
+540,2cfc4b97-df38-5012-8252-5bc77dfed3e0,1188,7805a6f2-01cc-56c8-9e92-50d6f9abd2f8,newly_migrated,Ahmed Gebril,chip_verification_results_2nd_round_variants.pptx
+541,09d5380b-d0a1-5bad-aafb-1e7fee186a3c,1190,ea88098b-e2d9-5c18-ab40-ddd99030c834,newly_migrated,Ahmed Gebril,RF_verification_results_Round2.pptx
+542,edb428f7-b2ce-5168-9d7e-f02e5b84564d,1214,7231c3eb-43c1-56cf-9aed-d47987f2a95d,newly_migrated,Mina Gad,Tiantong_DaughterBoard_DISD_d3 (1).docm
+543,f8349eb4-d27b-580e-b648-ad5c2430ade6,1213,2dc2990c-3279-5d08-925f-820072014302,newly_migrated,Mina Gad,Eval_G-H_Socket_DISD2.docm
+545,016e9d7c-c858-502c-98bd-56f94a6ecc36,1741,93caed01-b547-5af8-84ff-455e7661418b,newly_migrated,Tamer Elsherif,customer_deliverables_inspection_procedure_r1.docm
+546,3e5e5e64-3db3-541c-917c-60d95754b358,1738,8aaf1a11-0f92-5c4b-aee2-193840b4e9cc,newly_migrated,Tamer Elsherif,hardware_inspection_cl_DWP_r1.docm
+547,8184621d-5722-53af-9850-5516c966b37c,1739,27fe8a7d-901a-5763-bfd8-56a8da0e6797,newly_migrated,Tamer Elsherif,hardware_inspection_cl_BMH_r1.docm
+548,36b00fdb-305a-593c-826d-abf94a5efaf3,1740,1ccdf66d-86bb-53a9-82f8-f13875a0ef3b,newly_migrated,Tamer Elsherif,hardware_inspection_cl_Kits_r1.docm
+549,3f09b10d-f9e5-5aca-a002-b3b29e5440ed,1737,ad3c583b-2ab4-5fa2-8d77-16b5a01e8a5b,newly_migrated,Mina Gad,Hardware_Inspection_and_Shipping_Info_session_r1.pptx
+551,b3c7d826-9f5a-516d-bbc7-a3eb8f7bd762,1218,d99940b5-c3cf-5d14-aba2-12f3be6f2086,newly_migrated,Mostafa Soliman,DAWARAN phase IV status report_April_2014 Mostafa.docx
+553,cf95ea50-a2b6-5d65-b027-80e8c24a173f,1221,1c54b5d6-514e-5f2c-8f9e-ac54b78f5b8a,newly_migrated,Mostafa Soliman,DAWARAN phase IV status report_April_2014 Mostafa.docx
+554,2c6f06e6-7223-58c1-ab9e-44781a52a9f8,1223,60943f25-a1d3-5401-a180-6f015d85647d,newly_migrated,Mostafa Soliman,DAWARAN phase IV status report.docx
+556,5e9a88e8-a952-54e3-a96f-de000c0b6cbd,1231,e5915574-8687-5247-8bec-ae78872ab8ed,newly_migrated,Mostafa Soliman,DAWARAN phase IV status report.docx
+557,47d4a7c9-ea7d-523b-b4f7-0cf68857b9b3,1235,406b16f2-2f9b-5868-891f-2bd90e3ac021,newly_migrated,Mostafa Soliman,DAWARAN phase IV status report.docx
+558,6c8f947e-b308-5777-a7d0-cd589ac9149d,1237,99b16a29-44b8-5453-8978-545120abb4ae,newly_migrated,Mina Gad,IOPsensor_Development_Proposal_20140429.docm
+564,a17dac42-963c-5c84-82e6-057c9455be83,1260,8ceaf77a-b03d-594e-80e2-4247444fcc27,newly_migrated,Ahmed Gebril,GEN-I resonance loop_r1.pptx
+565,be39afe7-6a02-5eec-979d-8a90862bd9c7,1937,f2e2af68-be6b-5cbe-a7a8-e66e07987a95,newly_migrated,Mohamed El Arabawy,SWS1501_CPKGD_r1.docm
+568,8c1813ab-f005-5f28-aec7-69ad38abb945,1269,e18bfdb9-9209-5f1d-8d89-77c4f19ecb0b,newly_migrated,Bassem Mortada,DISD_NOUR5.docm
+569,38e4ea17-325d-5180-9045-091a14aba2b8,1271,d712e629-436a-528b-b76b-34b5171e1a04,newly_migrated,Bassem Mortada,DISD_NOUR5s.docm
+570,d2efb4eb-ffa4-592a-85bd-34925a7de26c,1276,5e652cb6-d363-5656-a0eb-2ec686699dc7,newly_migrated,Abdelrahman Salah,Recreation_Area_protocol_d1.docm
+571,da264f3b-d1d5-5428-9bf1-fa84ec6f16c2,1938,4c0820ea-f38b-56f9-b2fc-562f6b8a7f74,newly_migrated,Mohamed El Arabawy,SWS1110_TestFlowSummary_r1.xlsm
+572,6af9066d-1d36-55c4-8a69-55c3a5384c87,1284,84baaeab-cee5-5886-ad4f-a46f2f07e2cf,newly_migrated,Mostafa Medhat,Si-Ware ASD Template 2014.potx
+573,0469cb3a-5902-5fcb-a015-0cf0c22fa7f7,1283,5bf2552f-3971-5932-a8a8-5ca0f45c28f8,newly_migrated,Mostafa Medhat,Si-Ware Main Template 2014.potx
+574,6d5c532b-a186-58d7-87b7-b052a7592f74,1286,30ebb4d4-b349-5306-a1ab-983ff4f39951,newly_migrated,Mostafa Medhat,Si-Ware OMTD Template 2014.potx
+575,27e14a24-fdf5-503e-9a1a-f58f244e9888,1288,f6d02c3a-21ce-5546-b91e-064ac2e6fae4,newly_migrated,Mostafa Medhat,Si-Ware TPD Template 2014.potx
+578,77eab375-f7d2-5c89-befa-5f79e8b85286,1298,fe6b18be-09b8-5688-8354-0cd44bf27f8c,newly_migrated,Yasseen Nada,Gyro Evaluation Report 20140622_V11.pptx
+579,b1714041-2ab4-518e-8b55-2857b2572e92,1299,6ba00ad1-b9ef-5430-a20e-0a41c2b7c862,newly_migrated,Yasseen Nada,Characterization Report for Tiantong  Gyros 20140622.pptx
+580,58606e26-1800-5313-978b-53cb41ba6b45,1301,3d1f0fad-54c9-5b99-bb05-d39cb4411ade,newly_migrated,Yasseen Nada,Characterization Report for Tiantong  Gyros 20140622.pptx
+586,f9c8be9f-2691-51db-9658-79ec5e8381f4,1308,9b4f7d24-166e-51e1-9962-6a6d6c2fa9b7,newly_migrated,Ahmed Shebl,DAWARAN_PhaseIV_Specification Sheet.docx
+587,a152008b-9393-5c54-9d19-e17a1d4b917b,1336,306b66fc-3981-55ea-a2ea-a993674a3805,newly_migrated,Ahmed Shebl,DAWARAN_PhaseIV_RLG_Specification Sheet.docm
+588,cc5f0eb5-24e6-5d84-bc4c-78e0c8f4ee0f,1350,9947d47b-4b12-55a4-827b-c98197e82073,newly_migrated,Tamer Elsherif,siware_ASD_internal_presentation_template_a1.potx
+589,99d6f2d2-39d6-502b-9831-e4ed81c785f8,1352,40f0eac1-39fe-5d93-8417-2e83daefda12,newly_migrated,Tamer Elsherif,siware_OMTD_internal_presentation_template_a1.potx
+590,bd186a0a-41f1-5cd3-b2c9-e62a935c0e06,1353,4f9f849e-1ff8-55f0-afca-cab1cf961c39,newly_migrated,Tamer Elsherif,siware_TPD_internal_presentation_template_a1.potx
+591,523693ef-9023-5148-81af-b3f14f7cbf1b,1319,0b6337cc-42e3-5fec-b2ba-893380c685cc,newly_migrated,Tamer Elsherif,Add-Ins_20140626.ppam
+592,38a39d47-11cd-5dc4-a365-2deabfbe5e28,1333,97326983-8159-52a2-956f-0739e11e0257,newly_migrated,Yasseen Nada,DAWARAN_PhaseIV_RLG_Testing Report.docm
+593,a27ace14-b236-5ca2-8947-b0568c5b1ce2,1334,14a0bedf-887c-5b85-a78e-e1cc5e009725,newly_migrated,Yasser Sabry,DAWARAN_PhaseIV_RLG_Product_Definition.docm
+594,a78f47e0-da0a-5887-81ee-384853486907,1335,37860a96-74f7-553a-8298-0e896332c1bd,newly_migrated,Yasseen Nada,DAWARAN_PhaseIV_RLG_Calibration Report.docm
+596,5c433a6e-e6d5-5875-9ae4-5a0e7af16106,1337,8a296d75-e0d4-59c2-8912-191a5bf759a6,newly_migrated,Yasser Sabry,DAWARAN_PhaseIV_RLG_Final Status.docm
+597,e597fdb6-091b-5c2a-8229-a15aa776c93c,1339,8bda8d35-9be3-558a-a61c-5b4d4a1a76ae,newly_migrated,Yasseen Nada,Characterization Report for Tiantong  Gyros v3.pptx
+602,a8a8d4c3-3307-59a9-979a-d6083f9ca199,1362,e0f8216b-741c-5f72-af34-b909bd404bda,newly_migrated,Mina Gad,SkyWorks_Proposal_20140803.docm
+605,c3f6ed4c-8777-5d93-8493-c418fa71229e,1623,1269ef65-ad8c-5657-abf2-7fe1b6bae5a1,newly_migrated,Mohamed El Arabawy,SWS1501_TestFlowSummary_a2.xlsm
+606,6cf12453-93d3-50c3-9229-ce3d2a5d0500,1730,f6b83569-80c0-5ca5-b0bb-af8623309f80,newly_migrated,Mohamed El Arabawy,SWS1501_CTSTD_r1.docm
+615,3b597621-fe18-5feb-a002-8775935c2269,1609,5eccc56c-b085-5ecd-8854-7646a1385277,newly_migrated,Yasseen Nada,MCUMSP_IDD.docx
+616,ace92516-f6bf-5cb9-9ade-4fc1704168eb,1390,c0729d2a-0c0d-57c2-9a4c-685e716b2e05,newly_migrated,Mina Gad,SARArevB_production_flow_procedure_d1.pptx
+618,4a64f86c-f5a1-5ae3-8048-a33f7600850b,1393,6390eb03-955e-5375-a280-830b1777bfeb,newly_migrated,Mina Gad,Ossia_COTA_client_proposal_20140918.docm
+619,10d36fe8-ed28-519c-855f-af3f0cb0de8a,3623,c444611e-7b4e-5808-8034-3b779bb492a9,newly_migrated,Tamer Elsherif,order_fullfilment_procedure_p1.docm
+620,055c50d3-53b8-5e21-9f91-d997327192dc,3529,ef4bf201-8ed6-55e6-a9a3-cfda140d1e3e,newly_migrated,Tamer Elsherif,PO_checklist_d1.xlsm
+621,143aa0be-e4b3-5c56-8c22-f4bb63d694dd,1447,7351abd6-52cf-517e-a05c-c9342ae1b632,newly_migrated,Tamer Elsherif,SWSxxxx_WIP_YYMMDD_d1.xlsm
+622,b52c8ece-9b74-5757-9a68-267f7354c5ff,3528,aee86dfb-d827-5116-830d-4352b1dcf5ce,newly_migrated,Tamer Elsherif,delivery_form_d1.xlsm
+623,19e80246-ceb8-55c4-bac7-8e883812eb7b,1407,09e37163-e887-5ca2-b6d8-b623835b6cf9,newly_migrated,Yasseen Nada,DISD_Taif_P2_Analog_Board_d2.docm
+624,a1381cbc-8df2-53cb-9d8f-73c22948be2c,1409,d30f53b5-6e66-5f22-bb5d-bd76a74690dc,newly_migrated,Yasseen Nada,DISD_Taif_P2_Digital_Board_d1.docm
+626,6452e165-c160-5c1f-8aaf-78f5c30dbf1e,1412,06866748-5d10-5a3c-8c1f-65bd98f197a1,newly_migrated,Mostafa Medhat,PO.HPK.SWS1501.01-31-14.pdf
+627,3aaccb9b-4a15-5418-b6d0-d37ec50cf9e9,1413,c6b3d7d2-d4de-5047-ab51-ee14a5f5f468,newly_migrated,Mostafa Medhat,PO_Isuzu Optics_SWS62211-P_08-04-2014.pdf
+628,fbe0a416-61c6-59de-b419-df8726190834,1414,5745c869-1945-5da8-8071-8cfe069f9df3,newly_migrated,Mostafa Medhat,CY14SS002.Isuzu Optics.2-19-14.pdf
+629,f74209de-f382-51b7-ad58-4991cee24e77,1415,ebd980a3-688f-59c4-af3c-ef6a619a237c,newly_migrated,Mostafa Medhat,CY14SS009 Beijing Longwell 3-21-14.pdf
+630,d73a7ce6-9fa1-5214-a4ef-f8ad870fe5f9,1416,35520119-ed9e-5cb9-8622-56ce87771a6e,newly_migrated,Mostafa Medhat,Quote_OrderConfirmation_Soilcares_080414.pdf
+631,8e238271-4d24-5040-bc37-85403e370d0e,1417,aa5bcada-bee1-5041-8eb6-2d9321fc346e,newly_migrated,Mostafa Medhat,CY14SS013.Ocean Optics.4-16-14.pdf
+632,de40497a-c091-557f-a8cc-2bfe387ee9d5,1418,47aece77-ff55-5fcb-bb72-b17e1d84e150,newly_migrated,Mostafa Medhat,PO.Ocean Optics.SWS62211-P.04-21-2014.pdf
+633,b63102af-d159-5f4c-ab78-42e3cd4d14a1,1419,9b74c3b3-0b35-52b9-af53-f7d02341976b,newly_migrated,Mostafa Medhat,CY14SS013.Ocean Optics.4-16-14.pdf
+634,6c0a6d51-6bfc-532d-8c36-a8480571c266,1420,23a57444-1d3b-555c-b744-ab60f112ba0c,newly_migrated,Mostafa Medhat,PO.Ocean Optics.SWS62211-P.04-21-2014.pdf
+635,cab1b18a-5888-5bbe-8e0e-ad210bfc13f1,1557,512cfe93-b034-5554-b886-d00effdd90b4,newly_migrated,Mostafa Medhat,CY14SS025.Takata.6-3-14.pdf
+636,4c96f279-d28d-550a-a632-518471ac3c02,1429,7cab2f9d-c0cb-5257-8fa1-0a901a262afa,newly_migrated,Mostafa Medhat,SOW.4-24-2014.pdf
+637,be40dfb9-2af5-5093-9611-5743d4a1b4fe,1432,9a211c3a-eb9d-58ce-9d51-46980545acab,newly_migrated,Mostafa Medhat,SA.MT Microsystems.SWS1110.6-3-13.pdf
+638,7ffe1bfa-7aeb-5ee6-93e7-2057adecb248,1434,a6549a0a-f6a3-5cdb-b1f1-c40b71640f05,newly_migrated,Mostafa Medhat,SOW_TIANTONG Proposal_response_20140409.docx
+639,943b1bbc-288c-5072-a274-a606143d232d,1435,53527217-a77f-5bf8-a682-f45a4abce80e,newly_migrated,Mostafa Medhat,TAW_Piezo Gyro_Requirements Template V1p5 (1).xls
+640,bfe6843a-70e2-5d4f-83bb-8a1a2196e12f,1431,bc646995-d2d3-5c54-8d0b-a9ef4c272f74,newly_migrated,Mostafa Medhat,CY14SS0017.MEMSLink.SWS1110.3-20-14.pdf
+641,93978079-38b0-5001-b843-616e9076bae2,1433,f7098c00-dcba-5116-99e9-9f1fa6cb1f37,newly_migrated,Mostafa Medhat,Tiantong Quartz Gyro Proposal.ver1.3-4-14.docm
+642,513b871e-209f-517b-ae59-d1b190d3b040,1430,26335708-23a8-5133-bfaa-970b692ab2a7,newly_migrated,Mostafa Medhat,SOW.FACI_GYRO.6-24-14.pdf
+643,80a6b85f-ad4b-51e1-86cf-56cd386c9c0a,1441,188d2437-7ee5-5fd5-889f-8385804548cb,newly_migrated,Ahmed Korayem,DISD_CSRI_DaughterBoard_v1p1.docm
+644,c50a0715-d7d0-5a80-842f-bdde2adc0307,1440,c5a99e20-6392-5543-b1df-1252b24a254d,newly_migrated,Ahmed Fadeel,SDD_RLG_d2.docm
+645,08dba224-85e9-5180-b69b-adfee4ea198f,1443,44725b5e-fd80-5163-afbc-1593edce3c69,newly_migrated,Yasseen Nada,DISD for Northrop gyro v01.docm
+646,402fef8e-c9f2-5ad8-8496-874f2f3c68f0,1449,ecfd7bf2-b266-596c-99d4-72666b225f24,newly_migrated,Mohamed El Arabawy,SWS1502_TestFlowSummary_d1.xlsm
+649,20748c55-5cc3-5fdd-b90d-92d498ffb668,1453,c895fcad-8f6e-54eb-a9ba-ac2f6102aa39,newly_migrated,Mostafa Soliman,DAWARAN phase V status report.docx
+651,7ad01929-eb89-5e8a-8f56-86a15463a154,1455,0cb8c91e-c250-5011-a113-07cdb51d026f,newly_migrated,Mostafa Soliman,DAWARAN phase V status report V3.docx
+652,014719a2-2fb8-5124-83b2-0929e44adf3b,1461,547d1632-f525-5938-8dcb-6a378980574c,newly_migrated,Mostafa Soliman,DAWARAN phase V status report_r2.docx
+654,1eca6b5a-5506-57b2-931d-6b9d28376d04,1465,c1c0b331-6d31-5fdb-b444-69c5041216f0,newly_migrated,Ahmed Gebril,SWS3100_Vectron_Samples_Electrical_Performance_Summary_141030_d1.docm
+671,8fab721d-88b2-5ba9-93ed-d2ac32df1a25,1512,5cc85261-4f07-5ed2-9f34-a3fe65cdbc8f,newly_migrated,Mohamed El Arabawy,P2_EnclosureDesignReq_d7_141123.docm
+674,a809ae2c-cecb-5f7b-85ff-6d2d1744fcbb,1513,e010f960-cd79-5975-87ac-84f76389a1d6,newly_migrated,Bassem Mortada,P2_EnclosureDesignReq_d7.pdf
+675,9f01d2f0-36fa-5743-9cc2-abb79ab31257,1892,faee0a71-1384-5898-87bd-2e9b7e5e6283,newly_migrated,Bassem Mortada,MRD_r2.docm
+676,b1734d6e-2019-5d67-8114-9d10ce749b05,1893,3da79176-4915-54c2-b472-cca1fd971bae,newly_migrated,Bassem Mortada,MSRD_r2.docm
+677,2387b205-f12e-5524-bd9f-5dee50eaef35,1891,fd8790dd-feaa-5204-9e61-bff1964922f3,newly_migrated,Yasseen Nada,MDDD_r2.docm
+678,ef2227a3-23f8-55a1-a15b-a832eb5ae156,1936,d1a0bef2-6443-5368-8be0-2eae926a428b,newly_migrated,Bassem Mortada,FDD_r2.docm
+679,74c15c8c-9e03-5fb5-98e3-7322bbf004dc,1890,1f2db392-b7b9-51ce-b7ec-b0cde19bbda6,newly_migrated,Bassem Mortada,MCLD_r2.docm
+681,744c8150-12cd-5d68-b4bf-43ce601db381,1529,61c8936a-d74e-5134-ac54-415b6b74c8ab,newly_migrated,Mostafa Soliman,Final Project Report.docx
+683,212af264-ca56-54d8-8c50-95371a68b7a7,1894,429f53af-98d9-5f4a-ae02-fb39edd50ff1,newly_migrated,Bassem Mortada,MTPD_r2.docm
+685,e84a80ae-f52e-53d6-a9ac-af6e3cdd82b3,1627,dbf3b968-a6c3-5d9a-ace3-5e00f80efcf7,newly_migrated,Yasseen Nada,MRD_P1_30_08_2014_R1.docm
+686,59641e5f-2dc9-5d34-b2c4-c47dade4f1b9,1624,656c3183-2c57-57c0-bdc7-06064b69660d,newly_migrated,Yasseen Nada,FDD_P1_30_08_2014_R1.docm
+687,cbfb381d-ec60-584e-a3ea-09a842fc6f0c,1626,c10b028c-16fa-5bcc-87ab-2df34d2b1a50,newly_migrated,Yasseen Nada,MDDD_P1_30_08_2014_R1.docm
+688,3539cac0-a0cb-5d61-a7b4-5d0c392d6a0f,1628,a21dfde2-247a-5c80-8f0c-d0565bd44f26,newly_migrated,Yasseen Nada,MSRD_P1_30_08_2014_R1.docm
+689,cd766e1e-687a-5bc0-bf17-2d83948264fe,1625,72381424-4877-5b5b-902c-f1cbab232614,newly_migrated,Yasseen Nada,MCLD_P1_30_08_2014_R1.docm
+690,3cade6e1-47bb-55a5-a5d9-48915989fe35,1629,e68b85a3-9b33-5401-8e41-39b22578de43,newly_migrated,Yasseen Nada,MTPD_P1_30_08_2014_R1.docm
+691,8ede1ffc-a662-51f4-9404-314bc434e960,1549,9499b768-1a31-5b20-ba5e-6d0e24f304fe,newly_migrated,Momen Anwar,DISD_Connectng PCB_D_d2.docm
+692,3fcbbfe3-4426-56f7-aaf2-f226f802ca65,2399,042fb36e-0b74-5141-80a0-466f4089f8b4,newly_migrated,Ahmed Fadeel,SDD_P2_SpectroMOST_p1.docm
+693,e781a68b-8d1b-5854-8b47-47da8f84bbee,1553,471b959c-6dce-544c-94f4-571669ca88c6,newly_migrated,Ahmed Fadeel,SDD_Lynx_d4.docm
+694,8404a1fa-42b1-58ad-85e4-deb19d8275bf,1559,9e7a76d4-5a13-5844-a9d1-544a476715f6,newly_migrated,Mostafa Medhat,PO_Takata.6-19-14.pdf
+695,65006153-493f-5156-a6da-9674b6fd79a8,1561,36856a6d-f1ba-50bb-8cbf-de4431a3db48,newly_migrated,Mohamed El Arabawy,TestCoverage_template_d1.xlsm
+696,7445fbcc-a437-5a5e-9d3d-e1cf29204086,1562,b7863ec0-f733-59cf-8615-45d5241a9811,newly_migrated,Mohamed El Arabawy,SRD_P2_SpectroProd_141217.d4.docx
+697,4ff6c210-1f5b-576c-a6a0-203489ca8d15,1939,9973cc83-7c9b-52b1-9211-a692dc92e041,newly_migrated,Mohamed El Arabawy,SRD_P2_SpectroProd_150810_V14.docx
+699,8beb4244-3aec-5715-8fc1-85f269cb436f,1568,f7c9a2c5-187d-5d1a-a48d-b619ed5cb127,newly_migrated,Bassem Mortada,DISD_MIP4revC_d1.docm
+702,ab64c1f6-8f57-5434-864a-5acc4b25b92d,1576,2937dc7a-5a13-5d06-8e68-072912b942ae,newly_migrated,Bassam Saadany,SWS1501A0_QFN40_Datasheet_v2.docx
+703,dce238e9-7509-55e1-af40-48f9fb223a42,1578,f354e8fe-49db-5472-9811-43ffead21fb2,newly_migrated,Mostafa Medhat,Altair_Tx_SOW_20141223.docm
+704,3303e445-1bbd-50ca-9a7a-d74c9d90ebdf,1580,55f27fff-eba4-5d58-9e4f-cda8d48ac88c,newly_migrated,Mostafa Medhat,Altair_client_MVP1_SOW_20141223.docm
+709,5acb9995-75a2-5cd4-a306-aa79ef2e9c27,1634,ad6b1bd1-76e6-5e1c-9983-da1ad0796afb,newly_migrated,Mohamed El Arabawy,DO-254-ssk018.pdf
+710,bafc7577-f7c5-5206-ae10-6f0c998d5547,1637,19856fb8-f9a9-50e2-a887-d039ca4df684,newly_migrated,Tamer Elsherif,costsheets_user_guide_d1.pptx
+711,0f0a64b9-d141-5065-a1d4-22c82bdcb187,1639,d80b21ac-8a96-58d2-a151-cbaadcbc7c90,newly_migrated,Bassam Saadany,DISD_HPK_TAIFeval_v1_d1.docm
+712,9f283a26-e099-5eca-97bb-4e4b7ef09131,1641,169cb259-50e9-5994-be6f-d8aecf3c904f,newly_migrated,Mohamed El Arabawy,SWS1110_Die_Identification_r1.pptx
+714,6460e3f4-9549-5a71-b0fb-eb34e15dcc1d,1650,1fbc5092-1a46-5185-bcf2-781946a7a832,newly_migrated,Ahmed Gebril,DISD_Analog_3225_SAMDB_150204_d0.docm
+715,8a9eace6-a8bf-5362-bfb7-a89e69f5d9a8,1652,9cf62daf-e18c-5bed-8875-57b32b3c9b48,newly_migrated,Ahmed Emad,DISD_4x1 CLK MUX d1.docm
+716,01f81b84-9f5e-5c2c-91ac-095dd7b02b5e,1653,3122ef3e-c575-5b95-a894-76a7b5aeee5a,newly_migrated,Mina Gad,Infineon_TestChip_Proposal_20150318.docm
+718,17ca301f-9b28-5bce-a2cf-33f21a2fceef,1657,c1825d67-9c86-5a52-9fae-f9c0566793fb,newly_migrated,Mohamed El Arabawy,order_fulfillment_info_session_r1.pptx
+719,9b9c16cf-bcd3-57dc-8618-2334df9beb57,1660,b0dc5f45-e912-5023-afcf-a2ed8d0d3126,newly_migrated,Ahmed Korayem,DISD_Lumedyne_DaughterBoard_v0p1_20150409.docm
+722,88febae4-0aea-5549-802d-430a97a4d7d7,1664,7ca07ecb-c035-568d-a02a-f8e4b2e4c077,newly_migrated,Tamer Elsherif,VPN Portal.pptx
+724,425a7120-37a7-5b72-92d6-5fecadb98d00,1688,43e30d43-2ca8-5148-b96f-f57920fb08c3,newly_migrated,Yasser Sabry,MEMS IR Gas Sensor Phase 1 Market Analysis_r1.docm
+725,4f401ce5-c5f5-51c0-943c-6b4995f0d24c,1687,7e0b0d44-15d5-5bbe-a510-1c277083e760,newly_migrated,Mazen Erfan,MEMS IR Gas Sensor Phase 1 Feasibility Study_r1.docm
+726,d28364be-70c2-5039-a4d2-429afa44774d,1689,84543d1a-caab-50db-aa2f-ac02f21f1ec3,newly_migrated,Bassem Mortada,MEMS IR Gas Sensor Phase 1 Technical Report_r1.docm
+727,42719716-40ce-5fc7-8094-af552f0aae0d,1686,e580775e-8cd2-5fcb-b048-1d9a3b5bb3f6,newly_migrated,Mazen Erfan,MEMS IR Gas Sensor Phase 1 Characterization Report_r1.docm
+728,ef58b000-f1c1-5913-8d86-d0abc09f83df,1685,36247f4a-aade-5bae-a623-1c5babed045f,newly_migrated,Yasseen Nada,Calculate_CL_Coefficients_SW_User_Guide_a2.docm
+729,6b8801c3-1280-5b05-a619-1c921543e8ab,1949,0cd65a14-1fce-550f-ad54-97267cd4757e,newly_migrated,Mohamed El Arabawy,SWS1502-A_CPKGD_r1.docm
+730,98fd6fc5-8e77-5a54-83df-6215b88ff527,1950,ab0ad4b1-8bf4-5442-abd7-17ac30d8bcdf,newly_migrated,Mohamed El Arabawy,SWS1502-A_CTSTD_r1.docm
+732,20d2eb1d-d9c2-516c-a861-09ad043ed4d9,1696,e7923471-d159-5840-8314-e932c43ade13,newly_migrated,Ahmed Gebril,SWS3100_FCB_preliminary_performance V1.1.pptx
+733,6ff6bd14-035a-585f-8d3d-67866d3bf6b2,1698,f823f9fe-9de8-5a1e-81e2-9b96677efc2f,newly_migrated,Ahmed Gebril,SWS3100_FCB_preliminary_performance V1.2.pptx
+735,b00a086c-af6a-5b9a-b75c-87e3310d09e4,1745,d4ced81a-203d-5080-8249-976656677115,newly_migrated,Tamer Elsherif,Si-Ware Main Template Updated 2015.pptx
+736,05014424-7b4b-500b-afa8-d19df93786d3,1707,9fbed3c2-914c-5164-ae60-37507095f2cc,newly_migrated,Tamer Elsherif,Altair Security information info session_d2.pptx
+737,4d7c4a90-fe87-5b92-b508-ca67441c5daf,1710,70ce1e2a-1b00-53fd-a5cf-5a981abbbab4,newly_migrated,Yasseen Nada,SPARK_revA_CDD_d1.docm
+739,87b0953f-dfb7-5f45-be64-1fda8f09c991,2750,f7aaf381-6cae-5426-a310-f8db88d20ec5,newly_migrated,Mohamed El Arabawy,SWS1121_CTSTD_r2.docm
+741,a13133b5-e6a6-5912-a896-2e0ef67dfe62,2757,c43dfbcd-91cf-5ac9-9920-294d575bddc2,newly_migrated,Mohamed El Arabawy,SWS1121_TestFlowSummary_r2.xlsm
+743,132e50bc-9e63-5d14-abff-9f55bcf213fe,1727,76448677-f41a-5342-8cd0-3796e61b493e,newly_migrated,Yasseen Nada,P2_OEM_digital_board_DISD.docm
+744,ff59218b-7090-597f-9699-fad9a89083a8,1732,906f3cb3-1a6c-5a1a-b47b-c36b2eaf94bf,newly_migrated,Tamer Elsherif,Si-Ware Main Template Updated 2015.pptx
+746,14ca8439-0985-5af1-b068-cc93d3d904e9,1742,a0ba9cb9-e4c5-56f6-92ce-aba25b4f26d7,newly_migrated,Mostafa Soliman,DISD_RASA2_DaughterBoard_v1p0.docm
+747,e5e5a230-c219-5936-9969-fc70f292db1c,1747,c188c20b-0e6a-5021-8745-b1dc892a58c1,newly_migrated,Mostafa Soliman,DISD_RASA2_DaughterBoard_v1p3.docm
+764,cc41e397-c01a-503f-90a9-261c94d56c1a,1788,bba1299c-d160-5177-935f-ab0864ca7de0,newly_migrated,Yasseen Nada,Project_review yymmdd.pptx
+766,ceb548e5-4b0c-55df-8131-dbc7ef99a292,2610,73a3b95c-052f-5cde-a5a5-c71b3ec2475a,newly_migrated,Ahmed Gebril,SPARKrevA_TDD.docm
+767,c19d1881-c702-5297-b773-4e22577a9d93,1954,01584a5d-636a-5de0-b0ca-a79175c680aa,newly_migrated,Mohamed El Arabawy,TAIF_SWS1502-A_MB_DISD_r1.docm
+768,94af7f5b-63b1-5e1c-ae9c-3ffdd93500b0,1953,cb55f06b-aa6a-5f55-a7f2-12033a16c064,newly_migrated,Mohamed El Arabawy,TAIF_SWS1502-A_DB_DISD_r1.docm
+770,2f6b122a-40d4-5a79-9fe3-8ff1983978eb,2028,1f96ebe3-f688-591b-b63b-f7f01c6da020,newly_migrated,Tamer Elsherif,project_management_tool_a1.pptx
+772,5ea6670a-d080-573f-aa25-2132f5f4dd63,1823,78a7001d-d20d-583f-a655-fa99c7d5aece,newly_migrated,Yasseen Nada,DISD_P3_Power_Borad_v1.docm
+773,ee17d961-26f0-509f-95e9-8a1c5184a61c,2008,efb43e34-e562-5eb9-8018-c6162917d20c,newly_migrated,Mohamed El Arabawy,SWS1110_Testing_Routines_r1.docm
+775,7cbcb416-3571-5b07-b737-7c1d7948018a,1826,57124a39-b594-59c9-a330-ab28947e06e9,newly_migrated,Mazen Erfan,MEMS IR Gas Sensor Phase 2 Characterization Report_d1.docm
+776,f0b89a0c-e16e-51c0-b157-3050498d9ac1,1845,be12e05d-1624-5345-a1b1-06a578de0d53,newly_migrated,Yasser Sabry,MEMS IR Gas Sensor Phase 2 Characterization Report_d1.docm
+777,5deab8aa-1773-5191-bff4-8168276f97fd,1846,0bbf9c7b-1ff6-5a0e-b68a-22e1262000a3,newly_migrated,Yasser Sabry,MEMS IR Gas Sensor Phase 2 Design Report_d1.docm
+778,354c5e34-9e7c-5c9a-885b-35a98a05be6d,1848,7f261f1d-fe58-5fd4-b7d3-796744e736cb,newly_migrated,Yasser Sabry,MEMS IR Gas Sensor Phase 2 Technical Report_d1.docm
+779,803fbfe1-e794-5900-9631-cbd759ed8429,1847,390cc1d3-ab12-53dd-862c-82af5e85a78e,newly_migrated,Yasser Sabry,MEMS IR Gas Sensor Phase 2 Materials and Equipment_d1.docm
+780,4da7a010-f01a-5947-aa55-78a6814732d1,1849,15e76670-9c6c-588c-b815-fa39ac90f360,newly_migrated,Yasser Sabry,MEMS IR Gas Sensor Phase 2 Updated Plan_d1.docm
+781,25dfe5a2-4f0d-59ff-9cf7-736a7d3d6722,1839,f00bc5e1-56c5-5b2c-ab24-a14987c44518,newly_migrated,Yasseen Nada,DISD_Taif_P2_Analog_Board_RevI_TEC_d2.docm
+782,4d03413d-8ff8-5abc-8160-9966c9e3f932,1841,8ae5c61e-ad83-5e27-beb3-423ffeae23d4,newly_migrated,Yasseen Nada,DISD_Taif_P2_Analog_Board_Product_v1.1_d2.docm
+783,5a3bec95-a5f3-589f-b9c8-664d24a6d75c,1843,93794158-8601-5c70-b341-12de8b7b4623,newly_migrated,Yasseen Nada,DISD_Taif_P2_Product_Digital_Board_Product_d1.docm
+784,b5cd2faa-02df-5c4d-bd95-c85d4ec429d5,1851,89d8ef9d-973d-5ddc-ba18-23e883ee34f0,newly_migrated,Mostafa Medhat,siware_internal_customer_facing_document_template_d1.docm
+785,683438c6-c878-5ec8-9741-1bab1a66eeee,1863,82bc4b06-b785-5828-95cb-9fb994d9e505,newly_migrated,Ahmed Gebril,DISD_Taif_P2_Product_Digital_Board_d3.docm
+788,706b3091-e602-557b-bd8a-a2eb5a4b0bcf,1869,3fd32048-e43a-589f-bfa6-a8e9caf54f45,newly_migrated,Mostafa Soliman,WLP Process Definition Report.docm
+789,156f4832-7e00-51bb-9a87-bdb064103432,1870,3d8146f5-feef-5b2d-a095-8e51e6f529db,newly_migrated,Mostafa Soliman,WLP Complete Process Flow.docm
+790,e1de2708-9c08-5e7a-8069-3d44c79e16a9,1871,80fa92c4-b87a-524a-8342-2f6e343afc1f,newly_migrated,Mostafa Soliman,SINA_RASAII_Gyro_Testing_Report_draft.docx
+791,57c84b84-a597-582f-9ee1-a44c1e23b454,1872,9d67824b-0908-5cee-984f-cd3d7cb90728,newly_migrated,Mostafa Soliman,Phase report and issues resolution plan.docx
+794,542cc801-7796-5f82-b213-bdff842cc607,1887,eefb6aa6-8afd-51d2-b5a6-aea6948aa46f,newly_migrated,Ahmed Gebril,UNISYNC_IDD_r1.docm
+795,09d047e6-49f9-5329-be86-144f5451e2aa,1889,d61320a4-65bc-5a0f-b8be-204e098113b9,newly_migrated,Ahmed Gebril,UNISYSrevA_IDD_d1.docm
+800,f4361220-1140-571e-996d-68e07fc36f90,1961,c4d7331d-8b15-560f-9593-c4348f1a15c9,newly_migrated,Mohamed El Arabawy,SWS1502-B_TestFlowSummary_d1.xlsm
+801,611ad80c-f780-5801-8f00-b410f2b3df07,1958,39f94442-b1e8-553e-9ba2-37b4e919b7f8,newly_migrated,Mohamed El Arabawy,SWS1502-B_CTSTD_d1.docm
+802,f85032c6-3fab-5aa6-a3a8-cfe4a97736ca,1960,39e75a43-915d-53e0-85c5-586f26f0fde7,newly_migrated,Mohamed El Arabawy,SWS1502-B_CPKGD_d1.docm
+804,5e924f89-da1e-528d-9dfa-4173f80c239f,1967,036d12ba-504e-5548-8ab9-27b7ec1fab71,newly_migrated,Ahmed Gebril,Si-Ware Open Silicon executed NDA - 10-2015.pdf
+807,53881515-36cc-5cf6-996f-1b0c4eda6774,3270,442d8daf-b7d5-5246-9146-f75f6a061b2d,newly_migrated,Ahmed Gebril,RFMEMS_Demonstrator_SOW_151111_r1.docm
+808,d50a3f7b-6a66-5ba0-aae8-d662271cf27b,1978,a49f8b56-92cf-5d21-a18b-8e0cf43c7fbf,newly_migrated,Ahmed Gebril,RFMEMS_Demonstrator_SOW_151111_d1.docm
+809,dabab904-6117-5a60-bcd3-9e5199b23a57,1986,7ee563c2-01d5-5a04-b179-65453edc127f,newly_migrated,Yasseen Nada,SoilCares Technical Documentation-DSP.docm
+812,a4615666-ae43-581d-8906-6af4b4fcbbdd,1989,4f95b3fb-6bca-585a-b7d1-03193d6a0b42,newly_migrated,Ahmed Gebril,Takata_MEMS_Spectromter_Feasibility_SOW_151125.docm
+813,a5585d13-976b-5f89-ba0f-c069ad57cf4a,1988,115c4236-5766-5f14-98d0-bd16338eec8a,newly_migrated,Yasseen Nada,SPARKREVA_DISD_d1.docm
+822,0235fca8-720a-5f4b-b137-599868ea857b,2016,2703faea-e7e6-5d09-a6ff-ee6bfdc1685c,newly_migrated,Mohamed El Arabawy,SWS1121_Wafer_production_results_Report_d1.docm
+824,815673ae-f5cb-5394-8a4c-c4314f1d0ae9,2018,fe435d0f-a7a9-5ccd-abcb-8a1702b5a4d0,newly_migrated,Mohamed El Arabawy,SWS1121_Wafer_production_results_Report_d1(1).docm
+825,761f9715-2165-5c64-b297-9382fcfa25de,2022,556342b3-0f93-5693-931a-1481f2762ace,newly_migrated,Yasseen Nada,DISD_DORRY_X6.3_21_9_2015.docm
+826,c9b7004f-e827-56d6-97d1-930f52372049,2024,a5a7bcbf-d191-5a82-b5a8-c5f24c097b6b,newly_migrated,Tamer Elsherif,DISD_DORRY_X6.3b_27_1_2016.docm
+827,ec8dd28f-ac38-5f56-8dbc-626dbf919f87,2090,0f721b92-bce1-50d0-9b39-7117af9eaa1d,newly_migrated,Mohamed El Arabawy,SWS1121_Die_Identification_r1.pptx
+835,7aefed81-a6ea-58bf-9c4d-e485beed2ac5,2045,9f4541da-51e8-51c7-9610-d7ce3bc80274,newly_migrated,Ahmed Gebril,spark_test_orientation_document_031416_d1.pdf
+838,27f32fbf-7db7-59f7-b362-e76e9e5f1ac1,2052,3cdbec37-71b9-5a8c-b4a0-2ffe41d53eab,newly_migrated,Mohamed El Arabawy,AltairSPARKrevA_Characterization_Report.docm
+841,b564115e-db04-593f-ab98-03b22ef8fd5c,2076,95fc93f5-2190-5b0e-a6fe-2bc205e8a8b0,newly_migrated,Tamer Elsherif,PR_PO_Template_r1.xlsm
+842,80bffe97-1bfc-5157-bdf5-2055803d13ee,2116,48ac8797-45c4-5974-9c2e-e48473933fea,newly_migrated,Mohamed El Arabawy,SWS1122_CTSTD_p1.docm
+843,05e257f1-eee8-5b21-9dec-c6c1ea4968cd,2115,7ee04bdf-fd14-5e6f-b090-7f3c76135b57,newly_migrated,Mohamed El Arabawy,SWS1121_CTSTD_p1.docm
+844,8006ed85-aaa2-5fd0-81e3-32af3aa0e7b5,2101,fdfd49d5-916f-5d17-8026-1a2dc180a183,newly_migrated,Mohamed El Arabawy,SWS1122_TestFlowSummary_a1.xlsm
+845,66396e17-8f11-5cb9-97b1-39981690cd13,2126,61d04780-073e-5a27-9f49-be57c8c48c91,newly_migrated,Mohamed El Arabawy,SWS1122_Probe_Card_p1.xlsm
+847,9d2c3839-fb52-54a0-b0ae-bcf68ed296d8,2127,7f191ae8-c53e-5ce8-a604-ec64ba1351b7,newly_migrated,Mohamed El Arabawy,SWS1121_Probe_Card_p1.xlsm
+849,1b68ce11-ab17-5487-b160-d2edfb29a9fe,2077,878eae47-cc48-5b74-8b38-fdee80227664,newly_migrated,Yasser Sabry,MEMS IR Gas Sensor Phase 3 Characterization Report_d1.docm
+850,96ff02a0-f1a4-5893-baa6-a11e8ba36381,2097,76c2cc10-01ec-58de-b5ef-31e422131985,newly_migrated,Mohamed El Arabawy,SWS1121_TestFlowSummary_a1.xlsm
+851,dd16ac1d-31c2-5b83-b84f-a794ee1e5531,2125,063fddf0-ee67-5408-b4f1-a74cd904e342,newly_migrated,Mohamed El Arabawy,SWS1132_TestFlowSummary_a1.xlsm
+852,66b62d3b-9ca8-5898-b7a6-655d3108d92d,2124,3726c493-a0b3-5b8c-b8f2-a9c9a107df42,newly_migrated,Mohamed El Arabawy,SWS1132_Probe_Card_a1.xlsm
+853,24c9099a-8c46-5276-beb9-2b14c5cd9211,3139,18437b70-ab19-5a5b-b82b-8168be32f362,newly_migrated,Mohamed El Arabawy,SWS1132_CTSTD_r1.docm
+855,7a95ff3e-056e-5725-8794-06b673d51c40,2111,bd175e3e-7593-5244-8e40-b555933a7bf5,newly_migrated,Ahmed Gebril,SparkTestReport_v1.0.docm
+856,71b5fd24-c1c8-5771-b4bd-0444957d7cda,2112,b44380fb-846c-50c7-9667-5db873785fbf,newly_migrated,Ahmed Gebril,SparkTestReport_v1(1).0.docm
+857,73a689ea-f958-5086-b4f8-557b3943bb68,2113,8a83daa4-278c-54e7-ae0f-57d827881e87,newly_migrated,Ahmed Gebril,SparkTestSetup_v1.2.docm
+860,bcafcad8-1550-5115-b940-2a81ee13ece7,2168,aa9f8499-2606-529c-83ae-aec650ac04b4,newly_migrated,Yasseen Nada,MRD_r1.docm
+870,dbc76ca7-b153-5df4-8a42-f0ed013e52d0,2157,526df32c-8a68-5225-8707-11404ec55ae2,newly_migrated,Yasseen Nada,P3_Die_Verification_List(MCLD)_d1.pptx
+871,476590ea-4836-598c-a875-6c59791fa6a9,2159,051f4b14-3ddf-598d-bb4e-69b12bc996fa,newly_migrated,Yasser Sabry,SP_FP_Die_Verification_List(MCLD)_d1.pptx
+872,1a0a64df-aeee-5422-948f-e249aa90a3f3,2161,910e2104-04f4-5e97-91db-d0197b239c4e,newly_migrated,Mazen Erfan,SP_MMI_Die_Verification_List(MCLD)_d1.pptx
+876,16df568c-97db-5f23-baf1-964cb98c364e,2175,2d732c03-800b-529e-b417-553f8373a797,newly_migrated,Mina Gad,SWS1420_20160512_d3.docm
+877,fc774a76-7c1b-5dc5-b1a2-d34e9eb1a956,2180,e764a49a-aafd-527b-be6a-fc6134b5000c,newly_migrated,Ahmed Gebril,SPARK_revA_CDD_register.docm
+883,d1b1d3d4-307e-56c9-9ccf-236b6b011f57,2527,99360a63-b1ac-5f25-867d-c592e278e53a,newly_migrated,Ahmed Gebril,MARD_BG_DR2_a1.pptx
+886,23482add-8f19-552e-a3d3-cd9931eeadc0,2528,3678b663-d94b-573a-836c-b1649522bdff,newly_migrated,Ahmed Gebril,MARD_BG_FDR_AI_a1.pptx
+887,0cdf3843-6f65-5ba0-b0ca-51281abac965,2530,ef003793-3aeb-57e1-845d-94f0b9b98a7b,newly_migrated,Ahmed Gebril,MARD_analog_buffer_DR2_a1.pptx
+889,1bf9d398-bed0-5753-8689-35ee624e7cf7,2529,f7e197bb-95d5-5a22-a415-afe975d10e46,newly_migrated,Ahmed Gebril,MARD_analog_buffer_FDR_AI_a1.pptx
+890,d744c83e-571c-5768-b496-a8a1fbb91de8,2526,019d9d20-19be-57ad-be26-1f54e3f9aacb,newly_migrated,Ahmed Gebril,MARD_sawbuff_CR_a1.pptx
+891,2e6e92d5-722d-50a7-8ca6-12e65c814bdb,2534,78ee4905-ff35-51d8-9840-ef98b7c632d6,newly_migrated,Ahmed Gebril,Mard_SawOsc_BDR2_a1.pptx
+892,fd662c7f-03d2-5849-9fef-0387b814201b,2525,b84cd896-4a1b-53c1-b91e-fd02cf4fd23b,newly_migrated,Ahmed Gebril,MARD_sawbuff_DR1_a1.pptx
+893,91c3f63f-cca3-5551-bc3b-b757e3be53e0,2524,7a6949e3-fbce-5f1f-af33-5a2a1cf5f4e9,newly_migrated,Ahmed Gebril,MARD_sawbuff_DR2_a1.pptx
+894,dc4e9e2f-e0de-5554-abec-316c6fcb5f07,2523,0f8699b8-a303-570f-af96-e1a555438b58,newly_migrated,Ahmed Gebril,MARD_sawbuff_FDR_a1.pptx
+911,71b2914d-95dd-5be5-9faf-33716f8209f8,2552,bf06e184-43d4-5d4b-96ad-af8f87bfc8ff,newly_migrated,Ahmed Gebril,Mard_OutputChain_BDR1_r1.pptx
+914,7044cc9e-b829-5be5-bb98-a7392e58c655,2558,c578c033-553e-58c8-9773-1c354432b498,newly_migrated,Ahmed Gebril,Mard_OutputChain_FBDR_p1.pptx
+915,a6908f2a-201e-5935-b622-6ebdbbe81c74,2560,cee7f8b5-c7b0-5cc9-8ce0-a8298eee6636,newly_migrated,Ahmed Gebril,Mard_LDOc_FBDR_r1.pptx
+916,7755e7ec-41c5-573f-a6d3-682d7ec0d183,2559,388346f2-0a71-51a1-9b3b-6b58dec7fd66,newly_migrated,Ahmed Gebril,Mard_LDOd_FBDR_p1.pptx
+917,1d582b60-2e43-5224-b918-76c6e8b0fafa,2539,4a93f1ff-7247-5616-9715-22359bb4b0a8,newly_migrated,Ahmed Gebril,Mard_TopLevel_FBDR_a1.pptx
+918,4e57099a-bc60-5969-a043-a6cde73cb78e,2544,b78a50b3-1114-590c-adcb-076b95508373,newly_migrated,Ahmed Gebril,Mard_PadFrame_a1.pptx
+923,c8a9a8ef-329c-5054-a901-c90e58aa46c1,2280,fccdc67c-ba86-5ae5-8730-af57e1b21bb2,newly_migrated,Ahmed Gebril,MARD_CVD.xlsm
+924,cfbfa253-2585-5c8c-9822-9f830bec60be,2563,7e002597-af44-584c-bb01-495f37c3c295,newly_migrated,Ahmed Gebril,Mard_FullChip_Verification_MardSilver_FDR_p1.pptx
+925,15b14343-f22f-51cc-add6-d0631273a15a,2562,4b47a29f-531c-59cb-8539-7c251460519f,newly_migrated,Ahmed Gebril,Mard_FullChip_Verification_StabilityAnalysis_FDR_p1.pptx
+926,ab6e2f72-fd6c-5079-aa64-ed922f67e3b5,2561,4e589004-7ea3-5f2a-9c62-17961e22afaa,newly_migrated,Ahmed Gebril,MARD_ChipVerification_p1.pptx
+927,56cf5d11-a208-506c-b372-cc7b9596d2d5,2288,d806b495-1850-5c8f-867a-af1a3582759c,newly_migrated,Mohamed El Arabawy,Si-Ware - Yieldwerx NDA.07-28-2016.Signed.pdf
+929,f5557c3c-8f0c-564b-8eaa-54d11ab45b84,2290,68e7607c-f0e6-5de2-af88-fe9723202d20,newly_migrated,Mohamed El Arabawy,Si-Ware  - PrestoEng NDA 08-01-16.PDF
+935,9ca32c5b-fc59-505f-8464-73f93464c9dc,2546,927697ac-a1bf-56cb-8785-de4e0f88654f,newly_migrated,Ahmed Gebril,CDD_Mard_a1.docm
+940,ab28d816-dd2f-53d0-be5d-b2c84b32d1f4,3675,44fdd8cb-8e29-55ac-949c-2327e78968e3,newly_migrated,Tamer Elsherif,IT induction V2.pptx
+941,bb093738-27f4-554e-bd84-9cb9e6890cf0,2318,5249f5c6-0e00-547d-8a53-57909e2fbec2,newly_migrated,Abdelrahman Salah,HR_Orientation_d1.pptx
+951,f6d362ea-c6e0-5519-9e05-7b2380d7632d,2341,3d0944cf-ade1-54d9-a688-221809f743d2,newly_migrated,Ahmed Gebril,MARD_TDD_a5.docm
+962,e7316b68-d8be-5dbf-a741-cf145573542f,2373,477879f2-db48-5025-a2e4-777f54f2da96,newly_migrated,Yasseen Nada,FDD_r1.docm
+963,436157d1-afa3-5dcd-a57f-486e6d91a872,2374,af9b0a2c-248c-5962-9213-d0cccf1dca66,newly_migrated,Yasseen Nada,MCLD_r1.docm
+964,8d72b295-97a2-52e1-8310-2f9435f379d0,2378,97a6eab2-64af-5327-a471-806fe0833e24,newly_migrated,Yasseen Nada,MTPD_r1.docm
+965,5f9725ef-8a8a-507b-9598-6d53b6931698,2377,bd100f40-f33b-5691-a0ab-5ccdcecdc688,newly_migrated,Yasseen Nada,MSRD_r1.docm
+966,1ffa3b4b-5b4e-58eb-bb6b-6c55a0328adc,2375,2b32c834-d51d-5a28-b228-e689ad78678a,newly_migrated,Yasseen Nada,MDDD_r1.docm
+967,9a837381-f35b-5e15-8bdd-fae11a464d13,2376,05c4a57e-72cc-56ca-9f32-a6005ef10156,newly_migrated,Yasseen Nada,MRD_r1.docm
+968,63264a05-dcca-5b62-bd46-0692965d9ef8,3369,0aa38804-4fd1-5e47-b882-b9aa97b37b8e,newly_migrated,Tamer Elsherif,new_employee_orientation_quality_a1.pptx
+971,8d911863-0e65-537e-8c3b-7f7f25365895,2400,6cccdc12-546a-53f1-b0ee-aec900abd50f,newly_migrated,Ahmed Fadeel,SDD_P2_SpectroLAB_a1.docm
+972,fb55ecf5-438d-5f16-a8ef-b8c4ed18a907,2404,5fcd86f5-17ed-506c-9fce-7c073a38b922,newly_migrated,Ahmed Fadeel,SDD_P2_SpectroProd_p1.docm
+973,dec8c6db-6ec9-5ca7-9acf-3675d0829452,2408,d47b0784-f2b7-5f7b-84d9-eba1109936fa,newly_migrated,Ahmed Fadeel,SDD_P2_SpectroDetector_d1.docm
+974,e66aab5d-6829-5f78-a8c9-996cb62eee99,2407,ffe00acc-50ea-5872-8394-a482569a10df,newly_migrated,Ahmed Fadeel,SDD_WAMD_d1.docm
+975,19ebf669-7ef7-5f23-b8e6-e00a711135e4,2411,1cc1e22c-f7bf-50c0-bd8f-e1a4708fcf18,newly_migrated,Ahmed Fadeel,SVTP_P2_SpectroMOST_a1.docm
+976,6131d0a1-07a7-5644-b6c9-9429f2e73452,2413,a527bd6a-4952-51a1-ab80-2a03ff34a7b5,newly_migrated,Ahmed Fadeel,SVTP_P2_SpectroLAB_d1.docm
+977,8954282c-f2dd-5a6d-8f22-6a74aeeed2bf,2415,b6feb0dd-ebb8-581a-927e-0cee9b639efb,newly_migrated,Ahmed Fadeel,SVTP_P2_SpectroProd_d1.docm
+978,d199abce-5e1e-56cb-b275-fcd9e963e381,2417,0339b34b-9a7a-5311-a96b-0bfff33d02d6,newly_migrated,Ahmed Fadeel,SVTP_P2_SpectroDetector_d1.docm
+979,7058aff5-0440-5fa2-9519-d2812a015a20,2515,a5db87f8-c961-54d7-a499-2cf826f0284b,newly_migrated,Bassem Mortada,SRD_P2SpectroLab_r9.docm
+980,ba7b7c1c-a9f0-5344-b705-b1a061bc3926,2424,39b10e7f-bf66-5b10-99d3-516c64e16bd0,newly_migrated,Ahmed Fadeel,SVTP_P2_SoilCares_d1.docm
+981,9d73ddf0-8317-5816-b194-436e15956797,2514,53d50992-abdd-5da9-b770-3c0fc80a04a2,newly_migrated,Bassem Mortada,SRD_P2SpectroMOST_r9.docm
+982,20f1a873-c4d6-56ea-8571-c8815ffa7878,2425,c6f6922e-1db3-5286-8274-e5a39166bb19,newly_migrated,Bassem Mortada,SRD_P2_SpectroDetector v3.docm
+983,df23a7fe-0697-510b-9ad0-af7f9554dfe7,2516,8a9f76db-88a6-5796-9392-5c41e75d9040,newly_migrated,Bassem Mortada,SRD_P2_SpectroDetector_r3.docm
+984,6cbe02b2-6f2d-53bf-9be2-5f95e74e11a9,3337,9fee2685-c8ae-5a1e-ad4e-357ecf642e7a,newly_migrated,Ahmed Fadeel,SVTP_P3_Discrete_r2.docm
+988,10b9f444-ce9e-56e1-87c3-663003a9071f,2464,baefe6dd-be90-5cb5-bc21-b2e6e7602607,newly_migrated,Yasseen Nada,BARQ_SourceDriver_concept_design_review_r1.pptx.pptx
+989,becba697-e42f-5b44-a54c-188ce4805fd0,2465,222f838f-d2e5-5836-ab5b-8ac12e94b0ee,newly_migrated,Yasseen Nada,BARQ_SourceDriver_first_design_review_r1.pptx
+990,6b4fbdd3-b2d6-5560-a9fa-68468ffa11ec,2442,920e312c-f37e-5512-8858-a16a1cd4bd18,newly_migrated,Yasseen Nada,BARQrevA_HVdriver_DR1.pptx
+991,b5032943-2b67-5d8a-aee0-13fe748bd256,2444,fcccc74a-c37d-50b5-be81-f7b2ed8e9126,newly_migrated,Ahmed Gebril,BARQREVA_HV_GEN_FirstDesignReview_d2.pptx
+992,3781e707-f021-58c2-ad8d-4433267d9ba4,2446,da7cff5f-ff66-5ec4-b398-77b332c6c8cf,newly_migrated,Ahmed Gebril,BARQ_CDD.docm
+993,61ccc58f-38a9-554d-9c8d-af703c2c5d1c,2447,54ebe36b-9d11-58a2-bbe2-6f67fbb4fc1f,newly_migrated,Mostafa Soliman,RASA-II MIDIS2 Gyro Data Sheet.docm
+994,f43318fb-c616-590c-a314-9903910db22a,2449,fe06d60e-f430-5052-9592-bca1797cf6c3,newly_migrated,Mostafa Soliman,RASA-II GyroTesting Report.docm
+995,37d145be-b3d7-5e31-b34b-d5fe450b5592,2450,427f1bbd-711b-5b4f-8bcb-5811589fbe2b,newly_migrated,Mostafa Soliman,RASA-II Project final report.docx
+1011,73e51d93-1a75-563e-ba10-ba14fab50710,2511,88adc000-4c32-5e33-af42-1c3a6acc8de2,newly_migrated,Yasseen Nada,WAMD_OpticalPath_Design_Review_d1.pptx
+1012,74f3a852-e3b1-5a8b-8d42-a3e316de5aee,2513,5205686a-8f3e-55e3-ac1f-a704e176d0cf,newly_migrated,Mina Gad,wamdInitialSoftwareFlow.pptx
+1013,0bf166ca-d2ee-51e9-99be-bd0379cdd5e9,3290,cffef332-9565-5d75-bf14-252ff8be2b11,newly_migrated,Mohamed El Arabawy,SRD_P2_SpectroProd_180807_r27 .docx
+1014,1865f0bf-c459-5703-a7d4-599daabad338,2522,bf576f12-5650-5aa8-9fd9-c99668d00382,newly_migrated,Yasseen Nada,siware_WAMD_system_review_d1.pptx
+1016,9e22d084-a58e-5929-b0b2-73de283860f4,2568,98c52db4-bba3-53f5-b6fd-86615e35c88e,newly_migrated,Ahmed Korayem,NeoSpectraProductManual_SWS-16120001 r1.docm
+1039,c6ac71a4-1413-59f4-91f9-b021e48e44ab,3787,c12956c1-12a2-5495-8b7b-40e76fa16832,newly_migrated,Tamer Elsherif,Si-Ware-DRP disaster_recovery_plan_v6.docm
+1040,b727008d-afa0-5723-a5f2-598a9a8884d6,2637,1b7f1612-ab61-528a-971b-60d661dba904,newly_migrated,Ahmed Gebril,Neotecway-IP_Development-Proposal_d2_MN.docm
+1042,b43dc252-97f6-5236-82c8-99bc7a0e2407,2632,a12ef19c-6e49-50b5-88f5-d77b0e001d42,newly_migrated,Ahmed Korayem,SpectrometerWithLighSource.Takata.LightSource.12.01.17_SOW.docm
+1045,8d3a0b69-c0aa-561d-8aa2-f173b217d8cc,2639,a5ffb790-37d9-5de5-b08f-66c0eb0b06ea,newly_migrated,Ahmed Gebril,Neotecway-IP_Development-Proposal_d3.docm
+1055,9bc8ed8b-a10e-5481-b79d-b7b177860ade,2667,db78b4ef-5fae-5823-be72-e157535b4f4d,newly_migrated,Mostafa Medhat,ieeecitationref.pdf
+1057,78782a15-b44d-51e7-9c02-70814c2dbf27,2677,a23fab7b-839b-51c2-893b-aae37349d793,newly_migrated,Yasseen Nada,BARQrevA_HVdriver_DR2.pptx.pptx
+1058,e86aa657-848b-59e4-b39f-9ca16d2b284e,2679,c675ee8c-76e8-553a-a7de-72701b2ee992,newly_migrated,Yasseen Nada,BARQrevA_HVdriver_FDR.pptx
+1059,7eee130f-bf0f-54ac-973c-a99a8a648dd1,2681,ed86784d-64de-5186-9274-c55919885ebd,newly_migrated,Mina Gad,bandgap_second_design_review.pptx
+1064,ddb01ce9-1bd9-5aa2-a366-e1826100b790,2763,2d91c650-740d-5bce-b919-5ec90d30bdb6,newly_migrated,Mina Gad,sramldo_second_design_review.pptx
+1070,d5a8d072-3bc1-5b48-a9ec-44911541bca9,3271,ded1e307-3494-5215-bf1e-d044612849bc,newly_migrated,Ahmed Gebril,Silterra_RFMEMS_Demonstrator_SOW2_TempComp_170316_r1.docm
+1077,4d9b8f2c-df74-5f11-8d5d-cee6eb3a0b6e,3084,ed135ed5-d3ca-5c35-b560-c044575b2b49,newly_migrated,Ahmed Gebril,SMARTrevA_TDD.docm
+1089,7ebae148-9f80-5f39-b4f3-ab5728ff550c,2766,472480b9-4ded-53d8-a6c1-89f64720ab71,newly_migrated,Mohamed El Arabawy,22A115C.pdf
+1090,c28a2294-08a4-5e9d-81fc-ace5165cd1e6,2767,955a4b8f-7219-52ae-9aaf-b687740b21c4,newly_migrated,Ahmed Gebril,22B102E.pdf
+1091,eeb21285-6014-5cee-a8d1-eb084d77e2d9,2768,2643c6d8-057b-50c4-903f-b64d73ffc753,newly_migrated,Ahmed Gebril,22B116A.pdf
+1092,c5b47f8d-5d5e-58ab-8cbb-f945fb4b5bb0,2770,0409a017-c40a-54d3-9093-8966a7f46df7,newly_migrated,Ahmed Gebril,JEP160.pdf
+1093,47accc54-caea-5a6e-9d92-e32396adfd07,2771,c552bcd5-807d-5a45-abbb-f3cd7d756357,newly_migrated,Ahmed Gebril,JESD46C.pdf
+1094,9b94522d-5241-5ebc-9ee5-65d0a364f043,2772,782f0acc-bce8-50e8-b656-f8756b92274c,newly_migrated,Ahmed Gebril,JESD78D.pdf
+1095,291861c0-f905-52cb-b89f-6035fbe2ed9a,2773,d08b7b6e-1e8a-55d1-b285-4cc3b79f8b8d,newly_migrated,Ahmed Gebril,JESD94A.pdf
+1096,b7e8b9c5-9558-58c2-bd9a-752a3d4e8347,2774,7e03fd3f-b263-5d0a-bce9-bc319c04d83b,newly_migrated,Ahmed Gebril,JS-001-2014.pdf
+1097,b00dbfa7-2bb5-5e43-b909-b554e16c5866,2775,64280bdd-f7e7-5473-aa5d-1650f00f45de,newly_migrated,Ahmed Gebril,MIL-HDBK-704-1.pdf
+1098,e975d061-d38d-5410-b74f-71df3ca6969f,2776,2623b7dd-ea27-5e48-acdb-35fcee97cf3b,newly_migrated,Ahmed Gebril,MIL-HDBK-704-2.PDF
+1099,dd382db3-9025-5b14-b11f-df859b4f201d,2777,95773a49-bd4d-5e65-aaa8-07ce3d1f3b37,newly_migrated,Ahmed Gebril,MIL-HDBK-704-3.PDF
+1100,4fba00f9-c873-5bb0-8017-a879f2d8f777,2778,c3fdaa8e-f486-55a1-99c2-dc6f0b7d064e,newly_migrated,Ahmed Gebril,MIL-HDBK-704-4.PDF
+1101,4aaf5ee8-3a1e-50de-9241-f76db0d631da,2779,af99dc07-ed7b-5806-bc33-3fe75e0b370a,newly_migrated,Ahmed Gebril,MIL-HDBK-704-5.PDF
+1102,09ebeb73-da9f-5e43-abd4-5d6f09a89d0b,2780,02e67c86-5797-574f-823c-7a102a3a1e95,newly_migrated,Ahmed Gebril,MIL-HDBK-704-6.pdf
+1103,1c513efa-4f80-5151-9d20-abfa7f5374af,2781,df2ff460-a3a7-5ead-96db-a9d3b5bd8389,newly_migrated,Ahmed Gebril,MIL-HDBK-704-7.PDF
+1104,01125d4a-b749-5052-b16c-37e2dc5b9a7c,2782,714d4f24-c636-5e40-b9ae-d9fe64eb95c4,newly_migrated,Ahmed Gebril,MIL-HDBK-704-8.PDF
+1105,0754d196-859c-5d16-aa8e-82c392645783,2783,948c2cf0-2354-5861-ae91-74c50917743a,newly_migrated,Ahmed Gebril,MIL-HDBK-338B.pdf
+1106,fde44b54-e580-5426-8f1b-899a96ea95e6,2784,ebfaf137-eb64-5696-bd76-90ad8c364058,newly_migrated,Ahmed Gebril,MIL-STD-461G.pdf
+1107,02337f3f-e53b-587b-99ca-3e36704e9267,2785,5ab6cb5a-0fa3-592d-9587-76a7d1a758ab,newly_migrated,Ahmed Gebril,MIL-STD-704F.pdf
+1108,6a99c0a8-162d-58d2-8094-37c28a6c331e,2786,85fb078e-5168-59c2-92d7-26a146943c72,newly_migrated,Ahmed Gebril,MIL-STD-810G.PDF
+1114,a2af5c54-3ac8-590c-bf81-99ccb905e1cd,2821,3167a5de-c7c2-5352-9721-52f7bc0c4667,newly_migrated,Ahmed Gebril,SMART_BG_TMPSNS_DR2_AI.pptx
+1116,35deb609-3eed-547e-8e94-33e51507635f,2811,8ed5acab-1164-5dea-a819-960a6abcea38,newly_migrated,Ahmed Gebril,Smart_CMLDivider_BDR1.pptx
+1117,a4c37405-5f9c-5ae3-94a5-1d389e238904,2813,9a124ad8-97b6-54ba-bd56-96c760ad61fc,newly_migrated,Ahmed Gebril,Smart_CMLDivider_BDR2.pptx
+1118,003a60c7-28f9-5cbb-b4fa-05048a723e64,2815,d63c98b3-5b7d-592f-88a8-19af8a14feb5,newly_migrated,Ahmed Gebril,Smart_Dividers_FBDR.pptx
+1119,c633212a-da56-5c38-9ea5-3c4987fcb579,2820,55cb5c9e-7c0b-52b3-9275-d0f35ac828c8,newly_migrated,Ahmed Gebril,Smart_TSPCDivider_BDR1.pptx
+1120,87536e2a-8cc8-521b-a624-52bc3f54fd56,2819,d55a69c4-17a8-5a88-b96b-6f25b058bdc6,newly_migrated,Ahmed Gebril,Smart_TSPCDivider_BDR2.pptx
+1121,ff14c8b6-e1f4-527f-a5c4-43a9ad64022a,2823,6cc27927-3e1f-5193-bc0e-8f6adf98fbe9,newly_migrated,Ahmed Gebril,SMART_REFBUF_TMPSNS_DR2_AI.pptx
+1122,90af32c0-58df-583d-b964-267c79be842a,2825,2df6d681-cc82-5163-b9d8-15eb26b4aaea,newly_migrated,Ahmed Gebril,SMART_V2I_TMPSNS_2DR.pptx
+1123,d10ab41a-bce9-5559-9531-d54528dfa633,2827,77d67be3-8b91-5db7-a2cf-f582f69db414,newly_migrated,Ahmed Gebril,SMART_BG_TMPSNS_FDR.pptx
+1124,9224f279-d2f8-5f6a-9133-a74754f745d7,2829,2efca693-c52b-5d37-823e-d7669329daa8,newly_migrated,Ahmed Gebril,SMART_REFBUF_TMPSNS_FDR.pptx
+1125,78778da1-964d-5340-bb1b-101240da4e29,2831,5f276e67-2812-52ab-a433-40aaf8a09856,newly_migrated,Ahmed Gebril,SMART_V2I_TMPSNS_FDR.pptx
+1126,c92711e4-fef4-5336-b54f-a81685eb1ea9,2838,b75b5da0-f5d5-5412-832b-55c714df3175,newly_migrated,Ahmed Gebril,smart_cp_DR2.pptx
+1127,91b0e57a-a4f4-5c1a-86d4-5e81202b5639,2843,f00700d8-9ef1-51c8-8ea4-70a12070ce68,newly_migrated,Ahmed Gebril,smart_pfdcp_DR2_AI.pptx
+1128,c1db2063-09fe-54bb-8c77-939009db47a8,2845,4589a97b-196d-5125-83cd-7a2c13e8d2b4,newly_migrated,Ahmed Gebril,smart_pfdcp_V0_FDR_03072017.pptx
+1129,86cccb26-78ac-50a1-8bed-07dec74a8c71,2847,a9121c5c-43c9-53fc-b9c6-fb3fbf813673,newly_migrated,Ahmed Gebril,smart_pfdcp_V1_FDR_03072017.pptx
+1132,3ea5c75a-4a10-52bf-b239-51e41197276a,2857,31707db2-0c77-503c-8662-25fdad271a04,newly_migrated,Ahmed Gebril,Smart_cmospostdividers_DR2_V2.pptx
+1133,08f6a8bd-e6bd-5ef0-b54b-3c681a81a482,2860,b94c7768-4ac0-5180-8012-8dde16863113,newly_migrated,Ahmed Gebril,smart_vcobuffer(CML)_FDR.pptx
+1134,f5a3e5e0-5016-537f-8f48-d62f5be7d381,2862,ec4ab487-b48b-522c-8a53-d858fef02c81,newly_migrated,Ahmed Gebril,smart_vcobuffers(cml2cmos)_FDR_verification.pptx
+1135,98d530b9-79e5-5995-8199-3496fa2b4e8b,2864,5fb0f2e4-d439-5570-9be9-6f412822f754,newly_migrated,Ahmed Gebril,Smart_PreDividers_DR2.pptx
+1136,2e6bc6c5-35ef-5382-a1fe-91be280f70fa,2870,b6a5ce86-aab5-5c7b-b58c-e044ed8f3ecd,newly_migrated,Ahmed Gebril,Smart_PLL_verification.pptx
+1138,cf131000-8ed7-5ea9-bf79-40381334d000,2874,a99897c8-1536-5792-9979-2716b58cfd39,newly_migrated,Ahmed Gebril,Smart_PreDividers_FDR_verification.pptx
+1139,e528f32b-73aa-5122-a498-9816414738e0,2876,3cdf6ab2-7ddb-5516-86fb-7dabe7bc1cf9,newly_migrated,Ahmed Gebril,Smart_PostDividers_verification.pptx
+1140,9cf3a3c1-aeb6-52d9-820d-7d767c214e0c,2878,f5429ace-3a0d-55d5-a1cb-493acff3b5c8,newly_migrated,Ahmed Gebril,Smart_VCO_chain_verification.pptx
+1142,eb5bcca6-5e99-56db-9428-83f29c5ae292,2910,58a670ed-8599-5599-a656-539e6be46339,newly_migrated,Tamer Elsherif,Test_Document_01_08_2017_a1.docm
+1143,1e70ba17-f98a-5d0a-835a-95126c21e55a,2985,8d5b0264-bc50-52b9-a8db-841dd7ec2a56,newly_migrated,Mina Gad,Temperature_Sensor_ADC_FDR_a1.pptx
+1144,9f52f4a0-1a22-52f9-b846-b3e6f089f16a,2986,c0ca2ae2-047b-5ebf-8bd7-2d576e8653f5,newly_migrated,Mina Gad,Verification_TB_TMPSNS_DR_d2.pptx
+1148,4aa0b182-4326-5608-96e4-b4acd667eec2,2926,ef49467b-cb17-5d5d-b07a-465a26c7ff76,newly_migrated,Tamer Elsherif,Externaldocument.pdf
+1149,ef745a3d-2d6f-52cf-b62c-7ff49f6822f6,2914,8e67a140-2bfc-5167-ba4e-99c3d3dfe821,newly_migrated,Tamer Elsherif,Purchasing_procedure_d4.docm
+1150,ee8a26b9-619d-5c19-884a-99fa28634759,2923,7eaebbfc-a1d2-5a3a-8063-862dc87d76aa,newly_migrated,Tamer Elsherif,Test_Document_02_08_2017_d1.docm
+1153,d1d662e2-81af-5ef1-8da1-35b9f9feaec2,2924,324b2680-f3d2-5a86-93fe-b0184bea2c05,newly_migrated,Tamer Elsherif,Test_Document_02_08_2017_d1.docm
+1154,2acacb72-ce31-5dbc-a389-73904dc52275,2920,558e8220-19ac-5058-aba5-c24c5db7f3e1,newly_migrated,Tamer Elsherif,iso9001.jpg
+1155,48e25298-e6f9-5177-80c4-e1eae72986f2,2928,b3f2dc27-817f-5f6a-84a6-d188e728f18a,newly_migrated,Tamer Elsherif,sws_quality_manual_d2.pdf
+1158,539a6098-d816-5b78-86ec-c2f9ae72294a,2934,514362d5-a1b7-59d4-9681-9118807a97ad,newly_migrated,Tamer Elsherif,Large file book
+1159,f6633523-ee7f-5e27-986d-00adf798d478,2936,ad71c91a-3e42-5f53-96aa-8513131a7d96,newly_migrated,Tamer Elsherif,Large file book
+1161,51ddc479-f393-54e1-a12d-5083f3c17223,2939,e863a71a-93fa-5872-9b3a-ba95f3ba613d,newly_migrated,Tamer Elsherif,Modern Digital and Analog Communication Systems 4th edition B.P. Lathi Zhi Ding.pdf
+1162,0f37ca72-3848-51ad-a2c9-7ab2e5a9b556,2940,888c9466-57ea-5ef8-81b6-dc115e3e33f8,newly_migrated,Tamer Elsherif,Modern Digital and Analog Communication Systems 4th edition B(1).P. Lathi Zhi Ding.pdf
+1163,34caaa5a-3dd5-5d85-bf72-c79fe845fa1b,2941,0cdc2ac1-f267-529b-a4c5-610b9ca03fd6,newly_migrated,Tamer Elsherif,Modern Digital and Analog Communication Systems 4th edition B(1).P. Lathi Zhi Ding.pdf
+1164,e103710f-612d-57a9-b9ed-2f1c6503cae7,2942,da2b728f-2e67-51ad-826a-b6ef96073088,newly_migrated,Tamer Elsherif,Modern Digital and Analog Communication Systems 4th edition B(2).P. Lathi Zhi Ding.pdf
+1165,cffbdcb3-ebdd-52d5-a817-dd92076f63f9,2943,af2448bc-6359-58ba-b5df-0b49b1e5acac,newly_migrated,Tamer Elsherif,Modern Digital and Analog Communication Systems 4th edition B(3).P. Lathi Zhi Ding.pdf
+1166,bacd0143-4267-5bdc-9713-2992cea89fab,2946,44ca1bfd-9ca8-5803-83eb-c62b6dc67cfe,newly_migrated,Tamer Elsherif,Test_Document_02_08_2017_d1.docm
+1169,0e7a8b54-26e8-5fd2-9fbb-6864de3e6ccb,2951,19e39a05-2760-53b5-8e32-5c22d3895b93,newly_migrated,Ahmed Gebril,BAW_ABUFFTOP_VERIFICATION.pptx
+1170,ee805a7b-660c-57cb-a9d1-a2fc095f8b1a,2953,d3b4b89b-4f65-54c7-9d01-3b4b1e5a1f4b,newly_migrated,Ahmed Gebril,BAW_POWERTOP_VERIFICATION.pptx
+1171,88bf5ddf-1532-5411-a985-aeaa1641799c,2955,71c43a0a-e4c1-531d-8d1d-c77c528af4b6,newly_migrated,Ahmed Gebril,BAW_STARTUP_VERIFICATION.pptx
+1172,c6863230-992f-5b62-ad09-339df787e111,2957,aa676037-5da0-59db-9a86-84d7b66b0aa9,newly_migrated,Ahmed Gebril,SMART_DIGTOP_VERIFICATION.pptx
+1173,e258cb16-c09a-5bf5-a67c-2fef468e937c,2959,36a97325-fb64-5d96-a36b-31d6d8b107bf,newly_migrated,Ahmed Gebril,SMART_TCXO_VERIFICATION.pptx
+1174,81ede1a1-b4f2-58ed-a1e4-26c1bb3e0a97,2961,3f90b001-0fe0-5b8d-9408-0518a2b925ad,newly_migrated,Ahmed Gebril,SMART_LDOADC_TMPSNS_PTATtest.pptx
+1179,9a7a46b5-b83a-54e0-8090-df9631fc2612,2973,656b0bf6-9f6c-5803-9165-c257d55cd5bc,newly_migrated,Tamer Elsherif,Test_Document_02_08_2017_d1(1).docm
+1180,49ff2f8c-a2a4-5f2d-9de3-ace7f38ad3aa,2975,d6cf4830-7088-5a86-84f8-03f1f5f57286,newly_migrated,Ahmed Gebril,baw_oscillator_concept_review_d1.pptx
+1181,873c3ba1-2cd6-50ba-8d5c-6926ce147648,2977,10720b7a-0fbc-5429-a8eb-e687ec5f96ed,newly_migrated,Ahmed Gebril,baw_oscillator_first_design_review_d1.pptx
+1182,b7d7596e-e488-5cfc-af4a-bb740221bdbd,2979,28909464-c4bb-5caa-b46b-5249299ed864,newly_migrated,Ahmed Gebril,baw_oscillator_final_design_review_d1.pptx
+1183,2bdd4e8f-bc1b-50c0-a2a0-24cd78a85291,2999,a6919bd3-7d5a-55ee-8063-97b4f845fa7a,newly_migrated,Ahmed Gebril,Smart_reference_amplifier_DR1.pptx
+1184,d1193c62-0597-549b-b62b-bc3303d9bb12,3000,b919b059-a254-58fc-b2b9-ec9b7b7257e9,newly_migrated,Ahmed Gebril,Smart_reference_amplifier_DR2_a1.pptx
+1185,1a5eac1a-3aed-5c0c-94c4-2d9b3f4a0137,3001,9948ff53-1133-5f43-b31f-c2adf301626c,newly_migrated,Ahmed Gebril,Smart_reference_amplifier_FDR_a1.pptx
+1186,b2bae46b-f31d-5e63-84cc-3962cef5a75b,3002,83c63fdf-f0b1-5f62-9866-415578437769,newly_migrated,Ahmed Gebril,SMART_Verification_TB_padframe_DR.pptx
+1187,bd4a1e6c-5221-57d2-8b3d-9b0d82b390af,3004,1103471b-82f9-5271-af3c-fe61f9ddf5d3,newly_migrated,Ahmed Gebril,SMART_Verification_TB_V0_startup_DR.pptx
+1188,e6da330e-ddfe-5119-8f49-045cbd931498,3003,db72caa3-91b5-5a01-8d97-7259f9c2e227,newly_migrated,Ahmed Gebril,SMART_Verification_TB_startup_variant2 _DR.pptx
+1189,1837d85c-b78d-5790-b7ed-e890bb71b5e3,3005,96ceddb5-9b77-5db7-b3f0-70a309b7077a,newly_migrated,Mina Gad,Si-Ware - WiSig NDA.17-8-17.docm
+1192,6fa61a33-fc35-5c2e-b039-d146b0e9fc0e,3025,4efbad6a-3766-5769-abc9-85ef14bf8485,newly_migrated,Yasseen Nada,Additional_SWS1110-B_ASIC_Usage_Document_for_CL_Gyro_Tronics_r1_20170830.docm
+1193,6494dd94-4e15-5b68-b3d8-eb134fdc205d,3026,349bb77a-7591-5774-b939-eda0c55e8436,newly_migrated,Yasseen Nada,SWS1110-B_ASIC_Usage_Document_for_CL_Gyro_r3_20170830.docm
+1195,1d051270-ccec-5708-8f97-54516bdc53bf,3027,a5204a91-8c55-5415-abc6-d83b5a991c86,newly_migrated,Yasseen Nada,SWS1110-B_Trimming_Guide_for_CL_Gyro_r1_20170830.docm
+1196,a71237eb-cda8-5e26-89c0-4147c13a1cfc,3028,d159b599-fa3d-522c-9ac5-9add74631a76,newly_migrated,Yasseen Nada,SWS1110_revB_issue_fixes_r1_20170830.docm
+1198,6ccd5313-9016-5c94-9920-5cb48af24b7b,3022,8a0c2bab-f013-57f7-95ba-966d688fc3e5,newly_migrated,Ahmed Gebril,BAW_Dividers_Verification.pptx
+1199,133ebb2f-4cc0-5711-ac93-5d62af3bae1c,3035,3035bc72-5abd-5b01-a915-a3353f01503b,newly_migrated,Ahmed Gebril,Waviot_Proposal_d2_20170907.docm
+1201,02f203b9-2648-577b-ac64-f51453fc4f95,3038,8d91d277-85f3-5963-a8f3-ae3165170230,newly_migrated,Ahmed Gebril,BAW_oscchain_phasenoise.pptx
+1212,651562ef-c350-5e53-90da-092bb2a32557,3065,be333860-aa82-585a-9fb7-90b3a1fa0aa3,newly_migrated,Mina Gad,smart_Loopfilter_FDR_d2.pptx
+1213,21028640-8db3-52b9-a81d-08e164e40096,3070,a8f05e12-c4b5-53d3-a9bd-4804cb0c233c,newly_migrated,Bassem Mortada,SRD_P3_SpectroLab_d1.docm
+1215,82f9d1cf-4ea8-5dff-b110-2cbe28eface6,3072,377dea1e-2ebf-5330-a3ce-4c4e194d7e7f,newly_migrated,Bassem Mortada,SRD_P3_SpectroLab_d1.docm
+1216,9cd751fc-81ff-5384-ad90-4b2438d91b56,3074,3245f1bb-39e2-5510-ba60-c1fbc98e8d20,newly_migrated,Bassem Mortada,SRD_P3_SpectroMOST_d1.docm
+1219,ae30c1bc-d4e1-5a1d-b6af-f85f5b1337c3,3221,f1f99d93-6e1d-58d6-af09-1c22e2332643,newly_migrated,Ahmed Gebril,CDD_SmartReva_r2.docm
+1220,4827e4a3-eff9-5ab6-a786-9c751054a57e,3080,c309401f-c898-505a-8615-48ece36803cf,newly_migrated,Ahmed Gebril,Smart_System_Design_Review_V3.pptx
+1221,43174608-f9cc-5a90-801c-44979fbe466e,3082,28ca5a36-022d-562e-81de-91eaff70daaf,newly_migrated,Ahmed Gebril,SMART_analogbuffer(TMUX)_DR1.pptx
+1222,9a7f9503-bb29-548a-8526-ab4e31969b28,3562,8c8eb266-4ce8-5de0-88df-a5678e56864c,newly_migrated,Mohamed El Arabawy,SRD_P3_SpectroProd_a26.docx
+1223,fa20d19b-c119-5187-a5e2-05c3888ba903,3579,15e282fc-64ce-5122-9753-67db68f17a78,newly_migrated,Ahmed Fadeel,BARQ_SDD_a1.docm
+1224,0ce81880-1f85-5bb6-9beb-b460776dbce4,3097,4eddddcd-c080-59d4-b932-30047b1a6fa3,newly_migrated,Ahmed Fadeel,DVK_SDD_a1.docm
+1233,15c0d697-18a0-5cea-b3b3-52afd8702d4e,3129,5e6818f9-f3fc-53c2-ade2-98fc02670699,newly_migrated,Mohamed Elsheikh,MRD_Daqeeq.docm
+1234,33358b22-852e-5f20-9c1f-32a37f65b731,3130,f56cdfa7-1040-574f-af8b-eb6cabf2d38e,newly_migrated,Mohamed Elsheikh,MAD_Daqeeq.docm
+1239,b153d42d-6d13-544c-81ae-3dc43348de35,3144,90277b33-c6af-5d3b-a7e8-1363f221e158,newly_migrated,Ahmed Shebl,SRD_Spectroprod_prober_r9_16112017.docm
+1240,a7d6913c-0adf-535c-b0d3-845deae308c3,3145,0dfa58c4-7c8f-5ac5-8165-742500a9ee1c,newly_migrated,Ahmed Gebril,Proprietary Certificate OCT 2017-SWS-FTD-Infocom.docx
+1241,025815e0-5656-54f7-8cef-5073cecf8da7,3149,ad75cca8-4dde-5db0-856c-02138c412dbf,newly_migrated,Ahmed Gebril,Quote-WavIoT-Additional-Blocks.docm
+1242,4cdd2816-0472-5e78-b8a6-59e104f5559f,3148,0ef002c6-724d-52ca-ba85-825649787695,newly_migrated,Ahmed Gebril,Additional-Blocks-SoW-WavIoT.docm
+1243,0e2e4d0c-90fb-532f-a037-a445f52ae4fc,3151,8fa2b93f-2e60-5101-b284-c8966a27cb42,newly_migrated,Ahmed Shebl,SRD_Spectroprod_prober_d1.docm
+1244,9ed1ef24-a466-565e-9f87-15bf9d3be3a0,3153,6e005625-71e3-549d-b0b4-0c5f606f9d11,newly_migrated,Tamer Elsherif,sws_interested_party_procedure_d2.docm
+1245,957692c5-4ef5-5eb9-90b2-44043816754f,3170,6b666725-b9f6-5667-97b7-885c469e2500,newly_migrated,Tamer Elsherif,sws_organization_context_procedure_d2.docm
+1246,ed74025a-1314-5dac-b406-c0d175072096,3166,cfd9d11d-bd62-5d29-a0fa-735eb3cff29f,newly_migrated,Tamer Elsherif,sws_risk_management_procedure_d2.docm
+1248,6d6d7662-938d-5da9-bfda-1089fe18786c,3158,e9a8e777-6dae-537a-af8b-b8bdde81269a,newly_migrated,Tamer Elsherif,siware_division_reporting_d2.pptx
+1249,bfaa0485-4bb8-534d-839a-d56d76de2671,3161,530396fa-6a8d-5b55-b6f6-53851ddd4559,newly_migrated,Tamer Elsherif,divisions_objectives_tracking_template_mbo_d2.xlsm
+1250,416f435f-8955-55fc-b09d-8ea9b4b9087d,3169,884568ce-c9d9-5e3a-b844-ee9b3b3197f7,newly_migrated,Tamer Elsherif,sws_objectives_targets_and_programs_procedure_d2.docm
+1251,655bcc78-b10a-587d-9838-f067b866a032,3163,8ab367dd-1081-5559-8a1b-ce9b96448f69,newly_migrated,Tamer Elsherif,siware_business_risk_register_d2.xlsm
+1252,090a4a67-af08-512d-910c-15b27b6b339d,3165,99e06975-a5e5-5eb6-b670-0569adaa3eae,newly_migrated,Tamer Elsherif,siware_project_risk_register_d1.xlsm
+1253,59151f9c-dfc8-5cff-be58-4d9d37f2de97,3168,e1973f3b-7cad-52e9-a6dd-fd5cc4d11036,newly_migrated,Tamer Elsherif,sws_legal_and_other_requirements_procedure_d2.docm
+1255,eb2360e2-671e-58f1-a2de-45c0074edd5a,3174,d0830dd7-70fb-5055-bab1-cb8f55ea491f,newly_migrated,Ahmed Gebril,Purchase order20170929-edited.docx
+1256,0c8e85ea-131a-5dfe-8f02-957921576a13,3176,65ecf533-1197-5a2f-96d9-45205f5bd099,newly_migrated,Mina Gad,Neuspera_ImplantableGenII_SOW_20171212_d2.pdf
+1257,1f017300-8068-5302-aece-587a7e8ef277,3177,885bb763-bd52-59b2-975a-9d264082bce7,newly_migrated,Mina Gad,Neuspera_GenII_Feasibility_CWS_20171212.xlsm
+1258,c16c6a18-3a51-5566-aa44-ac2288f58909,3181,12580cf1-fea7-5007-9ba3-d7307a6d45e9,newly_migrated,Ahmed Gebril,WAVIOT_IP_Specs_r2.docm
+1260,66c2c1c9-944c-565f-b006-1f0ad7aca199,3186,91713025-c117-5005-b18c-0a1eec839bff,newly_migrated,Ahmed Gebril,SMART_CVD_d1.xlsm
+1266,fbf3a6aa-57f3-5c5e-a883-6de1cff60c1d,3201,bf65616e-4ee6-526b-80df-2e10181c652f,newly_migrated,Yasser Sabry,Renault-SWS SOW Draft V0.docm
+1267,abd5360d-c180-546c-b0cf-83e14605957b,3202,9e14273e-66a0-5770-b7e1-e6569b6413f3,newly_migrated,Yasser Sabry,Renault-SWS SOW Draft V0(1).docm
+1268,671a798f-a9e1-5271-b3ef-8e289dbacbfb,3204,545b9fc7-bb51-512d-80ba-841dcaed50b9,newly_migrated,Mostafa Medhat,P3 Optimized MRD.docm
+1269,69c9b5f2-1c6e-531b-b38f-d82680d1f694,3205,d81cf8d6-a408-58c9-b03b-ad95955d2ec0,newly_migrated,Yasseen Nada,Kyocera_P3_SOW.docm
+1271,e4fb27c6-768d-5253-9369-3a448048ee63,3367,2b70252a-999f-5c29-836e-b98dce601d55,newly_migrated,Yasseen Nada,P3_Optimized_MAD_R1.docm
+1274,71c418ce-3b0b-59bb-b128-9652a07913f6,3219,a875c726-2733-5a7b-a686-e1dbad6cf8d8,newly_migrated,Yasseen Nada,my_test_doc_d1.docm
+1283,f36e3e56-3f44-5e3b-b547-aba4799a18fd,3240,b0c66dcc-40a5-5d01-88da-5870f45c7e7a,newly_migrated,Ahmed Gebril,SMARTREVA1_Metal_Fix.pptx
+1284,f2c41c06-d644-506a-8ca8-a472a919bdc4,3242,a18a27d3-1bc3-5fe9-bcd4-578ad75a5443,newly_migrated,Ahmed Gebril,SMARTREVA_TIA_Issue.pptx
+1285,1b4f0eaa-3766-5a2c-b83d-9760d432d4cb,3244,495dacb5-9dbf-52ab-b2d5-d31af1bf61de,newly_migrated,Ahmed Gebril,SMARTREVA_TIA_Issue_AI1.pptx
+1286,21cf151c-bc2a-5fd9-a23c-19519f488271,3246,f427639d-ea16-5b82-bcd0-69603795013c,newly_migrated,Ahmed Gebril,SMARTREVA_TIA_Issue_AI2.pptx
+1287,41b5beae-b712-507c-9a76-adc48a9ebd4e,3248,a4ff169a-42f0-5718-af4a-342def298392,newly_migrated,Ahmed Gebril,SMARTREVA_TIA_Issue_AI3.pptx
+1288,1f0ba204-610b-5a71-b1c5-895918eb29c7,3250,25fc1617-65fd-5bd7-80bc-ce661591729d,newly_migrated,Ahmed Gebril,SMART_Testing_5_Parts.pptx
+1289,80257f7d-a5b1-51ea-bbbd-e911100316d9,3252,7bc11ee9-64c1-5d99-8bfb-70bde7efabe5,newly_migrated,Ahmed Gebril,SMART_Testing_30_Parts.pptx
+1290,669e69eb-8492-574a-a37c-451ec8ebaeb9,3254,d67d2da0-b21a-5422-bda8-b6802be44691,newly_migrated,Ahmed Gebril,Digital_Validation_and_SPI_Communication_Testing.docm
+1291,7414aa82-93a3-55fb-b8e5-c7a58bfe6da4,3256,5629261e-4140-52a1-b632-83ea7e37f120,newly_migrated,Ahmed Gebril,SMART_MEASUREMENTS_PLL_Spurs Debugging.pptx
+1292,af4f17c2-0db8-57a0-9a39-27477ca85b92,3259,d56d1599-3490-5740-89ea-bfb8c9b66340,newly_migrated,Ahmed Gebril,VCO_FDR_v4_020517.pptx
+1295,61fbe981-0377-50a8-a900-b60abed224d2,3277,c4577cbe-fa56-5fec-ac59-24c150b7789b,newly_migrated,Yasser Sabry,Gas Spectra Simulation Report  Released.docm
+1296,5f4499c1-814e-5c8e-8606-5cbbaaa710e6,3283,ef4d3f15-d3f9-5697-b2ce-6b09a37e877a,newly_migrated,Momen Anwar,System and Electronics Report Released.docm
+1298,5f18b751-0449-543e-9f54-6c8c60ed2b52,3356,76a00048-f6b4-51c0-8c50-fb5d5b0df540,newly_migrated,Tamer Elsherif,AMS_Engnineering_Gates_d3.xlsm
+1299,2c3a3960-fe26-5acd-bdbe-05cb9865cadc,3285,13a4bd7b-4071-585a-9142-486626546048,newly_migrated,Yasser Sabry,Renault-SWS SOW Extention.docm
+1301,adc5a910-341e-58e5-a33d-5f782043b979,3287,88a489fc-3b54-5ec8-9972-88375fabffc2,newly_migrated,Yasser Sabry,Renault-SWS SOW Extention(1).docm
+1304,8fe2e323-297b-5c9f-bb87-146d5d515321,3306,5caa6a30-33af-5328-85a5-948911a4cd2b,newly_migrated,Yasseen Nada,Gas Measurements Report_r1.docm
+1310,1bf235ed-f316-568f-9746-e533827f32d8,3301,4ab47f6e-ee11-5d5a-9408-7099630aeb82,newly_migrated,Ahmed Gebril,sow_storm_gen2_d1.docm
+1311,710e2121-0250-536a-b007-002ff83772f4,3397,a3a15737-a1fd-56d4-aaad-d01de4a76a72,newly_migrated,Yasser Sabry,Multi-Pass Gas Cell Cost Report_r1.docm
+1312,f2ed7cd5-c142-5cdb-bd88-42c4e7e17785,3309,1f9fb1de-93e0-5ddd-a5b2-b7fe0f4eb7ab,newly_migrated,Yasseen Nada,CVLD_barqreva_d1.docm
+1313,2a10e1ec-c8b3-56d3-9e9d-c2f6ead21e0f,3310,d30bb158-332d-5753-a5fb-2ff47dfb204b,newly_migrated,Yasseen Nada,NeoSpectra_Scanner_IVL_SOW_092618.docm
+1315,357c8312-c0e7-5346-b354-f2a9b124e5ab,3342,17151d38-63da-5b44-908d-5c691bb54aa1,newly_migrated,Yasseen Nada,Projects_Reviews_Action_Items_Template_r1.xlsm
+1316,3fc9bbb4-b290-5776-a5cb-6a627cfdbbe7,3343,5ecc7220-4db0-5db0-92c6-3c6ae6ab3b6c,newly_migrated,Yasseen Nada,Projects_Weekly_Status_Action_Items_Template_r1.xlsm
+1317,c50aee6e-84bb-52ef-b546-1536bdde5809,3346,577ad1ea-7409-58e4-8c6e-c0f1b0f22bdf,newly_migrated,Yasseen Nada,Chip_Definition_Document_PowerPoint_Template_r1.pptx
+1318,2b917bfc-25e1-5416-b369-32a17a86b150,3321,76bfce57-cbb7-5774-95e6-481aa682d64f,newly_migrated,Yasseen Nada,Tapeout_Review_Template_d1.pptx
+1320,8721d2e8-ddb7-5aa3-be22-2066dae8f4f8,3330,74ebb107-2549-5e2b-a411-db4512f85379,newly_migrated,Ahmed Gebril,Detailed_Digital_Requirements_Document_d1.xlsx
+1321,3cf6762c-514d-58b4-a958-06123836b15e,3332,6ac12026-eaac-5740-a89f-e24e79ef96f8,newly_migrated,Tamer Elsherif,Reem_d1.docm
+1322,5ed8b4f8-9f9f-5f93-b89c-802d8129ee6d,3432,ab861d17-989f-52eb-b6a2-e78b6348f38d,newly_migrated,Mina Gad,Neuspera_ImplantableGenIIDevelopment_SOW_20181021_d3.docm
+1323,ec2b50d7-9500-5672-8cb3-55271d95cc14,3336,13332696-aa5b-58c6-bcb1-19d39e682998,newly_migrated,Ahmed Fadeel,Discrete_SDD_r1.docm
+1324,137b9234-0a81-5754-95d3-260bd86dcb65,3340,72484b95-6d01-5f3e-9975-187ca6be39b5,newly_migrated,Yasseen Nada,Chip_Verification_Review_Template_d1.pptx
+1325,51077210-0a70-516a-bc10-cbe3e3a3f249,3348,6d16d8a7-5584-57f0-aaae-6610dd5646ce,newly_migrated,Yasseen Nada,Engineering_Datasheet_Template_d1.docm
+1326,33beccd6-0a86-52fa-8991-fa5024488453,3350,4984bfc0-cda0-5c89-bdf7-04e4a9d7a2ed,newly_migrated,Mina Gad,Silterra_RFMEMS_Demonstrator_SOW5.docm
+1328,9bd06f29-9346-5af3-a310-2ac69b0af39a,3368,e35f56ce-6e89-5362-bc20-b4a4ceab7490,newly_migrated,Yasser Sabry,Humidity Compensation Report_r1.docm
+1329,af5e22af-8dd8-59cc-a66d-6a3f6b82d847,3533,12b6fde8-afa7-56bc-a7dd-1f3c22d702f1,newly_migrated,Ahmed Gebril,Seed_CVD_r2.xlsm
+1333,501b2dac-74f0-5131-8919-c694d24845fa,3399,9578219c-8606-5f58-b995-2511622d970a,newly_migrated,Yasser Sabry,Multi-Pass Gas Cell Cost Report_r1.docm
+1334,29f0acd5-b90f-52a8-9355-ee692c58a0f5,3400,ee4ae9c8-5bfa-5aee-8793-103b987a1d3a,newly_migrated,Ahmed Gebril,apple case number.txt
+1335,c120307d-e279-5c78-a41a-56f5283862ac,3401,d20de14e-6d4a-551e-a09e-bde2ab1bd9c6,newly_migrated,Ahmed Gebril,apple case number(1).txt
+1336,a1195590-7e50-5423-80d1-b48332a46c2d,3402,f6fb0cbf-6b29-5307-9f9d-56bff06cc21d,newly_migrated,Ahmed Gebril,portfolio.pdf
+1337,fa010f4f-389a-5a93-bce6-f9ca7e80349f,3454,6f236686-d22c-5a19-a234-9a0ac885ced5,newly_migrated,Yasseen Nada,SEEDREVA_DISD_r2.docm
+1341,e21f6c1c-3eeb-567b-8f25-d3b22252acf6,3551,dd2c0873-5eb0-5813-b445-781eb6d3cc8b,newly_migrated,Abdelrahman Salah,SWS Engineering Performance Appraisal Template r1.xlsm
+1342,7d9c7c1a-eff7-5bb9-a992-f3fb10be48dc,3415,2be08149-90e0-5f44-b9e3-2c01ed856a9a,newly_migrated,Yasser Sabry,Resolution enhancement Report_d.pdf
+1343,fe98f999-2fd3-51d1-9db0-df15b1356a56,3424,e9df1e52-2f10-5d00-97f0-2a1e9a446099,newly_migrated,Yasser Sabry,Resolution enhancement Report_R1.docm
+1344,06a1625a-9903-5dec-ac9b-93c0e66e691e,3419,d1d696f8-f1d0-5bcd-aa15-58c3ed543dc3,newly_migrated,Yasser Sabry,VOCs Concentration Mapping_r1.docm
+1345,2018dbd5-2528-5b9e-9600-d456ff6330d3,3421,c9bf1938-fd6b-5d46-a60b-2c7d4f77bed5,newly_migrated,Ahmed Korayem,cost_work_sheet_asbu_template_d1.xlsm
+1346,46b0d83b-fed4-5aae-aaa2-81420fe5330e,3425,faff8809-6404-50ad-b325-24b2e60ecb87,newly_migrated,Momen Anwar,Smaller Detector Report_d1.docm
+1347,c8155812-564f-5671-b2be-f8d1441df589,3430,1230c38b-477c-5e11-95f1-6d0f1772239a,newly_migrated,Momen Anwar,Smaller Detector Report_r1.docm
+1349,606c1f71-f626-5187-bb9f-92a895176ead,3434,c01baf0e-36fc-5091-95c4-cfb7c42a982d,newly_migrated,Ahmed Gebril,Neuspera_GENII_CWS_20180401_v1.4.xlsm
+1350,b0adb77a-5d03-512f-be15-869caac743a2,3436,415eee4b-68c6-547d-822f-386b8acae439,newly_migrated,Mostafa Medhat,Kyocera_NeoSpectraMicro_SOW_d5 2_16_2019_2.docx
+1352,f0b7091b-1963-5242-9871-aa71d064eece,3438,c1e34253-ea3c-5448-88b2-5bd72840f9ca,newly_migrated,Mostafa Medhat,Kyocera_NeoSpectraMicro_SOW_d5 2_16_2019_2(1).docx
+1353,ee842349-271e-5e9c-9e5b-e9ec76aa4700,3439,7156863a-358d-5e17-a7f9-25146ab585e5,newly_migrated,Mostafa Medhat,SWS62231190122_Inspection & Control Document for OCM (1).docm
+1354,d6dc70a3-86f4-530d-82ed-92e0643fb8cb,3442,5c695d33-e060-52b6-a997-5bbc3b0b125a,newly_migrated,Ahmed Gebril,SVN_Mentor_Guidelines_d1.pptx
+1356,e71b6d48-1111-5dee-90c5-d62bc2fedfdd,3450,b3afadd1-f4e0-54e1-8e8b-fb8f672d9dab,newly_migrated,Yasseen Nada,DISD_BARQ_characterization_Board_d1.docm
+1357,f0205aa0-f263-50a9-823c-2625ce6e21c4,3480,02275066-9220-50f5-9c4a-ccda9839a05c,newly_migrated,Mina Gad,GenII_ChangeOrder1_20190505_d2.pdf
+1358,24f95576-fdfe-504a-b04f-9b82c9c10816,3492,d1ed3c63-100c-579d-93b0-f49c3be8b688,newly_migrated,Mina Gad,GenII_ChangeOrder1_20190505_d2.docm
+1359,a82914ae-a232-5a49-8ef5-337f1a148e3c,3456,777bf30a-f2b0-5bbf-b9be-bf568553a06a,newly_migrated,Tamer Elsherif,outsourcing_SOW_d1.docm
+1364,dde3b3c8-7d83-5827-b326-097544ca2a27,3475,f129c1d2-080a-5f98-b54b-ceb3ec5dceb7,newly_migrated,Mostafa Medhat,Henkel Support Proposal.docx
+1365,9f291b38-cd69-5b8c-a0a0-a6c95a879f59,3476,c4c1234e-d8b2-5b05-a396-091532778e96,newly_migrated,Mostafa Medhat,Henkel Support Proposal(1).docx
+1366,93d8acc2-d4fc-5207-9572-7b6a37b39d41,3477,6887be8c-ac03-5a3f-978c-1a32a27bc86e,newly_migrated,Tamer Elsherif,outsourcing_services_agreement_d1.docm
+1368,cda1283c-5884-5fca-93aa-ace480f6bf91,3496,5d3ccf69-1e84-5173-b14e-64d002f1f9b7,newly_migrated,Yasseen Nada,SINA3AXIS_CDD_a1.pptx
+1369,f6323dcd-e8f4-5c1f-af16-0765d886ee92,3490,1e85f8cd-5093-50e1-a8ef-084dae39ecd5,newly_migrated,Yasseen Nada,SINA3AXIS_CRD_d5.docm
+1370,53fe3507-e343-586e-8dda-0cd771c78fa8,3497,837216cd-02f9-59be-9cd0-6ca64c2a19c9,newly_migrated,Ahmed Gebril,NABDREVB_CDD.docm
+1371,ef2b6d5d-7d1a-5c86-b7b4-2a2542f8c9bf,3489,8be3edd1-ad42-5a1f-99d8-7ea2034344fb,newly_migrated,Ahmed Gebril,NABDREVB_DDRD.xlsm
+1372,dc923fee-afb8-56b4-a38d-6201fcc4db9c,3491,90284fef-45d3-564a-9c14-626519d1a1f8,newly_migrated,Yasseen Nada,High Performance Inertial Sensors-Project Charter.pdf
+1373,7239de2c-f0b6-590f-8110-ae3802096b0f,3494,f91b183b-736d-5f22-ab8f-436f23dc3664,newly_migrated,Ahmed Fadeel,SVTP_P2_OCM_Screening _d1.docm
+1374,1cfde1ed-0bdd-5163-a0d8-5f3a2de7a1e9,3495,f9f71be7-1714-5be2-a53a-e38557a102c2,newly_migrated,Bassem Mortada,SRD_Spectroprod_OCM_Screening_08082019_d3.docm
+1375,fb37b245-db89-5cec-b3fa-a47068155b08,3499,844c1534-ee4f-5b5a-ab2f-055ae303d38a,newly_migrated,Ahmed Gebril,NABDREVB_CRD.docm
+1376,5bca5515-c5e8-5865-962d-8b7d06930ce1,3501,d9d1f009-8f28-5d10-bfe8-9bc4bc64fdfe,newly_migrated,Ahmed Gebril,NABDREVB_CVD.xlsm
+1377,2e691bfd-4b0e-5cff-b1b4-99a4290cf968,3503,70d4caac-860f-5a0b-8bfd-a02ecd318121,newly_migrated,Ahmed Gebril,SEED-A1_CVLD_d1.docm
+1378,08801106-8b34-5795-af3a-7965b3b6a791,3504,ecaaa84a-db32-5a7a-84cf-517915ccaea3,newly_migrated,Ahmed Gebril,Capture.PNG
+1379,18c863a8-052b-547a-89e1-04aea86a181a,3505,130fa48f-99bd-5e5f-8a04-512782070d7a,newly_migrated,Ahmed Gebril,Capture(1).PNG
+1381,d7287640-343a-5141-b207-d7d3c66c476e,3507,8dfd7c83-8302-5a65-903b-cfd3c27051bb,newly_migrated,Mohamed El Arabawy,MICROCHK_UserGuide_220919.d3.docm
+1382,3f08c138-c48f-5e5a-8217-80385a1dd844,3516,e31f1f18-c729-5b94-a60c-e6276c183956,newly_migrated,Mohamed Elsheikh,MCL2_d1.xlsm
+1383,87c1094e-e6d7-5709-8d3d-133d28d06ab1,3518,5549fe0e-9579-5a62-8e7e-ba63919b76c7,newly_migrated,Mohamed Elsheikh,MRD_MGM_r1.docm
+1384,2f2e2516-ed4b-5b33-b118-20bbe64d08a8,3519,db06f8ec-b739-56f8-9ef0-d091f6b3f5a7,newly_migrated,Mohamed Elsheikh,MDD_MGM_r1.docm
+1385,c6359020-34a4-51db-8310-84b66ff5289a,3520,e5bdc8a4-878a-5a7c-9082-3663b099d680,newly_migrated,Yasseen Nada,NeoSpectra_Scanner_Quick_Start_Guide_19112019_v1.docx
+1386,7b13187e-43e1-57d8-ac30-a011ebb4a5fb,3535,1bce95fc-aa1c-52b1-ba65-0b1f521422b1,newly_migrated,Ahmed Gebril,SEED_Chip_Definition_r1.docm
+1387,2f19f158-4989-54ea-88d5-a1cd4ae24816,3531,ea81c909-ae3e-555c-9233-3af961554401,newly_migrated,Ahmed Gebril,SoW-Final-GDSII-Contract-RevB0-20190424.docm
+1388,2871662b-edea-572c-b72b-69509c9b2049,3722,5c0aa8ed-f89b-5719-8fb1-aca251600e4d,newly_migrated,Mohamed El Arabawy,control_over_outsourced_production_r1.docm
+1392,e562b09b-85cf-5384-927d-031a49dbeae7,3569,aa247205-2a83-57c0-afc2-96ba68a19c47,newly_migrated,Ahmed Gebril,Corporate Org Chart-d1.pptx
+1393,ff29797a-b9b3-5847-9faf-71b5a4d109d7,3673,07f08df9-18af-5fab-9b5d-40845d1c7453,newly_migrated,Tamer Elsherif,Disaster Recovery_d2.pptx
+1394,67e07d31-3898-5653-a24d-49986d91b649,3554,c09f9722-b12f-50ef-aa70-c39cea16c5a0,newly_migrated,Tamer Elsherif,Shared Ku-Band SCPC-TDMA iDIRECT 2.pdf
+1395,3deef517-118f-5d01-a08f-fade4eb082cf,3555,fe817392-1719-5227-91ad-415b5ef9ed05,newly_migrated,Mohamed Elsheikh,Gravity Gradiometry_reviewed.docx
+1396,109b7e2b-7075-57c7-abf6-2c5c0a5c2a86,3556,60eeb05a-1250-50e3-b956-1c703d534e35,newly_migrated,Ahmed Fadeel,NeoSpectra_Scanner_Quick_Start_Guide_31122019_v2.docx
+1397,f35fd5ae-596f-5121-802d-b467a74c0743,3557,50d1462d-4af6-5964-880c-60327fbbc0fc,newly_migrated,Ahmed Fadeel,NeoSpectra_Scanner_BLE_Specifications_20022020_v2.docx
+1398,caf3f282-a256-505d-a7f2-3484187b87ba,3559,a1c1efd9-d233-537e-bbad-f7a54b212509,newly_migrated,Ahmed Fadeel,SWS19070001_Henkel Support Proposal_V0.1.docx
+1399,158822e5-5c56-5768-bc8e-10c3b47be751,3560,49e4a2be-ce10-5093-afc9-f9d90496c385,newly_migrated,Yasseen Nada,BARQ_Characterization_Report_d1.docm
+1401,eaa078a9-5728-588e-ba38-6dcf48c804a2,3568,3807043b-73d4-5549-a70b-5bf488f36de9,newly_migrated,Abdelrahman Salah,siware_Probation Evaluation _template_d1.docm
+1402,5fd6e669-e32d-50f0-8b4a-16aa72011d87,3571,c7fa463e-b14f-5e79-9ffe-73c1e2eb6651,newly_migrated,Abdelrahman Salah,siware_Job Descriptions_d1.docm
+1403,44ccb86a-ee3e-5816-a95c-8aa2a99543f6,3575,cdb94f7b-85d9-5aa5-b326-a36c3b3655ee,newly_migrated,Abdelrahman Salah,Hiring process_p1.docm
+1406,21b8d7b6-524c-55db-843f-828d0cf257e8,3763,41c77ec2-883c-5ec6-8388-0aab76c44387,newly_migrated,Tamer Elsherif,IT-RiskAssessment V5.xlsm
+1409,f2c23be7-b885-5290-aef0-771657e425e4,3598,bc7c4558-b049-5803-8c6b-58f9924bd8b8,newly_migrated,Mohamed El Arabawy,SRD_P2_SpectroProdProber_r26.docx
+1418,341f5f23-6567-5616-88c8-991c23eecbaa,3613,fd3cb814-2df3-5ba5-aa32-16a23c44a2a0,newly_migrated,Ahmed Fadeel,SpectroMOST_Scanner_SDD_d1.docm
+1420,ff3c7226-7955-584d-bb2a-5f33aab5699a,3622,c3037d71-dc70-5603-94cf-13463525f85e,newly_migrated,Bassem Mortada,MRD.docm
+1421,afc16d88-4f69-5da6-a268-07f5bd68c404,3621,4551c52d-df11-563b-9e63-755f72229acd,newly_migrated,Yasseen Nada,MAD.docm
+1422,51aaf339-2153-55e5-8911-33ea1af6fc2e,3634,7bb7b5ef-3fd4-5a74-bec5-2d2579389a9b,newly_migrated,Yasseen Nada,MEMS_Design_Documents.docm
+1423,5e3a545a-685f-5d60-8b59-6e6dfa5db094,3635,fb1283f1-1d56-5c9b-b8e8-47978e5982d1,newly_migrated,Yasseen Nada,MEMS_Verification_Documents.docm
+1424,a705db94-3043-530f-ba33-2706932fc89f,3633,9c067d78-ab0e-58d6-be41-68a395cd9420,newly_migrated,Yasseen Nada,MEMS_Testing_Documents.docm
+1425,1ce91978-a44e-50b7-99dd-8133b0ce8d26,3637,eb071571-1747-5f1a-9240-98e977383e56,newly_migrated,Tamer Elsherif,CAB Committee Structure.docx
+1426,6f08610b-a548-55c7-bff4-f796efb7a4fb,3638,31e10bfb-cd44-5847-8a93-b25871a53b13,newly_migrated,Tamer Elsherif,Change Management Template V1.1.docx
+1427,da9e05ad-721e-559a-a25e-a083500bba47,3639,42a15fcb-0b9a-5970-a9f6-73726c394433,newly_migrated,Tamer Elsherif,Change Management Template.docx
+1428,09d95440-1290-50f2-b4f7-0758f8edc244,3640,791b89fd-873f-569b-83cf-583c74bdca9d,newly_migrated,Tamer Elsherif,Si-Ware - Clear Desk Policy - V1.1.pdf
+1429,245f4fad-53b6-5bf2-8e0f-5a7340abbac4,3641,b5bc40f5-915c-5880-9c3a-483fc7d0cb2a,newly_migrated,Tamer Elsherif,Si-Ware - Cryptographic Controls Policy - V1.1.pdf
+1430,a6589dd5-31f6-5bad-8b94-eb9f6f450247,3642,a7719beb-5a7a-563c-849e-7648482e0c30,newly_migrated,Tamer Elsherif,Si-Ware - Human Resources Policy - V1.1.pdf
+1431,23280ea9-7a47-5146-94e6-71b03f004757,3643,b5dee1b2-99f5-5606-848a-69d2d0fd5ed9,newly_migrated,Tamer Elsherif,Si-Ware - Information Asset Management Policy - V1.1.pdf
+1432,320fe23a-bb59-5d31-85b5-e8d522b9a8c8,3644,85aced4b-e961-5602-b91e-e3860bc30afd,newly_migrated,Tamer Elsherif,Si-Ware - Information Security Policy - V1.0.pdf
+1433,38c04c60-c48c-59ee-9f9b-2119edf677f3,3645,1281b3a5-d51b-58d0-83ef-44954a4638ef,newly_migrated,Tamer Elsherif,Si-Ware - Information Systems Development and Acquisition Policy - V1.0.pdf
+1434,39752573-acb6-583e-bbd4-15889d9ab34e,3646,07d303a1-8957-56cf-acab-fde0ce9daecd,newly_migrated,Tamer Elsherif,Si-Ware - IT Operations Security Policy - V1.1.pdf
+1435,b579b86f-82ea-5fd7-ad42-a03c2d1f1cd9,3647,b7f786d7-064c-5d60-b252-3083c6a1928b,newly_migrated,Tamer Elsherif,Si-Ware - Log Management Policy - V1.0.pdf
+1436,42e08230-683e-50d1-8bca-6b513495f67e,3648,f24dd8e1-c044-51ef-aefa-2202e906e17b,newly_migrated,Tamer Elsherif,Si-Ware - Network Security Policy - V1.1.pdf
+1437,d8570518-04dd-5efa-bf60-dd1282b757be,3649,2e5c4f60-b87a-5274-90ac-cb8acd93f1d6,newly_migrated,Tamer Elsherif,Si-Ware - Organization of Security Policy - V1.0.pdf
+1438,1945a59e-13ca-543f-a80e-905a31cc4fee,3650,0864868d-9bd6-5035-a284-069a703bda05,newly_migrated,Tamer Elsherif,Si-Ware - Physical Security Policy - V1.1.pdf
+1439,d9b56970-69c7-5ed9-837b-697e0d066355,3651,caecb45a-881d-520d-a484-652e87833fb2,newly_migrated,Tamer Elsherif,Si-Ware - Segregation of Duties Policy - V1.1.pdf
+1440,5d891b65-6dab-5dfb-bb45-d4fc3985efea,3652,93e0438b-9677-51b5-be1f-140934617fcd,newly_migrated,Tamer Elsherif,Si-Ware - Third Party Security Policy - V1.1.pdf
+1444,8e67e9f9-1617-50da-bf97-bb1de1828b23,3656,408228d8-c630-5e82-8d27-734d712903a4,newly_migrated,Tamer Elsherif,SI-Ware - User Security Policy V1.1.pdf
+1445,baf9c892-839a-5a56-a252-c71967669c66,3657,be6a1b91-e3d3-564e-a81d-6fc4c62c14f5,newly_migrated,Tamer Elsherif,Si-Ware- Business Continuity and Disaster Recovery Policy - V1.0.pdf
+1446,a1cbd180-ba5e-5a59-853b-feb4bb7f484e,3658,94b7cb55-a0cc-570d-bdae-362f0b9de205,newly_migrated,Tamer Elsherif,Si-Ware Data Privacy Policy.pdf
+1447,79e31816-ee7d-58b0-abb3-3277147a3dbc,3659,387c4a14-bc0a-5e78-b2cc-40d54161ff8a,newly_migrated,Tamer Elsherif,Si-Ware -  Access Rights Matrix V1.1.xlsx
+1448,34f794cd-5666-579e-a1db-a1db00525030,3660,0425f06e-7e03-55e5-adb8-65237f07841c,newly_migrated,Tamer Elsherif,Si-Ware - Change Management Procedure - v1.1.docx
+1449,be6f9c64-0908-5eae-86d1-b749b1b549cb,3661,71ce6bf3-3ea2-5f48-a973-3dc262c03484,newly_migrated,Tamer Elsherif,SI-Ware - Data Center Access Procedure - v1.1.docx
+1450,442f8399-5f98-5d2e-bf5f-688cb47e862b,3662,823913ae-eaba-52e5-9360-33ff01b09c29,newly_migrated,Tamer Elsherif,Si-Ware - Vulnerability Management Procedure - v1.1.docx
+1451,299db97a-8300-50a8-acae-5d42ee5ed0f0,3663,532183ed-c637-555e-bfef-1f173e939606,newly_migrated,Tamer Elsherif,Si-Ware- User Access Procedure - v1.1.docx
+1452,671445d8-27d4-5d57-8094-ad8273292222,3762,0756ca2c-72b5-57d5-b2d4-5a6a2342a87f,newly_migrated,Tamer Elsherif,Si-Ware-Backup Process - Techniques .docx
+1454,5364af17-5123-57b6-acbc-8e38a22ac653,3666,d234a2c5-2e39-55d7-afef-f51194dd6e69,newly_migrated,Tamer Elsherif,disaster_recovery_plan_v3p0.docm
+1455,98150f8c-8414-558f-a7e7-c9f7d0ee95bc,3667,daa1e6f6-8f7e-5d5f-8026-1701fbad11a3,newly_migrated,Tamer Elsherif,Si-Ware Data Privacy Policy.docx
+1456,b4157baa-e7a7-5006-bb2c-b84c30ab0d4a,3668,e7f7c32f-a1c3-59fe-9492-4700e7504997,newly_migrated,Tamer Elsherif,Si-Ware Employee NDA_d1.docx
+1457,375b2d79-24a7-5dfa-b43d-65d854a0df0d,3669,0240a00b-5664-549f-8556-3b643da79b07,newly_migrated,Tamer Elsherif,siware_systems_employee_manual_r9.docm
+1460,c43ff251-7c8e-54c3-9308-840c1e09da20,3712,a644c9fa-4e4d-53cf-9fcf-d1b560a3f212,newly_migrated,Yasseen Nada,MAD.docm
+1461,ba448680-724f-5d7a-baa0-323db796aac5,3710,43ee6c1d-ebef-546a-89c5-3794ce55de55,newly_migrated,Bassem Mortada,MRD.docm
+1473,fcea1fd9-086f-5988-a643-438ef30cef2d,3713,7c70b887-05a2-5955-a43b-6518d5b7bb32,newly_migrated,Yasseen Nada,MEMS_Design_Documents.docm
+1475,94698663-dad0-5fec-b56a-6da62b625baa,3716,5da5942c-3c64-5059-887f-e673bd4cbc18,newly_migrated,Yasseen Nada,MEMS_Verification_Documents.docm
+1476,b41ffe70-3d49-5eee-8819-c9a819d446ef,3718,03730577-5245-5d2f-bcfe-af857e2120a4,newly_migrated,Yasseen Nada,MEMS_Testing_Documents.docm
+1484,0033871a-45b6-5fd9-80f7-527b1ef4c104,3777,c982fd3e-2a0f-5672-a243-2ee1d74f2566,newly_migrated,Mostafa Medhat,Marketing_and_Sales_Procedure_r3_2023 Update.docm.docx
+1485,95362117-eb2f-50ff-8a87-14819ece8cec,3730,ba8cdf5d-ca0b-5797-a701-66bb55e2a0a0,newly_migrated,Tamer Elsherif,knowledgetree-administrator-manual.pdf
+1486,f31c15dd-49ab-5af5-b04b-88d27f6a6b57,3856,5bf2dab3-62c3-5da4-9320-9d3bd25ffa6e,newly_migrated,Tamer Elsherif,Comprehensive_Guide_to_Setting_Up_NetSuite_MCP_for_AI_Integration (1).docx
+1490,0b8e8043-ef08-539a-ab9f-e15caeaa3495,3738,d9b41424-fb87-5767-b8ee-37810c82f0c4,newly_migrated,Abdelrahman Salah,Offboarding 1.1.docx
+1492,cd1e5e52-eb6f-53ab-9fe7-cc5fdefc2a47,3740,1922eb2b-e786-58c7-89d9-18933ccb2ecf,newly_migrated,Abdelrahman Salah,Onboarding 1.1.docx
+1494,62be3e45-48e3-584d-a0e9-52aea53fd09b,3742,22a5ae1d-f6dc-50ca-8c2b-af42c2b2d360,newly_migrated,Abdelrahman Salah,Recruitment Policy Final 1.1.docx
+1496,ea06dfab-a90a-546c-b00e-bcc98739d335,3744,5cba6938-d6fe-5433-93c8-3918e2f11fc2,newly_migrated,Abdelrahman Salah,Performance management system and process_A1(2).docm
+1497,abb89fdb-5622-5417-9e9f-4152b8d93021,3745,45b0247a-2acc-50c8-b280-59c3c9e94ea4,newly_migrated,Mohamed Hamouda,Mechanical_Design_Procedure.docm
+1506,01795da1-23fe-54db-bacc-dc691b0632af,3754,8ec9e7c1-ed90-5cc6-bc70-f7d709e3a848,newly_migrated,Mohamed Hamouda,Mechanical_Design_Procedure(1).docm
+1507,32400c60-aa50-5d82-9714-efe16f7a9ba0,3755,05f59053-86bb-54c4-a621-c258bc5d792b,newly_migrated,Mostafa Medhat,Accessory Fulfillment Center Testing Procedure v1.0.docx
+1509,b3ca7fea-ef22-58d2-9ada-be4c73513f16,3759,0acfc136-4657-5018-bcbd-43091be4fa13,newly_migrated,Tamer Elsherif,Top Management Succession Plan d1.docx
+1510,f4592d75-11ac-5b22-b878-8c43dd83a2f8,3761,01060f0a-7743-52ca-8500-50afed9af77b,newly_migrated,Tamer Elsherif,Si-ware-Vendor Off-boarding Process d1.docm
+1511,cc6e1e9f-5dca-54a7-a221-8755eeb51937,3768,40bc97a5-368b-517d-a5b4-10636193b5f9,newly_migrated,Tamer Elsherif,Si-Ware-Backup Techniques.docm
+1512,f80b1500-9f7a-5278-94ea-86dc79291132,3786,0edc8c36-89a2-552b-94cf-20070f1e8744,newly_migrated,Tamer Elsherif,IT-RiskAssessment V7.xlsm
+1513,735da843-209e-53f0-9380-cf98f097d388,3771,99083821-8d3c-5702-8929-a42a4cf2413e,newly_migrated,Tamer Elsherif,Si-Ware - Security Operational Procedure - v1.0.docx
+1514,2611a31b-85d1-57f7-87d1-59e38e7014e4,3773,adcc040c-6076-528e-b905-45c1886ec2ec,newly_migrated,Tamer Elsherif,Si-Ware- Incident Response Plan - V1.0.docx
+1515,481fc211-eb73-56c3-a98c-308bd1454c5c,3779,647b59ca-4ad3-593f-a29c-ad0fcaa6f19b,newly_migrated,Fatma Hassan,Marketing_and_Sales_Procedure_r3_2023 Update.docx
+1516,3ff26b8b-7dc2-5a89-b0a3-40af40cad6c3,3781,d0890107-6d99-55ff-9f99-01cfc280e385,newly_migrated,Ahmed Gebril,Verification Lab Template.docx
+1517,f12707f7-97d0-5013-913d-6c1083aefc64,3783,eb65b928-21c3-5e68-8722-04e6b0c76aa6,newly_migrated,Tamer Elsherif,sws_quality_manual_r4.docm
+1519,e2086a46-78eb-5e80-94b2-dea5ef7224ef,3788,42f883a3-45fd-5706-898a-a80a6248671d,newly_migrated,Tamer Elsherif,Si-Ware-DRP disaster_recovery_plan_v6(1).docm
+1520,d18c9e0d-9e6c-54fe-aff3-616b57a5c919,3811,fd54ff55-22f4-5251-a282-2b98f4bc80f3,newly_migrated,Yasseen Nada,MAD.docm
+1521,afa6fc3a-88d9-5c43-89fd-a848d79c613a,3812,e5ad1529-2129-5321-aab8-8b6c7fcf1ba1,newly_migrated,Yasseen Nada,MEMS_Design_Documents.docm
+1522,5e12d386-216b-5efa-b12b-a78d365692ee,3814,4e95b6d3-9e35-5b0d-9332-2963a7532148,newly_migrated,Yasseen Nada,MEMS_Testing_Documents.docm
+1523,c54b0486-42f9-5f72-a2d6-21fdeb73cecd,3813,8c0db56b-c632-5fba-983c-4a06fb708788,newly_migrated,Yasseen Nada,MEMS_Verification_Documents.docm
+1524,e925bd50-84af-562f-bd8e-4af97dde567e,3810,e40ca4aa-8e5e-5b3f-bd6f-767d16a9475f,newly_migrated,Yasseen Nada,MRD.docm
+1529,43e83f0f-1d6c-5909-835e-fbeaa5f72957,3820,e73bc634-9ddd-528e-abbb-4429cceb936d,newly_migrated,Tamer Elsherif,Screenshot_20241219_173255_Chrome.jpg
+1530,4d23b7db-a5fe-57b0-a042-b03653a74812,3823,eb0dae44-98e7-581a-ab80-a8df3840405c,newly_migrated,Fatma Hassan,Marketing_and_Sales_Procedure_r5_2024 Update.docm (1).docx
+1538,564f9676-38cf-5913-8b93-ba452f01494b,3836,19f53b63-c2a3-5f0e-96e3-1c1da826453e,newly_migrated,Fatma Hassan,Marketing_and_Sales_Procedure_r4.docm.docx
+1540,3f3a01d7-6b28-5266-865d-5c69e1416ebb,3839,deb8088f-3f83-55d8-8d80-c2bd5b5ff80a,newly_migrated,Fatma Hassan,Marketing_and_Sales_Procedure_r4.docm.docx
+1541,9b1f24e1-3b1e-5d09-beea-10c91f7e24c9,3842,706d21c3-3d4f-52cd-8b9e-5560874075ee,newly_migrated,Ahmed Gebril,PCB_Procedure_Doc_r6.docm.doc
+1542,0a2c2a1d-57c2-5366-a47e-1f2563e97094,3844,2a9ba720-3beb-5714-abd4-b45c30c33acf,newly_migrated,Abdelrahman Salah,Recruitment Policy.docx
+1543,37e87ed9-d0fb-53e2-a734-76a00f983541,3847,e0eefb26-1788-567a-9205-09e8650ac240,newly_migrated,Mohamed El Arabawy,control_over_outsourced_production_r2.docx
+1545,75c544a5-f45c-573b-accd-506b40e6aec1,3849,a67449a6-4bd2-5fa7-a374-72c603faf748,newly_migrated,Mohamed El Arabawy,Purchasing_procedure_r1.docm
+1546,40c98879-c133-530d-ae1f-8ced59439650,3851,87ae5773-9ecb-50f7-abdd-79edb79cdc2f,newly_migrated,Tamer Elsherif,Si-Ware Systems Quality Manual_r3.docx

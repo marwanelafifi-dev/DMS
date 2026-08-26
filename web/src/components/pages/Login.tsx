@@ -98,7 +98,7 @@ export function Login() {
     if (!GOOGLE_CLIENT_ID || !branding.showGoogleButton) return;
 
     let cancelled = false;
-    const tryRender = () => {
+    const renderGoogleButton = () => {
       if (cancelled) return;
       if (window.google?.accounts?.id && googleButtonRef.current) {
         window.google.accounts.id.initialize({
@@ -115,14 +115,25 @@ export function Login() {
           width: GOOGLE_BUTTON_WIDTH,
         });
         setIsGoogleReady(true);
-      } else {
-        setTimeout(tryRender, 100);
       }
     };
-    tryRender();
+
+    const scriptId = 'google-identity-services';
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+    script.addEventListener('load', renderGoogleButton);
+    renderGoogleButton();
 
     return () => {
       cancelled = true;
+      script?.removeEventListener('load', renderGoogleButton);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branding.showGoogleButton]);

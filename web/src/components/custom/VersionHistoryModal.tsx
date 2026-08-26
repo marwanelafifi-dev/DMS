@@ -8,6 +8,7 @@ import { doclingApi } from '../../services/doclingApi';
 import { MarkdownViewer } from './MarkdownViewer';
 import { parseExcelDocument } from '../../utils/officeParser';
 import type { SpreadsheetSheet } from '../../fixtures/documentLibrary';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 'csv']);
@@ -17,11 +18,16 @@ const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 
 // markdown conversion (which drops embedded images entirely, replacing them
 // with a bare "<!-- image -->" placeholder) is only the fallback if the
 // sidecar is unreachable or the PDF conversion itself fails.
-const OFFICE_PDF_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx']);
+const OFFICE_PDF_EXTENSIONS = new Set([
+  'doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'odt', 'rtf',
+  'ppt', 'pptx', 'pptm', 'pot', 'potx', 'potm', 'pps', 'ppsx', 'ppsm', 'ppam', 'odp',
+]);
 // Excel renders as a real spreadsheet grid (same parser the main Document
 // Library preview uses) instead of Docling's flattened markdown pipe-table,
 // which mangles multi-sheet workbooks and mislabels columns.
-const OFFICE_SPREADSHEET_EXTENSIONS = new Set(['xls', 'xlsx']);
+const OFFICE_SPREADSHEET_EXTENSIONS = new Set([
+  'xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'xltm', 'ods',
+]);
 
 type ReviewContent =
   | { kind: 'image' | 'pdf'; url: string }
@@ -176,7 +182,8 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
   };
 
   return (
-    <div
+    <ModalOverlay
+      onClose={onClose}
       className={
         reviewing
           ? 'fixed inset-y-0 right-0 left-0 top-0 z-[80] overflow-hidden bg-black/50 lg:left-[286px]'
@@ -350,6 +357,6 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

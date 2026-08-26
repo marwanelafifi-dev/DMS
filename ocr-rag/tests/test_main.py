@@ -2,7 +2,10 @@ import importlib
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import ANY, patch
 
@@ -34,12 +37,37 @@ class _RecordingConverter:
         return _FakeConversionResult(self.markdown)
 
 
+class _FakeLibreOfficeProcess:
+    def __init__(self, command, **_kwargs) -> None:
+        output_directory = Path(command[command.index("--outdir") + 1])
+        source_path = Path(command[-1])
+        (output_directory / f"{source_path.stem}.pdf").write_bytes(
+            b"%PDF-1.7\nknown cached preview\n%%EOF\n"
+        )
+        self.pid = 12345
+        self.returncode = 0
+
+    def communicate(self, timeout=None):
+        return "converted", ""
+
+    def wait(self) -> None:
+        return None
+
+
+class _SlowFakeLibreOfficeProcess(_FakeLibreOfficeProcess):
+    def communicate(self, timeout=None):
+        time.sleep(0.2)
+        return super().communicate(timeout)
+
+
 class DocumentParsingApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.temp_directory = tempfile.TemporaryDirectory()
         cls.database_path = Path(cls.temp_directory.name) / "test-dms.db"
+        cls.preview_cache_path = Path(cls.temp_directory.name) / "preview-cache"
         os.environ["DMS_DB_PATH"] = str(cls.database_path)
+        os.environ["DMS_PREVIEW_CACHE_DIR"] = str(cls.preview_cache_path)
 
         service_root = str(Path(__file__).resolve().parents[1])
         if service_root not in sys.path:
@@ -52,6 +80,7 @@ class DocumentParsingApiTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.temp_directory.cleanup()
         os.environ.pop("DMS_DB_PATH", None)
+        os.environ.pop("DMS_PREVIEW_CACHE_DIR", None)
 
     def test_upload_converts_to_markdown_and_removes_the_temporary_file(self) -> None:
         converter = _RecordingConverter("# Parsed policy\n\nLocal document content.")
@@ -160,6 +189,59 @@ class DocumentParsingApiTests(unittest.TestCase):
         )
         self.assertEqual(search_response.status_code, 200)
         self.assertEqual(search_response.json(), [])
+
+    def test_pdf_conversion_reuses_a_cached_preview_for_identical_content(self) -> None:
+        files = {
+            "file": (
+                "macro-report.docm",
+                b"same-macro-enabled-word-content",
+                "application/vnd.ms-word.document.macroenabled.12",
+            )
+        }
+
+        with patch.object(self.main.subprocess, "Popen", _FakeLibreOfficeProcess):
+            first_response = self.client.post("/api/documents/convert-to-pdf", files=files)
+            second_response = self.client.post("/api/documents/convert-to-pdf", files=files)
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(
+            first_response.content,
+            b"%PDF-1.7\nknown cached preview\n%%EOF\n",
+        )
+        self.assertEqual(second_response.content, first_response.content)
+        self.assertEqual(first_response.headers["x-preview-cache"], "MISS")
+        self.assertEqual(second_response.headers["x-preview-cache"], "HIT")
+
+    def test_concurrent_pdf_requests_share_one_conversion(self) -> None:
+        request_start = threading.Barrier(2)
+
+        def request_preview():
+            request_start.wait()
+            with TestClient(self.main.app) as client:
+                return client.post(
+                    "/api/documents/convert-to-pdf",
+                    files={
+                        "file": (
+                            "concurrent-macro-report.docm",
+                            b"unique-concurrent-macro-enabled-word-content",
+                            "application/vnd.ms-word.document.macroenabled.12",
+                        )
+                    },
+                )
+
+        with (
+            patch.object(self.main.subprocess, "Popen", _SlowFakeLibreOfficeProcess),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            responses = list(executor.map(lambda _index: request_preview(), range(2)))
+
+        self.assertTrue(all(response.status_code == 200 for response in responses))
+        self.assertEqual(responses[0].content, responses[1].content)
+        self.assertEqual(
+            sorted(response.headers["x-preview-cache"] for response in responses),
+            ["HIT", "MISS"],
+        )
 
     def test_cors_allows_the_local_frontend_to_upload(self) -> None:
         response = self.client.options(

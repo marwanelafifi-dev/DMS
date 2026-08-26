@@ -49,6 +49,25 @@ describe('Document Library', () => {
       success: true,
       data: [],
     });
+    vi.spyOn(apiClient, 'getDropdownLists').mockResolvedValue({
+      success: true,
+      data: { department: [], category: [], tag: [] },
+    });
+    // Existing client-conversion tests deliberately exercise the fallback.
+    // The dedicated server-preview test overrides this with a successful PDF.
+    vi.spyOn(apiClient, 'getDocumentPreview').mockRejectedValue({ response: { status: 502 } });
+    // Mock fixture documents are native New-DMS records by default, so the
+    // optional KnowledgeTree archive action remains hidden unless a test opts
+    // a specific fixture into legacy history.
+    vi.spyOn(apiClient, 'getLegacyMetadataHistory').mockResolvedValue({
+      success: true,
+      data: {
+        hasLegacyMetadataHistory: false,
+        legacyDocumentId: null,
+        sourceSystem: null,
+        snapshots: [],
+      },
+    });
     vi.spyOn(apiClient, 'getUserPermissions').mockResolvedValue({
       success: true,
       data: [],
@@ -70,6 +89,7 @@ describe('Document Library', () => {
         deleteParentFolder: true, deleteSubfolder: true, deleteFile: true,
         submitForApproval: true, approve: true, reject: true, adminForceUnlock: true,
         copy: true, cut: true, downloadZip: true, fileCopy: true, fileCut: true,
+        viewMetadataHistory: true,
       },
     });
     vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({
@@ -83,7 +103,7 @@ describe('Document Library', () => {
     }));
     // The Word/PowerPoint preview path health-checks the local sidecar before
     // attempting live PDF rendering — without this mock, the health check falls
-    // through to a real `fetch()` against 127.0.0.1:8000 that hangs/times out
+    // through to a real `fetch()` against the /ocr service that hangs/times out
     // under jsdom. Defaulting to "unavailable" matches these tests' existing
     // assumption that Office files fall back to text/markdown extraction.
     vi.spyOn(doclingApi, 'isAvailable').mockResolvedValue(false);
@@ -102,9 +122,12 @@ describe('Document Library', () => {
     const folderSection = await screen.findByTestId('folder-section');
     const table = await screen.findByRole('table', { name: 'Documents' });
 
-    expect(folderSection).toHaveClass('w-full', 'max-h-56', 'md:w-56', 'md:max-h-none');
+    // The desktop width is user-resizable (draggable divider), so it comes from a
+    // CSS custom property with a 14rem default rather than a fixed `md:w-56`.
+    expect(folderSection).toHaveClass('w-full', 'max-h-56', 'md:w-[var(--dms-folder-pane-width,14rem)]', 'md:max-h-none');
     expect(folderSection).toBeInTheDocument();
     expect(table).toBeInTheDocument();
+    expect(screen.getByRole('separator', { name: 'Resize the folder panel' })).toBeInTheDocument();
   });
 
   it('opens the multiple file picker from the primary Upload button', async () => {
@@ -192,6 +215,50 @@ describe('Document Library', () => {
     expect(screen.getAllByText('Operations').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Production', { selector: 'span' }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\d{2} \w{3} 2026, \d{2}:\d{2}/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows complete file and folder names in the library table', async () => {
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [
+        ...mockLibraryFolders,
+        {
+          folderId: 'information-security-policies',
+          name: 'Information Security Policies and Procedures',
+          parentFolderId: 'folder-1',
+          createdAt: '2026-08-25T08:00:00.000Z',
+        },
+      ],
+    });
+    renderDocumentLibrary();
+
+    const table = await screen.findByRole('table', { name: 'Documents' });
+    const fileName = within(table).getByText('Production Shift Handover.txt');
+    const folderName = within(table).getByText('Information Security Policies and Procedures');
+
+    expect(fileName).toHaveClass('whitespace-nowrap');
+    expect(fileName).not.toHaveClass('truncate');
+    expect(folderName).toHaveClass('whitespace-normal', 'break-words');
+    expect(folderName).not.toHaveClass('truncate');
+  });
+
+  it('keeps filenames on one line and summarizes older tags behind a tooltip', async () => {
+    const user = userEvent.setup();
+    renderDocumentLibrary();
+
+    const openButton = await screen.findByRole('button', { name: /Open Calibration Procedure SOP-204\.pdf/ });
+    const row = openButton.closest('tr');
+    expect(row).not.toBeNull();
+
+    expect(within(row!).getByText('Calibration Procedure SOP-204.pdf')).toHaveClass('whitespace-nowrap');
+    expect(within(row!).getByText('Production')).toBeInTheDocument();
+    expect(within(row!).getByText('Quality')).toBeInTheDocument();
+    expect(within(row!).queryByText('Controlled')).not.toBeInTheDocument();
+
+    const remainingTags = within(row!).getByLabelText(/1 more tag.*Controlled, Quality, Production/i);
+    expect(remainingTags).toHaveTextContent('+1');
+    await user.hover(remainingTags);
+    expect(remainingTags).toHaveAttribute('title', 'All tags: Controlled, Quality, Production');
   });
 
   it('keeps Actions as the final right-aligned column inside the table scroller', async () => {
@@ -494,6 +561,132 @@ describe('Document Library', () => {
     expect(doclingApi.uploadDocument).not.toHaveBeenCalled();
   });
 
+  it('routes a persisted macro-enabled Word document through PDF conversion', async () => {
+    const user = userEvent.setup();
+    const persistedMacroDocument = {
+      documentId: 'persisted-word-macro',
+      currentVersionId: 'persisted-word-macro-version',
+      folderId: 'folder-1',
+      name: 'PAC Phase 1 Test Report',
+      title: 'PAC Phase 1 Test Report',
+      fileName: 'PAC_Phase1_TestReport_20121216_rev1p0.docm',
+      fileSize: 6584044,
+      contentType: 'application/vnd.ms-word.document.macroenabled.12',
+      status: 'draft',
+      uploadedBy: TEST_USER_ID,
+      uploadedAt: '2012-11-20T09:40:00.000Z',
+      createdAt: '2012-11-20T09:40:00.000Z',
+      updatedAt: '2012-12-18T13:36:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [persistedMacroDocument],
+    });
+    vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['macro-enabled-word'], { type: persistedMacroDocument.contentType }),
+      fileName: persistedMacroDocument.fileName,
+    });
+    vi.mocked(doclingApi.isAvailable).mockResolvedValue(true);
+    const convertToPdf = vi.spyOn(doclingApi, 'convertToPdf').mockResolvedValue(
+      new Blob(['converted-pdf'], { type: 'application/pdf' }),
+    );
+
+    renderDocumentLibrary();
+    await user.click(await screen.findByRole('button', { name: `Preview ${persistedMacroDocument.fileName}` }));
+
+    await waitFor(() => {
+      expect(convertToPdf).toHaveBeenCalledWith(
+        expect.any(Blob),
+        persistedMacroDocument.fileName,
+      );
+    });
+    expect(doclingApi.convertDocument).not.toHaveBeenCalled();
+  });
+
+  it('loads a persisted Office preview through the server without downloading the source into the browser', async () => {
+    const persistedOfficeDocument = {
+      documentId: '11111111-1111-4111-8111-111111111111',
+      currentVersionId: '22222222-2222-4222-8222-222222222222',
+      folderId: 'folder-1',
+      name: 'Large legacy document',
+      title: 'Large legacy document',
+      fileName: 'Large legacy document.doc',
+      fileSize: 8_000_000,
+      contentType: 'application/msword',
+      status: 'draft',
+      uploadedBy: TEST_USER_ID,
+      uploadedAt: '2012-11-20T09:40:00.000Z',
+      createdAt: '2012-11-20T09:40:00.000Z',
+      updatedAt: '2012-12-18T13:36:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockReset().mockResolvedValue({ success: true, data: [] });
+    vi.spyOn(apiClient, 'getDocument').mockResolvedValue({
+      success: true,
+      data: persistedOfficeDocument,
+    });
+    const fetchDocumentFile = vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['large-legacy-source'], { type: persistedOfficeDocument.contentType }),
+      fileName: persistedOfficeDocument.fileName,
+    });
+    const fetchPreview = vi.mocked(apiClient.getDocumentPreview).mockResolvedValue(
+      new Blob(['server-rendered-pdf'], { type: 'application/pdf' }),
+    );
+    const clientConversion = vi.spyOn(doclingApi, 'convertToPdf');
+
+    renderDocumentLibrary(`/documents?preview=${persistedOfficeDocument.documentId}`);
+
+    await waitFor(() => expect(fetchPreview).toHaveBeenCalledWith(
+      persistedOfficeDocument.documentId,
+      persistedOfficeDocument.currentVersionId,
+      expect.any(AbortSignal),
+    ));
+    expect(fetchDocumentFile).not.toHaveBeenCalled();
+    expect(clientConversion).not.toHaveBeenCalled();
+    expect(apiClient.getDocuments).not.toHaveBeenCalled();
+  });
+
+  it('routes a persisted legacy Excel workbook through PDF conversion', async () => {
+    const user = userEvent.setup();
+    const persistedLegacyWorkbook = {
+      documentId: 'persisted-legacy-workbook',
+      currentVersionId: 'persisted-legacy-workbook-version',
+      folderId: 'folder-1',
+      name: 'NeoMEMS Gyro Workbook',
+      title: 'NeoMEMS Gyro Workbook',
+      fileName: 'CW.NeoMEMS.2-Axis Gyro.4-21-13.xls',
+      fileSize: 35328,
+      contentType: 'application/vnd.ms-excel',
+      status: 'draft',
+      uploadedBy: TEST_USER_ID,
+      uploadedAt: '2014-03-03T22:09:00.000Z',
+      createdAt: '2013-12-21T01:45:00.000Z',
+      updatedAt: '2014-03-03T22:09:00.000Z',
+    };
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [persistedLegacyWorkbook],
+    });
+    vi.spyOn(apiClient, 'getDocumentFile').mockResolvedValue({
+      blob: new Blob(['legacy-excel'], { type: persistedLegacyWorkbook.contentType }),
+      fileName: persistedLegacyWorkbook.fileName,
+    });
+    vi.mocked(doclingApi.isAvailable).mockResolvedValue(true);
+    const convertToPdf = vi.spyOn(doclingApi, 'convertToPdf').mockResolvedValue(
+      new Blob(['converted-pdf'], { type: 'application/pdf' }),
+    );
+
+    renderDocumentLibrary();
+    await user.click(await screen.findByRole('button', { name: `Preview ${persistedLegacyWorkbook.fileName}` }));
+
+    await waitFor(() => {
+      expect(convertToPdf).toHaveBeenCalledWith(
+        expect.any(Blob),
+        persistedLegacyWorkbook.fileName,
+      );
+    });
+    expect(doclingApi.convertDocument).not.toHaveBeenCalled();
+  });
+
   it('cancels a persisted Office conversion when the preview closes', async () => {
     const user = userEvent.setup();
     const persistedOfficeDocument = {
@@ -687,9 +880,24 @@ describe('Document Library', () => {
     const previewButton = await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' });
     await user.click(previewButton);
 
-    const dialog = screen.getByRole('dialog', { name: 'Production Shift Handover.txt' });
+    const dialog = await screen.findByRole(
+      'dialog',
+      { name: 'Production Shift Handover.txt' },
+      { timeout: 10_000 },
+    );
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Folder 1' })).toBeInTheDocument();
+    const previewTitle = within(dialog).getByRole('heading', { name: 'Production Shift Handover.txt' });
+    expect(previewTitle).toHaveClass('whitespace-nowrap');
+    expect(previewTitle).not.toHaveClass('truncate');
+    const actionToolbar = within(dialog).getByTestId('document-preview-actions');
+    expect(actionToolbar).toHaveClass('flex-nowrap', 'overflow-x-auto');
+    expect(actionToolbar).not.toHaveClass('flex-wrap');
+    expect(screen.getByTestId('document-preview-overlay')).toHaveClass('lg:left-[var(--dms-sidebar-width,286px)]');
+    expect(screen.getByTestId('document-preview-overlay')).not.toHaveClass('lg:left-[286px]');
+    // The library remains mounted so closing the modal restores the same
+    // selection/focus, but is correctly hidden from assistive technology while
+    // the full-screen document dialog owns focus.
+    expect(screen.getByTestId('folder-section')).toBeInTheDocument();
     expect(screen.getByText(/Production Shift Handover/, { selector: 'pre' })).toBeInTheDocument();
     expect(screen.getByText('3.4 KB')).toBeInTheDocument();
     expect(within(dialog).getByText('Daily production handover notes')).toBeInTheDocument();
@@ -697,12 +905,85 @@ describe('Document Library', () => {
     expect(screen.queryByRole('button', { name: 'Actions for selected items' })).not.toBeInTheDocument();
   });
 
+  it('keeps the preview filename on one line and reveals all tags from the remainder badge', async () => {
+    const user = userEvent.setup();
+    renderDocumentLibrary();
+
+    await user.click(await screen.findByRole('button', { name: 'Preview Calibration Procedure SOP-204.pdf' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Calibration Procedure SOP-204.pdf' });
+
+    const previewTitle = within(dialog).getByRole('heading', { name: 'Calibration Procedure SOP-204.pdf' });
+    expect(previewTitle).toHaveClass('whitespace-nowrap');
+    expect(previewTitle).not.toHaveClass('truncate');
+    expect(within(dialog).getByText('Production')).toBeInTheDocument();
+    expect(within(dialog).getByText('Quality')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Controlled')).not.toBeInTheDocument();
+
+    const remainingTags = within(dialog).getByLabelText(/1 more tag.*Controlled, Quality, Production/i);
+    expect(remainingTags).toHaveTextContent('+1');
+    await user.hover(remainingTags);
+    expect(remainingTags).toHaveAttribute('title', 'All tags: Controlled, Quality, Production');
+  });
+
+  it('keeps native History separate and hides Metadata History for a native document', async () => {
+    const user = userEvent.setup();
+    renderDocumentLibrary();
+
+    await user.click(await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' }));
+    await waitFor(() => expect(apiClient.getLegacyMetadataHistory).toHaveBeenCalledWith('folder-1-txt'));
+
+    expect(screen.getByRole('button', { name: 'View version history of Production Shift Handover.txt' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /legacy metadata history/i })).not.toBeInTheDocument();
+  });
+
+  it('places imported Metadata History beside but separate from native Version History', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getLegacyMetadataHistory).mockResolvedValue({
+      success: true,
+      data: {
+        hasLegacyMetadataHistory: true,
+        legacyDocumentId: 230,
+        sourceSystem: 'KnowledgeTree',
+        snapshots: [{
+          metadataVersionId: 9316,
+          metadataVersion: 15,
+          snapshotDate: '2018-12-10T12:09:47Z',
+          legacyContentVersionId: 3390,
+          isCurrentAtMigration: true,
+          sourceSystem: 'KnowledgeTree',
+          fields: [{ name: 'Authors', value: 'Mostafa Medhat' }],
+        }],
+      },
+    });
+    vi.spyOn(apiClient, 'getDocument').mockResolvedValue({
+      success: true,
+      data: { versions: [] },
+    });
+    renderDocumentLibrary();
+
+    await user.click(await screen.findByRole('button', { name: 'Preview Production Shift Handover.txt' }));
+    const nativeHistory = screen.getByRole('button', { name: 'View version history of Production Shift Handover.txt' });
+    const legacyHistory = await screen.findByRole('button', { name: 'View legacy metadata history of Production Shift Handover.txt' });
+    expect(nativeHistory.compareDocumentPosition(legacyHistory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(legacyHistory);
+    expect(screen.getByRole('heading', { name: 'Legacy Metadata History' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Version History' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('heading', { name: 'Legacy Metadata History' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Production Shift Handover.txt' })).toBeInTheDocument();
+
+    await user.click(nativeHistory);
+    expect(await screen.findByRole('heading', { name: 'Version History' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Legacy Metadata History' })).not.toBeInTheDocument();
+  });
+
   it('fills the preview workspace and gives the PDF viewer all remaining space', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
     await user.click(await screen.findByRole('button', { name: 'Preview Calibration Procedure SOP-204.pdf' }));
 
-    const overlay = screen.getByTestId('document-preview-overlay');
+    const overlay = await screen.findByTestId('document-preview-overlay', {}, { timeout: 10_000 });
     const body = screen.getByTestId('document-preview-body');
     const viewerWorkspace = document.getElementById('dms-printable-preview');
 

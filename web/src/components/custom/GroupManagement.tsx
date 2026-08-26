@@ -4,6 +4,7 @@ import { SkeletonTable } from '../ui/Skeleton';
 import { Edit2, Network, Plus, Trash2, X } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface Group {
   groupId: string;
@@ -333,7 +334,7 @@ export function GroupManagement() {
 
       {/* Add Group Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setShowAddForm(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Add Group</h3>
@@ -375,12 +376,12 @@ export function GroupManagement() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Edit Group Modal */}
       {editingGroup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setEditingGroup(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Edit Group</h3>
@@ -420,12 +421,12 @@ export function GroupManagement() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Manage Users Modal */}
       {membersFor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setMembersFor(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Manage Users — {membersFor.name}</h3>
@@ -485,12 +486,12 @@ export function GroupManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Manage Sub-groups Modal */}
       {subgroupsFor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setSubgroupsFor(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white flex items-center gap-2">
@@ -549,12 +550,12 @@ export function GroupManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm.groupId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setDeleteConfirm({})} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Delete Group</h3>
@@ -579,7 +580,7 @@ export function GroupManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

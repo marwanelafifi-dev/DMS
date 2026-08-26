@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -107,7 +105,7 @@ input:-webkit-autofill:focus {
 }
 
 .page-heading { @apply text-[22px] leading-7 text-[#283a7a] dark:text-white; }
-.page-subtitle { @apply mt-0.5 text-sm text-[#697b97] dark:text-slate-400; }
+.page-subtitle { @apply mt-0.5 text-sm text-[#52627a] dark:text-slate-400; }
 .section-heading { @apply text-[16px] font-semibold text-[#283a7a] dark:text-white; }
 @layer components {
   .field-control { @apply rounded-[5px] border border-[#cbd5e3] bg-white px-3 text-sm text-[#17213a] outline-none placeholder:text-[#9aa7ba] focus:border-[#3f8bca] focus:ring-2 focus:ring-[#3f8bca]/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white; }

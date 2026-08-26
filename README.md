@@ -2,6 +2,7 @@
 
 On-premises Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance.
 See [docs/PRD.md](docs/PRD.md) for requirements and [docs/DEV_PLAN.md](docs/DEV_PLAN.md) for architecture and roadmap.
+See [docs/UBUNTU_DEPLOYMENT.md](docs/UBUNTU_DEPLOYMENT.md) for the controlled Ubuntu transfer and rollback procedure.
 
 ## Monorepo layout
 
@@ -81,10 +82,10 @@ uvicorn main:app --reload --port 8000
 
 ## Expose (Stage 2 — Ubuntu + Cloudflare Tunnel)
 
-1. Copy the repo to the Ubuntu host, set `CLOUDFLARE_TUNNEL_TOKEN` in `.env`.
-2. `docker compose --profile tunnel up -d --build`
+1. Copy the repo to the Ubuntu host, set `CLOUDFLARE_TUNNEL_TOKEN` in the uncommitted `.env` file, and keep that file at mode `0600`.
+2. `docker compose --profile tunnel up -d cloudflared`
 
-The same compose file runs unchanged; `cloudflared` dials out to Cloudflare (no inbound ports).
+The same compose file runs unchanged; the pinned `cloudflared` container dials out to Cloudflare (no inbound ports). Configure the remotely managed tunnel's public hostname to use an origin reachable on the Compose network, normally `http://traefik:80`.
 
 ## Phase status
 

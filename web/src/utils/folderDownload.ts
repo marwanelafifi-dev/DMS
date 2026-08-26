@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import type { Document, Folder } from '../types';
 import { apiClient } from './api';
 
@@ -12,6 +11,7 @@ export async function downloadFolderAsZip(
   documents: Document[],
   folderName: string,
 ): Promise<{ zipped: number; skipped: number }> {
+  const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const folderDocs = documents.filter((doc) => doc.folderId === folder.folderId && doc.currentVersionId);
 

@@ -65,6 +65,45 @@ export interface Document {
   versions?: DocumentVersion[];
 }
 
+// Immutable KnowledgeTree metadata imported into the separate Legacy Archive.
+// This is intentionally distinct from DocumentVersion/New-DMS workflow history.
+export interface LegacyMetadataField {
+  name: string;
+  value: string | null;
+}
+
+export interface LegacyMetadataSnapshot {
+  metadataVersionId: number;
+  metadataVersion: number;
+  snapshotDate?: string | null;
+  legacyContentVersionId?: number | null;
+  isCurrentAtMigration: boolean;
+  sourceSystem: string;
+  associatedFile?: LegacyAssociatedFile | null;
+  fields: LegacyMetadataField[];
+}
+
+export interface LegacyAssociatedFile {
+  legacyContentVersionId: number;
+  originalFileName: string;
+  majorVersion: number;
+  minorVersion: number;
+  versionLabel: string;
+  fileDate?: string | null;
+  fileSizeBytes?: number | null;
+  fileStatus: string;
+  isAvailable: boolean;
+  viewUrl?: string | null;
+  downloadUrl?: string | null;
+}
+
+export interface LegacyMetadataHistory {
+  hasLegacyMetadataHistory: boolean;
+  legacyDocumentId: number | null;
+  sourceSystem: string | null;
+  snapshots: LegacyMetadataSnapshot[];
+}
+
 // Document Version
 export interface DocumentVersion {
   versionId: string;
@@ -115,6 +154,7 @@ export interface Task {
   taskId: string;
   title: string;
   description?: string;
+  tags: string[];
   taskType: 'correction' | 'rca' | 'audit_action';
   documentId?: string;
   // Only set for a correction task spawned by a QA/Manager rejection in the

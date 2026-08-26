@@ -99,6 +99,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 // still deny/allow these independently of Read itself.
                 ViewHistory = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewHistory, Baseline(p => p.ViewOnly)),
                 ViewRelatedTasks = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewRelatedTasks, Baseline(p => p.ViewOnly)),
+                ViewMetadataHistory = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewMetadataHistory, Baseline(p => p.ViewOnly)),
                 UpdatedAt = permission?.UpdatedAt,
             };
 

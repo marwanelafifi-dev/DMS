@@ -4,6 +4,7 @@ import { CheckCircle2, XCircle, Trash2, Download, X, AlertCircle } from 'lucide-
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import type { Document } from '../../types';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface BulkOperationsModalProps {
   selectedDocuments: Document[];
@@ -106,7 +107,7 @@ export function BulkOperationsModal({
 
   if (!operation) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <ModalOverlay onClose={onClose} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
         <Card className="w-full max-w-md">
           <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
             <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">Bulk Operations</h2>
@@ -167,13 +168,13 @@ export function BulkOperationsModal({
             </button>
           </CardBody>
         </Card>
-      </div>
+      </ModalOverlay>
     );
   }
 
   // Approve/Reject/Delete/Download confirmation
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <ModalOverlay onClose={onClose} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <Card className="w-full max-w-sm">
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
           <h2 className="text-lg font-serif font-bold text-navy-900 dark:text-white">
@@ -259,6 +260,6 @@ export function BulkOperationsModal({
           </div>
         </CardBody>
       </Card>
-    </div>
+    </ModalOverlay>
   );
 }

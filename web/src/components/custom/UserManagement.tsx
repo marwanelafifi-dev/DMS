@@ -5,6 +5,7 @@ import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, 
 import { apiClient, DEV_USER_ID, type PageAccessRole } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { roleLabel } from '../../utils/roleLabels';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const PAGE_SIZE = 10;
 
@@ -656,7 +657,7 @@ export function UserManagement() {
 
       {/* Add User Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setShowAddForm(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Add User</h3>
@@ -753,12 +754,12 @@ export function UserManagement() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Deactivate Confirmation Modal */}
       {deactivateConfirm.userId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setDeactivateConfirm({})} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Deactivate User</h3>
@@ -783,12 +784,12 @@ export function UserManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm.userId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => { setDeleteConfirm({}); setTransferToUserId(''); }} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Delete User Permanently</h3>
@@ -843,12 +844,12 @@ export function UserManagement() {
               )}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Reset Password Modal */}
       {resetPasswordFor.userId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => { setResetPasswordFor({}); setNewPassword(''); }} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Reset Password</h3>
@@ -883,12 +884,12 @@ export function UserManagement() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Manage Groups Modal */}
       {manageGroupsFor.userId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <ModalOverlay onClose={() => setManageGroupsFor({})} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700">
             <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between">
               <h3 className="text-lg font-serif font-bold tracking-tight text-white">Manage Groups</h3>
@@ -930,7 +931,7 @@ export function UserManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
     </div>

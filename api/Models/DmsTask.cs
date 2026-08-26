@@ -8,6 +8,7 @@ public class DmsTask
     public Guid? ApprovalId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public string[] Tags { get; set; } = Array.Empty<string>();
     public string TaskType { get; set; } = string.Empty;
     // Exactly one of AssignedToId / AssignedToGroupId is set — a group
     // assignment is one shared task visible to every member, completable by
