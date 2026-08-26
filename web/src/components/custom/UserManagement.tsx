@@ -49,6 +49,9 @@ export function UserManagement() {
   const [groups, setGroups] = useState<Group[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [authTypeFilter, setAuthTypeFilter] = useState<'' | 'Local' | 'Google'>('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'inactive'>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<{ fullName: string; email: string; isActive: boolean; role: string }>({ fullName: '', email: '', isActive: true, role: '' });
 
@@ -107,15 +110,20 @@ export function UserManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const isSearching = searchQuery.trim().length > 0;
-  // A search must match against every user, not just whichever page happens to
-  // be loaded — `users` is only the current server page (see loadUsers above),
-  // so searching it silently missed anyone sitting on page 2/3 even though they
-  // exist. `allUsers` (already fetched in full for the stat cards) has everyone.
-  const filteredUsers = (isSearching ? allUsers : users).filter(u =>
-    u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const isSearching = searchQuery.trim().length > 0 || roleFilter !== '' || authTypeFilter !== '' || statusFilter !== '';
+  // A search/filter must match against every user, not just whichever page
+  // happens to be loaded — `users` is only the current server page (see
+  // loadUsers above), so filtering it silently missed anyone sitting on page
+  // 2/3 even though they exist. `allUsers` (already fetched in full for the
+  // stat cards) has everyone.
+  const filteredUsers = (isSearching ? allUsers : users).filter(u => {
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = !query || u.fullName.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
+    const matchesRole = !roleFilter || (roleFilter === 'NONE' ? !u.role : u.role === roleFilter);
+    const matchesAuthType = !authTypeFilter || u.authType === authTypeFilter;
+    const matchesStatus = !statusFilter || (statusFilter === 'active' ? u.isActive : !u.isActive);
+    return matchesSearch && matchesRole && matchesAuthType && matchesStatus;
+  });
 
   const activeCount = allUsers.filter(u => u.isActive).length;
   const inactiveCount = allUsers.filter(u => !u.isActive).length;
@@ -428,16 +436,59 @@ export function UserManagement() {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search users..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-800 text-navy-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+      {/* Search + Filters */}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search users..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-800 text-navy-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-800 text-navy-900 dark:text-white text-sm sm:w-44"
+          aria-label="Filter by access"
+        >
+          <option value="">All Access</option>
+          <option value="NONE">No Access</option>
+          {roles.map(r => (
+            <option key={r.role} value={r.role}>{roleLabel(r.role)}</option>
+          ))}
+        </select>
+        <select
+          value={authTypeFilter}
+          onChange={(e) => setAuthTypeFilter(e.target.value as '' | 'Local' | 'Google')}
+          className="px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-800 text-navy-900 dark:text-white text-sm sm:w-36"
+          aria-label="Filter by auth type"
+        >
+          <option value="">All Auth Types</option>
+          <option value="Local">Local</option>
+          <option value="Google">Google</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as '' | 'active' | 'inactive')}
+          className="px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-800 text-navy-900 dark:text-white text-sm sm:w-36"
+          aria-label="Filter by status"
+        >
+          <option value="">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        {(searchQuery || roleFilter || authTypeFilter || statusFilter) && (
+          <button
+            type="button"
+            onClick={() => { setSearchQuery(''); setRoleFilter(''); setAuthTypeFilter(''); setStatusFilter(''); }}
+            className="px-3 py-2 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400 whitespace-nowrap"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       {/* Users Table */}

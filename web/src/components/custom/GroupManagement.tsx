@@ -56,7 +56,9 @@ export function GroupManagement() {
   const [membersFor, setMembersFor] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
-  const [addMemberUserId, setAddMemberUserId] = useState('');
+  const [addMemberUserIds, setAddMemberUserIds] = useState<Set<string>>(new Set());
+  const [addMemberSearch, setAddMemberSearch] = useState('');
+  const [isAddingMembers, setIsAddingMembers] = useState(false);
 
   const [subgroupsFor, setSubgroupsFor] = useState<Group | null>(null);
   const [subgroups, setSubgroups] = useState<Subgroup[]>([]);
@@ -160,7 +162,8 @@ export function GroupManagement() {
 
   const openMembers = async (group: Group) => {
     setMembersFor(group);
-    setAddMemberUserId('');
+    setAddMemberUserIds(new Set());
+    setAddMemberSearch('');
     setIsLoadingMembers(true);
     try {
       const res = await apiClient.getGroup(group.groupId);
@@ -173,17 +176,38 @@ export function GroupManagement() {
     }
   };
 
-  const handleAddMember = async () => {
-    if (!membersFor || !addMemberUserId) return;
+  const handleAddMembers = async () => {
+    if (!membersFor || addMemberUserIds.size === 0) return;
+    setIsAddingMembers(true);
     try {
-      const res = await apiClient.addGroupMember(membersFor.groupId, addMemberUserId);
-      setMembers((prev) => [...prev, res.data]);
-      setAddMemberUserId('');
-      setGroups((prev) => prev.map((g) => g.groupId === membersFor.groupId ? { ...g, memberCount: g.memberCount + 1 } : g));
-      showSuccess('User added to group');
-    } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to add user to group');
+      const userIds = [...addMemberUserIds];
+      const results = await Promise.allSettled(userIds.map((userId) => apiClient.addGroupMember(membersFor.groupId, userId)));
+      const added = results
+        .map((r, i) => (r.status === 'fulfilled' ? { result: r.value.data, userId: userIds[i] } : null))
+        .filter((r): r is { result: any; userId: string } => r !== null);
+
+      if (added.length > 0) {
+        setMembers((prev) => [...prev, ...added.map((a) => a.result)]);
+        setGroups((prev) => prev.map((g) => g.groupId === membersFor.groupId ? { ...g, memberCount: g.memberCount + added.length } : g));
+      }
+      setAddMemberUserIds(new Set());
+      setAddMemberSearch('');
+
+      const failedCount = results.length - added.length;
+      if (failedCount === 0) showSuccess(`${added.length} ${added.length === 1 ? 'user' : 'users'} added to group`);
+      else showError(`${added.length} added, ${failedCount} failed`);
+    } finally {
+      setIsAddingMembers(false);
     }
+  };
+
+  const toggleAddMemberUser = (userId: string) => {
+    setAddMemberUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
   };
 
   const handleRemoveMember = async (userId: string) => {
@@ -238,7 +262,12 @@ export function GroupManagement() {
     }
   };
 
-  const availableUsersToAdd = allUsers.filter((u) => !members.some((m) => m.userId === u.userId));
+  const availableUsersToAdd = allUsers
+    .filter((u) => !members.some((m) => m.userId === u.userId))
+    .filter((u) => {
+      const query = addMemberSearch.trim().toLowerCase();
+      return !query || u.fullName.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
+    });
   // A group can't be nested inside itself or added twice — the backend also
   // rejects anything that would create a cycle, which this list can't check
   // client-side without fetching the whole nesting graph.
@@ -516,19 +545,46 @@ export function GroupManagement() {
               </button>
             </div>
             <div className="px-6 py-4 space-y-4">
-              <div className="flex gap-2">
-                <select
-                  value={addMemberUserId}
-                  onChange={(e) => setAddMemberUserId(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={addMemberSearch}
+                  onChange={(e) => setAddMemberSearch(e.target.value)}
+                  placeholder="Search users to add..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white text-sm"
+                />
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-navy-700">
+                  {availableUsersToAdd.length > 0 ? (
+                    <ul className="divide-y divide-gray-200 dark:divide-navy-800">
+                      {availableUsersToAdd.map((u) => (
+                        <li key={u.userId}>
+                          <label className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-navy-900">
+                            <input
+                              type="checkbox"
+                              checked={addMemberUserIds.has(u.userId)}
+                              onChange={() => toggleAddMemberUser(u.userId)}
+                              className="rounded"
+                            />
+                            <span className="min-w-0 flex-1 truncate text-sm text-navy-900 dark:text-white">
+                              {u.fullName} <span className="text-gray-500 dark:text-navy-400">({u.email})</span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="p-3 text-center text-sm text-gray-500 dark:text-navy-400">No matching users</p>
+                  )}
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full"
+                  onClick={handleAddMembers}
+                  disabled={addMemberUserIds.size === 0 || isAddingMembers}
+                  isLoading={isAddingMembers}
                 >
-                  <option value="">Select a user to add...</option>
-                  {availableUsersToAdd.map((u) => (
-                    <option key={u.userId} value={u.userId}>{u.fullName} ({u.email})</option>
-                  ))}
-                </select>
-                <Button variant="primary" size="sm" onClick={handleAddMember} disabled={!addMemberUserId}>
-                  Add
+                  Add Selected {addMemberUserIds.size > 0 ? `(${addMemberUserIds.size})` : ''}
                 </Button>
               </div>
 
