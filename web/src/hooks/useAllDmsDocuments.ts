@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../utils/api';
 import { mockLibraryDocuments, resolveLibraryStatus } from '../fixtures/documentLibrary';
-import type { Document } from '../types';
+import type { Document, Folder } from '../types';
 
 // Loads every DMS document (both the fixture library docs used for demo
 // previews AND real documents from the .NET backend) so features like OCR
@@ -14,6 +14,7 @@ import type { Document } from '../types';
 // instead of the whole feature silently degrading to fixture-only data.
 export function useAllDmsDocuments(enabled = true) {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [isLoading, setIsLoading] = useState(enabled);
 
   useEffect(() => {
@@ -33,6 +34,9 @@ export function useAllDmsDocuments(enabled = true) {
       ]);
       if (cancelled) return;
 
+      const realFolders: Folder[] = foldersResult.status === 'fulfilled' ? foldersResult.value.data || [] : [];
+      setFolders(realFolders);
+
       if (documentsResult.status === 'rejected') {
         console.error('Failed to load DMS documents:', documentsResult.reason);
         setDocuments(mockLibraryDocuments as Document[]);
@@ -40,10 +44,7 @@ export function useAllDmsDocuments(enabled = true) {
         return;
       }
 
-      const folderNameById = new Map(
-        (foldersResult.status === 'fulfilled' ? foldersResult.value.data || [] : [])
-          .map((folder: any) => [folder.folderId, folder.name]),
-      );
+      const folderNameById = new Map(realFolders.map((folder) => [folder.folderId, folder.name]));
       const userById = new Map(
         (usersResult.status === 'fulfilled' ? usersResult.value.data || [] : [])
           .map((user: any) => [user.userId, user]),
@@ -71,5 +72,5 @@ export function useAllDmsDocuments(enabled = true) {
     return () => { cancelled = true; };
   }, [enabled]);
 
-  return { documents, isLoading };
+  return { documents, folders, isLoading };
 }

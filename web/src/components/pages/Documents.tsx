@@ -29,6 +29,7 @@ import {
 } from '../../services/documentLibraryOperations';
 import { doclingApi } from '../../services/doclingApi';
 import { downloadFolderAsZip } from '../../utils/folderDownload';
+import { buildFolderAncestryPath } from '../../utils/folderPath';
 import { ModalOverlay, preventModalOutsideDismiss } from '../ui/ModalOverlay';
 
 const DocumentPreview = lazy(() => import('../custom/DocumentPreview').then((module) => ({ default: module.DocumentPreview })));
@@ -87,22 +88,6 @@ const SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES = new Set([
 
 function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
-}
-
-// Full ancestor chain (root-first, including the folder itself) for any folder
-// in the tree — shared by the header's own breadcrumb and by search results,
-// which need to show *where* a cross-folder match actually lives. A `guard` set
-// stops a corrupt parentFolderId cycle from looping forever.
-function buildFolderAncestryPath(folder: Folder, allFolders: Folder[]): Folder[] {
-  const path: Folder[] = [];
-  const guard = new Set<string>();
-  let current: Folder | undefined = folder;
-  while (current && !guard.has(current.folderId)) {
-    guard.add(current.folderId);
-    path.unshift(current);
-    current = current.parentFolderId ? allFolders.find((f) => f.folderId === current!.parentFolderId) : undefined;
-  }
-  return path;
 }
 
 // The folder panel used to be a fixed 14rem, which left long folder names
@@ -1025,6 +1010,31 @@ export function Documents() {
     if (showOnlyMySubmissions) clearMySubmissionsFilter();
   };
 
+  // Backspace goes to the parent folder — the same action as clicking the
+  // breadcrumb's own Back arrow — matching how a normal file-explorer window
+  // behaves. Skipped whenever focus is on a real editable field (typing "abc"
+  // and pressing Backspace to fix a typo in the search box, a rename field,
+  // etc. must still just delete text, not navigate away), and while a modal or
+  // the full-screen preview is open, so it can never fire underneath something
+  // the user is actively working in.
+  useEffect(() => {
+    const handleBackspace = (event: KeyboardEvent) => {
+      if (event.key !== 'Backspace') return;
+      const target = event.target as HTMLElement | null;
+      const isEditable = target && (
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+      );
+      if (isEditable) return;
+      if (showOnlyMySubmissions || folderPath.length < 2) return;
+      if (showUploadModal || previewDocument || showBulkOperationsModal || showApprovalPrompt || newFolderRequest) return;
+      event.preventDefault();
+      handleFolderSelect(folderPath[folderPath.length - 2].folderId);
+    };
+    window.addEventListener('keydown', handleBackspace);
+    return () => window.removeEventListener('keydown', handleBackspace);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folderPath, showOnlyMySubmissions, showUploadModal, previewDocument, showBulkOperationsModal, showApprovalPrompt, newFolderRequest]);
+
   const openDocumentPreview = (docId: string) => {
     const libraryDocument = findLibraryDocument(docId);
     if (!libraryDocument) {
@@ -1899,6 +1909,7 @@ export function Documents() {
       {previewDocument && (
         <DocumentPreview
           document={previewDocument}
+          folders={folders}
           onClose={closePreview}
           onDownload={downloadMockDocument}
           onDownloadForEditing={downloadForEditingDocument}

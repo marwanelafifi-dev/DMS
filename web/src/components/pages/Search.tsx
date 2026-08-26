@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronRight, Eye, FileSearch, Search as SearchIcon, Download, FileText, FileCode, Image, Film } from 'lucide-react';
+import { Eye, FileSearch, Search as SearchIcon, Download, FileText, FileCode, Image, Film } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { doclingApi, type ParsedDocument } from '../../services/doclingApi';
 import type { Document } from '../../types';
@@ -13,6 +13,7 @@ import { SearchSuggestionsDropdown } from '../custom/SearchSuggestionsDropdown';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 import { statusLabels } from '../../utils/documentStatus';
 import { resolveLibraryStatus } from '../../fixtures/documentLibrary';
+import { folderPathLabel } from '../../utils/folderPath';
 
 export function Search() {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ export function Search() {
   const [libraryResults, setLibraryResults] = useState<Document[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [hasLibrarySearched, setHasLibrarySearched] = useState(false);
-  const { documents: allDmsDocuments } = useAllDmsDocuments();
+  const { documents: allDmsDocuments, folders: allDmsFolders } = useAllDmsDocuments();
   // Read via a ref inside runSearch instead of depending on allDmsDocuments
   // directly — otherwise the background DMS-documents load finishing would
   // change runSearch's identity mid-flight, which re-triggers the "run search
@@ -435,37 +436,43 @@ export function Search() {
                   <th className="w-12 px-4 py-3">
                     <input type="checkbox" className="rounded" />
                   </th>
-                  {['File name', 'Type', 'Folder', 'Department', 'Owner', 'Creation date', 'Modified date', 'Tags', 'Status', 'ACTIONS'].map((heading) => (
+                  {['File name', 'Type', 'Folder', 'Department', 'Owner', 'Creation date', 'Modified date', 'Tags', 'Status'].map((heading) => (
                     <th key={heading} className="px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:text-white">
                       {heading}
                     </th>
                   ))}
+                  <th className="sticky right-0 z-10 border-l border-[#dbe2ec] bg-slate-50 px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:border-white/10 dark:bg-slate-900 dark:text-white">
+                    ACTIONS
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((ocrDoc, index) => {
                   const dmsDoc = findDmsDocument(ocrDoc.filename);
-                  return (
+                  const rowBg = index % 2 === 0 ? 'bg-white dark:bg-navy-950' : 'bg-slate-50 dark:bg-slate-900';
+                return (
                     <tr
                       key={ocrDoc.id}
-                      className={`border-b border-[#dbe2ec] dark:border-white/10 ${
-                        index % 2 === 0 ? 'bg-white dark:bg-navy-950' : 'bg-slate-50 dark:bg-slate-900'
-                      }`}
+                      className={`border-b border-[#dbe2ec] dark:border-white/10 ${rowBg}`}
                     >
                       <td className="w-12 px-4 py-4">
                         <input type="checkbox" className="rounded" />
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => openInLibrary(ocrDoc)}
+                          className="flex items-center gap-3 text-left hover:underline"
+                        >
                           {getFileIcon(ocrDoc.filename)}
                           <p className="font-medium text-[#26334d] dark:text-white">{ocrDoc.filename}</p>
-                        </div>
+                        </button>
                       </td>
                       <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
                         {(dmsDoc as any)?.extension?.toUpperCase() || '—'}
                       </td>
                       <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
-                        {(dmsDoc as any)?.folderName || '—'}
+                        {(dmsDoc ? folderPathLabel(dmsDoc.folderId, allDmsFolders) : undefined) || (dmsDoc as any)?.folderName || '—'}
                       </td>
                       <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
                         {dmsDoc?.department || '—'}
@@ -508,7 +515,7 @@ export function Search() {
                           {dmsDoc?.status ? statusLabels[dmsDoc.status] : 'Unknown'}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className={`sticky right-0 z-10 border-l border-[#dbe2ec] px-6 py-4 dark:border-white/10 ${rowBg}`}>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -564,25 +571,35 @@ export function Search() {
                 <table className="w-full">
                   <thead className="border-b border-[#dbe2ec] bg-slate-100 dark:border-white/10 dark:bg-slate-900">
                     <tr>
-                      {['Document', 'Status', 'Owner', 'Date', 'Actions'].map((heading) => (
+                      {['Document', 'Folder', 'Status', 'Owner', 'Date'].map((heading) => (
                         <th key={heading} className="px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:text-white">
                           {heading}
                         </th>
                       ))}
+                      <th className="sticky right-0 z-10 border-l border-[#dbe2ec] bg-slate-100 px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:border-white/10 dark:bg-slate-900 dark:text-white">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {libraryResults.map((document, index) => (
+                    {libraryResults.map((document, index) => {
+                      const rowBg = index % 2 === 0 ? 'bg-white dark:bg-navy-950' : 'bg-slate-50 dark:bg-slate-900';
+                      return (
                       <tr
                         key={document.documentId}
-                        className={`border-b border-[#dbe2ec] dark:border-white/10 ${
-                          index % 2 === 0 ? 'bg-white dark:bg-navy-950' : 'bg-slate-50 dark:bg-slate-900'
-                        }`}
+                        className={`border-b border-[#dbe2ec] dark:border-white/10 ${rowBg}`}
                       >
                         <td className="px-6 py-4">
-                          <p className="font-medium text-[#26334d] dark:text-white">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/documents?preview=${encodeURIComponent(document.documentId)}`)}
+                            className="font-medium text-[#26334d] hover:underline dark:text-white"
+                          >
                             {document.title ?? document.name}
-                          </p>
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
+                          {folderPathLabel(document.folderId, allDmsFolders) || '—'}
                         </td>
                         <td className="px-6 py-4">
                           <Badge
@@ -606,7 +623,7 @@ export function Search() {
                         <td className="px-6 py-4 text-sm text-[#52627a] dark:text-slate-300">
                           {formatDate(document.createdAt ?? document.uploadedAt)}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className={`sticky right-0 z-10 border-l border-[#dbe2ec] px-6 py-4 dark:border-white/10 ${rowBg}`}>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -622,12 +639,13 @@ export function Search() {
                               onClick={() => void handleDownload(document)}
                               className="rounded p-2 text-[#52627a] hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                             >
-                              <ChevronRight className="h-5 w-5" />
+                              <Download className="h-5 w-5" />
                             </button>
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

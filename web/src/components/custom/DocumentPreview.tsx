@@ -17,9 +17,11 @@ import {
   X,
 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
+import type { Folder } from '../../types';
 import type { RolePermissionFlags } from '../../utils/api';
 import { statusLabels, statusStyles } from '../../utils/documentStatus';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
+import { folderPathLabel } from '../../utils/folderPath';
 import { Button } from '../ui';
 import type { PdfJsViewerHandle, PdfMatchInfo } from './PdfJsViewer';
 import { PreviewToolbar } from './PreviewToolbar';
@@ -140,6 +142,12 @@ function RenderNoticeBanner({ message }: { message?: string }) {
 
 interface DocumentPreviewProps {
   document: MockLibraryDocument;
+  // Full folder list, so the "Folder" field below can show the document's
+  // complete location path (e.g. "Corporate / OLD DMS / Ossia / Storm Genil")
+  // instead of just the immediate containing folder's bare name — optional
+  // since some callers (e.g. a bundled sample/fixture document) may not have
+  // a real folder tree to resolve against.
+  folders?: Folder[];
   onClose: () => void;
   onDownload: (document: MockLibraryDocument) => void;
   onDownloadForEditing?: (document: MockLibraryDocument) => void;
@@ -165,7 +173,8 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, permissions, onDocumentUpdated }: DocumentPreviewProps) {
+export function DocumentPreview({ document, folders, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, permissions, onDocumentUpdated }: DocumentPreviewProps) {
+  const folderPath = (folders ? folderPathLabel(document.folderId, folders) : undefined) ?? document.folderName;
   const newVersionInputRef = useRef<HTMLInputElement>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
@@ -942,7 +951,7 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
               </div>
               <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Folder</p>
-                <p className="truncate">{document.folderName}</p>
+                <p className="truncate" title={folderPath}>{folderPath}</p>
               </div>
               <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Size</p>

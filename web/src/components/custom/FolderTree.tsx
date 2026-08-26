@@ -145,7 +145,7 @@ export function FolderTree({
                 ? 'fill-[#f4bd42] text-[#f4bd42]'
                 : 'fill-[#cbd5e3] text-[#cbd5e3] dark:fill-slate-600 dark:text-slate-600'
             }`} />
-            <span className="min-w-0 truncate text-sm font-medium">{folder.name}</span>
+            <span className="min-w-0 whitespace-normal break-words text-sm font-medium leading-tight" title={folder.name}>{folder.name}</span>
           </button>
           <DropdownMenu.Root
             open={openMenuId === folder.folderId}
