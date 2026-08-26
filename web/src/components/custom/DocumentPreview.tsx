@@ -876,15 +876,6 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
                 })()}
               </div>
             )}
-            <button
-              onClick={handlePrint}
-              disabled={!permissions?.viewOnly}
-              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Print'}
-              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
-              aria-label={`Print ${document.fileName}`}
-            >
-              <Printer className="h-4 w-4" /> Print
-            </button>
             {document.status === 'draft' && onSubmitForApproval && (
               <button
                 onClick={() => onSubmitForApproval(document)}
@@ -938,7 +929,7 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
               className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
               aria-label={`View version history of ${document.fileName}`}
             >
-              <History className="h-4 w-4" /> History
+              <History className="h-4 w-4" /> Version History
             </button>
             <LegacyMetadataHistoryAction
               documentId={document.documentId}
@@ -955,6 +946,15 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
               <ClipboardList className="h-4 w-4" /> Related Tasks
             </button>
             <button
+              onClick={handlePrint}
+              disabled={!permissions?.viewOnly}
+              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Print'}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              aria-label={`Print ${document.fileName}`}
+            >
+              <Printer className="h-4 w-4" /> Print
+            </button>
+            <button
               onClick={() => onDownload(document)}
               disabled={!permissions?.downloadReadOnly}
               title={!permissions?.downloadReadOnly ? 'Your role does not have Download permission' : undefined}
@@ -966,8 +966,8 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
             <button ref={closeButtonRef} onClick={onClose} className="rounded p-2 text-[#718198] hover:bg-[#eef2f7] hover:text-[#283a7a] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label="Close document preview"><X className="h-5 w-5" /></button>
           </div>
           </div>
-          <div className="flex flex-wrap gap-4 text-xs text-[#52627a] dark:text-slate-300">
-            <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-2 text-xs text-[#52627a] dark:text-slate-300">
+            <div className="flex flex-wrap gap-4">
               {document.originalDocumentId && (
                 <div>
                   <p className="font-medium text-[#34425b] dark:text-slate-200">Doc ID</p>
@@ -1011,8 +1011,6 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
                   </div>
                 </div>
               )}
-            </div>
-            <div className="flex flex-wrap gap-3">
               <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Department</p>
                 <p className="truncate">{document.department}</p>
@@ -1039,10 +1037,10 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
                   <div className="mt-0.5"><CompactTagList tags={document.tags} /></div>
                 </div>
               )}
-              <div>
-                <p className="font-medium text-[#34425b] dark:text-slate-200">Description</p>
-                <p className="truncate text-[#52627a] dark:text-slate-400">{document.description || '—'}</p>
-              </div>
+            </div>
+            <div>
+              <p className="font-medium text-[#34425b] dark:text-slate-200">Description</p>
+              <p className="text-[#52627a] dark:text-slate-400">{document.description || '—'}</p>
             </div>
           </div>
         </header>
