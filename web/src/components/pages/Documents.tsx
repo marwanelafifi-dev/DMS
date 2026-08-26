@@ -114,6 +114,58 @@ function readStoredFolderPaneWidth(): number {
   }
 }
 
+// React Router unmounts Documents.tsx entirely when navigating away to another
+// page (Reminders, Dashboard, ...) — clicking back into Document Library (via
+// the sidebar link or the browser's own Back button) remounts it from scratch,
+// which used to always recompute "the first folder you can write to" as the
+// starting point, silently discarding whatever folder you'd actually
+// navigated deep into. Persisting the last-browsed folder id lets a fresh
+// mount resume exactly where you left off instead.
+const LAST_FOLDER_STORAGE_KEY = 'dms.documentLibrary.lastFolderId';
+
+function readStoredLastFolderId(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_FOLDER_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredLastFolderId(folderId: string) {
+  try {
+    window.localStorage.setItem(LAST_FOLDER_STORAGE_KEY, folderId);
+  } catch {
+    // Private-mode / storage-disabled browsers just won't resume position —
+    // not worth failing anything over.
+  }
+}
+
+// Same idea as the folder position above, one level deeper: if a document was
+// open when the user got navigated away (accidentally clicking a different
+// sidebar link, or anything else that unmounts this page), coming back should
+// reopen that same document, not just land back on the right folder. Cleared
+// whenever the preview is closed for a real reason (the X button, or picking
+// a different folder/document) so it never reopens something the user
+// actually finished with.
+const LAST_PREVIEW_STORAGE_KEY = 'dms.documentLibrary.lastPreviewId';
+
+function readStoredLastPreviewId(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_PREVIEW_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredLastPreviewId(documentId: string | null) {
+  try {
+    if (documentId) window.localStorage.setItem(LAST_PREVIEW_STORAGE_KEY, documentId);
+    else window.localStorage.removeItem(LAST_PREVIEW_STORAGE_KEY);
+  } catch {
+    // Same private-mode fallback as above — resuming the preview is a nicety.
+  }
+}
+
 function usesGeneratedPdfPreview(fileName: string, contentType = ''): boolean {
   const extension = getFileExtension(fileName);
   const normalizedContentType = contentType.toLowerCase().split(';', 1)[0].trim();
@@ -229,6 +281,24 @@ export function Documents() {
     if (!directPreviewId) return;
     void import('../custom/PdfJsViewer');
   }, [directPreviewId]);
+  // If a document was open when the user got navigated away to another page
+  // entirely (this component fully unmounts, losing all its state), resume it
+  // on remount by seeding the same `?preview=` param a real deep link would
+  // use — the existing effect further down that watches this param already
+  // knows how to hydrate a preview from it, so this only has to run once,
+  // before that effect's very first check, and only when the URL didn't
+  // already ask for something specific on its own.
+  useEffect(() => {
+    if (searchParams.get('preview')) return;
+    const storedPreviewId = readStoredLastPreviewId();
+    if (!storedPreviewId) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('preview', storedPreviewId);
+      return next;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
@@ -491,6 +561,14 @@ export function Documents() {
       .catch(() => setDropdownOptions({ department: [], category: [], tag: [] }));
   }, []);
 
+  // Remembers wherever the user actually navigates to (via the folder tree,
+  // breadcrumb, search result, Backspace, ...) so a remount after leaving the
+  // page can resume here — see readStoredLastFolderId above for why this is
+  // necessary at all.
+  useEffect(() => {
+    if (selectedFolderId) writeStoredLastFolderId(selectedFolderId);
+  }, [selectedFolderId]);
+
   // Drives which action buttons (Upload, Rename, Delete) are shown as
   // disabled instead of only failing with a 403 after the user clicks them.
   useEffect(() => {
@@ -522,26 +600,41 @@ export function Documents() {
             // fallback effect below picks something reasonable once the user
             // actually starts browsing.
             if (loadedFolders.length > 0 && !startedWithDirectPreviewRef.current) {
-              // Picking loadedFolders[0] unconditionally would often default to a
-              // folder the current user only has read (or no) access to, which
-              // makes uploads fail with a silent 403 the moment you hit Upload
-              // without first clicking a different folder. Prefer the first
-              // folder the user can actually write to.
-              const writableRoles = new Set(['Writer', 'Manager', 'QA', 'Admin']);
-              let defaultFolderId = loadedFolders[0].folderId;
-              try {
-                const permsRes = await apiClient.getUserPermissions(DEV_USER_ID);
-                const writableFolderIds = new Set(
-                  (permsRes.data || [])
-                    .filter((permission: any) => writableRoles.has(permission.role))
-                    .map((permission: any) => permission.folderId),
-                );
-                const writableFolder = loadedFolders.find((folder) => writableFolderIds.has(folder.folderId));
-                if (writableFolder) defaultFolderId = writableFolder.folderId;
-              } catch (error) {
-                console.error('Failed to load folder permissions:', error);
+              // Resume wherever the user actually was, if that folder still
+              // exists — navigating to another page and back (or hitting the
+              // browser's own Back button) remounts this component from
+              // scratch, and always recomputing "the first writable folder"
+              // here silently threw away the user's real position, even
+              // though nothing about the state actually needed to reset.
+              const storedFolderId = readStoredLastFolderId();
+              const storedFolderStillExists = Boolean(
+                storedFolderId && loadedFolders.some((folder) => folder.folderId === storedFolderId),
+              );
+              if (storedFolderStillExists && storedFolderId) {
+                if (!cancelled) setSelectedFolderId(storedFolderId);
+              } else {
+                // First-ever visit (or the remembered folder was deleted) —
+                // picking loadedFolders[0] unconditionally would often default to
+                // a folder the current user only has read (or no) access to,
+                // which makes uploads fail with a silent 403 the moment you hit
+                // Upload without first clicking a different folder. Prefer the
+                // first folder the user can actually write to.
+                const writableRoles = new Set(['Writer', 'Manager', 'QA', 'Admin']);
+                let defaultFolderId = loadedFolders[0].folderId;
+                try {
+                  const permsRes = await apiClient.getUserPermissions(DEV_USER_ID);
+                  const writableFolderIds = new Set(
+                    (permsRes.data || [])
+                      .filter((permission: any) => writableRoles.has(permission.role))
+                      .map((permission: any) => permission.folderId),
+                  );
+                  const writableFolder = loadedFolders.find((folder) => writableFolderIds.has(folder.folderId));
+                  if (writableFolder) defaultFolderId = writableFolder.folderId;
+                } catch (error) {
+                  console.error('Failed to load folder permissions:', error);
+                }
+                if (!cancelled) setSelectedFolderId(defaultFolderId);
               }
-              if (!cancelled) setSelectedFolderId(defaultFolderId);
             }
           }
         }
@@ -823,6 +916,7 @@ export function Documents() {
       setPreviewDocument(null);
       return;
     }
+    writeStoredLastPreviewId(previewId);
     const requestedDocument = findLibraryDocumentRef.current(previewId);
     if (requestedDocument) {
       setSelectedFolderId(requestedDocument.folderId);
@@ -996,6 +1090,7 @@ export function Documents() {
     previewRequestRef.current += 1;
     setPreviewDocument(null);
     clearPreviewParam();
+    writeStoredLastPreviewId(null);
   }, [clearPreviewParam]);
 
   const handleFolderSelect = (folderId: string) => {
@@ -1007,6 +1102,7 @@ export function Documents() {
     setSelectedFolderIds(new Set());
     setPreviewDocument(null);
     clearPreviewParam();
+    writeStoredLastPreviewId(null);
     if (showOnlyMySubmissions) clearMySubmissionsFilter();
   };
 
@@ -1047,6 +1143,7 @@ export function Documents() {
       next.set('preview', libraryDocument.documentId);
       return next;
     }); // Don't use replace:true so browser back button works correctly
+    writeStoredLastPreviewId(libraryDocument.documentId);
   };
 
   // Resolves and triggers the actual file download without any toast — shared
@@ -1743,7 +1840,6 @@ export function Documents() {
         <div className="flex flex-col items-stretch gap-3 border-b border-[#dbe2ec] bg-white px-4 py-4 dark:border-white/10 dark:bg-slate-900 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:py-5">
           <div className="min-w-0">
             <h1 className="page-heading">Document Library</h1>
-            <p className="page-subtitle">Secure vault · Documents are view-only by default</p>
           </div>
           <input
             ref={fileInputRef}
