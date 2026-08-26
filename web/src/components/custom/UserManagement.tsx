@@ -137,7 +137,16 @@ export function UserManagement() {
 
   const handleSave = async () => {
     if (!editingId) return;
-    const user = users.find(u => u.userId === editingId);
+    // Real bug found live: this used to look up `users` — only the currently
+    // loaded server page (~10 rows) — instead of `allUsers`. The moment a
+    // search/filter was active and the row being edited wasn't on whatever
+    // page happened to be cached, this lookup silently found nothing, which
+    // made a real Google account get misclassified as Local. That sent its
+    // (unchanged) email back to the backend, which rejects the request
+    // outright for any Google account — failing the *entire* save, including
+    // unrelated Name/Access/Status changes that were never actually the
+    // problem.
+    const user = allUsers.find(u => u.userId === editingId);
     try {
       const payload: Record<string, unknown> = { fullName: editData.fullName, isActive: editData.isActive };
       // Email doubles as the login username for local accounts only — a
