@@ -300,6 +300,13 @@ class APIClient {
     return data;
   }
 
+  async importUsers(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post<ApiResponse>('/users/import', formData);
+    return data;
+  }
+
   async updateUser(userId: string, userData: any) {
     const { data } = await this.client.put<ApiResponse>(`/users/${userId}`, userData);
     return data;
@@ -844,6 +851,13 @@ class APIClient {
 
   async createGroup(groupData: { name: string; description?: string }) {
     const { data } = await this.client.post<ApiResponse>('/groups', groupData);
+    return data;
+  }
+
+  async importGroups(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post<ApiResponse>('/groups/import', formData);
     return data;
   }
 

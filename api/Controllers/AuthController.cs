@@ -100,7 +100,14 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
             return null;
 
         var pageAccessRole = await GetPageAccessRoleAsync(context, user.UserId);
-        return pageAccessRole?.BypassFolderPermissions == true ? null : maintenance.Message;
+        if (pageAccessRole?.BypassFolderPermissions == true) return null;
+
+        // The admin's own free-text message (shown as an informational banner
+        // elsewhere, e.g. the Login page header) is left exactly as configured
+        // there — this appends an actionable instruction only to the message
+        // actually shown when a login attempt is rejected, so someone hitting
+        // this wall knows what to do next regardless of what the admin typed.
+        return $"{maintenance.Message} Contact your system administrator.";
     }
 
     private async Task TriggerCalendarSyncIfEnabledAsync(Guid userId)

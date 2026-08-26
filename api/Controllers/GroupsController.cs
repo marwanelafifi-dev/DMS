@@ -377,6 +377,162 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
 
         return descendants;
     }
+
+    // POST /api/groups/import — bulk-create/wire groups from a CSV export
+    // (columns: "Group Name", "Description", "Members", "Sub Groups" — the
+    // last two are comma-separated lists within one cell, e.g.
+    // "a@x.com, b@x.com"). Members are matched by email against existing
+    // users; Sub Groups are matched by name against every group in this same
+    // file plus whatever already existed. Safe to re-run: an already-existing
+    // group is reused (never duplicated, description never overwritten so a
+    // manual edit survives), an already-a-member/already-a-subgroup pairing
+    // is silently skipped rather than erroring.
+    //
+    // Two passes are required, not one: a row's Sub Groups column can name a
+    // group that only appears later in the same file, so every group named
+    // anywhere in the file must exist before any row's members/subgroups are
+    // wired up.
+    [HttpPost("import")]
+    public async Task<ActionResult<object>> ImportGroups(IFormFile file)
+    {
+        try
+        {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
+            if (file == null || file.Length == 0)
+                return BadRequest(new { success = false, error = "File is required" });
+
+            string text;
+            using (var reader = new StreamReader(file.OpenReadStream()))
+                text = await reader.ReadToEndAsync();
+
+            var rows = CsvParser.ParseWithHeader(text);
+            if (rows.Count == 0)
+                return BadRequest(new { success = false, error = "The file has no data rows" });
+
+            var now = DateTime.UtcNow;
+            var currentUserId = GetCurrentUserId();
+            var warnings = new List<string>();
+
+            // Pass 1 — make sure every named group exists.
+            var groupsByName = await context.Groups.ToDictionaryAsync(g => g.Name, g => g, StringComparer.OrdinalIgnoreCase);
+            var createdGroups = 0;
+            foreach (var row in rows)
+            {
+                var name = row.GetValue("Group Name").Trim();
+                if (string.IsNullOrEmpty(name)) continue;
+                if (groupsByName.ContainsKey(name)) continue;
+
+                var description = row.GetValue("Description").Trim();
+                var group = new DmsGroup
+                {
+                    GroupId = Guid.NewGuid(),
+                    Name = name,
+                    Description = string.IsNullOrWhiteSpace(description) ? null : description,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+                context.Groups.Add(group);
+                groupsByName[name] = group;
+                createdGroups++;
+            }
+            await context.SaveChangesAsync();
+
+            var usersByEmail = await context.Users.ToDictionaryAsync(u => u.Email, u => u, StringComparer.OrdinalIgnoreCase);
+            var existingMemberPairs = new HashSet<(Guid, Guid)>(
+                await context.GroupMembers.Select(m => new ValueTuple<Guid, Guid>(m.GroupId, m.UserId)).ToListAsync());
+            var existingSubgroupPairs = new HashSet<(Guid, Guid)>(
+                await context.GroupSubgroups.Select(s => new ValueTuple<Guid, Guid>(s.ParentGroupId, s.ChildGroupId)).ToListAsync());
+
+            var addedMembers = 0;
+            var addedSubgroups = 0;
+
+            // Pass 2 — wire members and subgroups now that every group in the file exists.
+            foreach (var row in rows)
+            {
+                var name = row.GetValue("Group Name").Trim();
+                if (string.IsNullOrEmpty(name) || !groupsByName.TryGetValue(name, out var group)) continue;
+
+                foreach (var email in CsvParser.SplitList(row.GetValue("Members")))
+                {
+                    if (!usersByEmail.TryGetValue(email, out var user))
+                    {
+                        warnings.Add($"{name}: no user found with email '{email}' — skipped");
+                        continue;
+                    }
+                    if (!existingMemberPairs.Add((group.GroupId, user.UserId))) continue; // already a member
+
+                    context.GroupMembers.Add(new DmsGroupMember
+                    {
+                        GroupMemberId = Guid.NewGuid(),
+                        GroupId = group.GroupId,
+                        UserId = user.UserId,
+                        AddedAt = now,
+                    });
+                    addedMembers++;
+                }
+
+                foreach (var subgroupName in CsvParser.SplitList(row.GetValue("Sub Groups")))
+                {
+                    if (!groupsByName.TryGetValue(subgroupName, out var child))
+                    {
+                        warnings.Add($"{name}: no group named '{subgroupName}' — skipped");
+                        continue;
+                    }
+                    if (child.GroupId == group.GroupId)
+                    {
+                        warnings.Add($"{name}: cannot contain itself — skipped");
+                        continue;
+                    }
+                    if (!existingSubgroupPairs.Add((group.GroupId, child.GroupId))) continue; // already nested
+
+                    // Same cycle guard the single-add endpoint enforces — a group
+                    // already (directly or indirectly) containing the proposed
+                    // parent can't also become its child.
+                    var descendantsOfChild = await GetDescendantGroupIdsAsync(child.GroupId);
+                    if (descendantsOfChild.Contains(group.GroupId))
+                    {
+                        warnings.Add($"{name}: adding '{subgroupName}' would create a circular nesting — skipped");
+                        existingSubgroupPairs.Remove((group.GroupId, child.GroupId));
+                        continue;
+                    }
+
+                    context.GroupSubgroups.Add(new DmsGroupSubgroup
+                    {
+                        GroupSubgroupId = Guid.NewGuid(),
+                        ParentGroupId = group.GroupId,
+                        ChildGroupId = child.GroupId,
+                        AddedAt = now,
+                    });
+                    addedSubgroups++;
+                }
+            }
+
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(currentUserId, GROUPS_IMPORTED, new { GroupsCreated = createdGroups, MembersAdded = addedMembers, SubgroupsAdded = addedSubgroups, WarningCount = warnings.Count });
+
+            return Ok(new
+            {
+                success = true,
+                data = new { groupsCreated = createdGroups, membersAdded = addedMembers, subgroupsAdded = addedSubgroups, warnings },
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error importing groups from CSV");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    private async Task<ActionResult<object>?> RequireAdminPanelAccessAsync()
+    {
+        var pageAccessRole = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+        if (pageAccessRole?.CanViewAdminPanel != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You don't have permission to manage groups" });
+        return null;
+    }
 }
 
 public record CreateGroupRequest(string Name, string? Description = null);

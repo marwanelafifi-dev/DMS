@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardBody, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Edit2, Network, Plus, Trash2, X } from 'lucide-react';
+import { Edit2, Network, Plus, Trash2, Upload, X } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { ModalOverlay } from '../ui/ModalOverlay';
@@ -63,6 +63,15 @@ export function GroupManagement() {
   const [isLoadingSubgroups, setIsLoadingSubgroups] = useState(false);
   const [addSubgroupId, setAddSubgroupId] = useState('');
 
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    groupsCreated: number;
+    membersAdded: number;
+    subgroupsAdded: number;
+    warnings: string[];
+  } | null>(null);
+
   const loadGroups = async () => {
     setIsLoading(true);
     setLoadError(null);
@@ -100,6 +109,19 @@ export function GroupManagement() {
       showError(err.response?.data?.error || 'Failed to create group');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const res = await apiClient.importGroups(file);
+      setImportResult(res.data ?? { groupsCreated: 0, membersAdded: 0, subgroupsAdded: 0, warnings: [] });
+      loadGroups();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to import groups');
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -257,10 +279,35 @@ export function GroupManagement() {
           <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Groups</h2>
           <p className="text-sm text-gray-500 dark:text-navy-400">Organize users into named groups</p>
         </div>
-        <Button variant="primary" size="sm" className="flex items-center gap-2" onClick={() => setShowAddForm(true)}>
-          <Plus className="w-4 h-4" />
-          Add Group
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            aria-label="Import groups from CSV"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleImportFile(file);
+              event.target.value = '';
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            className="flex items-center gap-2"
+            disabled={isImporting}
+            onClick={() => importInputRef.current?.click()}
+            title="Import groups from a CSV file (columns: Group Name, Description, Members, Sub Groups)"
+          >
+            <Upload className="w-4 h-4" />
+            {isImporting ? 'Importing...' : 'Import CSV'}
+          </Button>
+          <Button variant="primary" size="sm" className="flex items-center gap-2" onClick={() => setShowAddForm(true)}>
+            <Plus className="w-4 h-4" />
+            Add Group
+          </Button>
+        </div>
       </div>
 
       {/* Groups Table */}
@@ -331,6 +378,40 @@ export function GroupManagement() {
         </table>
         </div>
       </div>
+
+      {/* Import Results Modal */}
+      {importResult && (
+        <ModalOverlay onClose={() => setImportResult(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700 max-h-[85vh] flex flex-col">
+            <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between flex-shrink-0">
+              <h3 className="text-lg font-serif font-bold tracking-tight text-white">Import Results</h3>
+              <button onClick={() => setImportResult(null)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+              <p className="text-sm text-gray-600 dark:text-navy-300">
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{importResult.groupsCreated} groups created</span>
+                {' · '}
+                <span className="font-semibold text-navy-700 dark:text-navy-300">{importResult.membersAdded} members added</span>
+                {' · '}
+                <span className="font-semibold text-navy-700 dark:text-navy-300">{importResult.subgroupsAdded} subgroups added</span>
+              </p>
+              {importResult.warnings.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Warnings ({importResult.warnings.length})</p>
+                  {importResult.warnings.map((w, i) => (
+                    <p key={i} className="text-xs text-amber-700 dark:text-amber-400">{w}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-navy-700 flex justify-end flex-shrink-0">
+              <Button variant="primary" size="sm" onClick={() => setImportResult(null)}>Close</Button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
 
       {/* Add Group Modal */}
       {showAddForm && (

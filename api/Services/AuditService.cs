@@ -132,6 +132,7 @@ public static class AuditActions
     public const string USER_DELETED = "USER_DELETED";
     public const string USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
     public const string USER_CONVERTED_TO_GOOGLE = "USER_CONVERTED_TO_GOOGLE";
+    public const string USERS_IMPORTED = "USERS_IMPORTED";
     public const string USER_OWNERSHIP_TRANSFERRED = "USER_OWNERSHIP_TRANSFERRED";
     public const string USER_LOGIN = "USER_LOGIN";
 
@@ -142,6 +143,7 @@ public static class AuditActions
     public const string GROUP_MEMBER_REMOVED = "GROUP_MEMBER_REMOVED";
     public const string GROUP_SUBGROUP_ADDED = "GROUP_SUBGROUP_ADDED";
     public const string GROUP_SUBGROUP_REMOVED = "GROUP_SUBGROUP_REMOVED";
+    public const string GROUPS_IMPORTED = "GROUPS_IMPORTED";
 
     public const string ROLE_PERMISSIONS_UPDATED = "ROLE_PERMISSIONS_UPDATED";
     public const string ROLE_CREATED = "ROLE_CREATED";

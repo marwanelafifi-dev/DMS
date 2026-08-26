@@ -253,6 +253,107 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
         }
     }
 
+    // POST /api/users/import — bulk-create users from a CSV export
+    // (columns: "User Name", "Email", "Access" — Access matches an existing
+    // Page Access Role by name). Every imported user is created with no
+    // local password and no SsoSubject — identical to any other SSO-only
+    // account: the only way in is Google, matched by email the first time
+    // they actually sign in (see AuthController.VerifyGoogleIdTokenAndUpsertUserAsync).
+    // A row with an email that already exists is skipped, not overwritten,
+    // so re-importing the same file twice is safe. An unrecognized Access
+    // value doesn't reject the row — the user is still created, just with no
+    // role assigned, and the admin can fix it manually afterward.
+    [HttpPost("import")]
+    public async Task<ActionResult<object>> ImportUsers(IFormFile file)
+    {
+        try
+        {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
+            if (file == null || file.Length == 0)
+                return BadRequest(new { success = false, error = "File is required" });
+
+            string text;
+            using (var reader = new StreamReader(file.OpenReadStream()))
+                text = await reader.ReadToEndAsync();
+
+            var rows = CsvParser.ParseWithHeader(text);
+            if (rows.Count == 0)
+                return BadRequest(new { success = false, error = "The file has no data rows" });
+
+            var existingEmails = new HashSet<string>(
+                await context.Users.Select(u => u.Email).ToListAsync(),
+                StringComparer.OrdinalIgnoreCase);
+            var validRoles = await context.PageAccessRoles.Select(r => r.Role).ToListAsync();
+
+            var now = DateTime.UtcNow;
+            var created = new List<object>();
+            var skipped = new List<object>();
+
+            foreach (var row in rows)
+            {
+                var fullName = row.GetValue("User Name").Trim();
+                var email = row.GetValue("Email").Trim().ToLowerInvariant();
+                var access = row.GetValue("Access").Trim();
+
+                if (string.IsNullOrEmpty(email))
+                {
+                    skipped.Add(new { Row = string.IsNullOrEmpty(fullName) ? "(blank row)" : fullName, Reason = "Missing email" });
+                    continue;
+                }
+                if (existingEmails.Contains(email))
+                {
+                    skipped.Add(new { Email = email, Reason = "A user with this email already exists" });
+                    continue;
+                }
+
+                string? role = null;
+                string? warning = null;
+                if (!string.IsNullOrEmpty(access))
+                {
+                    var matchedRole = validRoles.FirstOrDefault(r => string.Equals(r, access, StringComparison.OrdinalIgnoreCase));
+                    if (matchedRole != null) role = matchedRole;
+                    else warning = $"Unknown role '{access}' — created with no role assigned";
+                }
+
+                context.Users.Add(new DmsUser
+                {
+                    UserId = Guid.NewGuid(),
+                    Email = email,
+                    FullName = string.IsNullOrEmpty(fullName) ? email : fullName,
+                    Role = role,
+                    PasswordHash = null,
+                    IsActive = true,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+                // Guards against two rows in the same file sharing an email.
+                existingEmails.Add(email);
+                created.Add(new { Email = email, FullName = fullName, Role = role, Warning = warning });
+            }
+
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(GetCurrentUserId(), USERS_IMPORTED, new { CreatedCount = created.Count, SkippedCount = skipped.Count });
+
+            return Ok(new { success = true, data = new { created, skipped } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error importing users from CSV");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    private async Task<ActionResult<object>?> RequireAdminPanelAccessAsync()
+    {
+        var pageAccessRole = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+        if (pageAccessRole?.CanViewAdminPanel != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You don't have permission to manage users" });
+        return null;
+    }
+
     // PUT /api/users/{id} — update user
     [HttpPut("{id}")]
     public async Task<ActionResult<object>> UpdateUser(Guid id, [FromBody] UpdateUserRequest req)

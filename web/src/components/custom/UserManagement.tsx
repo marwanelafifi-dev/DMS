@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardBody, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, ChevronLeft, ChevronRight, Circle, Users as UsersIcon } from 'lucide-react';
+import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, ChevronLeft, ChevronRight, Circle, Users as UsersIcon, Upload } from 'lucide-react';
 import { apiClient, DEV_USER_ID, type PageAccessRole } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { roleLabel } from '../../utils/roleLabels';
@@ -71,6 +71,13 @@ export function UserManagement() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    created: Array<{ email: string; fullName: string; role: string | null; warning: string | null }>;
+    skipped: Array<{ email?: string; row?: string; reason: string }>;
+  } | null>(null);
 
   const loadUsers = async (targetPage = page) => {
     setIsLoading(true);
@@ -181,6 +188,19 @@ export function UserManagement() {
       showError(err.response?.data?.error || 'Failed to create user');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const res = await apiClient.importUsers(file);
+      setImportResult(res.data ?? { created: [], skipped: [] });
+      loadUsers();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to import users');
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -330,15 +350,40 @@ export function UserManagement() {
           <h2 className="text-2xl font-serif font-bold tracking-tight text-navy-900 dark:text-white">Users</h2>
           <p className="text-sm text-gray-500 dark:text-navy-400">Manage platform users and their access</p>
         </div>
-        <Button
-          variant="primary"
-          size="sm"
-          className="flex items-center gap-2"
-          onClick={() => setShowAddForm(true)}
-        >
-          <Plus className="w-4 h-4" />
-          Add User
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            aria-label="Import users from CSV"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleImportFile(file);
+              event.target.value = '';
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            className="flex items-center gap-2"
+            disabled={isImporting}
+            onClick={() => importInputRef.current?.click()}
+            title="Import users from a CSV file (columns: User Name, Email, Access)"
+          >
+            <Upload className="w-4 h-4" />
+            {isImporting ? 'Importing...' : 'Import CSV'}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            className="flex items-center gap-2"
+            onClick={() => setShowAddForm(true)}
+          >
+            <Plus className="w-4 h-4" />
+            Add User
+          </Button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -667,6 +712,46 @@ export function UserManagement() {
         <div className="text-center py-12 bg-gray-50 dark:bg-navy-900 rounded-lg border border-transparent dark:border-navy-700/60">
           <p className="text-gray-500 dark:text-navy-400">No users found</p>
         </div>
+      )}
+
+      {/* Import Results Modal */}
+      {importResult && (
+        <ModalOverlay onClose={() => setImportResult(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border border-gray-200 dark:border-navy-700 max-h-[85vh] flex flex-col">
+            <div className="px-6 py-4 bg-navy-900 text-white flex items-center justify-between flex-shrink-0">
+              <h3 className="text-lg font-serif font-bold tracking-tight text-white">Import Results</h3>
+              <button onClick={() => setImportResult(null)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+              <p className="text-sm text-gray-600 dark:text-navy-300">
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{importResult.created.length} created</span>
+                {' · '}
+                <span className="font-semibold text-gray-500 dark:text-navy-400">{importResult.skipped.length} skipped</span>
+              </p>
+              {importResult.created.some((u) => u.warning) && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Created with a warning</p>
+                  {importResult.created.filter((u) => u.warning).map((u) => (
+                    <p key={u.email} className="text-xs text-amber-700 dark:text-amber-400">{u.email}: {u.warning}</p>
+                  ))}
+                </div>
+              )}
+              {importResult.skipped.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-navy-400">Skipped</p>
+                  {importResult.skipped.map((s, i) => (
+                    <p key={i} className="text-xs text-gray-500 dark:text-navy-400">{s.email || s.row}: {s.reason}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-navy-700 flex justify-end flex-shrink-0">
+              <Button variant="primary" size="sm" onClick={() => setImportResult(null)}>Close</Button>
+            </div>
+          </div>
+        </ModalOverlay>
       )}
 
       {/* Add User Modal */}

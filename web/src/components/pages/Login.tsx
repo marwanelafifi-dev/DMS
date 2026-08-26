@@ -83,13 +83,17 @@ export function Login() {
   };
 
   // Surface a Google-callback failure after the full-page redirect lands
-  // back on /login?error=... and clean the URL up so refreshing doesn't
-  // re-show it.
+  // back on /login?error=...&reason=... and clean the URL up so refreshing
+  // doesn't re-show it. The backend already sends the real reason (e.g. the
+  // Maintenance Mode message, or "This account has been deactivated") via
+  // `reason` — this used to ignore it entirely and always show one generic
+  // "Google sign-in failed" message regardless of the actual cause.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('error');
     if (code) {
-      setError(GOOGLE_SIGNIN_ERROR_MESSAGES[code] ?? 'Google sign-in failed. Please try again.');
+      const reason = params.get('reason');
+      setError(reason || GOOGLE_SIGNIN_ERROR_MESSAGES[code] || 'Google sign-in failed. Please try again.');
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
