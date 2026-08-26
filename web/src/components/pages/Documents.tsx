@@ -1911,6 +1911,10 @@ export function Documents() {
           document={previewDocument}
           folders={folders}
           onClose={closePreview}
+          onNavigateToFolder={(folderId) => {
+            closePreview();
+            handleFolderSelect(folderId);
+          }}
           onDownload={downloadMockDocument}
           onDownloadForEditing={downloadForEditingDocument}
           onForceUnlock={handleForceUnlock}

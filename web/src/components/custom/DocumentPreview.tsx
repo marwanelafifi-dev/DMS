@@ -21,7 +21,7 @@ import type { Folder } from '../../types';
 import type { RolePermissionFlags } from '../../utils/api';
 import { statusLabels, statusStyles } from '../../utils/documentStatus';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
-import { folderPathLabel } from '../../utils/folderPath';
+import { folderAncestryById } from '../../utils/folderPath';
 import { Button } from '../ui';
 import type { PdfJsViewerHandle, PdfMatchInfo } from './PdfJsViewer';
 import { PreviewToolbar } from './PreviewToolbar';
@@ -142,12 +142,17 @@ function RenderNoticeBanner({ message }: { message?: string }) {
 
 interface DocumentPreviewProps {
   document: MockLibraryDocument;
-  // Full folder list, so the "Folder" field below can show the document's
-  // complete location path (e.g. "Corporate / OLD DMS / Ossia / Storm Genil")
-  // instead of just the immediate containing folder's bare name — optional
-  // since some callers (e.g. a bundled sample/fixture document) may not have
-  // a real folder tree to resolve against.
+  // Full folder list, so the Path breadcrumb below the title can show the
+  // document's complete location (e.g. "Corporate / OLD DMS / Ossia / Storm
+  // Genil") instead of just the immediate containing folder's bare name —
+  // optional since some callers (e.g. a bundled sample/fixture document) may
+  // not have a real folder tree to resolve against.
   folders?: Folder[];
+  // Jumps the Document Library to a folder in the Path breadcrumb — omitted
+  // means the breadcrumb renders as plain (non-clickable) text, for any
+  // caller that can't actually navigate (e.g. this preview reused outside the
+  // main Document Library page).
+  onNavigateToFolder?: (folderId: string) => void;
   onClose: () => void;
   onDownload: (document: MockLibraryDocument) => void;
   onDownloadForEditing?: (document: MockLibraryDocument) => void;
@@ -173,8 +178,8 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, folders, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, permissions, onDocumentUpdated }: DocumentPreviewProps) {
-  const folderPath = (folders ? folderPathLabel(document.folderId, folders) : undefined) ?? document.folderName;
+export function DocumentPreview({ document, folders, onNavigateToFolder, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, permissions, onDocumentUpdated }: DocumentPreviewProps) {
+  const folderAncestry = folders ? folderAncestryById(document.folderId, folders) : [];
   const newVersionInputRef = useRef<HTMLInputElement>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
@@ -795,6 +800,30 @@ export function DocumentPreview({ document, folders, onClose, onDownload, onDown
               <h2 id="document-preview-title" className="whitespace-nowrap text-base font-semibold leading-5 text-[#283a7a] dark:text-white">{document.fileName}</h2>
               <span className="inline-flex items-center gap-1 rounded bg-[#d8f5e4] px-2 py-0.5 text-xs font-medium text-[#27885a]"><Lock className="h-3 w-3" />View Only</span>
             </div>
+            {folderAncestry.length > 0 && (
+              <nav aria-label="Document path" className="flex min-w-0 flex-wrap items-center gap-1 text-xs text-[#718198] dark:text-slate-400">
+                <span className="font-medium text-[#34425b] dark:text-slate-200">Path:</span>
+                {folderAncestry.map((folder, index) => {
+                  const isLast = index === folderAncestry.length - 1;
+                  return (
+                    <span key={folder.folderId} className="flex items-center gap-1">
+                      {index > 0 && <span className="text-[#a4b1c4] dark:text-slate-600">/</span>}
+                      {onNavigateToFolder ? (
+                        <button
+                          type="button"
+                          onClick={() => onNavigateToFolder(folder.folderId)}
+                          className={`hover:underline ${isLast ? 'font-medium text-[#34425b] dark:text-slate-200' : 'text-[#3f8bca]'}`}
+                        >
+                          {folder.name}
+                        </button>
+                      ) : (
+                        <span className={isLast ? 'font-medium text-[#34425b] dark:text-slate-200' : undefined}>{folder.name}</span>
+                      )}
+                    </span>
+                  );
+                })}
+              </nav>
+            )}
           <div
             data-testid="document-preview-actions"
             className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1 [&>*]:shrink-0"
@@ -948,10 +977,6 @@ export function DocumentPreview({ document, folders, onClose, onDownload, onDown
               <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Type</p>
                 <p className="uppercase font-semibold text-[#2f6f9f]">{document.extension}</p>
-              </div>
-              <div>
-                <p className="font-medium text-[#34425b] dark:text-slate-200">Folder</p>
-                <p className="truncate" title={folderPath}>{folderPath}</p>
               </div>
               <div>
                 <p className="font-medium text-[#34425b] dark:text-slate-200">Size</p>

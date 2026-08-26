@@ -24,3 +24,12 @@ export function folderPathLabel(folderId: string | undefined, allFolders: Folder
   if (!folder) return undefined;
   return buildFolderAncestryPath(folder, allFolders).map((f) => f.name).join(' / ');
 }
+
+// Same ancestry lookup as `buildFolderAncestryPath`, but starting from a plain
+// folderId (what most callers actually have on hand) instead of an already-
+// resolved Folder object.
+export function folderAncestryById(folderId: string | undefined, allFolders: Folder[]): Folder[] {
+  if (!folderId) return [];
+  const folder = allFolders.find((f) => f.folderId === folderId);
+  return folder ? buildFolderAncestryPath(folder, allFolders) : [];
+}

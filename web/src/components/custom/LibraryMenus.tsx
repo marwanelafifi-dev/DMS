@@ -7,6 +7,7 @@ import type { Folder } from '../../types';
 import { Button } from '../ui';
 import type { OptionalDocumentColumn } from './DocumentList';
 import { useToast } from '../../hooks/useToast';
+import { folderPathLabel } from '../../utils/folderPath';
 
 const columnOptions: Array<{ id: OptionalDocumentColumn; label: string }> = [
   { id: 'department', label: 'Department' },
@@ -316,7 +317,15 @@ export function LibraryBulkActions({
                   Destination folder
                   <select className="field-control mt-2 w-full" value={value} aria-invalid={Boolean(error)} aria-describedby={error ? 'bulk-action-error' : undefined} onChange={(event) => { setValue(event.target.value); setError(''); }}>
                     <option value="">Choose a folder</option>
-                    {availableDestinations.map((folder) => <option key={folder.folderId} value={folder.folderId}>{folder.name}</option>)}
+                    {/* Full path, not just the bare name — several folders in a real
+                        tree can share the same name (e.g. "Verification" nested under
+                        different parents), and a flat name-only list makes it
+                        impossible to tell which one is actually being selected. */}
+                    {availableDestinations.map((folder) => (
+                      <option key={folder.folderId} value={folder.folderId}>
+                        {folderPathLabel(folder.folderId, folders) || folder.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
               )}
