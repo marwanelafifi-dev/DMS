@@ -179,8 +179,8 @@ services:
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
-      - web
-      - api
+      traefik:
+        condition: service_healthy
 
 volumes:
   pgdata:
