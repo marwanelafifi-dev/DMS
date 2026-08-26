@@ -73,6 +73,10 @@ export interface LibraryFolderRow {
   isRoot: boolean;
   subfolderCount: number;
   documentCount: number;
+  // Set only for cross-folder search results — the folder's own parent chain
+  // (e.g. "Corporate / OLD DMS / Ossia"), so a match found somewhere other than
+  // the folder currently being browsed still shows exactly where it lives.
+  pathLabel?: string;
 }
 
 interface DocumentListProps {
@@ -348,7 +352,9 @@ export function DocumentList({
                     </span>
                     <span className="min-w-0">
                       <span className="block whitespace-normal break-words text-sm font-semibold leading-5 text-[#2e4083] dark:text-slate-100">{folder.name}</span>
-                      <span className="mt-0.5 block truncate text-xs text-[#52627a]">{itemSummary}</span>
+                      <span className="mt-0.5 block truncate text-xs text-[#52627a]">
+                        {folder.pathLabel ? `${folder.pathLabel} · ${itemSummary}` : itemSummary}
+                      </span>
                     </span>
                   </button>
                 </td>

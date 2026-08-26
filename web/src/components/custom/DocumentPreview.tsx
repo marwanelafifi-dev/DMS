@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Download,
   FilePen,
+  FileText,
   History,
   Lock,
   PencilLine,
@@ -448,6 +449,26 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
     return () => window.removeEventListener('keydown', handleKeys);
   }, [document, totalPages, canPaginate, isZoomable, isSearchable]);
 
+  // Ctrl/Cmd + scroll wheel zooms the document's own zoom control instead of the
+  // whole browser tab — attached as a native (non-passive) listener so
+  // preventDefault actually stops the browser's page-zoom gesture. The 'pdf' kind
+  // renders PdfJsViewer, which owns its own independent zoom state and container,
+  // so it installs this same behavior itself rather than being driven from here.
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el || !isZoomable) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      setZoom((z) => {
+        const next = event.deltaY < 0 ? z + ZOOM_STEP : z - ZOOM_STEP;
+        return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+      });
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [isZoomable]);
+
   useEffect(() => {
     const previouslyFocused = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
     const previousBodyOverflow = window.document.body.style.overflow;
@@ -516,9 +537,17 @@ export function DocumentPreview({ document, onClose, onDownload, onDownloadForEd
               onZoomReset={() => setZoom(100)}
             />
             <div className="min-h-0 flex-1 overflow-auto p-6">
-              <div style={getZoomStyle(zoom) as ZoomableStyle}>
-                <pre className="whitespace-pre-wrap rounded-[4px] border border-[#e2e8f0] bg-white p-6 font-mono text-sm leading-7 text-[#334155] shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">{renderSearchable('content', document.preview.content)}</pre>
-              </div>
+              {document.preview.content.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-[#718198] dark:text-slate-400">
+                  <FileText className="h-8 w-8 text-[#a4b1c4] dark:text-slate-500" />
+                  <p className="text-sm font-medium text-[#26334d] dark:text-white">This file is empty</p>
+                  <p className="text-xs">The file was uploaded successfully, but it contains no content.</p>
+                </div>
+              ) : (
+                <div style={getZoomStyle(zoom) as ZoomableStyle}>
+                  <pre className="whitespace-pre-wrap rounded-[4px] border border-[#e2e8f0] bg-white p-6 font-mono text-sm leading-7 text-[#334155] shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">{renderSearchable('content', document.preview.content)}</pre>
+                </div>
+              )}
             </div>
           </div>
         );

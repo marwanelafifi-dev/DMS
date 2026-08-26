@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { preventModalOutsideDismiss } from '../ui/ModalOverlay';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { AlertTriangle, Check, Columns3, Copy, FolderInput, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Columns3, Copy, FolderInput, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
 import type { Folder } from '../../types';
 import { Button } from '../ui';
 import type { OptionalDocumentColumn } from './DocumentList';
@@ -52,6 +52,89 @@ export function ColumnVisibilityMenu({ visibleColumns, onChange }: {
               {column.label}
             </DropdownMenu.CheckboxItem>
           ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+// Multi-select tag filter — scoped by the caller to whatever set of documents is
+// currently in view (e.g. just the folder being browsed), with its own small
+// search box for finding one tag among many, kept separate from the main
+// document-search box (which searches file name/owner/etc., not just tags).
+export function TagFilterMenu({ availableTags, selectedTags, onChange }: {
+  availableTags: string[];
+  selectedTags: string[];
+  onChange: (tags: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const filteredTags = useMemo(
+    () => availableTags.filter((tag) => tag.toLowerCase().includes(search.trim().toLowerCase())),
+    [availableTags, search],
+  );
+
+  const toggleTag = (tag: string) => {
+    onChange(selectedTags.includes(tag) ? selectedTags.filter((t) => t !== tag) : [...selectedTags, tag]);
+  };
+
+  const label = selectedTags.length === 0
+    ? 'All tags'
+    : selectedTags.length === 1
+      ? selectedTags[0]
+      : `${selectedTags.length} tags selected`;
+
+  return (
+    <DropdownMenu.Root onOpenChange={(open) => { if (!open) setSearch(''); }}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          disabled={availableTags.length === 0}
+          title={availableTags.length === 0 ? 'No tags on any document here' : 'Filter by tag'}
+          aria-label="Filter documents by tag"
+          className="field-control flex h-9 w-full items-center justify-between gap-2 text-left sm:w-[170px] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronDown className="h-4 w-4 flex-shrink-0 text-[#8494ac]" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className={`${menuContentClass} max-h-72 min-w-[220px] overflow-y-auto`} sideOffset={6} align="start">
+          <div className="sticky top-0 z-10 bg-white pb-1.5 dark:bg-slate-900">
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => event.stopPropagation()}
+              placeholder="Search tags..."
+              aria-label="Search tags"
+              autoFocus
+              className="field-control h-8 w-full text-sm"
+            />
+          </div>
+          {selectedTags.length > 0 && (
+            <DropdownMenu.Item
+              className={`${menuItemClass} text-[#3f8bca]`}
+              onSelect={(event) => { event.preventDefault(); onChange([]); }}
+            >
+              <X className="h-3.5 w-3.5" /> Clear selection
+            </DropdownMenu.Item>
+          )}
+          {filteredTags.length === 0 ? (
+            <p className="px-2.5 py-2 text-xs text-[#94a3b8]">No matching tags</p>
+          ) : (
+            filteredTags.map((tag) => (
+              <DropdownMenu.CheckboxItem
+                key={tag}
+                checked={selectedTags.includes(tag)}
+                onCheckedChange={() => toggleTag(tag)}
+                onSelect={(event) => event.preventDefault()}
+                className={menuItemClass}
+              >
+                <span className="flex h-4 w-4 items-center justify-center"><DropdownMenu.ItemIndicator><Check className="h-3.5 w-3.5" /></DropdownMenu.ItemIndicator></span>
+                <span className="truncate">{tag}</span>
+              </DropdownMenu.CheckboxItem>
+            ))
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

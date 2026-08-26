@@ -520,6 +520,25 @@ export const PdfJsViewer = forwardRef<PdfJsViewerHandle, PdfJsViewerProps>(funct
     return () => window.removeEventListener('keydown', handleKeys);
   }, [currentPage, numPages, scrollToPage]);
 
+  // Ctrl/Cmd + scroll wheel zooms the PDF's own zoom control instead of the whole
+  // browser tab — attached as a native (non-passive) listener so preventDefault
+  // actually stops the browser's page-zoom gesture (React's onWheel is treated as
+  // passive in some browsers, which silently ignores preventDefault()).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      setZoomPercent((z) => {
+        const next = event.deltaY < 0 ? z + ZOOM_STEP : z - ZOOM_STEP;
+        return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+      });
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
+
   if (hasDocError) return null;
 
   return (

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, Link } from 'react-router-dom';
+import { ShieldAlert } from 'lucide-react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { usePageAccess } from './hooks/usePageAccess';
 import type { PageAccessRoleFlags } from './utils/api';
@@ -40,9 +41,28 @@ function RequireAuth() {
   return <Outlet />;
 }
 
-// Second layer of defense beyond hiding the Sidebar link — a user who
-// navigates straight to a URL for a page their role can't see gets bounced
-// to the Dashboard instead of the page silently rendering.
+// A user who never had access to a page simply never sees its Sidebar link —
+// but nothing stopped them from typing/bookmarking the URL directly and having
+// it silently render anyway. Bouncing them back to "/" isn't right either: it
+// looks like the click just didn't work, with no explanation of why. This shows
+// an explicit "you don't have permission" page instead, still inside the normal
+// Sidebar/Navbar chrome (nested under MainLayout), so it reads as a deliberate
+// block rather than a broken link or a stray redirect.
+function AccessDeniedPage() {
+  return (
+    <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50 dark:bg-red-500/10">
+        <ShieldAlert className="h-7 w-7 text-red-500" />
+      </div>
+      <h1 className="page-heading">Access Denied</h1>
+      <p className="max-w-md text-sm text-[#718198] dark:text-slate-400">
+        You don't have permission to view this page. If you believe this is a mistake, contact your administrator.
+      </p>
+      <Link to="/" className="mt-2 text-sm font-medium text-[#3f8bca] hover:underline">Back to Dashboard</Link>
+    </div>
+  );
+}
+
 function RequirePageAccess({ flag }: { flag: keyof PageAccessRoleFlags }) {
   const access = usePageAccess();
 
@@ -54,7 +74,7 @@ function RequirePageAccess({ flag }: { flag: keyof PageAccessRoleFlags }) {
     );
   }
 
-  if (!access[flag]) return <Navigate to="/" replace />;
+  if (!access[flag]) return <AccessDeniedPage />;
 
   return <Outlet />;
 }
@@ -81,7 +101,9 @@ function App() {
               </Route>
 
               {/* Documents */}
-              <Route path="/documents" element={<Documents />} />
+              <Route element={<RequirePageAccess flag="canViewDocumentLibrary" />}>
+                <Route path="/documents" element={<Documents />} />
+              </Route>
 
               {/* Approvals (sidebar label: C-Doc Workflow) */}
               <Route element={<RequirePageAccess flag="canViewApprovals" />}>
@@ -89,7 +111,9 @@ function App() {
               </Route>
 
               {/* Reminders */}
-              <Route path="/reminders" element={<Reminders />} />
+              <Route element={<RequirePageAccess flag="canViewReminders" />}>
+                <Route path="/reminders" element={<Reminders />} />
+              </Route>
 
               {/* Send Announcement — posting is Full Access/Quality by default,
                   but role-editable via the new CanSendAnnouncements flag */}

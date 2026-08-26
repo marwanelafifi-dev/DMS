@@ -1,12 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { LoaderCircle, UploadCloud, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type LibraryFolderRow, type OptionalDocumentColumn } from '../custom/DocumentList';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
-import { ColumnVisibilityMenu, LibraryBulkActions, type LibraryBulkAction } from '../custom/LibraryMenus';
+import { ColumnVisibilityMenu, LibraryBulkActions, TagFilterMenu, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
@@ -87,6 +87,22 @@ const SPREADSHEET_PDF_PREVIEW_CONTENT_TYPES = new Set([
 
 function getFileExtension(fileName: string): string {
   return fileName.toLowerCase().split('.').pop() ?? '';
+}
+
+// Full ancestor chain (root-first, including the folder itself) for any folder
+// in the tree — shared by the header's own breadcrumb and by search results,
+// which need to show *where* a cross-folder match actually lives. A `guard` set
+// stops a corrupt parentFolderId cycle from looping forever.
+function buildFolderAncestryPath(folder: Folder, allFolders: Folder[]): Folder[] {
+  const path: Folder[] = [];
+  const guard = new Set<string>();
+  let current: Folder | undefined = folder;
+  while (current && !guard.has(current.folderId)) {
+    guard.add(current.folderId);
+    path.unshift(current);
+    current = current.parentFolderId ? allFolders.find((f) => f.folderId === current!.parentFolderId) : undefined;
+  }
+  return path;
 }
 
 // The folder panel used to be a fixed 14rem, which left long folder names
@@ -272,7 +288,7 @@ export function Documents() {
   const [uploadProgress, setUploadProgress] = useState({ complete: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [tagFilter, setTagFilter] = useState('');
+  const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [folderPaneWidth, setFolderPaneWidth] = useState(readStoredFolderPaneWidth);
   const [isResizingFolderPane, setIsResizingFolderPane] = useState(false);
   const folderPaneResizeOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -340,30 +356,51 @@ export function Documents() {
     if (showOnlyMySubmissions) {
       return allDocuments.filter((document) => document.uploadedBy === currentUser?.userId && PENDING_STAGE_STATUSES.has(document.status));
     }
+    // A search should find a matching document anywhere the user has access to,
+    // not just the folder currently being browsed — the same "search this page
+    // only" gap just fixed on the Users admin table. filteredDocuments (below)
+    // still applies the actual text match; this just widens the candidate set
+    // whenever there's something to search for.
+    if (searchQuery.trim()) return allDocuments;
     return allDocuments.filter((document) => document.folderId === selectedFolderId);
-  }, [allDocuments, selectedFolderId, showOnlyMySubmissions, currentUser?.userId]);
+  }, [allDocuments, selectedFolderId, showOnlyMySubmissions, currentUser?.userId, searchQuery]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
+  // Full ancestor chain (root-first) of the folder being browsed, so the header
+  // can show a clickable location path instead of just the current folder's own
+  // name.
+  const folderPath = useMemo(
+    () => (selectedFolder ? buildFolderAncestryPath(selectedFolder, folders) : []),
+    [selectedFolder, folders],
+  );
   // Subfolders of the folder being browsed, shown as rows above the files so a
   // folder containing only subfolders is no longer a dead end reading "No
   // documents in this folder". Hidden in the cross-folder "my submissions" view,
-  // which deliberately isn't scoped to one folder.
+  // which deliberately isn't scoped to one folder. While searching, this widens
+  // the same way `documents` above does — every folder in the library whose name
+  // matches, not just the current folder's own children — each carrying a
+  // `pathLabel` so a match found three levels away from wherever you happen to
+  // be browsing still tells you exactly where it lives.
   const childFolderRows = useMemo<LibraryFolderRow[]>(() => {
-    if (showOnlyMySubmissions || !selectedFolderId) return [];
+    if (showOnlyMySubmissions) return [];
     const query = searchQuery.trim().toLowerCase();
-    return folders
-      .filter((folder) => folder.parentFolderId === selectedFolderId)
-      // A status or tag filter is about document state, which a folder has none
-      // of — showing folders anyway would look like they'd matched the filter.
-      .filter(() => !statusFilter && !tagFilter)
+    // A status or tag filter is about document state, which a folder has none
+    // of — showing folders anyway would look like they'd matched the filter.
+    if (statusFilter || tagFilters.length > 0) return [];
+    const candidates = query ? folders : folders.filter((folder) => folder.parentFolderId === selectedFolderId);
+    return candidates
       .filter((folder) => !query || folder.name.toLowerCase().includes(query))
-      .map((folder) => ({
-        folderId: folder.folderId,
-        name: folder.name,
-        isRoot: !folder.parentFolderId,
-        subfolderCount: folders.filter((candidate) => candidate.parentFolderId === folder.folderId).length,
-        documentCount: allDocuments.filter((document) => document.folderId === folder.folderId).length,
-      }));
-  }, [folders, selectedFolderId, allDocuments, showOnlyMySubmissions, searchQuery, statusFilter, tagFilter]);
+      .map((folder) => {
+        const ancestry = query ? buildFolderAncestryPath(folder, folders).slice(0, -1) : [];
+        return {
+          folderId: folder.folderId,
+          name: folder.name,
+          isRoot: !folder.parentFolderId,
+          pathLabel: ancestry.length > 0 ? ancestry.map((f) => f.name).join(' / ') : (query ? 'Root' : undefined),
+          subfolderCount: folders.filter((candidate) => candidate.parentFolderId === folder.folderId).length,
+          documentCount: allDocuments.filter((document) => document.folderId === folder.folderId).length,
+        };
+      });
+  }, [folders, selectedFolderId, allDocuments, showOnlyMySubmissions, searchQuery, statusFilter, tagFilters]);
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
     ...folders.filter((folder) => selectedFolderIds.has(folder.folderId)).map((folder) => folder.name),
@@ -845,31 +882,58 @@ export function Documents() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Every tag actually present on a loaded document, so the filter can never
-  // offer a value that matches nothing at all. Built from the full library
-  // rather than just the current folder so the option list stays stable while
-  // navigating instead of shifting under the user between folders.
+  // Only tags actually present on a document in the folder currently being
+  // browsed — not every tag in the whole system. Clicking into "IT" should only
+  // ever offer tags that exist on documents inside IT, not tags that only exist
+  // on an unrelated "HR" document elsewhere in the library. Deliberately keyed
+  // off `documents` (already folder-scoped, or the cross-folder "my submissions"
+  // view), so it naturally follows whatever set of documents the user is
+  // actually looking at right now.
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
-    for (const document of allDocuments) {
+    for (const document of documents) {
       for (const tag of document.tags) {
         const trimmed = tag.trim();
         if (trimmed) tags.add(trimmed);
       }
     }
     return [...tags].sort((left, right) => left.localeCompare(right));
-  }, [allDocuments]);
+  }, [documents]);
+
+  // Switching folders (or the tags they contain) can leave a previously-picked
+  // tag no longer valid for the new context — drop anything that's no longer
+  // offered rather than silently keep filtering by a tag the user can't see.
+  useEffect(() => {
+    setTagFilters((current) => current.filter((tag) => availableTags.includes(tag)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableTags]);
 
   const filteredDocuments = useMemo(() => documents.filter((document) => {
     const query = searchQuery.trim();
     const matchesSearch = !query || matchesDmsMetadata(document, query);
     const matchesStatus = !statusFilter || document.status === statusFilter;
     // Case-insensitive so a tag typed as "Quality" still matches "quality" —
-    // tags are free text on upload, so real data mixes casing.
-    const matchesTag = !tagFilter
-      || document.tags.some((tag) => tag.trim().toLowerCase() === tagFilter.toLowerCase());
+    // tags are free text on upload, so real data mixes casing. A document
+    // matches if it carries ANY of the selected tags (OR, not AND) — the
+    // common "show me anything tagged ISO 9001 or ISO 27001" expectation.
+    const matchesTag = tagFilters.length === 0
+      || document.tags.some((tag) => tagFilters.some((selected) => tag.trim().toLowerCase() === selected.toLowerCase()));
     return matchesSearch && matchesStatus && matchesTag;
-  }), [documents, searchQuery, statusFilter, tagFilter]);
+  }), [documents, searchQuery, statusFilter, tagFilters]);
+
+  // While searching across the whole library (see `documents` above), a result
+  // living outside the folder currently being browsed needs to say where it
+  // actually is — the table's own "Folder" column otherwise just shows a bare
+  // folder name with no indication it isn't the one you're standing in.
+  const searchResultDocuments = useMemo(() => {
+    if (!searchQuery.trim()) return filteredDocuments;
+    return filteredDocuments.map((document) => {
+      const folder = folders.find((f) => f.folderId === document.folderId);
+      if (!folder) return document;
+      const path = buildFolderAncestryPath(folder, folders).map((f) => f.name).join(' / ');
+      return path === document.folderName ? document : { ...document, folderName: path };
+    });
+  }, [filteredDocuments, searchQuery, folders]);
 
   // Pointer capture (rather than window listeners) keeps the drag tracking on the
   // handle itself, so moving fast over the table or off the window edge mid-drag
@@ -1406,6 +1470,7 @@ export function Documents() {
       : uploadFiles;
     try {
       for (const uploadFile of filesToUpload) {
+        let createdDocumentId: string | undefined;
         try {
           setActiveUploadStage('uploading');
           setActiveUploadFileName(uploadFile.name);
@@ -1420,6 +1485,7 @@ export function Documents() {
           });
           const createdDocument = docRes.data;
           if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
+          createdDocumentId = createdDocument.documentId;
 
           const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile, uploadVersionLabel);
           setActiveUploadStage('parsing');
@@ -1513,6 +1579,14 @@ export function Documents() {
             uploadedAt: createdDocument.createdAt || timestamp,
           });
         } catch (error: any) {
+          // The document row was already created (createDocument succeeded) but a
+          // later step in this same file's pipeline failed — without this, the
+          // half-created draft is silently left behind, and clicking Submit again
+          // (which looks like the only option after an error) creates yet another
+          // duplicate of it every time.
+          if (createdDocumentId) {
+            await apiClient.deleteDocument(createdDocumentId).catch(() => {});
+          }
           const errorMsg = error?.response?.data?.error || error?.message || `${uploadFile.name} could not be uploaded`;
           errors.push(errorMsg);
         } finally {
@@ -1572,6 +1646,15 @@ export function Documents() {
     setUploadFileName(files.length === 1 ? splitFileName(files[0].name).base : '');
     setUploadProgress({ complete: 0, total: files.length });
     setUploadOwnerId(DEV_USER_ID);
+    setUploadDescription('');
+    setUploadTags([]);
+    setUploadCustomTags('');
+    setUploadVersionLabel('');
+    setUploadCategory('');
+    setUploadCustomCategory('');
+    setUploadDepartment('');
+    setUploadCustomDepartment('');
+    setUploadApprovalNotes('');
     setUploadValidationAttempted(false);
     setShowUploadModal(true);
   };
@@ -1683,6 +1766,42 @@ export function Documents() {
           </div>
         </div>
 
+        {!showOnlyMySubmissions && folderPath.length > 0 && (
+          <div className="flex items-center gap-2 border-b border-[#dbe2ec] bg-[#f7f9fc] px-4 py-2 dark:border-white/10 dark:bg-white/5 sm:px-6">
+            <button
+              type="button"
+              onClick={() => folderPath.length > 1 && handleFolderSelect(folderPath[folderPath.length - 2].folderId)}
+              disabled={folderPath.length < 2}
+              title={folderPath.length > 1 ? `Back to ${folderPath[folderPath.length - 2].name}` : 'Already at the top level'}
+              aria-label="Back to parent folder"
+              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[4px] text-[#5a6a82] hover:bg-[#e2e8f0] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-white/10"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <nav aria-label="Folder location" className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-sm">
+              {folderPath.map((folder, index) => {
+                const isLast = index === folderPath.length - 1;
+                return (
+                  <span key={folder.folderId} className="flex items-center gap-1">
+                    {index > 0 && <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[#a4b1c4] dark:text-slate-500" />}
+                    {isLast ? (
+                      <span className="truncate font-medium text-[#26334d] dark:text-white">{folder.name}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleFolderSelect(folder.folderId)}
+                        className="truncate text-[#3f8bca] hover:underline"
+                      >
+                        {folder.name}
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+
         {showOnlyMySubmissions && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#dbe2ec] bg-[#eef4fb] px-4 py-2.5 dark:border-white/10 dark:bg-[#3f8bca]/10 sm:px-6">
             <p className="text-sm text-[#2f6f9f] dark:text-[#8fc4ea]">
@@ -1708,17 +1827,7 @@ export function Documents() {
                 <option value="qa_final_review">Final Review</option>
                 <option value="released">Released</option>
               </select>
-              <select
-                className="field-control h-9 w-full sm:w-[150px]"
-                value={tagFilter}
-                onChange={(event) => setTagFilter(event.target.value)}
-                aria-label="Filter documents by tag"
-                disabled={availableTags.length === 0}
-                title={availableTags.length === 0 ? 'No tags on any document yet' : 'Filter by tag'}
-              >
-                <option value="">All tags</option>
-                {availableTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
-              </select>
+              <TagFilterMenu availableTags={availableTags} selectedTags={tagFilters} onChange={setTagFilters} />
               <div className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
                 <LibraryBulkActions
                   selectedCount={selectedItemCount}
@@ -1750,7 +1859,7 @@ export function Documents() {
               <div className="p-12 text-center"><p className="text-sm text-[#718198]">{documents.length === 0 ? 'No documents in this folder' : 'No documents matching your filters'}</p></div>
             ) : (
               <DocumentList
-                documents={filteredDocuments}
+                documents={searchResultDocuments}
                 folders={childFolderRows}
                 selectedFolderIds={selectedFolderIds}
                 onSelectedFolderIdsChange={setSelectedFolderIds}

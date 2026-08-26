@@ -100,7 +100,12 @@ export function UserManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const filteredUsers = users.filter(u =>
+  const isSearching = searchQuery.trim().length > 0;
+  // A search must match against every user, not just whichever page happens to
+  // be loaded — `users` is only the current server page (see loadUsers above),
+  // so searching it silently missed anyone sitting on page 2/3 even though they
+  // exist. `allUsers` (already fetched in full for the stat cards) has everyone.
+  const filteredUsers = (isSearching ? allUsers : users).filter(u =>
     u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -621,31 +626,40 @@ export function UserManagement() {
         </table>
         </div>
 
-        {/* Pagination */}
+        {/* Pagination — hidden while searching, since search results are
+            drawn from every user at once, not the currently loaded server page. */}
         <div className="flex items-center justify-between px-6 py-3 bg-gray-50 dark:bg-navy-950/60 border-t border-gray-200 dark:border-navy-800">
           <p className="text-sm text-gray-600 dark:text-navy-400">
-            Page <span className="font-semibold text-navy-900 dark:text-white">{page}</span> of{' '}
-            <span className="font-semibold text-navy-900 dark:text-white">{totalPages}</span>
-            {' '}&mdash; {totalCount} total users
+            {isSearching ? (
+              <>{filteredUsers.length} matching {filteredUsers.length === 1 ? 'user' : 'users'}</>
+            ) : (
+              <>
+                Page <span className="font-semibold text-navy-900 dark:text-white">{page}</span> of{' '}
+                <span className="font-semibold text-navy-900 dark:text-white">{totalPages}</span>
+                {' '}&mdash; {totalCount} total users
+              </>
+            )}
           </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              aria-label="Next page"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+          {!isSearching && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-2 rounded-lg text-navy-600 dark:text-navy-300 hover:bg-navy-100 dark:hover:bg-navy-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                aria-label="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

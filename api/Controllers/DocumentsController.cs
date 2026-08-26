@@ -911,7 +911,13 @@ public class DocumentsController(
     {
         try
         {
-            if (file == null || file.Length == 0)
+            // A genuinely empty (0-byte) file is a real, valid upload — MinIO
+            // stores empty objects fine — so only reject when no file was sent
+            // at all. Previously this rejected 0-byte files too, which silently
+            // left behind a document row with no version at all (createDocument
+            // had already succeeded before this call), surfacing later as a
+            // permanently broken "preview unavailable" with no file to preview.
+            if (file == null)
                 return BadRequest(new { success = false, error = "File is required" });
 
             // Both real call sites (the new-document upload form and Upload New
