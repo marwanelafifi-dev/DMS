@@ -131,6 +131,7 @@ public static class AuditActions
     public const string USER_DEACTIVATED = "USER_DEACTIVATED";
     public const string USER_DELETED = "USER_DELETED";
     public const string USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
+    public const string USER_CONVERTED_TO_GOOGLE = "USER_CONVERTED_TO_GOOGLE";
     public const string USER_OWNERSHIP_TRANSFERRED = "USER_OWNERSHIP_TRANSFERRED";
     public const string USER_LOGIN = "USER_LOGIN";
 

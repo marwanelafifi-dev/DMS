@@ -17,6 +17,13 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
     // server-side (never trust the client) against the verified token's email.
     private const string AllowedGoogleDomain = "si-ware.com";
 
+    // The seeded local admin account (see infra/db/init/003_dev_seed_admin.sql)
+    // — deliberately excluded from the auto-convert-to-Google-on-first-login
+    // behavior below, per explicit instruction, so there's always a guaranteed
+    // local-password fallback into the app even if every real user's account
+    // migrates to Google-only.
+    private static readonly Guid DevSystemAdminId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+
     // Must match TOKEN_STORAGE_KEY in web/src/utils/api.ts — this is the
     // localStorage key the SPA reads its bearer token from on every request.
     private const string SessionTokenStorageKey = "dms_session_token";
@@ -296,7 +303,24 @@ public class AuthController(DmsContext context, JwtTokenService jwtTokenService,
             if (!user.IsActive)
                 return (false, "This account has been deactivated", null);
             if (string.IsNullOrEmpty(user.SsoSubject))
+            {
                 user.SsoSubject = payload.Subject;
+                // The very first time an existing local account signs in via
+                // Google, it converts to Google-only from that point on —
+                // clearing the local password blocks the old local-login path
+                // immediately, instead of leaving both methods open
+                // indefinitely. Per explicit design: a batch of local
+                // accounts is meant to naturally migrate to Google the moment
+                // each person actually uses it, with no separate admin
+                // conversion step or account downtime beforehand — except the
+                // seeded System Admin account, which always keeps its local
+                // password regardless of whether it's ever used with Google.
+                if (user.PasswordHash != null && user.UserId != DevSystemAdminId)
+                {
+                    user.PasswordHash = null;
+                    await auditService.LogAsync(user.UserId, USER_CONVERTED_TO_GOOGLE, new { user.UserId, user.Email });
+                }
+            }
             // Keep the avatar fresh — Google's photo can change over time.
             if (!string.IsNullOrEmpty(payload.Picture))
                 user.AvatarUrl = payload.Picture;

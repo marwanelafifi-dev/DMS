@@ -412,9 +412,25 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
       printFrame.title = 'Print document';
       printFrame.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-9999px';
       printFrame.onload = () => {
-        printFrame.contentWindow?.focus();
-        printFrame.contentWindow?.print();
-        window.setTimeout(() => printFrame.remove(), 1_000);
+        const frameWindow = printFrame.contentWindow;
+        if (!frameWindow) {
+          printFrame.remove();
+          return;
+        }
+        // Real bug found live: removing the iframe on a fixed 1-second timer
+        // yanked it out from under the print dialog while a user was still
+        // typing a custom page range (e.g. "12"), closing the dialog on them
+        // mid-edit — the dialog's rendering depends on the iframe's document
+        // staying alive for as long as the dialog itself is open. Wait for the
+        // dialog to actually finish (printed or cancelled) instead of guessing
+        // a delay; the long timeout below is only a safety net in case
+        // 'afterprint' never fires for some reason, so the hidden iframe
+        // doesn't leak forever.
+        const cleanup = () => printFrame.remove();
+        frameWindow.addEventListener('afterprint', cleanup, { once: true });
+        frameWindow.focus();
+        frameWindow.print();
+        window.setTimeout(cleanup, 60_000);
       };
       window.document.body.appendChild(printFrame);
       return;
