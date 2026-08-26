@@ -109,28 +109,8 @@ public class BaseController : ControllerBase
     // set. BypassFolderPermissions short-circuits to true; otherwise a role
     // grant on this folder is the baseline, and a Deny-Read override still
     // wins over that grant, same deny-always-wins rule as everywhere else.
-    protected static async Task<bool> HasFolderReadAccessAsync(DmsContext context, AccessOverrideService accessOverrideService, Guid userId, Guid folderId)
-    {
-        DmsPageAccessRole? pageAccessRole = null;
-        var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
-        if (user?.Role != null)
-        {
-            pageAccessRole = await context.PageAccessRoles.AsNoTracking().FirstOrDefaultAsync(r => r.Role == user.Role);
-            if (pageAccessRole?.BypassFolderPermissions == true)
-                return true;
-        }
-
-        var hasGrant = await context.FolderPermissions.AsNoTracking().AnyAsync(p => p.UserId == userId && p.FolderId == folderId);
-        if (!hasGrant && (pageAccessRole?.CanReadAllFolders == true || pageAccessRole?.CanReadWriteAllFolders == true))
-            hasGrant = true;
-        if (!hasGrant)
-        {
-            var overrideVisibleFolderIds = await accessOverrideService.GetOverrideVisibleFolderIdsAsync(userId);
-            hasGrant = overrideVisibleFolderIds.Contains(folderId);
-        }
-
-        return await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Read, hasGrant);
-    }
+    protected static Task<bool> HasFolderReadAccessAsync(DmsContext context, AccessOverrideService accessOverrideService, Guid userId, Guid folderId) =>
+        accessOverrideService.HasFolderReadAccessAsync(userId, folderId);
 
     // Used by folder/document *list* endpoints (GET /api/folders, GET
     // /api/documents) — those have no single ID for RBACMiddleware to gate,

@@ -85,6 +85,54 @@ public class AccessOverrideService(DmsContext context)
         return !groupDecisions.Contains(false);
     }
 
+    // Single-folder "can this user actually see this folder" check — same
+    // logic BaseController.HasFolderReadAccessAsync already exposed to
+    // controllers, moved here (with that method now delegating to this one)
+    // so a plain service class (e.g. NotificationService, which isn't a
+    // controller and can't call a protected BaseController method) can reuse
+    // it too. BypassFolderPermissions short-circuits to true; otherwise a
+    // role grant on this folder is the baseline, and a Deny-Read override
+    // still wins over that grant, same deny-always-wins rule as everywhere
+    // else.
+    public async Task<bool> HasFolderReadAccessAsync(Guid userId, Guid folderId)
+    {
+        DmsPageAccessRole? pageAccessRole = null;
+        var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user?.Role != null)
+        {
+            pageAccessRole = await context.PageAccessRoles.AsNoTracking().FirstOrDefaultAsync(r => r.Role == user.Role);
+            if (pageAccessRole?.BypassFolderPermissions == true)
+                return true;
+        }
+
+        var hasGrant = await context.FolderPermissions.AsNoTracking().AnyAsync(p => p.UserId == userId && p.FolderId == folderId);
+        if (!hasGrant && (pageAccessRole?.CanReadAllFolders == true || pageAccessRole?.CanReadWriteAllFolders == true))
+            hasGrant = true;
+        if (!hasGrant)
+        {
+            var overrideVisibleFolderIds = await GetOverrideVisibleFolderIdsAsync(userId);
+            hasGrant = overrideVisibleFolderIds.Contains(folderId);
+        }
+
+        return await ResolveAsync(userId, null, folderId, AccessOverrideActions.Read, hasGrant);
+    }
+
+    // Full "can this user actually open this specific file" check — folder
+    // visibility alone isn't the whole story, since a document-scoped
+    // override can grant or deny FileRead independently of the folder it
+    // lives in (that's the whole point of File Level overrides being
+    // separate from Folder Level ones). Folder-level access is resolved
+    // first as the baseline, then FileRead is resolved against that baseline
+    // with the document's own id in scope, so a document-specific override
+    // (e.g. an explicit Deny on this one file despite folder-level Allow)
+    // still wins — same "more specific decision wins" rule ResolveAsync
+    // already applies everywhere else.
+    public async Task<bool> HasDocumentReadAccessAsync(Guid userId, Guid documentId, Guid folderId)
+    {
+        var folderAccess = await HasFolderReadAccessAsync(userId, folderId);
+        return await ResolveAsync(userId, documentId, folderId, AccessOverrideActions.FileRead, folderAccess);
+    }
+
     // Used by folder/document *list* endpoints alongside per-folder grants —
     // a Read-allow override can grant visibility into a folder (and
     // everything beneath it) even with no folder-role grant at all, which is

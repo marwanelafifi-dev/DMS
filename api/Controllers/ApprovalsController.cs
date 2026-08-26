@@ -496,6 +496,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
+            await notificationService.NotifyDocumentSubmitterAsync(documentId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
 
             var acceptedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
             await notificationService.NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Manager Review", acceptedDocTitle, r => r.CanViewManagerStage);
@@ -588,6 +589,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "QA requested a correction on your document", request.Notes);
+            await notificationService.NotifyDocumentSubmitterAsync(documentId, userId, "QA requested a correction on your document", request.Notes);
 
             return Ok(new
             {
@@ -659,6 +661,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
+            await notificationService.NotifyDocumentSubmitterAsync(documentId, userId, "Your document was approved by the Manager", "Now moving to Final Release.");
 
             var managerApprovedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
             await notificationService.NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Final Release", managerApprovedDocTitle, r => r.CanViewFinalReleaseStage);
@@ -747,6 +750,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was rejected by the Manager", request.RejectionReason);
+            await notificationService.NotifyDocumentSubmitterAsync(documentId, userId, "Your document was rejected by the Manager", request.RejectionReason);
 
             return Ok(new
             {
@@ -869,6 +873,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(document.DocumentId, userId, "The Manager corrected your document directly", "Now moving to Final Release.");
+            await notificationService.NotifyDocumentSubmitterAsync(document.DocumentId, userId, "The Manager corrected your document directly", "Now moving to Final Release.");
             await notificationService.NotifyStageReviewersAsync(userId, document.DocumentId, "A document is waiting for Final Release", document.Title, r => r.CanViewFinalReleaseStage);
 
             return Ok(new
@@ -959,6 +964,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was released");
+            await notificationService.NotifyDocumentSubmitterAsync(documentId, userId, "Your document was released");
 
             return Ok(new
             {
@@ -1051,6 +1057,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             });
 
             await notificationService.NotifyDocumentOwnerAsync(documentId, userId, "Your document was rejected at Final Release", request.RejectionReason);
+            await notificationService.NotifyDocumentSubmitterAsync(documentId, userId, "Your document was rejected at Final Release", request.RejectionReason);
 
             return Ok(new
             {

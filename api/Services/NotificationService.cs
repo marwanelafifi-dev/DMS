@@ -8,12 +8,31 @@ namespace DMS.Api.Services;
 // own, someone editing your document's metadata, and your document being
 // locked (download-for-editing) or unlocked. Never notifies the actor about
 // their own action.
-public class NotificationService(DmsContext context, ILogger<NotificationService> logger)
+public class NotificationService(DmsContext context, EmailService emailService, AccessOverrideService accessOverrideService, IConfiguration configuration, ILogger<NotificationService> logger)
 {
     public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null, Guid? announcementId = null)
     {
         if (recipientUserId == actorUserId)
             return;
+
+        // Nobody — regardless of role, and regardless of whether they're the
+        // document's own owner or the person who submitted it — should ever
+        // be told about a document they don't actually have real access to
+        // open. Checked here, in the one shared method every document
+        // notification funnels through, so it applies uniformly to every
+        // caller (owner, submitter, stage reviewers, and any future one)
+        // instead of needing to be re-implemented per call site.
+        if (documentId.HasValue)
+        {
+            var folderId = await context.Documents.AsNoTracking()
+                .Where(d => d.DocumentId == documentId.Value)
+                .Select(d => (Guid?)d.FolderId)
+                .FirstOrDefaultAsync();
+            if (!folderId.HasValue)
+                return; // the document no longer exists
+            if (!await accessOverrideService.HasDocumentReadAccessAsync(recipientUserId, documentId.Value, folderId.Value))
+                return;
+        }
 
         try
         {
@@ -34,6 +53,55 @@ public class NotificationService(DmsContext context, ILogger<NotificationService
         catch (Exception ex)
         {
             logger.LogError(ex, "Error creating notification for user {UserId}", recipientUserId);
+        }
+
+        // Per explicit request: every document-related in-app notification
+        // (QA/Manager/Final Release stage transitions, correction requests,
+        // rejections, releases — anything that reaches here with a
+        // documentId) also goes out as a real email with a direct link back
+        // to the document, the same way announcements/reminders already do.
+        // Best-effort and never allowed to affect the caller — a missing/
+        // unconfigured mailer just means this specific email is skipped
+        // (EmailService.SendAsync's own no-op-on-unconfigured behavior),
+        // exactly like every other outbound email in this app.
+        if (documentId.HasValue)
+            await SendDocumentEmailAsync(recipientUserId, documentId.Value, title, body);
+    }
+
+    private async Task SendDocumentEmailAsync(Guid recipientUserId, Guid documentId, string title, string? body)
+    {
+        try
+        {
+            var recipient = await context.Users.AsNoTracking()
+                .Where(u => u.UserId == recipientUserId)
+                .Select(u => new { u.Email, u.FullName })
+                .FirstOrDefaultAsync();
+            if (recipient == null || string.IsNullOrWhiteSpace(recipient.Email))
+                return;
+
+            var documentTitle = await context.Documents.AsNoTracking()
+                .Where(d => d.DocumentId == documentId)
+                .Select(d => d.Title)
+                .FirstOrDefaultAsync();
+
+            var portalUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
+            var documentUrl = $"{portalUrl}/documents?preview={documentId}";
+
+            var bodyHtml = $"""
+                <p style="margin:0 0 16px;font-size:14px;color:#26334d;">Hello <strong>{System.Net.WebUtility.HtmlEncode(recipient.FullName)}</strong>,</p>
+                <p style="margin:0 0 8px;font-size:14px;color:#26334d;">{System.Net.WebUtility.HtmlEncode(title)}</p>
+                {(string.IsNullOrWhiteSpace(body) ? "" : $"""<p style="margin:0 0 20px;font-size:14px;color:#52627a;">{System.Net.WebUtility.HtmlEncode(body)}</p>""")}
+                {(string.IsNullOrWhiteSpace(documentTitle) ? "" : $"""<p style="margin:0 0 20px;font-size:13px;color:#718198;">Document: <strong>{System.Net.WebUtility.HtmlEncode(documentTitle)}</strong></p>""")}
+                <a href="{documentUrl}" style="display:inline-block;background:#002E5C;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:4px;">
+                  View Document
+                </a>
+                """;
+            var html = EmailService.BuildBrandedHtml(title, "#002E5C", bodyHtml);
+            await emailService.SendAsync(recipient.Email, $"Si-Ware Enterprise DMS — {title}", html);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending document notification email for document {DocumentId} to user {UserId}", documentId, recipientUserId);
         }
     }
 
@@ -58,6 +126,39 @@ public class NotificationService(DmsContext context, ILogger<NotificationService
         }
     }
 
+    // Looks up whoever actually submitted the document's *current* version
+    // and notifies them too — this can be a different person from the
+    // document's owner (e.g. someone submitting on another owner's behalf),
+    // so an owner-only notification wouldn't otherwise ever reach them.
+    // Skipped if there's no recorded submitter, or they're the same person
+    // as the owner (already notified via NotifyDocumentOwnerAsync — this
+    // avoids sending that one person two identical notifications/emails for
+    // the same event).
+    public async Task NotifyDocumentSubmitterAsync(Guid documentId, Guid actorUserId, string title, string? body = null)
+    {
+        try
+        {
+            var document = await context.Documents.AsNoTracking()
+                .Where(d => d.DocumentId == documentId)
+                .Select(d => new { d.OwnerId, d.CurrentVersionId })
+                .FirstOrDefaultAsync();
+            if (document?.CurrentVersionId == null)
+                return;
+
+            var submitterId = await context.DocumentVersions.AsNoTracking()
+                .Where(v => v.VersionId == document.CurrentVersionId)
+                .Select(v => v.SubmittedById)
+                .FirstOrDefaultAsync();
+
+            if (submitterId.HasValue && submitterId.Value != document.OwnerId)
+                await NotifyAsync(submitterId.Value, actorUserId, title, body, documentId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error notifying submitter of document {DocumentId}", documentId);
+        }
+    }
+
     // Every stage-advancing action (QA accept, Manager approve, Manager
     // self-correct) — and now a task submitted/resubmitted against a
     // document — notifies every active user whose page-access role can view
@@ -65,6 +166,10 @@ public class NotificationService(DmsContext context, ILogger<NotificationService
     // not just the document's original submitter. Shared between
     // ApprovalsController (stage transitions) and TaskService/TasksController
     // (PCAR submit / correction resubmit), so both paths use one definition.
+    // Real per-document access (folder- and file-level overrides included)
+    // is enforced centrally inside NotifyAsync, so a role-qualifying reviewer
+    // with no actual access to this specific document is still silently
+    // skipped without this method needing to check it itself.
     public async Task NotifyStageReviewersAsync(Guid actorUserId, Guid documentId, string title, string? body, Func<DmsPageAccessRole, bool> stageFlagSelector)
     {
         var roles = await context.PageAccessRoles.AsNoTracking().ToListAsync();
