@@ -332,6 +332,20 @@ public class DatabaseBackupController(
         if (!TimeSpan.TryParse(req.Time, out _))
             return BadRequest(new { success = false, error = "Time must be in HH:mm format" });
 
+        var pathError = ScheduledBackupService.ValidateDestinationPath(req.DestinationPath);
+        if (pathError != null)
+            return BadRequest(new { success = false, error = pathError });
+
+        if (req.NetworkShare?.Enabled == true)
+        {
+            if (string.IsNullOrWhiteSpace(req.NetworkShare.Host) || string.IsNullOrWhiteSpace(req.NetworkShare.ShareName))
+                return BadRequest(new { success = false, error = "Network share host and share name are required" });
+
+            var (smbOk, smbError) = SmbBackupService.TestConnection(req.NetworkShare);
+            if (!smbOk)
+                return BadRequest(new { success = false, error = $"Network share connection failed: {smbError}" });
+        }
+
         await scheduledBackupService.SaveConfigAsync(req, GetCurrentUserId());
         await auditService.LogAsync(GetCurrentUserId(), APP_SETTING_UPDATED, new { Group = "scheduled_backup_config", req });
 

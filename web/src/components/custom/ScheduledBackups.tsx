@@ -50,6 +50,14 @@ export function ScheduledBackups() {
   const [dayOfWeek, setDayOfWeek] = useState('Sunday');
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [keepLastN, setKeepLastN] = useState(30);
+  const [destinationPath, setDestinationPath] = useState('');
+  const [smbEnabled, setSmbEnabled] = useState(false);
+  const [smbHost, setSmbHost] = useState('');
+  const [smbShareName, setSmbShareName] = useState('');
+  const [smbDomain, setSmbDomain] = useState('');
+  const [smbUsername, setSmbUsername] = useState('');
+  const [smbPassword, setSmbPassword] = useState('');
+  const [smbSubPath, setSmbSubPath] = useState('');
   const [files, setFiles] = useState<BackupFile[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isRunningNow, setIsRunningNow] = useState(false);
@@ -67,6 +75,14 @@ export function ScheduledBackups() {
         setDayOfWeek(config.dayOfWeek);
         setDayOfMonth(config.dayOfMonth);
         setKeepLastN(config.keepLastN);
+        setDestinationPath(config.destinationPath ?? '');
+        setSmbEnabled(config.networkShare?.enabled ?? false);
+        setSmbHost(config.networkShare?.host ?? '');
+        setSmbShareName(config.networkShare?.shareName ?? '');
+        setSmbDomain(config.networkShare?.domain ?? '');
+        setSmbUsername(config.networkShare?.username ?? '');
+        setSmbPassword(config.networkShare?.password ?? '');
+        setSmbSubPath(config.networkShare?.subPath ?? '');
         setFiles(fileList ?? []);
       })
       .catch(() => showError('Failed to load backup schedule'))
@@ -85,7 +101,24 @@ export function ScheduledBackups() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const res = await apiClient.updateBackupSchedule({ enabled, frequencies, time, dayOfWeek, dayOfMonth, keepLastN });
+      const res = await apiClient.updateBackupSchedule({
+        enabled,
+        frequencies,
+        time,
+        dayOfWeek,
+        dayOfMonth,
+        keepLastN,
+        destinationPath: destinationPath.trim() || null,
+        networkShare: {
+          enabled: smbEnabled,
+          host: smbHost.trim(),
+          shareName: smbShareName.trim(),
+          domain: smbDomain.trim() || null,
+          username: smbUsername.trim() || null,
+          password: smbPassword || null,
+          subPath: smbSubPath.trim() || null,
+        },
+      });
       if (!res.success) { showError(res.error || 'Failed to save schedule'); return; }
       showSuccess('Backup schedule saved');
     } catch (err: any) {
@@ -190,6 +223,70 @@ export function ScheduledBackups() {
         <div>
           <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Keep last N backups (0 = keep all)</label>
           <input type="number" min={0} value={keepLastN} onChange={(e) => setKeepLastN(Math.max(0, Number(e.target.value)))} className="field-control h-10 w-full sm:w-48" />
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">
+            Destination path <span className="font-normal text-[#94a3b8]">(optional — a second copy, in addition to object storage)</span>
+          </label>
+          <input
+            type="text"
+            value={destinationPath}
+            onChange={(e) => setDestinationPath(e.target.value)}
+            placeholder="e.g. /mnt/backup-share"
+            className="field-control h-10 w-full font-mono text-sm"
+          />
+          <p className="mt-1.5 text-xs text-[#94a3b8]">
+            A folder path as seen from inside the API container. Every backup is always saved to object storage first — this just adds a second
+            copy here too. For a network location, ask your administrator to mount that share into the <code className="rounded bg-[#f8fafc] px-1 dark:bg-slate-800">api</code> container
+            at this path first (see the comment above the <code className="rounded bg-[#f8fafc] px-1 dark:bg-slate-800">api</code> service in <code className="rounded bg-[#f8fafc] px-1 dark:bg-slate-800">docker-compose.yml</code>) —
+            this app never handles network credentials directly, it only writes to a plain local folder.
+          </p>
+        </div>
+
+        <div className="border-t border-[#e2e8f0] pt-5 dark:border-white/10">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-[#26334d] dark:text-white">Network Share (SMB)</p>
+              <p className="text-xs text-[#94a3b8]">
+                A second copy, written directly to a Windows/AD network share (e.g. <code className="rounded bg-[#f8fafc] px-1 dark:bg-slate-800">\\FSS\IT</code>) using the
+                credentials below — no host-level mount needed. These credentials are stored the same way this app already stores the SMTP
+                password (plain, Admin-Panel-only), not encrypted at rest — a deliberate tradeoff for simpler setup versus the Destination Path
+                option above.
+              </p>
+            </div>
+            <Toggle checked={smbEnabled} onChange={setSmbEnabled} />
+          </div>
+
+          {smbEnabled && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Host or IP</label>
+                <input type="text" value={smbHost} onChange={(e) => setSmbHost(e.target.value)} placeholder="e.g. FSS or 10.0.0.5" className="field-control h-10 w-full font-mono text-sm" />
+                <p className="mt-1 text-xs text-[#94a3b8]">If the hostname doesn't resolve from inside the container, use the server's IP address instead.</p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Share name</label>
+                <input type="text" value={smbShareName} onChange={(e) => setSmbShareName(e.target.value)} placeholder="e.g. IT" className="field-control h-10 w-full font-mono text-sm" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Domain <span className="font-normal text-[#94a3b8]">(optional)</span></label>
+                <input type="text" value={smbDomain} onChange={(e) => setSmbDomain(e.target.value)} placeholder="e.g. SIWARE" className="field-control h-10 w-full font-mono text-sm" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Sub-folder <span className="font-normal text-[#94a3b8]">(optional)</span></label>
+                <input type="text" value={smbSubPath} onChange={(e) => setSmbSubPath(e.target.value)} placeholder="e.g. DMS-Backups" className="field-control h-10 w-full font-mono text-sm" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Username</label>
+                <input type="text" value={smbUsername} onChange={(e) => setSmbUsername(e.target.value)} autoComplete="off" className="field-control h-10 w-full" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Password</label>
+                <input type="password" value={smbPassword} onChange={(e) => setSmbPassword(e.target.value)} autoComplete="new-password" className="field-control h-10 w-full" />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">

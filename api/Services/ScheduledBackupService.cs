@@ -8,9 +8,22 @@ namespace DMS.Api.Services;
 // "Frequencies" is deliberately a set, not a single choice — per explicit
 // request, an admin can turn on e.g. both Daily AND Weekly at once, each
 // firing independently on its own schedule.
-public record ScheduledBackupConfig(bool Enabled, string[] Frequencies, string Time, string DayOfWeek, int DayOfMonth, int KeepLastN)
+//
+// DestinationPath and NetworkShare are both optional and purely additive —
+// every backup always goes to MinIO object storage first (the app's own
+// always-available storage, no extra setup needed) regardless of either:
+//   - DestinationPath: a second copy written to a plain filesystem path
+//     *inside the API container* — for a network location, the share must
+//     already be mounted at the infrastructure level (see docker-compose.yml)
+//     since this never handles network protocols/credentials itself.
+//   - NetworkShare: a second copy written by the app connecting *directly*
+//     over SMB2/3 using credentials entered in the GUI — no host-level mount
+//     needed, but the credentials are then stored in the database (same
+//     plain-JSON pattern already used for the SMTP password), not a
+//     locked-down host-only file. Both can be enabled at once if wanted.
+public record ScheduledBackupConfig(bool Enabled, string[] Frequencies, string Time, string DayOfWeek, int DayOfMonth, int KeepLastN, string? DestinationPath = null, NetworkShareConfig? NetworkShare = null)
 {
-    public static readonly ScheduledBackupConfig Default = new(false, [], "02:00", "Sunday", 1, 30);
+    public static readonly ScheduledBackupConfig Default = new(false, [], "02:00", "Sunday", 1, 30, null, NetworkShareConfig.Default);
 }
 
 // Tracks the last period each frequency actually fired in (e.g. "2026-08-05"
@@ -174,10 +187,46 @@ public class ScheduledBackupService(
         await auditService.LogAsync(Guid.Empty, AuditActions.DATABASE_BACKUP_EXPORTED, new { Frequency = frequency, fileName, SizeBytes = bytes.Length, Scheduled = true });
         logger.LogInformation("Scheduled backup ({Frequency}) saved as {FileName} ({SizeBytes} bytes)", frequency, fileName, bytes.Length);
 
+        // Best-effort second copies — the MinIO save above has already
+        // succeeded by this point, so a bad/unmounted/unwritable destination
+        // path or a bad/unreachable network share only loses that specific
+        // extra copy, never the backup itself.
+        if (!string.IsNullOrWhiteSpace(config.DestinationPath))
+            await TryWriteToDestinationPathAsync(config.DestinationPath, fileName, bytes);
+
+        if (config.NetworkShare?.Enabled == true)
+        {
+            var (smbSuccess, smbError) = SmbBackupService.SaveBackup(config.NetworkShare, fileName, bytes);
+            if (!smbSuccess)
+                logger.LogWarning("Failed to write backup {FileName} to network share {Host}\\{ShareName} — {Error}", fileName, config.NetworkShare.Host, config.NetworkShare.ShareName, smbError);
+            else
+                logger.LogInformation("Backup {FileName} also written to network share {Host}\\{ShareName}", fileName, config.NetworkShare.Host, config.NetworkShare.ShareName);
+        }
+
         if (config.KeepLastN > 0)
+        {
             await EnforceRetentionAsync(config.KeepLastN);
+            if (!string.IsNullOrWhiteSpace(config.DestinationPath))
+                EnforceDestinationPathRetention(config.DestinationPath, config.KeepLastN);
+            if (config.NetworkShare?.Enabled == true)
+                SmbBackupService.EnforceRetention(config.NetworkShare, config.KeepLastN);
+        }
 
         return (true, null, fileName);
+    }
+
+    private async Task TryWriteToDestinationPathAsync(string destinationPath, string fileName, byte[] bytes)
+    {
+        try
+        {
+            Directory.CreateDirectory(destinationPath);
+            await File.WriteAllBytesAsync(Path.Combine(destinationPath, fileName), bytes);
+            logger.LogInformation("Backup {FileName} also written to destination path {DestinationPath}", fileName, destinationPath);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to write backup {FileName} to destination path {DestinationPath} — the MinIO copy is unaffected", fileName, destinationPath);
+        }
     }
 
     private async Task EnforceRetentionAsync(int keepLastN)
@@ -191,6 +240,52 @@ public class ScheduledBackupService(
         {
             try { await minioService.DeleteAsync(key); }
             catch (Exception ex) { logger.LogWarning(ex, "Failed to delete old scheduled backup {ObjectKey} during retention cleanup", key); }
+        }
+    }
+
+    private void EnforceDestinationPathRetention(string destinationPath, int keepLastN)
+    {
+        try
+        {
+            if (!Directory.Exists(destinationPath)) return;
+            var toDelete = Directory.GetFiles(destinationPath, "dms-backup-*.sql")
+                .OrderByDescending(Path.GetFileName)
+                .Skip(keepLastN);
+            foreach (var path in toDelete)
+            {
+                try { File.Delete(path); }
+                catch (Exception ex) { logger.LogWarning(ex, "Failed to delete old scheduled backup {Path} from destination path during retention cleanup", path); }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to enforce retention on destination path {DestinationPath}", destinationPath);
+        }
+    }
+
+    // Validates a destination path is actually usable *before* it's saved —
+    // so a bad/unmounted/unwritable path surfaces as an immediate, clear
+    // error in the GUI right when the admin sets it, instead of silently
+    // failing every scheduled run at 2 AM with nothing but a log line no one
+    // is watching. A real test file is written and removed, not just an
+    // existence check, since a mounted-but-read-only share would otherwise
+    // look fine here and then fail for real later.
+    public static string? ValidateDestinationPath(string? destinationPath)
+    {
+        if (string.IsNullOrWhiteSpace(destinationPath))
+            return null;
+
+        try
+        {
+            Directory.CreateDirectory(destinationPath);
+            var probePath = Path.Combine(destinationPath, $".dms-write-test-{Guid.NewGuid():N}");
+            File.WriteAllText(probePath, string.Empty);
+            File.Delete(probePath);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return $"'{destinationPath}' is not writable from inside the API container: {ex.Message}. If this is meant to be a network location, make sure it's mounted into the api container first (see docker-compose.yml) — the app writes to it as a plain local folder and never handles network credentials itself.";
         }
     }
 }

@@ -18,6 +18,13 @@
     <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
     <PackageReference Include="Google.Apis.Calendar.v3" Version="1.68.0.3430" />
     <PackageReference Include="ClosedXML" Version="0.104.1" />
+    <!-- Pure C# SMB2/3 client — lets Scheduled Backups write directly to a
+         Windows/AD network share using credentials entered in the GUI,
+         with no host-level CIFS mount required. Version picked from memory
+         in an offline environment — if `docker compose build api` reports
+         it can't be found/restored, tell me the exact NuGet error and the
+         version number will be corrected. -->
+    <PackageReference Include="SMBLibrary" Version="1.5.2" />
   </ItemGroup>
 
   <ItemGroup>

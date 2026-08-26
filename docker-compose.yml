@@ -80,6 +80,24 @@ services:
       Smtp__Password: ${SMTP_PASSWORD}
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
+    # Scheduled Backups (Admin Panel → Database) has two independent, optional
+    # extra-copy destinations on top of the always-on object-storage save:
+    #   1. "Destination Path" — a plain directory *inside this container*.
+    #      If you want that to be a real network share instead of local disk,
+    #      mount the share on the Ubuntu host first (e.g. via /etc/fstab for
+    #      a CIFS share, with a root-only-readable credentials file) and
+    #      bind-mount that host path here, e.g.:
+    #        volumes:
+    #          - /mnt/dms-backup-share:/mnt/backup-share:rw
+    #      then set the GUI field to /mnt/backup-share. No host mount, no
+    #      volumes entry needed if you're only using option 2 below.
+    #   2. "Network Share (SMB)" — the app connects directly over the network
+    #      (via SMBLibrary) using a username/password/domain entered in the
+    #      GUI itself, with no host-level mount at all. Simpler to set up,
+    #      but the credentials are then stored in the database (same
+    #      plain-JSON-in-dms_app_settings pattern already used for the SMTP
+    #      password), not on a locked-down host-only file — a real tradeoff,
+    #      not a hidden one.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s

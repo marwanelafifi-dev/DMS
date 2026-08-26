@@ -1093,6 +1093,16 @@ class APIClient {
     dayOfWeek: string;
     dayOfMonth: number;
     keepLastN: number;
+    destinationPath?: string | null;
+    networkShare?: {
+      enabled: boolean;
+      host: string;
+      shareName: string;
+      domain?: string | null;
+      username?: string | null;
+      password?: string | null;
+      subPath?: string | null;
+    };
   }) {
     const { data } = await this.client.put<ApiResponse>('/database-backup/schedule', config);
     return data;
