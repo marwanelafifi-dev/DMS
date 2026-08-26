@@ -214,7 +214,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                     var portalUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
                     var bodyHtml = $"""
                         <p style="margin:0 0 16px;font-size:14px;color:#26334d;">Hello <strong>{System.Net.WebUtility.HtmlEncode(user.FullName)}</strong>,</p>
-                        <p style="margin:0 0 20px;font-size:14px;color:#26334d;">Your account on the <strong>Si-Ware Enterprise DMS</strong> has been created. You can now log in using the credentials below.</p>
+                        <p style="margin:0 0 20px;font-size:14px;color:#26334d;">Your account on <strong>DMS - Si-Ware Systems</strong> has been created. You can now log in using the credentials below.</p>
                         <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;font-size:14px;color:#26334d;">
                           <tr><td style="padding:4px 12px 4px 0;color:#718198;">Portal URL</td><td><a href="{portalUrl}" style="color:#3f8bca;">{portalUrl}</a></td></tr>
                           <tr><td style="padding:4px 12px 4px 0;color:#718198;">Email</td><td>{System.Net.WebUtility.HtmlEncode(user.Email)}</td></tr>
@@ -226,7 +226,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                         <p style="margin:16px 0 0;font-size:13px;color:#b96a08;">⚠ Please change your password after your first login. Keep your credentials confidential and do not share them with anyone.</p>
                         """;
                     var html = EmailService.BuildBrandedHtml("Your Account Credentials", "#002E5C", bodyHtml);
-                    await emailService.SendAsync(user.Email, "Si-Ware Enterprise DMS — Your Account Credentials", html);
+                    await emailService.SendAsync(user.Email, "DMS - Si-Ware Systems - Your Account Credentials", html);
                 }
                 catch (Exception ex)
                 {

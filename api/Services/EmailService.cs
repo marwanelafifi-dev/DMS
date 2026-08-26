@@ -94,7 +94,7 @@ public class EmailService(IServiceScopeFactory scopeFactory, IConfiguration conf
                 </tr>
                 <tr>
                   <td style="padding:16px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-                    <p style="margin:0;font-size:12px;color:#718198;">This is an automated notification from the Si-Ware Enterprise DMS. Please do not reply directly to this email.</p>
+                    <p style="margin:0;font-size:12px;color:#718198;">This is an automated notification from DMS - Si-Ware Systems. Please do not reply directly to this email.</p>
                   </td>
                 </tr>
               </table>

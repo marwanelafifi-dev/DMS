@@ -144,6 +144,7 @@ public static class AuditActions
     public const string GROUP_SUBGROUP_ADDED = "GROUP_SUBGROUP_ADDED";
     public const string GROUP_SUBGROUP_REMOVED = "GROUP_SUBGROUP_REMOVED";
     public const string GROUPS_IMPORTED = "GROUPS_IMPORTED";
+    public const string NOTIFICATION_SENT = "NOTIFICATION_SENT";
 
     public const string ROLE_PERMISSIONS_UPDATED = "ROLE_PERMISSIONS_UPDATED";
     public const string ROLE_CREATED = "ROLE_CREATED";

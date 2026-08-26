@@ -1,6 +1,7 @@
 using DMS.Api.Data;
 using DMS.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using static DMS.Api.Services.AuditActions;
 
 namespace DMS.Api.Services;
 
@@ -8,7 +9,7 @@ namespace DMS.Api.Services;
 // own, someone editing your document's metadata, and your document being
 // locked (download-for-editing) or unlocked. Never notifies the actor about
 // their own action.
-public class NotificationService(DmsContext context, EmailService emailService, AccessOverrideService accessOverrideService, IConfiguration configuration, ILogger<NotificationService> logger)
+public class NotificationService(DmsContext context, EmailService emailService, AccessOverrideService accessOverrideService, AuditService auditService, IConfiguration configuration, ILogger<NotificationService> logger)
 {
     public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null, Guid? announcementId = null)
     {
@@ -55,6 +56,35 @@ public class NotificationService(DmsContext context, EmailService emailService, 
             logger.LogError(ex, "Error creating notification for user {UserId}", recipientUserId);
         }
 
+        // Real gap found live: there was no way to answer "who actually got
+        // notified about this?" after the fact — dms_notifications only
+        // shows up filtered to the *recipient's own* bell, so an admin (or
+        // the actor themselves) had no way to see the full recipient list for
+        // a given event. Every notification now leaves a real, searchable
+        // record in the Audit Trail (actor = who triggered the event,
+        // metadata = who received it) instead of only existing from the
+        // recipient's own point of view.
+        try
+        {
+            var recipientName = await context.Users.AsNoTracking()
+                .Where(u => u.UserId == recipientUserId)
+                .Select(u => u.FullName)
+                .FirstOrDefaultAsync();
+            await auditService.LogAsync(actorUserId, NOTIFICATION_SENT, new
+            {
+                RecipientId = recipientUserId,
+                RecipientName = recipientName,
+                Title = title,
+                DocumentId = documentId,
+                TaskId = taskId,
+                AnnouncementId = announcementId,
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error logging notification audit entry for recipient {UserId}", recipientUserId);
+        }
+
         // Per explicit request: every document-related in-app notification
         // (QA/Manager/Final Release stage transitions, correction requests,
         // rejections, releases — anything that reaches here with a
@@ -97,7 +127,7 @@ public class NotificationService(DmsContext context, EmailService emailService, 
                 </a>
                 """;
             var html = EmailService.BuildBrandedHtml(title, "#002E5C", bodyHtml);
-            await emailService.SendAsync(recipient.Email, $"Si-Ware Enterprise DMS — {title}", html);
+            await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", html);
         }
         catch (Exception ex)
         {

@@ -36,9 +36,10 @@ export function FolderTree({
   widthPx,
 }: FolderTreeProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  // Folders are expanded by default (so a newly created/copied subfolder is
-  // immediately visible); track only which ones the user manually collapsed.
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  // Folders are collapsed by default — track only which ones the user
+  // manually expanded (or that got force-expanded to reveal the selected
+  // folder, see the effect below).
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const menuRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const handleMenuClose = () => setOpenMenuId(null);
@@ -70,16 +71,16 @@ export function FolderTree({
       current = folders.find((f) => f.folderId === current!.parentFolderId);
     }
     if (ancestors.size > 0) {
-      setCollapsedIds((prev) => {
+      setExpandedIds((prev) => {
         const next = new Set(prev);
-        ancestors.forEach((id) => next.delete(id));
+        ancestors.forEach((id) => next.add(id));
         return next;
       });
     }
   }, [selectedFolderId, folders]);
 
   const toggleExpanded = (folderId: string) => {
-    setCollapsedIds((prev) => {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(folderId)) next.delete(folderId);
       else next.add(folderId);
@@ -87,14 +88,14 @@ export function FolderTree({
     });
   };
 
-  const expandAll = () => setCollapsedIds(new Set());
-  const collapseAll = () => setCollapsedIds(new Set(childrenByParent.keys()));
+  const expandAll = () => setExpandedIds(new Set(childrenByParent.keys()));
+  const collapseAll = () => setExpandedIds(new Set());
 
   const renderFolder = (folder: FolderType, depth: number) => {
     const isCurrent = selectedFolderId === folder.folderId;
     const children = childrenByParent.get(folder.folderId) ?? [];
     const hasChildren = children.length > 0;
-    const isExpanded = !collapsedIds.has(folder.folderId);
+    const isExpanded = expandedIds.has(folder.folderId);
     const permissions = getFolderPermissions?.(folder.folderId);
     const isRoot = !folder.parentFolderId;
     const canCreateSubfolder = Boolean(permissions?.createSubfolder);
