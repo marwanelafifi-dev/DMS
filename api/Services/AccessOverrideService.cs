@@ -70,19 +70,57 @@ public class AccessOverrideService(DmsContext context)
 
     // Returns the final allow/deny decision for `action`, folding in the
     // role's default (`roleAllows`) with any applicable override.
+    //
+    // Real bug found live: a Full Access user who also belonged to a group
+    // with an explicit Deny override on a folder was still being blocked by
+    // that Deny — the whole point of Full Access ("always has full control")
+    // was being silently undermined by a completely unrelated group
+    // membership. The same problem applied one tier down: "Read Only to All
+    // Folders" / "Read and Write to All Folders" are meant to be a
+    // guaranteed floor of access across every folder, but a Deny override
+    // could still pull a user below that floor.
+    //
+    // Fixed with two rules, checked against the caller's global page-access
+    // role (not the per-folder role — these three flags are explicitly
+    // global, "to ALL folders"):
+    //   1. BypassFolderPermissions ("Full Access") always wins outright — no
+    //      override of any kind, Allow or Deny, is ever consulted.
+    //   2. CanReadAllFolders / CanReadWriteAllFolders: a Deny override can
+    //      never pull the result below what the tier's own baseline already
+    //      grants (`roleAllows`) — but an Allow override can still WIDEN
+    //      access beyond that baseline, same as for any other role. This
+    //      falls out naturally from checking `roleAllows` itself rather than
+    //      hardcoding which actions are "read" vs "read-write": the baseline
+    //      passed in already reflects the Reader/Writer folder-role tier's
+    //      own real capabilities, so the guard only ever fires for actions
+    //      that tier actually grants by default.
     public async Task<bool> ResolveAsync(Guid userId, Guid? documentId, Guid? folderId, string action, bool roleAllows)
     {
+        var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+        var pageAccessRole = user?.Role != null
+            ? await context.PageAccessRoles.AsNoTracking().FirstOrDefaultAsync(r => r.Role == user.Role)
+            : null;
+
+        if (pageAccessRole?.BypassFolderPermissions == true)
+            return true;
+
+        var guaranteedFloor = roleAllows && (pageAccessRole?.CanReadAllFolders == true || pageAccessRole?.CanReadWriteAllFolders == true);
+
         var (direct, group) = await GetApplicableOverridesAsync(userId, documentId, folderId);
         var selector = SelectorFor(action);
 
         var directDecisions = direct.Select(selector).Where(d => d.HasValue).Select(d => d!.Value).ToList();
         if (directDecisions.Count > 0)
+        {
+            if (guaranteedFloor) return true;
             return !directDecisions.Contains(false); // direct deny anywhere beats direct allow; no group input needed
+        }
 
         var groupDecisions = group.Select(selector).Where(d => d.HasValue).Select(d => d!.Value).ToList();
         if (groupDecisions.Count == 0)
             return roleAllows;
 
+        if (guaranteedFloor) return true;
         return !groupDecisions.Contains(false);
     }
 
