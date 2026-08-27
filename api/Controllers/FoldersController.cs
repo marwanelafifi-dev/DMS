@@ -423,6 +423,8 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             if (folder == null)
                 return NotFound(new { success = false, error = "Folder not found" });
 
+            var previousName = folder.Name;
+
             if (!string.IsNullOrWhiteSpace(req.Name))
                 folder.Name = req.Name.Trim();
 
@@ -435,9 +437,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             await auditService.LogAsync(currentUserId, AuditActions.FOLDER_UPDATED, new
             {
                 folder.FolderId,
-                folder.Name,
-                folder.UpdatedAt,
-                ChangedFields = req
+                Changes = AuditService.BuildChanges(("Name", previousName, folder.Name)),
             });
 
             logger.LogInformation("Updated folder {FolderId}", id);
@@ -478,6 +478,12 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             if (folder == null)
                 return NotFound(new { success = false, error = "Folder not found" });
 
+            var previousDescription = folder.Description;
+            var previousClassification = folder.Classification;
+            var previousDepartment = folder.Department;
+            var previousTags = folder.Tags;
+            var previousOwnerId = folder.OwnerId;
+
             if (req.Description != null)
                 folder.Description = req.Description.Trim();
 
@@ -503,16 +509,29 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             await context.SaveChangesAsync();
 
             var currentUserId = GetCurrentUserId();
+
+            // Owner is logged by name, not a bare GUID, so the audit entry
+            // reads clearly without needing a separate user lookup.
+            string? previousOwnerName = null, newOwnerName = null;
+            if (previousOwnerId != folder.OwnerId)
+            {
+                var ownerNames = await context.Users.AsNoTracking()
+                    .Where(u => u.UserId == previousOwnerId || u.UserId == folder.OwnerId)
+                    .ToDictionaryAsync(u => u.UserId, u => u.FullName);
+                previousOwnerName = ownerNames.GetValueOrDefault(previousOwnerId, previousOwnerId.ToString());
+                newOwnerName = ownerNames.GetValueOrDefault(folder.OwnerId, folder.OwnerId.ToString());
+            }
+
             await auditService.LogAsync(currentUserId, AuditActions.FOLDER_UPDATED, new
             {
                 folder.FolderId,
-                folder.Description,
-                folder.Classification,
-                folder.Department,
-                folder.Tags,
-                folder.OwnerId,
-                folder.UpdatedAt,
-                ChangedFields = req
+                FolderName = folder.Name,
+                Changes = AuditService.BuildChanges(
+                    ("Description", previousDescription, folder.Description),
+                    ("Classification", previousClassification, folder.Classification),
+                    ("Department", previousDepartment, folder.Department),
+                    ("Tags", previousTags, folder.Tags),
+                    ("Owner", previousOwnerName, newOwnerName)),
             });
 
             logger.LogInformation("Updated folder metadata {FolderId}", id);

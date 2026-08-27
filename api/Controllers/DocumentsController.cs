@@ -1343,6 +1343,15 @@ public class DocumentsController(
             if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.FileEdit, editBaseline))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to edit this document" });
 
+            var previousTitle = document.Title;
+            var previousStatus = document.Status;
+            var previousDescription = document.Description;
+            var previousTags = document.Tags;
+            var previousDepartment = document.Department;
+            var previousCategory = document.Category;
+            var previousOwnerId = document.OwnerId;
+            string? previousVersionLabel = null, newVersionLabel = null, previousFileName = null, newFileNameValue = null;
+
             if (!string.IsNullOrWhiteSpace(req.Title))
                 document.Title = req.Title.Trim();
 
@@ -1378,18 +1387,23 @@ public class DocumentsController(
                 var currentVersion = await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId);
                 if (currentVersion != null)
                 {
+                    previousVersionLabel = currentVersion.VersionLabel;
+                    previousFileName = currentVersion.FileName;
+
                     if (req.VersionLabel != null)
                         currentVersion.VersionLabel = string.IsNullOrWhiteSpace(req.VersionLabel) ? null : req.VersionLabel.Trim();
 
                     if (!string.IsNullOrWhiteSpace(req.FileName))
                     {
-                        var newFileName = req.FileName.Trim();
-                        if (newFileName.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) >= 0)
+                        var trimmedFileName = req.FileName.Trim();
+                        if (trimmedFileName.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) >= 0)
                             return BadRequest(new { success = false, error = "File name contains invalid characters" });
-                        currentVersion.FileName = newFileName;
+                        currentVersion.FileName = trimmedFileName;
                     }
 
                     currentVersion.UpdatedAt = DateTime.UtcNow;
+                    newVersionLabel = currentVersion.VersionLabel;
+                    newFileNameValue = currentVersion.FileName;
                 }
             }
 
@@ -1398,13 +1412,32 @@ public class DocumentsController(
             context.Documents.Update(document);
             await context.SaveChangesAsync();
 
+            // Owner is logged by name, not a bare GUID, so the audit entry
+            // reads clearly without needing a separate user lookup.
+            string? previousOwnerName = null, newOwnerName = null;
+            if (previousOwnerId != document.OwnerId)
+            {
+                var ownerNames = await context.Users.AsNoTracking()
+                    .Where(u => u.UserId == previousOwnerId || u.UserId == document.OwnerId)
+                    .ToDictionaryAsync(u => u.UserId, u => u.FullName);
+                previousOwnerName = ownerNames.GetValueOrDefault(previousOwnerId, previousOwnerId.ToString());
+                newOwnerName = ownerNames.GetValueOrDefault(document.OwnerId, document.OwnerId.ToString());
+            }
+
             await auditService.LogAsync(userId, DOCUMENT_UPDATED, new
             {
                 document.DocumentId,
-                document.Title,
-                document.Status,
-                document.UpdatedAt,
-                ChangedFields = req
+                DocumentTitle = document.Title,
+                Changes = AuditService.BuildChanges(
+                    ("Title", previousTitle, document.Title),
+                    ("Status", previousStatus, document.Status),
+                    ("Description", previousDescription, document.Description),
+                    ("Tags", previousTags, document.Tags),
+                    ("Department", previousDepartment, document.Department),
+                    ("Category", previousCategory, document.Category),
+                    ("Owner", previousOwnerName, newOwnerName),
+                    ("Version", previousVersionLabel, newVersionLabel),
+                    ("FileName", previousFileName, newFileNameValue)),
             });
 
             logger.LogInformation("Updated document {DocumentId}", id);

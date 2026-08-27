@@ -7,6 +7,32 @@ namespace DMS.Api.Services;
 
 public class AuditService(DmsContext context, ILogger<AuditService> logger)
 {
+    // Real gap found live: several "*_UPDATED" audit entries logged the raw
+    // request object (ChangedFields = req) — every field the endpoint
+    // *accepts*, not what actually changed, plus internal noise like
+    // UpdatedAt that only restated the entry's own timestamp. The Audit
+    // Trail page ended up unreadable ("Tags: ISO 9001, UpdatedAt: 2026-08-
+    // 27T09:53:32.72Z, Department: Quality Management, Description: ...")
+    // with no way to tell what was actually edited. This builds a clean
+    // { field: { from, to } } payload containing only fields whose value
+    // genuinely changed — array fields (e.g. Tags) compare by content, not
+    // reference.
+    public static Dictionary<string, object> BuildChanges(params (string Field, object? Before, object? After)[] fields)
+    {
+        var changes = new Dictionary<string, object>();
+        foreach (var (field, before, after) in fields)
+        {
+            var unchanged = (before, after) switch
+            {
+                (string[] b, string[] a) => b.SequenceEqual(a),
+                _ => Equals(before, after),
+            };
+            if (!unchanged)
+                changes[field] = new { from = before, to = after };
+        }
+        return changes;
+    }
+
     public async Task LogAsync(Guid userId, string action, object? metadata = null)
     {
         try

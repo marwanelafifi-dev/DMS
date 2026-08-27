@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import * as Popover from '@radix-ui/react-popover';
 import { Card, CardBody, Badge, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
 import { Search, Download, Filter, Calendar, ListChecks, Users as UsersIcon, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -53,13 +54,86 @@ const getActionBadge = (action: string): 'success' | 'warning' | 'error' | 'info
   return 'info';
 };
 
-const formatMetadata = (metadata: Record<string, any> | null) => {
-  if (!metadata) return '—';
-  return Object.entries(metadata)
-    .filter(([key]) => !key.toLowerCase().endsWith('id'))
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(', ') || '—';
+// Splits "fullName" / "FullName" into "Full Name" — every metadata key comes
+// back camelCased from the API, but reads better in a human-facing table
+// with real spacing.
+const humanizeKey = (key: string) => key
+  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  .replace(/^./, (c) => c.toUpperCase());
+
+const formatDiffValue = (value: unknown): string => {
+  if (value === null || value === undefined || value === '') return '(none)';
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '(none)';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
 };
+
+// Real bug found live: several "*_UPDATED" audit entries used to log the raw
+// request object as one of the metadata fields (e.g. `changedFields`) —
+// every field the endpoint *accepts*, not what was actually edited, plus a
+// redundant `updatedAt` restating the entry's own timestamp. That produced
+// exactly the unreadable dump this was built to replace: "Tags: ISO 9001,
+// UpdatedAt: 2026-08-27T09:53:32.72Z, Department: Quality Management,
+// Description: ...". Newer entries (see AuditService.BuildChanges) log a
+// clean `{ field: { from, to } }` payload — this renders those as
+// "Field: before → after" and falls back to a plain key/value listing for
+// every other action's metadata shape, skipping raw IDs and nested objects
+// it doesn't recognize instead of printing "[object Object]".
+const buildMetadataEntries = (metadata: Record<string, any> | null): string[] => {
+  if (!metadata) return [];
+  const entries: string[] = [];
+  for (const [key, value] of Object.entries(metadata)) {
+    if (key.toLowerCase().endsWith('id')) continue;
+    if (key.toLowerCase() === 'changes') continue;
+    if (value === null || value === undefined || value === '') continue;
+    if (typeof value === 'object' && !Array.isArray(value)) continue; // unrecognized nested shape
+    entries.push(`${humanizeKey(key)}: ${Array.isArray(value) ? value.join(', ') : value}`);
+  }
+  const changes = metadata.changes ?? metadata.Changes;
+  if (changes && typeof changes === 'object') {
+    for (const [field, diff] of Object.entries(changes as Record<string, any>)) {
+      if (diff && typeof diff === 'object' && ('from' in diff || 'to' in diff)) {
+        entries.push(`${field}: ${formatDiffValue(diff.from)} → ${formatDiffValue(diff.to)}`);
+      }
+    }
+  }
+  return entries;
+};
+
+const formatMetadata = (metadata: Record<string, any> | null) => {
+  const entries = buildMetadataEntries(metadata);
+  return entries.length > 0 ? entries.join(', ') : '—';
+};
+
+// The Details cell is truncated to keep the table readable, which silently
+// cut off anything past the visible width with no way to read the rest —
+// click-to-expand (matching the same pattern already used for long cells
+// in the Document Library) shows every field on its own line instead.
+function DetailsCell({ metadata }: { metadata: Record<string, any> | null }) {
+  const entries = buildMetadataEntries(metadata);
+  if (entries.length === 0) return <span>—</span>;
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button type="button" className="block max-w-md truncate text-left hover:underline">
+          {entries.join(', ')}
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          className="z-[100] max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-navy-900 shadow-lg dark:border-navy-700 dark:bg-navy-900 dark:text-white"
+        >
+          <ul className="space-y-1">
+            {entries.map((entry) => <li key={entry} className="break-words">{entry}</li>)}
+          </ul>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
 
 export function AuditTrail() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -317,8 +391,8 @@ export function AuditTrail() {
                       {log.action.replace(/_/g, ' ')}
                     </Badge>
                   </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-navy-200 max-w-md truncate">
-                    {formatMetadata(log.metadata)}
+                  <td className="px-6 py-4 text-gray-700 dark:text-navy-200">
+                    <DetailsCell metadata={log.metadata} />
                   </td>
                 </tr>
               ))

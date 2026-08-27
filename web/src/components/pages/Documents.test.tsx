@@ -326,7 +326,7 @@ describe('Document Library', () => {
     expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeEnabled();
   });
 
-  it('shows folder context menu with rename, copy, cut, and delete options', async () => {
+  it('shows folder context menu with rename, copy, move, and delete options', async () => {
     const user = userEvent.setup();
     renderDocumentLibrary();
 
@@ -335,7 +335,10 @@ describe('Document Library', () => {
 
     expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Copy' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: 'Cut' })).toBeInTheDocument();
+    // Labeled "Move" for consistency with the same action elsewhere (the
+    // document row menu already called it Move) — the underlying action key
+    // is still 'cut'.
+    expect(screen.getByRole('menuitem', { name: 'Move' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
   });
 

@@ -14,7 +14,7 @@ const FOLDER_LEVEL_FIELDS: FieldDef[] = [
   { key: 'write', label: 'Write' },
   { key: 'rename', label: 'Rename' },
   { key: 'copy', label: 'Copy' },
-  { key: 'cut', label: 'Cut' },
+  { key: 'cut', label: 'Move' },
   { key: 'downloadZip', label: 'Download as ZIP' },
   { key: 'createSubfolder', label: 'Create Sub Folders' },
   { key: 'delete', label: 'Delete' },
@@ -31,7 +31,7 @@ const FOLDER_LEVEL_FIELDS: FieldDef[] = [
 // "Write", just labeled "Upload" here — the same real capability by design.
 const FILE_LEVEL_FIELDS: FieldDef[] = [
   { key: 'fileCopy', label: 'Copy' },
-  { key: 'fileCut', label: 'Cut' },
+  { key: 'fileCut', label: 'Move' },
   { key: 'fileRename', label: 'Rename' },
   { key: 'fileRead', label: 'Read' },
   { key: 'unlock', label: 'Unlock' },
@@ -233,7 +233,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, ownerNa
 
           {resourceKind === 'folder' && ownerName && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
-              <span className="font-semibold">Owner: {ownerName}</span> — automatically has full access here, at both Folder Level and File Level, except Delete, Manage Permissions, Move (Cut), and (file level only) Unlock. This is automatic and doesn't need an override entry below.
+              <span className="font-semibold">Owner: {ownerName}</span> — automatically has full access here, at both Folder Level and File Level, except Delete, Manage Permissions, Move, and (file level only) Unlock. This is automatic and doesn't need an override entry below.
             </div>
           )}
 

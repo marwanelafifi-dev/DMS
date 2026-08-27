@@ -369,6 +369,10 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
             if (user == null)
                 return NotFound(new { success = false, error = "User not found" });
 
+            var previousFullName = user.FullName;
+            var previousEmail = user.Email;
+            var previousIsActive = user.IsActive;
+
             if (!string.IsNullOrWhiteSpace(req.FullName))
                 user.FullName = req.FullName.Trim();
 
@@ -405,11 +409,11 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
             await auditService.LogAsync(currentUserId, USER_UPDATED, new
             {
                 user.UserId,
-                user.Email,
                 user.FullName,
-                user.IsActive,
-                user.UpdatedAt,
-                ChangedFields = req
+                Changes = AuditService.BuildChanges(
+                    ("Full Name", previousFullName, user.FullName),
+                    ("Email", previousEmail, user.Email),
+                    ("Active", previousIsActive, user.IsActive)),
             });
 
             logger.LogInformation("Updated user {UserId}", id);

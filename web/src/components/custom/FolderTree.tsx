@@ -215,7 +215,7 @@ export function FolderTree({
                   title={!canCut ? deniedTitle : undefined}
                   onSelect={() => { onFolderAction?.('cut', folder.folderId); handleMenuClose(); }}
                 >
-                  <FolderInput className="h-4 w-4" /> Cut
+                  <FolderInput className="h-4 w-4" /> Move
                 </DropdownMenu.Item>
                 <DropdownMenu.Item
                   className={`${menuItemClass} text-[#c73c44]`}
