@@ -271,8 +271,8 @@ export function DocumentList({
   // guaranteed generous share no matter how many optional columns are toggled on.
   const columnWidthPercents = useMemo(() => {
     const weights: Record<string, number> = {
-      checkbox: 3, documentId: 10, fileName: 17, folder: 7, actions: 10,
-      department: 11, category: 9, owner: 11, modifiedAt: 10, tags: 6, status: 12,
+      checkbox: 3, documentId: 9, fileName: 17, folder: 8, actions: 9,
+      department: 10, category: 9, owner: 10, modifiedAt: 10, tags: 11, status: 10,
     };
     const activeKeys = ['checkbox', 'documentId', 'fileName', 'folder',
       ...(['department', 'category', 'owner', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
@@ -287,7 +287,7 @@ export function DocumentList({
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="data-table library-document-table w-full min-w-[720px] table-fixed" aria-label="Documents">
+      <table className="data-table library-document-table w-full min-w-[1100px] table-fixed" aria-label="Documents">
         <colgroup>
           <col style={{ width: `${columnWidthPercents.checkbox}%` }} />
           <col style={{ width: `${columnWidthPercents.documentId}%` }} />
@@ -320,7 +320,7 @@ export function DocumentList({
             {visibleColumns.has('modifiedAt') && <th>{header('Modified date', 'modifiedAt')}</th>}
             {visibleColumns.has('tags') && <th>{header('Tags', 'tags')}</th>}
             {visibleColumns.has('status') && <th>{header('Status', 'status')}</th>}
-            <th>Actions</th>
+            <th className="text-right">Actions</th>
           </tr>
         </thead>
         <tbody>

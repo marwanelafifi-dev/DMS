@@ -13,9 +13,13 @@ export function CompactTagList({ tags }: CompactTagListProps) {
   const allTags = tags.join(', ');
 
   return (
-    <div className="flex items-center gap-1 whitespace-nowrap">
+    <div className="flex min-w-0 flex-wrap items-center gap-1">
       {recentTags.map((tag, index) => (
-        <span key={`${tag}-${index}`} className="rounded-full bg-[#edf2f8] px-2 py-0.5 text-xs font-medium text-[#52627a] dark:bg-slate-800 dark:text-slate-200">
+        <span
+          key={`${tag}-${index}`}
+          className="max-w-full truncate rounded-full bg-[#edf2f8] px-2 py-0.5 text-xs font-medium text-[#52627a] dark:bg-slate-800 dark:text-slate-200"
+          title={tag}
+        >
           {tag}
         </span>
       ))}

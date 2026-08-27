@@ -261,6 +261,7 @@ describe('Document Library', () => {
 
     const remainingTags = within(row!).getByLabelText(/1 more tag.*Controlled, Quality, Production/i);
     expect(remainingTags).toHaveTextContent('+1');
+    expect(remainingTags.parentElement).toHaveClass('min-w-0', 'flex-wrap');
     await user.hover(remainingTags);
     expect(remainingTags).toHaveAttribute('title', 'All tags: Controlled, Quality, Production');
   });
@@ -275,6 +276,7 @@ describe('Document Library', () => {
     expect(headers.at(-1)).toHaveClass('text-right');
     expect(firstRowCells.at(-1)).toHaveClass('text-right');
     expect(table.parentElement).toHaveClass('overflow-x-auto');
+    expect(table).toHaveClass('min-w-[1100px]', 'table-fixed');
     expect(within(table).queryByRole('columnheader', { name: 'Size' })).not.toBeInTheDocument();
   });
 
