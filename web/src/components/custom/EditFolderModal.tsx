@@ -37,6 +37,14 @@ export function EditFolderModal({
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string; role?: string | null; isActive?: boolean }>>([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
 
+  const eligibleManagers = users
+    .filter((u) => u.userId !== ownerId && u.isActive !== false && (u.role === 'Manager' || u.role === 'Full Access'))
+    .sort((a, b) => {
+      const selectedDifference = Number(managerIds.includes(b.userId)) - Number(managerIds.includes(a.userId));
+      return selectedDifference || a.fullName.localeCompare(b.fullName);
+    });
+  const selectedManagers = users.filter((u) => managerIds.includes(u.userId));
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -115,6 +123,26 @@ export function EditFolderModal({
           </Field>
           <Field label="Manager(s)">
             <div className="rounded border border-gray-300 p-2 dark:border-slate-600">
+              {selectedManagers.length > 0 && (
+                <div className="mb-2 rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-900 dark:bg-blue-900/20">
+                  <p className="mb-1.5 text-xs font-medium text-blue-900 dark:text-blue-200">Selected ({selectedManagers.length})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedManagers.map((manager) => (
+                      <span key={manager.userId} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs text-navy-900 shadow-sm dark:bg-slate-800 dark:text-white">
+                        {manager.fullName}
+                        <button
+                          type="button"
+                          onClick={() => setManagerIds((current) => current.filter((id) => id !== manager.userId))}
+                          className="rounded-full text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                          aria-label={`Remove ${manager.fullName}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <input
                 value={managerSearch}
                 onChange={(e) => setManagerSearch(e.target.value)}
@@ -122,8 +150,7 @@ export function EditFolderModal({
                 placeholder="Search managers…"
               />
               <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-                {users
-                  .filter((u) => u.userId !== ownerId && u.isActive !== false && (u.role === 'Manager' || u.role === 'Full Access'))
+                {eligibleManagers
                   .filter((u) => u.fullName.toLowerCase().includes(managerSearch.trim().toLowerCase()))
                   .map((u) => (
                     <label key={u.userId} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5">

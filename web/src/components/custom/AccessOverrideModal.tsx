@@ -96,10 +96,11 @@ interface AccessOverrideModalProps {
   // manual override entry to represent it (see AccessOverrideService.
   // ResolveAsync's OwnerExcludedActions for exactly what this grants).
   ownerName?: string;
+  managerIds?: string[];
   onClose: () => void;
 }
 
-export function AccessOverrideModal({ scope, resourceName, resourceKind, ownerName, onClose }: AccessOverrideModalProps) {
+export function AccessOverrideModal({ scope, resourceName, resourceKind, ownerName, managerIds = [], onClose }: AccessOverrideModalProps) {
   const { showSuccess, showError } = useToast();
   // A folder-scoped override shows both sections (folder actions + cascaded
   // file actions); a file-scoped override only shows the file section. A few
@@ -131,6 +132,9 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, ownerNa
   // Only relevant for a folder-scoped override, which has both sections —
   // a file-scoped override only ever has File Level fields, no tabs needed.
   const [activeLevel, setActiveLevel] = useState<'folder' | 'file'>('folder');
+  const managerNames = managerIds
+    .map((managerId) => users.find((user) => user.userId === managerId)?.fullName)
+    .filter((name): name is string => Boolean(name));
 
   const loadData = async () => {
     setIsLoading(true);
@@ -235,6 +239,18 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, ownerNa
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
               <span className="font-semibold">Owner: {ownerName}</span> — automatically has full access here, at both Folder Level and File Level, except Delete, Manage Permissions, Move, and (file level only) Unlock. This is automatic and doesn't need an override entry below.
             </div>
+          )}
+
+          {resourceKind === 'folder' && !isLoading && (
+            managerNames.length > 0 ? (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 dark:border-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300">
+                <span className="font-semibold">Assigned Manager(s): {managerNames.join(', ')}</span> — selected for this folder's Manager Review stage. Their folder access is synchronized automatically and does not need a separate override entry below.
+              </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+                <span className="font-semibold">Assigned Manager(s): None</span> — assign one or more managers from Edit Folder when this folder requires Manager Review. The folder owner remains included automatically.
+              </div>
+            )
           )}
 
           {isLoading ? (

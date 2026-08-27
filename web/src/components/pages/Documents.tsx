@@ -340,6 +340,7 @@ export function Documents() {
     resourceName: string;
     resourceKind: 'file' | 'folder';
     ownerName?: string;
+    managerIds?: string[];
   } | null>(null);
   const [newFolderRequest, setNewFolderRequest] = useState<{ parentFolderId: string | null; name: string } | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -1343,13 +1344,22 @@ export function Documents() {
     });
   };
 
-  const handleFolderPermissions = (folderId: string) => {
+  const handleFolderPermissions = async (folderId: string) => {
     const folder = folders.find((f) => f.folderId === folderId);
+    let managerIds = folder?.managerIds || [];
+    try {
+      const folderRes = await apiClient.getFolder(folderId);
+      managerIds = folderRes.data?.managerIds || [];
+    } catch {
+      // The permissions modal can still open if folder details cannot be
+      // refreshed; the manager note will use any assignments already loaded.
+    }
     setAccessOverrideTarget({
       scope: { folderId },
       resourceName: folder?.name ?? folderId,
       resourceKind: 'folder',
       ownerName: allUsers.find((u) => u.userId === folder?.ownerId)?.fullName,
+      managerIds,
     });
   };
 
@@ -2139,6 +2149,7 @@ export function Documents() {
           resourceName={accessOverrideTarget.resourceName}
           resourceKind={accessOverrideTarget.resourceKind}
           ownerName={accessOverrideTarget.ownerName}
+          managerIds={accessOverrideTarget.managerIds}
           onClose={() => {
             const folderId = accessOverrideTarget.scope.folderId;
             setAccessOverrideTarget(null);
