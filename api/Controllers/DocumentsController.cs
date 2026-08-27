@@ -956,13 +956,10 @@ public class DocumentsController(
                 if (!ownerExists)
                     return BadRequest(new { success = false, error = "Owner not found" });
 
-                var isFolderOwner = await context.Folders.AsNoTracking()
-                    .AnyAsync(f => f.FolderId == document.FolderId && f.OwnerId == userId);
-                var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+                var isDocumentOwner = document.OwnerId == userId;
                 var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-                var canChangeOwner = isFolderOwner || effectiveRole == FolderRoles.Admin || pageAccessRole?.BypassFolderPermissions == true;
-                if (!canChangeOwner)
-                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the folder owner or a Full Access administrator can change the document owner" });
+                if (!isDocumentOwner && pageAccessRole?.BypassFolderPermissions != true)
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the current file owner or a Full Access user can change the document owner" });
             }
 
             var currentVersion = document.CurrentVersionId.HasValue
@@ -1364,11 +1361,10 @@ public class DocumentsController(
             if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.FileEdit, editBaseline))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to edit this document" });
 
-            var isFolderOwner = await context.Folders.AsNoTracking()
-                .AnyAsync(f => f.FolderId == document.FolderId && f.OwnerId == userId);
+            var isDocumentOwner = document.OwnerId == userId;
             var hasFullAccess = pageAccessRole?.BypassFolderPermissions == true;
-            if (req.OwnerId.HasValue && req.OwnerId.Value != document.OwnerId && !isFolderOwner && effectiveRole != FolderRoles.Admin && !hasFullAccess)
-                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the folder owner or a user with Admin folder access can change the document owner" });
+            if (req.OwnerId.HasValue && req.OwnerId.Value != document.OwnerId && !isDocumentOwner && !hasFullAccess)
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the current file owner or a Full Access user can change the document owner" });
 
             var previousTitle = document.Title;
             var previousStatus = document.Status;

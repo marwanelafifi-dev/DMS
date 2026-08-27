@@ -182,7 +182,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
                   {users.map((u) => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
                 </select>
                 {!canChangeOwner && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Managers can edit document metadata, but only the folder owner or a user with Admin folder access can change the document owner.</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Only the current file owner or a Full Access user can change the document owner.</p>
                 )}
               </Field>
             </>

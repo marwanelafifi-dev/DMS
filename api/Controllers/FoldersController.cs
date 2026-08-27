@@ -62,9 +62,9 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             // BypassFolderPermissions role ("Full Access"), which acts as
             // Admin everywhere with no override needed.
             var adminBaseline = role == FolderRoles.Admin;
-            var isFolderOwner = resolvedFolderId.HasValue && await context.Folders
+            var isDocumentOwner = documentId.HasValue && await context.Documents
                 .AsNoTracking()
-                .AnyAsync(f => f.FolderId == resolvedFolderId.Value && f.OwnerId == userId);
+                .AnyAsync(d => d.DocumentId == documentId.Value && d.OwnerId == userId);
 
             // Edit/ManagePermissions can also be granted role-wide (blanket, every
             // folder) via the user's global page-access role, same as
@@ -122,7 +122,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 // metadata editing. Assigned Managers may edit metadata, but only
                 // the actual folder owner or an effective folder Admin
                 // (Full Access/explicit Admin) may transfer ownership.
-                CanChangeDocumentOwner = isFolderOwner || role == FolderRoles.Admin || pageAccessRole?.BypassFolderPermissions == true,
+                CanChangeDocumentOwner = isDocumentOwner || pageAccessRole?.BypassFolderPermissions == true,
                 // Folder ownership is an administrative assignment. Owning a
                 // folder does not authorize transferring the folder itself.
                 CanChangeFolderOwner = userId == DevSystemAdminId || pageAccessRole?.BypassFolderPermissions == true,

@@ -251,7 +251,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
                   {users.map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
                 </select>
                 {!canChangeOwner && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Only the folder owner or a Full Access administrator can change the file owner.</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Only the current file owner or a Full Access user can change the file owner.</p>
                 )}
               </Field>
             </>
