@@ -91,10 +91,15 @@ interface AccessOverrideModalProps {
   scope: { folderId?: string; documentId?: string };
   resourceName: string;
   resourceKind: 'file' | 'folder';
+  // Set only when resourceKind is 'folder' — shown as an always-on info row
+  // so the owner's real, automatic access is visible without needing a
+  // manual override entry to represent it (see AccessOverrideService.
+  // ResolveAsync's OwnerExcludedActions for exactly what this grants).
+  ownerName?: string;
   onClose: () => void;
 }
 
-export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose }: AccessOverrideModalProps) {
+export function AccessOverrideModal({ scope, resourceName, resourceKind, ownerName, onClose }: AccessOverrideModalProps) {
   const { showSuccess, showError } = useToast();
   // A folder-scoped override shows both sections (folder actions + cascaded
   // file actions); a file-scoped override only shows the file section. A few
@@ -224,6 +229,12 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
             <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
               Folder Level Permissions govern this folder itself; File Level Permissions cascade to every file inside it (and every subfolder, unless a more specific override exists further down). A Deny always wins over an Allow from the same source; a direct grant to this user always wins over a conflicting group rule.
             </p>
+          )}
+
+          {resourceKind === 'folder' && ownerName && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+              <span className="font-semibold">Owner: {ownerName}</span> — automatically has full access here, at both Folder Level and File Level, except Delete, Manage Permissions, Move (Cut), and (file level only) Unlock. This is automatic and doesn't need an override entry below.
+            </div>
           )}
 
           {isLoading ? (

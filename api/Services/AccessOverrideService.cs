@@ -19,6 +19,19 @@ public class AccessOverrideService(DmsContext context)
 {
     private static readonly Func<DmsAccessOverride, bool?> NoSelector = _ => null;
 
+    // A folder's Owner (see EditFolderModal) gets a guaranteed floor of
+    // access to that folder and every file directly inside it — everything
+    // except Delete, Manage Permissions, Move (Cut), and, at the file level,
+    // Unlock (force-unlocking someone else's checkout is an admin action,
+    // not an ownership one). Explicitly requested as a real effect of the
+    // Owner field, which previously was pure display metadata with zero
+    // actual permission consequence.
+    private static readonly HashSet<string> OwnerExcludedActions = new()
+    {
+        AccessOverrideActions.Delete, AccessOverrideActions.ManagePermissions, AccessOverrideActions.Cut,
+        AccessOverrideActions.FileDelete, AccessOverrideActions.FileManagePermissions, AccessOverrideActions.Unlock, AccessOverrideActions.FileCut,
+    };
+
     private static Func<DmsAccessOverride, bool?> SelectorFor(string action) => action switch
     {
         AccessOverrideActions.Read => o => o.Read,
@@ -94,6 +107,10 @@ public class AccessOverrideService(DmsContext context)
     //      passed in already reflects the Reader/Writer folder-role tier's
     //      own real capabilities, so the guard only ever fires for actions
     //      that tier actually grants by default.
+    //   3. The folder's own Owner (per-folder, not a global role) gets the
+    //      same Deny-proof floor for every action except OwnerExcludedActions
+    //      — scoped to the exact folder they own and files directly inside
+    //      it (not sub-subfolders with a different owner of their own).
     public async Task<bool> ResolveAsync(Guid userId, Guid? documentId, Guid? folderId, string action, bool roleAllows)
     {
         var user = await context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
@@ -104,7 +121,18 @@ public class AccessOverrideService(DmsContext context)
         if (pageAccessRole?.BypassFolderPermissions == true)
             return true;
 
-        var guaranteedFloor = roleAllows && (pageAccessRole?.CanReadAllFolders == true || pageAccessRole?.CanReadWriteAllFolders == true);
+        var governingFolderId = folderId;
+        if (!governingFolderId.HasValue && documentId.HasValue)
+        {
+            governingFolderId = await context.Documents.AsNoTracking()
+                .Where(d => d.DocumentId == documentId).Select(d => (Guid?)d.FolderId).FirstOrDefaultAsync();
+        }
+        var isOwner = governingFolderId.HasValue
+            && await context.Folders.AsNoTracking().AnyAsync(f => f.FolderId == governingFolderId.Value && f.OwnerId == userId);
+        var ownerFloor = isOwner && !OwnerExcludedActions.Contains(action);
+
+        var guaranteedFloor = (roleAllows && (pageAccessRole?.CanReadAllFolders == true || pageAccessRole?.CanReadWriteAllFolders == true))
+            || ownerFloor;
 
         var (direct, group) = await GetApplicableOverridesAsync(userId, documentId, folderId);
         var selector = SelectorFor(action);
@@ -118,7 +146,7 @@ public class AccessOverrideService(DmsContext context)
 
         var groupDecisions = group.Select(selector).Where(d => d.HasValue).Select(d => d!.Value).ToList();
         if (groupDecisions.Count == 0)
-            return roleAllows;
+            return roleAllows || ownerFloor;
 
         if (guaranteedFloor) return true;
         return !groupDecisions.Contains(false);

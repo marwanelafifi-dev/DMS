@@ -339,6 +339,7 @@ export function Documents() {
     scope: { folderId?: string; documentId?: string };
     resourceName: string;
     resourceKind: 'file' | 'folder';
+    ownerName?: string;
   } | null>(null);
   const [newFolderRequest, setNewFolderRequest] = useState<{ parentFolderId: string | null; name: string } | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -1348,6 +1349,7 @@ export function Documents() {
       scope: { folderId },
       resourceName: folder?.name ?? folderId,
       resourceKind: 'folder',
+      ownerName: allUsers.find((u) => u.userId === folder?.ownerId)?.fullName,
     });
   };
 
@@ -2136,6 +2138,7 @@ export function Documents() {
           scope={accessOverrideTarget.scope}
           resourceName={accessOverrideTarget.resourceName}
           resourceKind={accessOverrideTarget.resourceKind}
+          ownerName={accessOverrideTarget.ownerName}
           onClose={() => {
             const folderId = accessOverrideTarget.scope.folderId;
             setAccessOverrideTarget(null);
