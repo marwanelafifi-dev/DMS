@@ -164,7 +164,7 @@ export function BulkOperationsModal({
               <Trash2 className="w-5 h-5 text-red-600" />
               <div>
                 <p className="font-medium text-red-600">Delete All</p>
-                <p className="text-xs text-red-600">Move all selected documents to the Recycle Bin</p>
+                <p className="text-xs text-red-600">Delete all selected documents</p>
               </div>
             </button>
           </CardBody>
@@ -215,8 +215,8 @@ export function BulkOperationsModal({
               <div className="flex gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-red-700 dark:text-red-300">
-                  This will move {selectedDocuments.length} document
-                  {selectedDocuments.length !== 1 ? 's' : ''} to the recoverable Recycle Bin.
+                  Delete {selectedDocuments.length} selected document
+                  {selectedDocuments.length !== 1 ? 's' : ''}.
                 </p>
               </div>
             </div>

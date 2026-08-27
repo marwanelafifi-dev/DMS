@@ -178,6 +178,7 @@ public static class AuditActions
     public const string DOCUMENT_UPDATED = "DOCUMENT_UPDATED";
     public const string DOCUMENT_DELETED = "DOCUMENT_DELETED";
     public const string DOCUMENT_RESTORED = "DOCUMENT_RESTORED";
+    public const string RECYCLE_BIN_PURGED = "RECYCLE_BIN_PURGED";
     public const string DOCUMENT_MOVED = "DOCUMENT_MOVED";
     public const string DOCUMENT_UPLOADED = "DOCUMENT_UPLOADED";
     public const string DOCUMENT_VERSION_REVERTED = "DOCUMENT_VERSION_REVERTED";

@@ -7,7 +7,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/recycle-bin")]
-public class RecycleBinController(DmsContext context, AuditService auditService) : BaseController
+public class RecycleBinController(DmsContext context, AuditService auditService, MinioService minioService) : BaseController
 {
     private async Task<bool> IsFullAccessAsync(Guid userId) =>
         (await GetPageAccessRoleAsync(context, userId))?.BypassFolderPermissions == true;
@@ -67,5 +67,60 @@ public class RecycleBinController(DmsContext context, AuditService auditService)
         return Ok(new { success = true, message = "Document restored" });
     }
 
+    [HttpPost("purge")]
+    public async Task<ActionResult<object>> Purge([FromBody] PurgeRecycleBinRequest request)
+    {
+        var userId = GetCurrentUserId();
+        if (!await IsFullAccessAsync(userId)) return StatusCode(403, new { success = false, error = "Full Access is required" });
+        if (!request.EmptyAll && request.Items.Count == 0) return BadRequest(new { success = false, error = "Select at least one item" });
+
+        var deletedFolders = await context.Folders.IgnoreQueryFilters().Where(f => f.DeletedAt != null).ToListAsync();
+        var deletedDocuments = await context.Documents.IgnoreQueryFilters().Where(d => d.DeletedAt != null).ToListAsync();
+        var selectedFolderIds = request.EmptyAll
+            ? deletedFolders.Select(f => f.FolderId).ToHashSet()
+            : request.Items.Where(i => i.Type == "folder").Select(i => i.Id).ToHashSet();
+        var selectedBatchIds = deletedFolders.Where(f => selectedFolderIds.Contains(f.FolderId) && f.DeletionBatchId.HasValue)
+            .Select(f => f.DeletionBatchId!.Value).ToHashSet();
+        var foldersToDelete = request.EmptyAll
+            ? deletedFolders
+            : deletedFolders.Where(f => selectedFolderIds.Contains(f.FolderId) || (f.DeletionBatchId.HasValue && selectedBatchIds.Contains(f.DeletionBatchId.Value))).ToList();
+        var folderIdsToDelete = foldersToDelete.Select(f => f.FolderId).ToHashSet();
+        var selectedDocumentIds = request.EmptyAll
+            ? deletedDocuments.Select(d => d.DocumentId).ToHashSet()
+            : request.Items.Where(i => i.Type == "file").Select(i => i.Id).ToHashSet();
+        var documentsToDelete = deletedDocuments.Where(d => selectedDocumentIds.Contains(d.DocumentId) || folderIdsToDelete.Contains(d.FolderId)).ToList();
+        if (foldersToDelete.Count == 0 && documentsToDelete.Count == 0) return NotFound(new { success = false, error = "No deleted items were found" });
+
+        var documentIds = documentsToDelete.Select(d => d.DocumentId).ToHashSet();
+        var versions = await context.DocumentVersions.Where(v => documentIds.Contains(v.DocumentId)).ToListAsync();
+        var storageKeys = versions.Where(v => !string.IsNullOrWhiteSpace(v.S3ObjectKey)).Select(v => v.S3ObjectKey).Distinct().ToList();
+        await using (var transaction = await context.Database.BeginTransactionAsync())
+        {
+            foreach (var document in documentsToDelete) document.CurrentVersionId = null;
+            await context.SaveChangesAsync();
+            var approvals = await context.Approvals
+                .Where(a => a.Documents.Any() && a.Documents.All(ad => documentIds.Contains(ad.DocumentId)))
+                .ToListAsync();
+            context.Approvals.RemoveRange(approvals);
+            context.DocumentVersions.RemoveRange(versions);
+            context.Documents.RemoveRange(documentsToDelete);
+            await context.SaveChangesAsync();
+            context.Folders.RemoveRange(foldersToDelete.OrderByDescending(f => f.ParentFolderId.HasValue));
+            await context.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+
+        foreach (var key in storageKeys)
+        {
+            try { await minioService.DeleteAsync(key); }
+            catch { /* Database purge is authoritative; storage cleanup is best-effort. */ }
+        }
+        await auditService.LogAsync(userId, AuditActions.RECYCLE_BIN_PURGED, new { request.EmptyAll, FoldersDeleted = foldersToDelete.Count, DocumentsDeleted = documentsToDelete.Count, FilesDeleted = storageKeys.Count });
+        return Ok(new { success = true, message = request.EmptyAll ? "Recycle Bin emptied permanently" : "Selected items deleted permanently" });
+    }
+
     private sealed record RecycleBinItem(Guid Id, string Type, string Name, DateTime DeletedAt, Guid? DeletedById, Guid? DeletionBatchId, Guid? ParentFolderId);
 }
+
+public sealed record PurgeRecycleBinItem(Guid Id, string Type);
+public sealed record PurgeRecycleBinRequest(List<PurgeRecycleBinItem> Items, bool EmptyAll = false);

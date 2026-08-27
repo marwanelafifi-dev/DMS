@@ -985,6 +985,11 @@ class APIClient {
     return data;
   }
 
+  async purgeRecycleBin(items: Array<{ id: string; type: 'file' | 'folder' }>, emptyAll = false) {
+    const { data } = await this.client.post<ApiResponse>('/recycle-bin/purge', { items, emptyAll });
+    return data;
+  }
+
   async getNotificationsEnabled() {
     const { data } = await this.client.get<ApiResponse>('/email-config/notifications-enabled');
     return data;

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { preventModalOutsideDismiss } from '../ui/ModalOverlay';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { AlertTriangle, Check, ChevronDown, Columns3, Copy, FolderInput, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, Columns3, Copy, FolderInput, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
 import type { Folder } from '../../types';
 import { Button } from '../ui';
 import type { OptionalDocumentColumn } from './DocumentList';
@@ -335,10 +335,6 @@ export function LibraryBulkActions({
               )}
               {action === 'delete' && (
                 <div className="space-y-3">
-                  <div className="flex gap-3 rounded-[5px] border border-[#efb7ba] bg-[#fff7f7] p-3 text-sm text-[#a83238]">
-                    <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                    <span>This moves {selectedCount} selected {selectedCount === 1 ? 'item' : 'items'} to the recoverable Recycle Bin.</span>
-                  </div>
                   {containsNonEmptyFolder && <p className="text-sm font-medium text-[#b96a08]">Warning: the selection contains a non-empty folder and all of its documents will be deleted.</p>}
                   <ul className="max-h-28 space-y-1 overflow-y-auto text-sm text-[#52627a]">{selectedNames.slice(0, 5).map((name) => <li key={name}>• {name}</li>)}</ul>
                   <label className="block text-sm font-medium text-[#34425b] dark:text-slate-100">

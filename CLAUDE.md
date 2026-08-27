@@ -39,8 +39,9 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 - Folder deletion moves the complete descendant tree and all contained documents to one recoverable deletion batch.
 - Every Document Library delete dialog and Bulk Delete requires the exact case-sensitive word `DELETE`.
 - Admin Panel → Database now includes a Full-Access-only Recycle Bin with item type, name, deletion actor/time, and Restore actions.
+- Recycle Bin administrators can select individual rows for permanent deletion or use Empty Recycle Bin. Both paths require typing the exact case-sensitive word `DELETE`; permanent purge removes retained database/version records and MinIO objects and cannot be undone.
 - Restoring a folder restores its complete deletion batch. Restore rejects missing-parent and active same-name conflicts instead of overwriting data.
-- Delete and restore operations remain permanently recorded in the Audit Trail through `FOLDER_DELETED`, `DOCUMENT_DELETED`, `FOLDER_RESTORED`, and `DOCUMENT_RESTORED`.
+- Delete, restore, and permanent-purge operations remain permanently recorded in the Audit Trail through `FOLDER_DELETED`, `DOCUMENT_DELETED`, `FOLDER_RESTORED`, `DOCUMENT_RESTORED`, and `RECYCLE_BIN_PURGED`.
 
 ### Ubuntu deployment requirement
 

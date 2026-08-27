@@ -143,6 +143,9 @@ export function DatabaseBackup() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [recycleItems, setRecycleItems] = useState<Array<{ id: string; type: 'file' | 'folder'; name: string; deletedAt: string; deletedBy?: string | null }>>([]);
   const [restoringItemId, setRestoringItemId] = useState<string | null>(null);
+  const [selectedRecycleItemIds, setSelectedRecycleItemIds] = useState<Set<string>>(new Set());
+  const [purgeMode, setPurgeMode] = useState<'selected' | 'all' | null>(null);
+  const [isPurging, setIsPurging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
@@ -338,7 +341,11 @@ export function DatabaseBackup() {
 
   const loadRecycleBin = () => {
     apiClient.getRecycleBin()
-      .then((res) => { if (res.success) setRecycleItems(res.data || []); })
+      .then((res) => {
+        if (!res.success) return;
+        setRecycleItems(res.data || []);
+        setSelectedRecycleItemIds(new Set());
+      })
       .catch(() => showError('Failed to load the recycle bin'));
   };
 
@@ -358,6 +365,25 @@ export function DatabaseBackup() {
       showError(err.response?.data?.error || 'Failed to restore item');
     } finally {
       setRestoringItemId(null);
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!purgeMode) return;
+    const selectedItems = recycleItems
+      .filter((item) => selectedRecycleItemIds.has(item.id))
+      .map(({ id, type }) => ({ id, type }));
+    setIsPurging(true);
+    try {
+      const res = await apiClient.purgeRecycleBin(selectedItems, purgeMode === 'all');
+      if (!res.success) { showError(res.error || 'Failed to permanently delete items'); return; }
+      showSuccess(res.message || 'Items deleted permanently');
+      setPurgeMode(null);
+      loadRecycleBin();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to permanently delete items');
+    } finally {
+      setIsPurging(false);
     }
   };
 
@@ -491,12 +517,20 @@ export function DatabaseBackup() {
       <ScheduledBackups />
 
       <Card className="overflow-hidden">
-        <div className="flex items-start gap-3 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
+          <div className="flex items-start gap-3">
           <div className="rounded bg-[#eef4fb] p-2 text-[#3f66c9] dark:bg-blue-900/30 dark:text-blue-300"><RotateCcw className="h-4 w-4" /></div>
           <div>
             <h3 className="font-semibold text-[#26334d] dark:text-white">Recycle Bin</h3>
             <p className="text-sm text-[#718198] dark:text-slate-400">Restore deleted files and complete folder trees</p>
           </div>
+          </div>
+          {recycleItems.length > 0 && (
+            <div className="flex gap-2">
+              <Button variant="danger" disabled={selectedRecycleItemIds.size === 0} onClick={() => setPurgeMode('selected')} leftIcon={<Trash2 className="h-4 w-4" />}>Delete Selected</Button>
+              <Button variant="danger" onClick={() => setPurgeMode('all')} leftIcon={<Trash2 className="h-4 w-4" />}>Empty Recycle Bin</Button>
+            </div>
+          )}
         </div>
         <CardBody>
           {recycleItems.length === 0 ? (
@@ -504,10 +538,11 @@ export function DatabaseBackup() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] text-left text-sm">
-                <thead className="border-b border-[#e2e8f0] text-xs uppercase text-[#718198] dark:border-white/10"><tr><th className="px-3 py-2">Type</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Deleted by</th><th className="px-3 py-2">Deleted at</th><th className="px-3 py-2 text-right">Action</th></tr></thead>
+                <thead className="border-b border-[#e2e8f0] text-xs uppercase text-[#718198] dark:border-white/10"><tr><th className="px-3 py-2"><input type="checkbox" aria-label="Select all recycle bin items" checked={selectedRecycleItemIds.size === recycleItems.length && recycleItems.length > 0} onChange={(event) => setSelectedRecycleItemIds(event.target.checked ? new Set(recycleItems.map((item) => item.id)) : new Set())} /></th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Deleted by</th><th className="px-3 py-2">Deleted at</th><th className="px-3 py-2 text-right">Action</th></tr></thead>
                 <tbody>
                   {recycleItems.map((item) => (
                     <tr key={`${item.type}-${item.id}`} className="border-b border-[#eef2f7] last:border-0 dark:border-white/5">
+                      <td className="px-3 py-3"><input type="checkbox" aria-label={`Select ${item.name}`} checked={selectedRecycleItemIds.has(item.id)} onChange={(event) => setSelectedRecycleItemIds((current) => { const next = new Set(current); if (event.target.checked) next.add(item.id); else next.delete(item.id); return next; })} /></td>
                       <td className="px-3 py-3 capitalize text-[#52627a] dark:text-slate-300">{item.type}</td>
                       <td className="px-3 py-3 font-medium text-[#26334d] dark:text-white">{item.name}</td>
                       <td className="px-3 py-3 text-[#718198]">{item.deletedBy || 'Unknown'}</td>
@@ -521,6 +556,19 @@ export function DatabaseBackup() {
           )}
         </CardBody>
       </Card>
+
+      {purgeMode && (
+        <TypedConfirmModal
+          title={purgeMode === 'all' ? 'Empty Recycle Bin' : 'Delete Selected Permanently'}
+          message={purgeMode === 'all' ? 'Permanently delete every file and folder currently in the Recycle Bin?' : `Permanently delete ${selectedRecycleItemIds.size} selected item${selectedRecycleItemIds.size === 1 ? '' : 's'}?`}
+          warning="This permanently removes the database records and stored files. It cannot be undone."
+          confirmWord="DELETE"
+          confirmLabel={purgeMode === 'all' ? 'Empty Recycle Bin' : 'Delete Permanently'}
+          onConfirm={handlePermanentDelete}
+          onCancel={() => { if (!isPurging) setPurgeMode(null); }}
+          isBusy={isPurging}
+        />
+      )}
 
       {/* Clear Data */}
       <div className="pt-2">
