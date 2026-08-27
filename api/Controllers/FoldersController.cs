@@ -20,11 +20,21 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
     // Uses the exact same effective-role resolution RBACMiddleware/controllers
     // enforce with, so the UI and the server can never disagree.
     [HttpGet("my-permissions")]
-    public async Task<ActionResult<object>> GetMyEffectivePermissions([FromQuery] Guid? folderId)
+    public async Task<ActionResult<object>> GetMyEffectivePermissions([FromQuery] Guid? folderId, [FromQuery] Guid? documentId = null)
     {
         try
         {
             var userId = GetCurrentUserId();
+            var resolvedFolderId = folderId;
+            if (documentId.HasValue)
+            {
+                resolvedFolderId = await context.Documents.AsNoTracking()
+                    .Where(d => d.DocumentId == documentId.Value)
+                    .Select(d => (Guid?)d.FolderId)
+                    .FirstOrDefaultAsync();
+                if (!resolvedFolderId.HasValue)
+                    return NotFound(new { success = false, error = "Document not found" });
+            }
 
             DmsRolePermission? permission;
             if (userId == DevSystemAdminId)
@@ -33,7 +43,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             }
             else
             {
-                var effectiveRole = await GetEffectiveRoleAsync(context, userId, folderId);
+                var effectiveRole = await GetEffectiveRoleAsync(context, userId, resolvedFolderId);
                 permission = effectiveRole == null
                     ? null
                     : await context.RolePermissions.AsNoTracking().FirstOrDefaultAsync(rp => rp.Role == effectiveRole);
@@ -52,9 +62,9 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             // BypassFolderPermissions role ("Full Access"), which acts as
             // Admin everywhere with no override needed.
             var adminBaseline = role == FolderRoles.Admin;
-            var isFolderOwner = folderId.HasValue && await context.Folders
+            var isFolderOwner = resolvedFolderId.HasValue && await context.Folders
                 .AsNoTracking()
-                .AnyAsync(f => f.FolderId == folderId.Value && f.OwnerId == userId);
+                .AnyAsync(f => f.FolderId == resolvedFolderId.Value && f.OwnerId == userId);
 
             // Edit/ManagePermissions can also be granted role-wide (blanket, every
             // folder) via the user's global page-access role, same as
@@ -70,48 +80,49 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             var data = new
             {
                 Role = role,
-                ViewOnly = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileRead, Baseline(p => p.ViewOnly)),
-                DownloadReadOnly = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Download, Baseline(p => p.DownloadReadOnly)),
-                DownloadForEditing = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.DownloadForEditing, Baseline(p => p.DownloadForEditing)),
-                Upload = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Write, Baseline(p => p.Upload)),
-                UpdateFile = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileRename, Baseline(p => p.UpdateFile)),
-                UpdateFolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Rename, Baseline(p => p.UpdateFolder)),
-                CreateSubfolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.CreateSubfolder, Baseline(p => p.CreateSubfolder)),
+                ViewOnly = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.FileRead, Baseline(p => p.ViewOnly)),
+                DownloadReadOnly = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.Download, Baseline(p => p.DownloadReadOnly)),
+                DownloadForEditing = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.DownloadForEditing, Baseline(p => p.DownloadForEditing)),
+                Upload = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.Write, Baseline(p => p.Upload)),
+                UploadUpdatedFile = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.UploadUpdatedFile, Baseline(p => p.Upload)),
+                UpdateFile = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.FileRename, Baseline(p => p.UpdateFile)),
+                UpdateFolder = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.Rename, Baseline(p => p.UpdateFolder)),
+                CreateSubfolder = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.CreateSubfolder, Baseline(p => p.CreateSubfolder)),
                 CreateParentFolder = Baseline(p => p.CreateParentFolder),
                 AddTask = Baseline(p => p.AddTask),
                 // Editing the folder's own Description/Classification (distinct
                 // from Rename, which only changes its name) — hidden by default,
                 // same adminBaseline-only pattern as Copy/Cut/DownloadZip above.
-                FolderEdit = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FolderEdit, adminBaseline),
-                DeleteParentFolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteParentFolder)),
-                DeleteSubfolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteSubfolder)),
-                DeleteFile = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileDelete, Baseline(p => p.DeleteFile)),
-                SubmitForApproval = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.SubmitForApproval, Baseline(p => p.SubmitForApproval)),
+                FolderEdit = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.FolderEdit, adminBaseline),
+                DeleteParentFolder = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteParentFolder)),
+                DeleteSubfolder = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteSubfolder)),
+                DeleteFile = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.FileDelete, Baseline(p => p.DeleteFile)),
+                SubmitForApproval = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.SubmitForApproval, Baseline(p => p.SubmitForApproval)),
                 Approve = Baseline(p => p.Approve),
                 Reject = Baseline(p => p.Reject),
-                AdminForceUnlock = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Unlock, Baseline(p => p.AdminForceUnlock)),
-                Copy = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Copy, adminBaseline),
-                Cut = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Cut, adminBaseline),
-                DownloadZip = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.DownloadZip, adminBaseline),
-                FileCopy = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileCopy, adminBaseline),
-                FileCut = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileCut, adminBaseline),
+                AdminForceUnlock = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.Unlock, Baseline(p => p.AdminForceUnlock)),
+                Copy = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.Copy, adminBaseline),
+                Cut = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.Cut, adminBaseline),
+                DownloadZip = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.DownloadZip, adminBaseline),
+                FileCopy = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.FileCopy, adminBaseline),
+                FileCut = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.FileCut, adminBaseline),
                 // Edit (document metadata) and managing File/Folder Permissions are
                 // hidden from everyone by default (adminBaseline) — an Admin must
                 // explicitly grant them per user/group via an override, same as
                 // Copy/Cut/DownloadZip above.
-                Edit = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileEdit, editBaseline),
-                ManagePermissions = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ManagePermissions, manageFolderPermissionsBaseline),
-                FileManagePermissions = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileManagePermissions, manageFilePermissionsBaseline),
+                Edit = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.FileEdit, editBaseline),
+                ManagePermissions = await accessOverrideService.ResolveAsync(userId, null, resolvedFolderId, AccessOverrideActions.ManagePermissions, manageFolderPermissionsBaseline),
+                FileManagePermissions = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.FileManagePermissions, manageFilePermissionsBaseline),
                 // Default to the same baseline as Read (ViewOnly) — an override can
                 // still deny/allow these independently of Read itself.
-                ViewHistory = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewHistory, Baseline(p => p.ViewOnly)),
-                ViewRelatedTasks = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewRelatedTasks, Baseline(p => p.ViewOnly)),
-                ViewMetadataHistory = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewMetadataHistory, Baseline(p => p.ViewOnly)),
+                ViewHistory = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.ViewHistory, Baseline(p => p.ViewOnly)),
+                ViewRelatedTasks = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.ViewRelatedTasks, Baseline(p => p.ViewOnly)),
+                ViewMetadataHistory = await accessOverrideService.ResolveAsync(userId, documentId, resolvedFolderId, AccessOverrideActions.ViewMetadataHistory, Baseline(p => p.ViewOnly)),
                 // Ownership reassignment is intentionally stronger than ordinary
                 // metadata editing. Assigned Managers may edit metadata, but only
                 // the actual folder owner or an effective folder Admin
                 // (Full Access/explicit Admin) may transfer ownership.
-                CanChangeDocumentOwner = isFolderOwner || role == FolderRoles.Admin,
+                CanChangeDocumentOwner = isFolderOwner || role == FolderRoles.Admin || pageAccessRole?.BypassFolderPermissions == true,
                 // Folder ownership is an administrative assignment. Owning a
                 // folder does not authorize transferring the folder itself.
                 CanChangeFolderOwner = userId == DevSystemAdminId || pageAccessRole?.BypassFolderPermissions == true,

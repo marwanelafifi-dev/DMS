@@ -70,7 +70,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
         setDepartmentOptions((departmentRes.data || []).map((i: { label: string }) => i.label));
         setTags(doc.tags || []);
         if (doc.folderId) {
-          const permissionsRes = await apiClient.getMyEffectivePermissions(doc.folderId);
+          const permissionsRes = await apiClient.getMyEffectivePermissions(doc.folderId, documentId);
           if (!cancelled) setCanChangeOwner(permissionsRes.data?.canChangeDocumentOwner === true);
         }
 

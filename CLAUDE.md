@@ -43,6 +43,53 @@
 
 ---
 
+## Session 47 (2026-08-27) — Updated-File Ownership, Permission-Based Submission, and Deny-Aware Actions
+
+**Status:** Complete. No database migration is required.
+
+### Upload New Version owner selection
+
+- Upload New Version now displays an Owner selector initialized to the document's current owner.
+- The selected owner is submitted with the multipart upload and saved atomically with the new version instead of being changed through a second request after upload.
+- The actual folder owner and Admin/Full Access users may change the file owner. Selected managers without independent Admin/Full Access authorization see the owner read-only.
+- The API validates that a new owner is active and independently enforces the ownership-transfer rule before uploading content.
+- The upload audit entry records both the previous and resulting document owner IDs.
+
+### Submit for Approval authorization
+
+- The obsolete requirement that every submitted document belong to the current user was removed from `POST /api/approvals/submit-batch`.
+- Submission is now governed by the effective `SubmitForApproval` decision for every selected file: role baseline plus folder/file direct-user and group overrides.
+- A non-owner with effective Submit for Approval access may submit on behalf of the document owner. A Deny still blocks the action.
+- Existing workflow routing prerequisites remain: the folder must have an active owner and at least one active selected manager.
+
+### Document-specific UI permission enforcement
+
+- `GET /api/folders/my-permissions` now accepts an optional `documentId`, resolves the document's real folder server-side, and returns file-specific effective decisions instead of folder-only results.
+- Added the missing `uploadUpdatedFile` effective flag. Its baseline matches the upload role permission, while a file/folder `Upload Updated File` override can narrow or widen it.
+- Document Preview now fails closed while exact file permissions load. Denied actions are hidden or disabled before interaction, including Submit, Edit, Download for Editing, Upload Updated File, histories, related tasks, Print, Download, and Force Unlock.
+- Upload Updated File remains visible when denied but is disabled with a clear permission tooltip.
+- Edit Document and Upload New Version also request document-specific permissions so a direct file Deny cannot be bypassed by folder-level UI state.
+- Full Access remains recognized even when a folder-specific Manager grant exists, preventing that narrower grant from masking the global bypass for file-owner reassignment.
+
+### Files modified
+
+- `api/Controllers/ApprovalsController.cs`
+- `api/Controllers/DocumentsController.cs`
+- `api/Controllers/FoldersController.cs`
+- `web/src/components/custom/DocumentPreview.tsx`
+- `web/src/components/custom/EditDocumentModal.tsx`
+- `web/src/components/custom/UploadNewVersionModal.tsx`
+- `web/src/utils/api.ts`
+
+### Verification
+
+- `git diff --check`: passed (line-ending warnings only).
+- Focused `DocumentCategoryVisibility.test.tsx`: 2/2 passed.
+- Frontend type-check introduced no new errors; the same existing errors remain in `NotificationsBell.tsx`, `RolePermissions.tsx`, and `Dashboard.tsx`.
+- Backend compilation remains unavailable on the Windows workstation; rebuild and health-check the API container on Ubuntu.
+
+---
+
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 

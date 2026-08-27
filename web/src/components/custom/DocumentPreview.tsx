@@ -19,6 +19,7 @@ import {
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { Folder } from '../../types';
 import type { RolePermissionFlags } from '../../utils/api';
+import { apiClient } from '../../utils/api';
 import { statusLabels, statusStyles } from '../../utils/documentStatus';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { folderAncestryById } from '../../utils/folderPath';
@@ -178,13 +179,14 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, folders, onNavigateToFolder, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, permissions, onDocumentUpdated }: DocumentPreviewProps) {
+export function DocumentPreview({ document, folders, onNavigateToFolder, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onDocumentUpdated }: DocumentPreviewProps) {
   const folderAncestry = folders ? folderAncestryById(document.folderId, folders) : [];
   const newVersionInputRef = useRef<HTMLInputElement>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showRelatedTasks, setShowRelatedTasks] = useState(false);
   const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
+  const [documentPermissions, setDocumentPermissions] = useState<RolePermissionFlags | null>(null);
   const [isLoading, setIsLoading] = useState(
     document.preview.kind === 'image' || document.preview.kind === 'pdf' || document.preview.kind === 'loading',
   );
@@ -204,6 +206,19 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
   const activeMatchRef = useRef<HTMLElement | null>(null);
   const markdownContainerRef = useRef<HTMLDivElement>(null);
   const pdfViewerRef = useRef<PdfJsViewerHandle>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDocumentPermissions(null);
+    apiClient.getMyEffectivePermissions(document.folderId, document.documentId)
+      .then((response) => {
+        if (!cancelled) setDocumentPermissions(response.data ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setDocumentPermissions(null);
+      });
+    return () => { cancelled = true; };
+  }, [document.documentId, document.folderId]);
 
   const isRetryableLoad = document.preview.kind === 'pdf' || document.preview.kind === 'image';
   const isPdf = document.preview.kind === 'pdf';
@@ -895,8 +910,8 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
             {document.status === 'draft' && onSubmitForApproval && (
               <button
                 onClick={() => onSubmitForApproval(document)}
-                disabled={!permissions?.submitForApproval}
-                title={!permissions?.submitForApproval ? 'Your role does not have Submit for Approval permission' : undefined}
+                disabled={!documentPermissions?.submitForApproval}
+                title={!documentPermissions?.submitForApproval ? 'Your role does not have Submit for Approval permission' : undefined}
                 className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#2f7d57] px-3 text-xs font-medium text-white hover:bg-[#286b4b] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7d57]"
                 aria-label={`Submit for Approval: ${document.fileName}`}
               >
@@ -905,15 +920,15 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
             )}
             <button
               onClick={() => setShowEditModal(true)}
-              disabled={!permissions?.edit}
-              title={!permissions?.edit ? 'Your role does not have permission to edit this document' : 'Edit description, tags, version, category, department, owner'}
+              disabled={!documentPermissions?.edit}
+              title={!documentPermissions?.edit ? 'Your role does not have permission to edit this document' : 'Edit description, tags, version, category, department, owner'}
               className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
               aria-label={`Edit ${document.fileName}`}
             >
               <FilePen className="h-4 w-4" /> Edit
             </button>
-            {permissions?.downloadForEditing && onDownloadForEditing && (
-              <button onClick={() => onDownloadForEditing(document)} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download for Editing: ${document.fileName}`} title="Download the original file for editing — locks it for you for 1 hour">
+            {onDownloadForEditing && (
+              <button onClick={() => documentPermissions?.downloadForEditing && onDownloadForEditing(document)} disabled={!documentPermissions?.downloadForEditing} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download for Editing: ${document.fileName}`} title={!documentPermissions?.downloadForEditing ? 'Your role does not have Download for Editing permission' : 'Download the original file for editing and lock it for one hour'}>
                 <PencilLine className="h-4 w-4" /> Download for Editing
               </button>
             )}
@@ -928,20 +943,19 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
                 event.target.value = '';
               }}
             />
-            {permissions?.upload && (
-              <button
-                onClick={() => newVersionInputRef.current?.click()}
-                className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+            <button
+                onClick={() => documentPermissions?.uploadUpdatedFile && newVersionInputRef.current?.click()}
+                disabled={!documentPermissions?.uploadUpdatedFile}
+                className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
                 aria-label={`Upload updated file for ${document.fileName}`}
-                title={document.checkoutStatus === 'checked_out' ? 'Uploading the updated file replaces this version and unlocks it' : 'Upload the updated file as a new version'}
+                title={!documentPermissions?.uploadUpdatedFile ? 'Your role does not have Upload Updated File permission' : document.checkoutStatus === 'checked_out' ? 'Uploading the updated file replaces this version and unlocks it' : 'Upload the updated file as a new version'}
               >
                 <UploadCloud className="h-4 w-4" /> {document.checkoutStatus === 'checked_out' ? 'Upload Updated File to Unlock' : 'Upload Updated File'}
-              </button>
-            )}
+            </button>
             <button
               onClick={() => setShowVersionHistory(true)}
-              disabled={!permissions?.viewOnly}
-              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Version history'}
+              disabled={!documentPermissions?.viewHistory}
+              title={!documentPermissions?.viewHistory ? 'Your role does not have View Version History permission' : 'Version history'}
               className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
               aria-label={`View version history of ${document.fileName}`}
             >
@@ -950,12 +964,12 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
             <LegacyMetadataHistoryAction
               documentId={document.documentId}
               fileName={document.fileName}
-              canView={Boolean(permissions?.viewMetadataHistory)}
+              canView={Boolean(documentPermissions?.viewMetadataHistory)}
             />
             <button
               onClick={() => setShowRelatedTasks(true)}
-              disabled={!permissions?.viewOnly}
-              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'View every task ever raised against this document'}
+              disabled={!documentPermissions?.viewRelatedTasks}
+              title={!documentPermissions?.viewRelatedTasks ? 'Your role does not have View Related Tasks permission' : 'View every task ever raised against this document'}
               className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
               aria-label={`View related tasks for ${document.fileName}`}
             >
@@ -963,8 +977,8 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
             </button>
             <button
               onClick={handlePrint}
-              disabled={!permissions?.viewOnly}
-              title={!permissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Print'}
+              disabled={!documentPermissions?.viewOnly}
+              title={!documentPermissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Print'}
               className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
               aria-label={`Print ${document.fileName}`}
             >
@@ -972,8 +986,8 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
             </button>
             <button
               onClick={() => onDownload(document)}
-              disabled={!permissions?.downloadReadOnly}
-              title={!permissions?.downloadReadOnly ? 'Your role does not have Download permission' : undefined}
+              disabled={!documentPermissions?.downloadReadOnly}
+              title={!documentPermissions?.downloadReadOnly ? 'Your role does not have Download permission' : undefined}
               className="inline-flex h-8 items-center gap-2 rounded-[4px] bg-[#3f8bca] px-3 text-xs font-medium text-white hover:bg-[#2f6f9f] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
               aria-label={`Download ${document.fileName}`}
             >
@@ -1015,7 +1029,7 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
                     <span className="inline-flex items-center gap-1 rounded bg-[#fde1e2] px-2 py-0.5 text-xs font-medium text-[#c73c44] dark:bg-red-500/15 dark:text-red-300">
                       <Lock className="h-3 w-3" /> Locked for editing{document.checkedOutByName ? ` by ${document.checkedOutByName}` : ''}
                     </span>
-                    {permissions?.adminForceUnlock && onForceUnlock && (
+                    {documentPermissions?.adminForceUnlock && onForceUnlock && (
                       <button
                         onClick={() => onForceUnlock(document)}
                         className="text-xs font-medium text-[#3f8bca] underline hover:text-[#2f6f9f]"

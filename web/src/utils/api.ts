@@ -21,6 +21,7 @@ export interface RolePermissionFlags {
   downloadReadOnly: boolean;
   downloadForEditing: boolean;
   upload: boolean;
+  uploadUpdatedFile?: boolean;
   updateFile: boolean;
   updateFolder: boolean;
   createSubfolder: boolean;
@@ -349,8 +350,10 @@ class APIClient {
 
   // Current user's effective permission flags (folder-specific grant if any,
   // else their global role) — omit folderId for the global-role flags.
-  async getMyEffectivePermissions(folderId?: string) {
-    const { data } = await this.client.get<ApiResponse>('/folders/my-permissions', { params: folderId ? { folderId } : undefined });
+  async getMyEffectivePermissions(folderId?: string, documentId?: string) {
+    const { data } = await this.client.get<ApiResponse>('/folders/my-permissions', {
+      params: { ...(folderId ? { folderId } : {}), ...(documentId ? { documentId } : {}) },
+    });
     return data;
   }
 
@@ -489,10 +492,11 @@ class APIClient {
   }
 
   // Document Upload/Download
-  async uploadDocument(documentId: string, file: File, versionLabel?: string) {
+  async uploadDocument(documentId: string, file: File, versionLabel?: string, ownerId?: string) {
     const formData = new FormData();
     formData.append('file', file);
     if (versionLabel?.trim()) formData.append('versionLabel', versionLabel.trim());
+    if (ownerId?.trim()) formData.append('ownerId', ownerId.trim());
 
     const { data } = await this.client.post<ApiResponse>(
       `/documents/${documentId}/upload`,

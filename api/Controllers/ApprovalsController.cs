@@ -163,16 +163,16 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         {
             var userId = GetCurrentUserId();
 
-            // Validate documents exist and belong to current user
+            // Validate every requested document exists. Ownership is not a
+            // submission gate: Submit for Approval is an explicit effective
+            // file/folder permission and may intentionally be granted to a
+            // user who is not the document owner.
             var documents = await context.Documents
                 .Where(d => request.DocumentIds.Contains(d.DocumentId))
                 .ToListAsync();
 
             if (documents.Count != request.DocumentIds.Count)
                 return BadRequest(new { success = false, error = "Some documents not found" });
-
-            if (documents.Any(d => d.OwnerId != userId))
-                return BadRequest(new { success = false, error = "All documents must belong to the current user" });
 
             // Previously unchecked beyond ownership — any authenticated user,
             // including Reader, could submit a document into the approval

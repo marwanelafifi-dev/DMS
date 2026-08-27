@@ -36,6 +36,9 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
   const [currentVersionDisplay, setCurrentVersionDisplay] = useState<string | null>(null);
   const [category, setCategory] = useState('');
   const [department, setDepartment] = useState('');
+  const [ownerId, setOwnerId] = useState('');
+  const [users, setUsers] = useState<Array<{ userId: string; fullName: string; isActive?: boolean }>>([]);
+  const [canChangeOwner, setCanChangeOwner] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
   const [tagOptions, setTagOptions] = useState<string[]>([]);
@@ -46,11 +49,12 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
       setIsLoading(true);
       setError(null);
       try {
-        const [docRes, categoryRes, departmentRes, tagRes] = await Promise.all([
+        const [docRes, categoryRes, departmentRes, tagRes, usersRes] = await Promise.all([
           apiClient.getDocument(documentId),
           apiClient.getDropdownList('category'),
           apiClient.getDropdownList('department'),
           apiClient.getDropdownList('tag'),
+          apiClient.getUsers(),
         ]);
         if (cancelled) return;
         if (!docRes.success) throw new Error(docRes.error);
@@ -58,6 +62,12 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
         setDescription(doc.description || '');
         setCategory(doc.category || '');
         setDepartment(doc.department || '');
+        setOwnerId(doc.ownerId || '');
+        setUsers((usersRes.data || []).filter((user: { isActive?: boolean }) => user.isActive !== false));
+        if (doc.folderId) {
+          const permissionsRes = await apiClient.getMyEffectivePermissions(doc.folderId, documentId);
+          if (!cancelled) setCanChangeOwner(permissionsRes.data?.canChangeDocumentOwner === true);
+        }
         const versions: Array<{ versionId: string; versionNumber: string; versionLabel?: string | null }> = doc.versions || doc.Versions || [];
         const currentVersion = versions.find((v) => v.versionId === doc.currentVersionId);
         if (currentVersion) {
@@ -100,6 +110,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
     && description.trim()
     && category
     && department
+    && ownerId
     && fileNameBase.trim(),
   );
 
@@ -113,7 +124,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
     try {
       const finalFileName = `${fileNameBase.trim()}${fileExtension}`;
       const fileToUpload = finalFileName === file.name ? file : new File([file], finalFileName, { type: file.type });
-      const uploadRes = await apiClient.uploadDocument(documentId, fileToUpload, versionLabel);
+      const uploadRes = await apiClient.uploadDocument(documentId, fileToUpload, versionLabel, ownerId);
       if (!uploadRes.success) throw new Error(uploadRes.error);
 
       const updateRes = await apiClient.updateDocument(documentId, { description, tags: tagList, category, department });
@@ -234,6 +245,15 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded }:
                   </select>
                 </Field>
               </div>
+              <Field label="Owner" required>
+                <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass} disabled={!canChangeOwner}>
+                  <option value="">Select…</option>
+                  {users.map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
+                </select>
+                {!canChangeOwner && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Only the folder owner or a Full Access administrator can change the file owner.</p>
+                )}
+              </Field>
             </>
           )}
         </div>

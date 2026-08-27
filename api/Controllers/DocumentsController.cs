@@ -907,7 +907,7 @@ public class DocumentsController(
 
     // POST /api/documents/{id}/upload — upload a file
     [HttpPost("{id}/upload")]
-    public async Task<ActionResult<object>> UploadVersion(Guid id, IFormFile file, [FromForm] string? versionLabel = null)
+    public async Task<ActionResult<object>> UploadVersion(Guid id, IFormFile file, [FromForm] string? versionLabel = null, [FromForm] Guid? ownerId = null)
     {
         try
         {
@@ -934,6 +934,8 @@ public class DocumentsController(
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
 
+            var previousOwnerId = document.OwnerId;
+
             // Critical gap found in production: this endpoint let ANY user
             // upload a new version even while another user had the document
             // checked out, silently overwriting the locked edit and defeating
@@ -948,6 +950,21 @@ public class DocumentsController(
             // explicit, logged step is the whole point, not a formality this
             // endpoint could just skip on their behalf.
             var userId = GetCurrentUserId();
+            if (ownerId.HasValue && ownerId.Value != document.OwnerId)
+            {
+                var ownerExists = await context.Users.AnyAsync(u => u.UserId == ownerId.Value && u.IsActive);
+                if (!ownerExists)
+                    return BadRequest(new { success = false, error = "Owner not found" });
+
+                var isFolderOwner = await context.Folders.AsNoTracking()
+                    .AnyAsync(f => f.FolderId == document.FolderId && f.OwnerId == userId);
+                var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+                var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+                var canChangeOwner = isFolderOwner || effectiveRole == FolderRoles.Admin || pageAccessRole?.BypassFolderPermissions == true;
+                if (!canChangeOwner)
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the folder owner or a Full Access administrator can change the document owner" });
+            }
+
             var currentVersion = document.CurrentVersionId.HasValue
                 ? await context.DocumentVersions.FirstOrDefaultAsync(v => v.VersionId == document.CurrentVersionId)
                 : null;
@@ -1017,6 +1034,8 @@ public class DocumentsController(
             // Save to the database
             context.DocumentVersions.Add(version);
             document.CurrentVersionId = version.VersionId;
+            if (ownerId.HasValue)
+                document.OwnerId = ownerId.Value;
             document.UpdatedAt = DateTime.UtcNow;
 
             // Real bug found live: dms_approval_documents.version_id is a
@@ -1052,6 +1071,8 @@ public class DocumentsController(
                 version.FileSizeBytes,
                 version.Sha256Hash,
                 version.MimeType,
+                PreviousOwnerId = previousOwnerId,
+                document.OwnerId,
                 version.CreatedAt
             });
 
@@ -1345,7 +1366,8 @@ public class DocumentsController(
 
             var isFolderOwner = await context.Folders.AsNoTracking()
                 .AnyAsync(f => f.FolderId == document.FolderId && f.OwnerId == userId);
-            if (req.OwnerId.HasValue && req.OwnerId.Value != document.OwnerId && !isFolderOwner && effectiveRole != FolderRoles.Admin)
+            var hasFullAccess = pageAccessRole?.BypassFolderPermissions == true;
+            if (req.OwnerId.HasValue && req.OwnerId.Value != document.OwnerId && !isFolderOwner && effectiveRole != FolderRoles.Admin && !hasFullAccess)
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the folder owner or a user with Admin folder access can change the document owner" });
 
             var previousTitle = document.Title;
