@@ -2064,7 +2064,25 @@ export function Documents() {
           scope={accessOverrideTarget.scope}
           resourceName={accessOverrideTarget.resourceName}
           resourceKind={accessOverrideTarget.resourceKind}
-          onClose={() => setAccessOverrideTarget(null)}
+          onClose={() => {
+            const folderId = accessOverrideTarget.scope.folderId;
+            setAccessOverrideTarget(null);
+            if (!folderId) return;
+            // Permissions for this folder were cached before the override was
+            // saved — refetch instead of leaving buttons stuck on stale data
+            // until a full page reload.
+            if (folderId === selectedFolderId) {
+              apiClient.getMyEffectivePermissions(folderId)
+                .then((res) => setMyPermissions(res.data ?? null))
+                .catch(() => {});
+            } else {
+              setOtherFolderPermissions((prev) => {
+                const next = { ...prev };
+                delete next[folderId];
+                return next;
+              });
+            }
+          }}
         />
       )}
 
