@@ -40,6 +40,9 @@ public class DmsAccessOverride
     public bool? DownloadZip { get; set; }
     public bool? CreateSubfolder { get; set; }
     public bool? Delete { get; set; }
+    // Editing the folder's OWN metadata (Description/Classification) — distinct
+    // from FileEdit below, which governs a document's metadata instead.
+    public bool? FolderEdit { get; set; }
 
     // File-scope.
     public bool? FileRead { get; set; }
@@ -75,6 +78,7 @@ public static class AccessOverrideActions
     public const string DownloadZip = "download_zip";
     public const string CreateSubfolder = "create_subfolder";
     public const string Delete = "delete";
+    public const string FolderEdit = "folder_edit";
 
     public const string FileRead = "file_read";
     public const string FileRename = "file_rename";

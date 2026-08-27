@@ -19,10 +19,10 @@ const FOLDER_LEVEL_FIELDS: FieldDef[] = [
   { key: 'createSubfolder', label: 'Create Sub Folders' },
   { key: 'delete', label: 'Delete' },
   { key: 'managePermissions', label: 'Manage Permissions' },
-  // Same underlying flag as File Level's "Edit" (fileEdit) — shown here too,
-  // same precedent as "Write"/"Upload" above, so granting edit access to
-  // every file in a folder doesn't require switching tabs.
-  { key: 'fileEdit', label: 'Edit' },
+  // The folder's OWN metadata (Description/Classification) — a distinct flag
+  // from File Level's "Edit" (fileEdit), which governs a document's own
+  // metadata instead. "Write" already covers uploading into the folder.
+  { key: 'folderEdit', label: 'Edit' },
 ];
 
 // Governs files — shown alone for the standalone File Permissions modal, or

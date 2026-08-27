@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronLeft, ChevronRight, Copy, Download, Eye, FilePen, FileText, Folder as FolderIcon, FolderInput, FolderPlus, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Download, Eye, FileEdit, FilePen, FileText, Folder as FolderIcon, FolderInput, FolderPlus, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
@@ -85,7 +85,7 @@ interface DocumentListProps {
   selectedFolderIds?: Set<string>;
   onSelectedFolderIdsChange?: (ids: Set<string>) => void;
   onFolderOpen?: (folderId: string) => void;
-  onFolderAction?: (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => void;
+  onFolderAction?: (action: 'rename' | 'edit' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => void;
   onCreateSubfolder?: (parentFolderId: string) => void;
   // Per-folder, because a subfolder's overrides can differ from the folder being
   // browsed. `undefined` means "not loaded yet" and is treated as "not allowed",
@@ -413,6 +413,14 @@ export function DocumentList({
                             onSelect={() => onFolderAction?.('rename', folder.folderId)}
                           >
                             <Pencil className="h-4 w-4" /> Rename
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!permissions?.folderEdit}
+                            title={!permissions?.folderEdit ? deniedTitle : undefined}
+                            onSelect={() => onFolderAction?.('edit', folder.folderId)}
+                          >
+                            <FileEdit className="h-4 w-4" /> Edit
                           </DropdownMenu.Item>
                           <DropdownMenu.Item
                             className={rowMenuItemClass}

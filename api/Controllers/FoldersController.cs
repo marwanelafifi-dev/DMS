@@ -76,6 +76,10 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 CreateSubfolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.CreateSubfolder, Baseline(p => p.CreateSubfolder)),
                 CreateParentFolder = Baseline(p => p.CreateParentFolder),
                 AddTask = Baseline(p => p.AddTask),
+                // Editing the folder's own Description/Classification (distinct
+                // from Rename, which only changes its name) — hidden by default,
+                // same adminBaseline-only pattern as Copy/Cut/DownloadZip above.
+                FolderEdit = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FolderEdit, adminBaseline),
                 DeleteParentFolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteParentFolder)),
                 DeleteSubfolder = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.Delete, Baseline(p => p.DeleteSubfolder)),
                 DeleteFile = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.FileDelete, Baseline(p => p.DeleteFile)),
@@ -398,7 +402,12 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
         };
     }
 
-    // PUT /api/folders/{id} — update folder
+    // PUT /api/folders/{id} — rename a folder (name only). Gated on the
+    // "Rename" action. Description/Classification go through the dedicated
+    // /metadata endpoint below instead, gated separately on "Edit" — folded
+    // into this single endpoint before, a Rename-only grant could silently
+    // also rewrite Description/Classification with no separate permission
+    // check at all.
     [HttpPut("{id}")]
     public async Task<ActionResult<object>> UpdateFolder(Guid id, [FromBody] UpdateFolderRequest req)
     {
@@ -410,15 +419,8 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             if (folder == null)
                 return NotFound(new { success = false, error = "Folder not found" });
 
-            // Update fields
             if (!string.IsNullOrWhiteSpace(req.Name))
                 folder.Name = req.Name.Trim();
-
-            if (req.Description != null)
-                folder.Description = req.Description.Trim();
-
-            if (!string.IsNullOrWhiteSpace(req.Classification))
-                folder.Classification = req.Classification;
 
             folder.UpdatedAt = DateTime.UtcNow;
 
@@ -430,7 +432,6 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             {
                 folder.FolderId,
                 folder.Name,
-                folder.Classification,
                 folder.UpdatedAt,
                 ChangedFields = req
             });
@@ -452,6 +453,65 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
         catch (Exception ex)
         {
             logger.LogError(ex, "Error updating folder {FolderId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // PUT /api/folders/{id}/metadata — edit the folder's own Description and
+    // Classification. Gated on the dedicated FolderEdit action (see
+    // RBACMiddleware.ActionForMethod), separate from Rename — hidden by
+    // default (adminBaseline-only), an admin must explicitly grant it per
+    // user/group via a File/Folder Permission override, same as Edit
+    // (document metadata) and Manage Permissions.
+    [HttpPut("{id}/metadata")]
+    public async Task<ActionResult<object>> UpdateFolderMetadata(Guid id, [FromBody] UpdateFolderRequest req)
+    {
+        try
+        {
+            var folder = await context.Folders
+                .FirstOrDefaultAsync(f => f.FolderId == id);
+
+            if (folder == null)
+                return NotFound(new { success = false, error = "Folder not found" });
+
+            if (req.Description != null)
+                folder.Description = req.Description.Trim();
+
+            if (!string.IsNullOrWhiteSpace(req.Classification))
+                folder.Classification = req.Classification.Trim();
+
+            folder.UpdatedAt = DateTime.UtcNow;
+
+            context.Folders.Update(folder);
+            await context.SaveChangesAsync();
+
+            var currentUserId = GetCurrentUserId();
+            await auditService.LogAsync(currentUserId, AuditActions.FOLDER_UPDATED, new
+            {
+                folder.FolderId,
+                folder.Description,
+                folder.Classification,
+                folder.UpdatedAt,
+                ChangedFields = req
+            });
+
+            logger.LogInformation("Updated folder metadata {FolderId}", id);
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    folder.FolderId,
+                    folder.Description,
+                    folder.Classification,
+                    folder.UpdatedAt
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error updating folder metadata {FolderId}", id);
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }

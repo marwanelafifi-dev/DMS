@@ -325,7 +325,13 @@ public class RBACMiddleware
         // (Upload New Version's own follow-up metadata PUT), which is what
         // made the whole operation look like it failed even though the file
         // itself had already gone through.
-        "PUT" => isFolder ? AccessOverrideActions.Rename : AccessOverrideActions.FileEdit,
+        // Folder metadata (Description/Classification) is a distinct action
+        // from a plain rename, resolved by its own dedicated /metadata route
+        // (see FoldersController.UpdateFolderMetadata) — hidden by default,
+        // unlike Rename which several folder roles get out of the box.
+        "PUT" => isFolder
+            ? (path.EndsWith("/metadata", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.FolderEdit : AccessOverrideActions.Rename)
+            : AccessOverrideActions.FileEdit,
         "DELETE" => isFolder ? AccessOverrideActions.Delete : AccessOverrideActions.FileDelete,
         _ => "none" // no override support for anything else — role default only
     };
@@ -365,7 +371,13 @@ public class RBACMiddleware
             "POST" => path.EndsWith("/submit", StringComparison.OrdinalIgnoreCase) ? permission.SubmitForApproval
                 : path.EndsWith("/force-unlock", StringComparison.OrdinalIgnoreCase) ? permission.AdminForceUnlock
                 : permission.Upload,
-            "PUT" => isFolder ? permission.UpdateFolder : permission.UpdateFile,
+            // FolderEdit (metadata) has no per-folder-role default at all — only
+            // a true folder-role Admin gets it out of the box, matching the
+            // adminBaseline-only pattern GetMyEffectivePermissions uses for the
+            // same action; every other folder role needs an explicit override.
+            "PUT" => isFolder
+                ? (path.EndsWith("/metadata", StringComparison.OrdinalIgnoreCase) ? role == FolderRoles.Admin : permission.UpdateFolder)
+                : permission.UpdateFile,
             "DELETE" => isFolder ? (isRootFolder ? permission.DeleteParentFolder : permission.DeleteSubfolder) : permission.DeleteFile,
             _ => false
         };

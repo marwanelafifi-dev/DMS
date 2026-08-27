@@ -29,6 +29,7 @@ public class AccessOverrideService(DmsContext context)
         AccessOverrideActions.DownloadZip => o => o.DownloadZip,
         AccessOverrideActions.CreateSubfolder => o => o.CreateSubfolder,
         AccessOverrideActions.Delete => o => o.Delete,
+        AccessOverrideActions.FolderEdit => o => o.FolderEdit,
         // Real gap found live: a folder-scoped override that grants Folder
         // Level "Read" (Allow) made the folder — and the files listed inside
         // it — show up, but doing nothing about the separate File Level

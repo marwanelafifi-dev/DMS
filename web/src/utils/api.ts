@@ -39,6 +39,7 @@ export interface RolePermissionFlags {
   fileCopy: boolean;
   fileCut: boolean;
   edit: boolean;
+  folderEdit: boolean;
   managePermissions: boolean;
   fileManagePermissions: boolean;
   viewHistory: boolean;
@@ -166,6 +167,7 @@ export interface AccessOverrideFlags {
   downloadZip?: boolean | null;
   createSubfolder?: boolean | null;
   delete?: boolean | null;
+  folderEdit?: boolean | null;
   fileRead?: boolean | null;
   fileRename?: boolean | null;
   fileCopy?: boolean | null;
@@ -372,6 +374,13 @@ class APIClient {
 
   async renameFolder(folderId: string, newName: string) {
     const { data } = await this.client.put<ApiResponse>(`/folders/${folderId}`, { name: newName });
+    return data;
+  }
+
+  // Distinct from renameFolder — edits the folder's own Description/
+  // Classification, gated on the separate "Edit" (FolderEdit) permission.
+  async updateFolderMetadata(folderId: string, metadata: { description?: string; classification?: string }) {
+    const { data } = await this.client.put<ApiResponse>(`/folders/${folderId}/metadata`, metadata);
     return data;
   }
 

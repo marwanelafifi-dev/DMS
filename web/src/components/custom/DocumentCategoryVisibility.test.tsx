@@ -39,7 +39,7 @@ describe('document Category visibility', () => {
           addTask: true, deleteParentFolder: true, deleteSubfolder: true,
           deleteFile: true, submitForApproval: true, approve: true, reject: true,
           adminForceUnlock: true, copy: true, cut: true, downloadZip: true,
-          fileCopy: true, fileCut: true, edit: true, managePermissions: true,
+          fileCopy: true, fileCut: true, edit: true, folderEdit: true, managePermissions: true,
           fileManagePermissions: true, viewHistory: true, viewRelatedTasks: true,
           viewMetadataHistory: true,
         }}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronsDown, ChevronsUp, ChevronDown, ChevronRight, Folder, FolderPlus, MoreVertical, Copy, FolderInput, Trash2, Pencil, Download, ShieldCheck } from 'lucide-react';
+import { ChevronsDown, ChevronsUp, ChevronDown, ChevronRight, Folder, FolderPlus, MoreVertical, Copy, FolderInput, Trash2, Pencil, FileEdit, Download, ShieldCheck } from 'lucide-react';
 import type { Folder as FolderType } from '../../types';
 import type { RolePermissionFlags } from '../../utils/api';
 
@@ -8,7 +8,7 @@ interface FolderTreeProps {
   folders: FolderType[];
   selectedFolderId?: string;
   onSelectFolder: (folderId: string) => void;
-  onFolderAction?: (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => void;
+  onFolderAction?: (action: 'rename' | 'edit' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => void;
   onCreateFolder?: (parentFolderId: string | null) => void;
   // Looked up per folder, since each one's overrides can differ from the
   // folder currently being browsed. `undefined` means "not loaded yet" — the
@@ -101,6 +101,7 @@ export function FolderTree({
     const canCreateSubfolder = Boolean(permissions?.createSubfolder);
     const canDownloadZip = Boolean(permissions?.downloadZip);
     const canRename = Boolean(permissions?.updateFolder);
+    const canEdit = Boolean(permissions?.folderEdit);
     const canCopy = Boolean(permissions?.copy);
     const canCut = Boolean(permissions?.cut);
     const canDelete = Boolean(isRoot ? permissions?.deleteParentFolder : permissions?.deleteSubfolder);
@@ -191,6 +192,14 @@ export function FolderTree({
                   onSelect={() => { onFolderAction?.('rename', folder.folderId); handleMenuClose(); }}
                 >
                   <Pencil className="h-4 w-4" /> Rename
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className={menuItemClass}
+                  disabled={!canEdit}
+                  title={!canEdit ? deniedTitle : undefined}
+                  onSelect={() => { onFolderAction?.('edit', folder.folderId); handleMenuClose(); }}
+                >
+                  <FileEdit className="h-4 w-4" /> Edit
                 </DropdownMenu.Item>
                 <DropdownMenu.Item
                   className={menuItemClass}

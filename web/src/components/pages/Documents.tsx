@@ -37,6 +37,7 @@ const AccessOverrideModal = lazy(() => import('../custom/AccessOverrideModal').t
 const BulkOperationsModal = lazy(() => import('../custom/BulkOperationsModal').then((module) => ({ default: module.BulkOperationsModal })));
 const UploadApprovalModal = lazy(() => import('../custom/UploadApprovalModal').then((module) => ({ default: module.UploadApprovalModal })));
 const EditDocumentModal = lazy(() => import('../custom/EditDocumentModal').then((module) => ({ default: module.EditDocumentModal })));
+const EditFolderModal = lazy(() => import('../custom/EditFolderModal').then((module) => ({ default: module.EditFolderModal })));
 
 function readBlobAsText(blob: Blob): Promise<string> {
   if (typeof blob.text === 'function') return blob.text();
@@ -324,6 +325,7 @@ export function Documents() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [myPermissions, setMyPermissions] = useState<RolePermissionFlags | null>(null);
   const [editDocumentId, setEditDocumentId] = useState<string | null>(null);
+  const [editFolderId, setEditFolderId] = useState<string | null>(null);
   // Admin-managed via the Company Data page — fetched once, refreshed if the
   // upload modal is reopened so a just-added item shows up without a reload.
   const [dropdownOptions, setDropdownOptions] = useState<{ department: string[]; category: string[]; tag: string[] }>({ department: [], category: [], tag: [] });
@@ -1343,9 +1345,14 @@ export function Documents() {
       .finally(() => loadingFolderPermissionIds.current.delete(folderId));
   }, [selectedFolderId, otherFolderPermissions]);
 
-  const requestFolderAction = (action: 'rename' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => {
+  const requestFolderAction = (action: 'rename' | 'edit' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => {
     if (action === 'permissions') {
       handleFolderPermissions(folderId);
+      return;
+    }
+
+    if (action === 'edit') {
+      setEditFolderId(folderId);
       return;
     }
 
@@ -2094,6 +2101,22 @@ export function Documents() {
           onSaved={() => void refreshServerDocuments(folders)}
         />
       )}
+
+      {editFolderId && (() => {
+        const target = folders.find((f) => f.folderId === editFolderId);
+        return (
+          <EditFolderModal
+            folderId={editFolderId}
+            folderName={target?.name ?? ''}
+            initialDescription={target?.description}
+            initialClassification={target?.classification}
+            onClose={() => setEditFolderId(null)}
+            onSaved={() => {
+              apiClient.getFolders().then((res) => setFolders(res.data || []));
+            }}
+          />
+        );
+      })()}
       </Suspense>
 
       {newFolderRequest && (

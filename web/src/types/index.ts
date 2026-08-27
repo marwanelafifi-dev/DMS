@@ -15,6 +15,7 @@ export interface Folder {
   folderId: string;
   name: string;
   description?: string;
+  classification?: string;
   parentFolderId?: string;
   ownerId: string;
   owner?: User;
