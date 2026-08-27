@@ -11,7 +11,6 @@ interface EditFolderModalProps {
   folderId: string;
   folderName: string;
   initialDescription?: string;
-  initialClassification?: string;
   initialDepartment?: string;
   initialTags?: string[];
   initialOwnerId?: string;
@@ -19,15 +18,14 @@ interface EditFolderModalProps {
   onSaved: () => void;
 }
 
-// The folder's own metadata (Description/Classification/Department/Tags/
-// Owner), distinct from renaming — gated on the separate "Edit"
-// (FolderEdit) permission rather than "Rename".
+// The folder's own metadata (Description/Department/Tags/Owner), distinct
+// from renaming — gated on the separate "Edit" (FolderEdit) permission
+// rather than "Rename".
 export function EditFolderModal({
-  folderId, folderName, initialDescription, initialClassification, initialDepartment, initialTags, initialOwnerId,
+  folderId, folderName, initialDescription, initialDepartment, initialTags, initialOwnerId,
   onClose, onSaved,
 }: EditFolderModalProps) {
   const [description, setDescription] = useState(initialDescription ?? '');
-  const [classification, setClassification] = useState(initialClassification || 'standard');
   const [department, setDepartment] = useState(initialDepartment ?? '');
   const [tags, setTags] = useState<string[]>(initialTags ?? []);
   const [ownerId, setOwnerId] = useState(initialOwnerId ?? '');
@@ -51,7 +49,7 @@ export function EditFolderModal({
         setDepartmentOptions((departmentRes.data || []).map((i: { label: string }) => i.label));
       } catch {
         // Non-fatal — Department/Owner dropdowns just stay empty; Description/
-        // Classification/Tags don't depend on either fetch.
+        // Tags don't depend on either fetch.
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -63,7 +61,7 @@ export function EditFolderModal({
     setIsSaving(true);
     setError(null);
     try {
-      const res = await apiClient.updateFolderMetadata(folderId, { description, classification, department, tags, ownerId: ownerId || undefined });
+      const res = await apiClient.updateFolderMetadata(folderId, { description, department, tags, ownerId: ownerId || undefined });
       if (!res.success) throw new Error(res.error);
       onSaved();
       onClose();
@@ -99,21 +97,12 @@ export function EditFolderModal({
           <Field label="Tags">
             <TagSelector value={tags} onChange={setTags} />
           </Field>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Classification">
-              <select value={classification} onChange={(e) => setClassification(e.target.value)} className={inputClass}>
-                <option value="standard">Standard</option>
-                <option value="confidential">Confidential</option>
-                <option value="restricted">Restricted</option>
-              </select>
-            </Field>
-            <Field label="Department">
-              <select value={department} onChange={(e) => setDepartment(e.target.value)} className={inputClass} disabled={isLoading}>
-                <option value="">Select…</option>
-                {departmentOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </Field>
-          </div>
+          <Field label="Department">
+            <select value={department} onChange={(e) => setDepartment(e.target.value)} className={inputClass} disabled={isLoading}>
+              <option value="">Select…</option>
+              {departmentOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </Field>
           <Field label="Owner">
             <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass} disabled={isLoading}>
               <option value="">Select…</option>

@@ -77,6 +77,12 @@ export interface LibraryFolderRow {
   // (e.g. "Corporate / OLD DMS / Ossia"), so a match found somewhere other than
   // the folder currently being browsed still shows exactly where it lives.
   pathLabel?: string;
+  // The folder's own metadata (see EditFolderModal) — shown in the same
+  // Department/Owner/Tags columns a document row uses, instead of a
+  // permanent "—" that never reflected the real value even after it was set.
+  department?: string;
+  ownerName?: string;
+  tags?: string[];
 }
 
 interface DocumentListProps {
@@ -359,11 +365,11 @@ export function DocumentList({
                   </button>
                 </td>
                 <td className="text-[#93a4bd]">—</td>
-                {visibleColumns.has('department') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={folder.department} /></td>}
                 {visibleColumns.has('category') && <td className="text-[#93a4bd]">—</td>}
-                {visibleColumns.has('owner') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={folder.ownerName} /></td>}
                 {visibleColumns.has('modifiedAt') && <td className="text-[#93a4bd]">—</td>}
-                {visibleColumns.has('tags') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('tags') && <td>{folder.tags && folder.tags.length > 0 ? <CompactTagList tags={folder.tags} /> : <span className="text-[#93a4bd]">—</span>}</td>}
                 {visibleColumns.has('status') && <td className="text-[#93a4bd]">—</td>}
                 <td className="text-right">
                   <div className="flex items-center justify-end gap-2">

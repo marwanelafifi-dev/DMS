@@ -455,9 +455,12 @@ export function Documents() {
           pathLabel: ancestry.length > 0 ? ancestry.map((f) => f.name).join(' / ') : (query ? 'Root' : undefined),
           subfolderCount: folders.filter((candidate) => candidate.parentFolderId === folder.folderId).length,
           documentCount: allDocuments.filter((document) => document.folderId === folder.folderId).length,
+          department: folder.department,
+          ownerName: allUsers.find((u) => u.userId === folder.ownerId)?.fullName,
+          tags: folder.tags,
         };
       });
-  }, [folders, selectedFolderId, allDocuments, showOnlyMySubmissions, searchQuery, statusFilter, tagFilters]);
+  }, [folders, selectedFolderId, allDocuments, showOnlyMySubmissions, searchQuery, statusFilter, tagFilters, allUsers]);
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
     ...folders.filter((folder) => selectedFolderIds.has(folder.folderId)).map((folder) => folder.name),
@@ -2109,7 +2112,6 @@ export function Documents() {
             folderId={editFolderId}
             folderName={target?.name ?? ''}
             initialDescription={target?.description}
-            initialClassification={target?.classification}
             initialDepartment={target?.department}
             initialTags={target?.tags}
             initialOwnerId={target?.ownerId}
