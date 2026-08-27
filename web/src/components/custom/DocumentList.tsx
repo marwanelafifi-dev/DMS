@@ -281,7 +281,7 @@ export function DocumentList({
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="data-table library-document-table w-full min-w-[720px] table-auto" aria-label="Documents">
+      <table className="data-table library-document-table w-full min-w-[720px] table-fixed" aria-label="Documents">
         <colgroup>
           <col style={{ width: `${columnWidthPercents.checkbox}%` }} />
           <col style={{ width: `${columnWidthPercents.documentId}%` }} />
@@ -467,8 +467,8 @@ export function DocumentList({
                 <button type="button" onClick={() => onDocumentClick(document.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${document.fileName}${document.description ? ` ${document.description}` : ''}`}>
                   <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded ${extensionStyles[document.extension]}`}><FileText className="h-4 w-4" /></span>
                   <span className="min-w-0">
-                    <span className="block min-w-max whitespace-nowrap text-sm font-semibold leading-5 text-[#2e4083] dark:text-slate-100">{document.fileName}</span>
-                    <span className="mt-0.5 block truncate text-xs text-[#52627a]">{document.description}</span>
+                    <span className="block truncate text-sm font-semibold leading-5 text-[#2e4083] dark:text-slate-100" title={document.fileName}>{document.fileName}</span>
+                    <span className="mt-0.5 block truncate text-xs text-[#52627a]" title={document.description}>{document.description}</span>
                   </span>
                 </button>
               </td>
