@@ -25,6 +25,10 @@ public record NetworkShareConfig(bool Enabled, string Host, string ShareName, st
 
 public static class SmbBackupService
 {
+    // Stay below conservative SMB2 write limits. Sending a complete SQL dump
+    // in one request caused Windows shares to leave a 0-byte file.
+    private const int WriteChunkSize = 64 * 1024;
+
     // Builds the share-relative path for a file, joining the optional
     // sub-folder — SMB paths use backslashes regardless of the host OS.
     private static string BuildRelativePath(NetworkShareConfig config, string fileName)
@@ -97,21 +101,67 @@ public static class SmbBackupService
         if (createStatus != NTStatus.STATUS_SUCCESS)
             return (false, $"Could not create '{relativePath}' on the share ({createStatus})");
 
+        string? writeError = null;
         try
         {
-            var writeStatus = fileStore.WriteFile(out _, handle, 0, bytes);
-            if (writeStatus != NTStatus.STATUS_SUCCESS)
-                return (false, $"Could not write '{relativePath}' to the share ({writeStatus})");
-            return (true, null);
+            long offset = 0;
+            while (offset < bytes.LongLength)
+            {
+                var chunkLength = (int)Math.Min(WriteChunkSize, bytes.LongLength - offset);
+                var chunk = new byte[chunkLength];
+                Buffer.BlockCopy(bytes, (int)offset, chunk, 0, chunkLength);
+
+                var writeStatus = fileStore.WriteFile(out var numberOfBytesWritten, handle, offset, chunk);
+                if (writeStatus != NTStatus.STATUS_SUCCESS)
+                {
+                    writeError = $"Could not write '{relativePath}' at offset {offset} ({writeStatus})";
+                    break;
+                }
+                if (numberOfBytesWritten != chunkLength)
+                {
+                    writeError = $"Incomplete write for '{relativePath}' at offset {offset}: expected {chunkLength} bytes, wrote {numberOfBytesWritten}";
+                    break;
+                }
+
+                offset += numberOfBytesWritten;
+            }
+        }
+        catch (Exception ex)
+        {
+            writeError = $"Could not write '{relativePath}' to the share: {ex.Message}";
         }
         finally
         {
-            fileStore.CloseFile(handle);
+            try { fileStore.CloseFile(handle); } catch { /* cleanup continues below */ }
         }
+
+        if (writeError == null)
+            return (true, null);
+
+        DeleteFileBestEffort(fileStore, relativePath);
+        return (false, writeError);
     }
 
-    // Writes a real, tiny probe file and immediately overwrites it with
-    // nothing to prove write access — used both by "Save Schedule" (so a
+    private static void DeleteFileBestEffort(ISMBFileStore fileStore, string relativePath)
+    {
+        try
+        {
+            var deleteStatus = fileStore.CreateFile(
+                out var deleteHandle, out _, relativePath,
+                AccessMask.DELETE | AccessMask.SYNCHRONIZE,
+                SMBLibrary.FileAttributes.Normal,
+                ShareAccess.None,
+                CreateDisposition.FILE_OPEN,
+                CreateOptions.FILE_NON_DIRECTORY_FILE | CreateOptions.FILE_DELETE_ON_CLOSE | CreateOptions.FILE_SYNCHRONOUS_IO_ALERT,
+                null);
+            if (deleteStatus == NTStatus.STATUS_SUCCESS)
+                fileStore.CloseFile(deleteHandle);
+        }
+        catch { /* preserve the original write error */ }
+    }
+
+    // Writes a real, non-empty probe file and immediately deletes it to
+    // prove content-write access — used by "Save Schedule" (so a
     // wrong host/credential/share surfaces immediately) and could be reused
     // for a dedicated "Test Connection" button later.
     public static (bool Success, string? Error) TestConnection(NetworkShareConfig config)
@@ -123,27 +173,14 @@ public static class SmbBackupService
         try
         {
             var probeName = BuildRelativePath(config, $".dms-write-test-{Guid.NewGuid():N}.tmp");
-            var (writeOk, writeError) = WriteFile(fileStore, probeName, []);
+            var (writeOk, writeError) = WriteFile(fileStore, probeName, "DMS SMB write test"u8.ToArray());
             if (!writeOk)
                 return (false, writeError);
 
-            // Best-effort cleanup of the probe file — a leftover empty
+            // Best-effort cleanup of the probe file — a leftover tiny
             // .dms-write-test-*.tmp file is harmless, so failure here doesn't
             // turn a genuinely-successful write test into a failure.
-            try
-            {
-                var deleteStatus = fileStore.CreateFile(
-                    out var deleteHandle, out _, probeName,
-                    AccessMask.DELETE | AccessMask.SYNCHRONIZE,
-                    SMBLibrary.FileAttributes.Normal,
-                    ShareAccess.None,
-                    CreateDisposition.FILE_OPEN,
-                    CreateOptions.FILE_NON_DIRECTORY_FILE | CreateOptions.FILE_DELETE_ON_CLOSE | CreateOptions.FILE_SYNCHRONOUS_IO_ALERT,
-                    null);
-                if (deleteStatus == NTStatus.STATUS_SUCCESS)
-                    fileStore.CloseFile(deleteHandle);
-            }
-            catch { /* best-effort cleanup only */ }
+            DeleteFileBestEffort(fileStore, probeName);
 
             return (true, null);
         }

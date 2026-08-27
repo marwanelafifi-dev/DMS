@@ -28,6 +28,21 @@
 
 ---
 
+## Session 46 (2026-08-27) — SMB Backup Zero-Byte File Fix
+
+**Status:** Implemented. No database migration is required.
+
+- Root cause confirmed from the Ubuntu API trace: the 10.8 MB PostgreSQL dump was successfully created and uploaded to MinIO, then `SmbBackupService.WriteFile` attempted to send the entire byte array in one SMB request. The Windows share created the destination file but the oversized write failed, leaving a 0 KB file.
+- SMB writes are now sent sequentially in conservative 64 KB chunks with the correct file offset.
+- Every chunk must return `STATUS_SUCCESS` and report the full expected byte count; a short write is treated as failure.
+- Any incomplete destination file is deleted best-effort after a failed write instead of leaving a misleading 0 KB/partial backup.
+- Save Schedule now tests the share with a non-empty payload rather than an empty file, validating content-write access as well as login/share/file creation.
+- The primary MinIO backup behavior remains unchanged and is completed before the optional SMB copy.
+
+**File modified:** `api/Services/SmbBackupService.cs`
+
+---
+
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
