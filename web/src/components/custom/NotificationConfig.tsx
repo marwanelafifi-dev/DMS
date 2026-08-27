@@ -148,35 +148,63 @@ export function NotificationConfig() {
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-serif font-bold text-[#122344] dark:text-white">Notification Configuration</h2>
-        <p className="mt-1 text-sm text-[#718198]">Configure how email notifications are sent from the Admin Portal</p>
+        <p className="mt-1 text-sm text-[#718198]">Manage global delivery status and outbound email configuration.</p>
       </div>
 
-      <Card className={`overflow-hidden border-2 ${notificationsEnabled ? 'border-emerald-200 dark:border-emerald-900' : 'border-red-200 dark:border-red-900'}`}>
-        <CardBody className="flex items-center justify-between gap-4 p-5">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className={`rounded-full p-2 ${notificationsEnabled ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
-              {notificationsEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+      <Card className="overflow-hidden border border-[#d8e0ea] shadow-[0_1px_2px_rgba(18,35,68,0.04)] dark:border-white/10">
+        <div className="h-1 bg-[#002e5c]" />
+        <CardBody className="p-0">
+          <div className="flex flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md border border-[#d9e4ef] bg-[#f3f7fb] text-[#002e5c] dark:border-white/10 dark:bg-slate-800 dark:text-blue-300">
+                {notificationsEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h3 className="text-[15px] font-semibold text-[#122344] dark:text-white">Global Notification Delivery</h3>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${notificationsEnabled
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
+                    : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${notificationsEnabled ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    {notificationsEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                <p className="mt-1.5 max-w-3xl text-sm leading-5 text-[#64748b] dark:text-slate-400">
+                  {notificationsEnabled
+                    ? 'Email and in-app delivery is active for workflows, tasks, reminders, announcements, and system events.'
+                    : 'All new email and in-app delivery is suspended. Business operations continue without notification delivery.'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded border border-[#dce4ee] bg-[#f8fafc] px-2 py-1 text-xs font-medium text-[#52627a] dark:border-white/10 dark:bg-slate-800 dark:text-slate-300">
+                    <Mail className="h-3.5 w-3.5" /> Email
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded border border-[#dce4ee] bg-[#f8fafc] px-2 py-1 text-xs font-medium text-[#52627a] dark:border-white/10 dark:bg-slate-800 dark:text-slate-300">
+                    <Bell className="h-3.5 w-3.5" /> In-App
+                  </span>
+                </div>
+              </div>
             </div>
-            <div>
-              <h3 className="font-semibold text-[#26334d] dark:text-white">Email and In-App Notifications</h3>
-              <p className="mt-1 text-sm text-[#718198] dark:text-slate-400">
-                {notificationsEnabled
-                  ? 'Enabled — workflow, task, reminder, announcement, and system notifications are being delivered.'
-                  : 'Disabled — no new emails or in-app notifications will be sent. Business operations continue normally.'}
-              </p>
+
+            <div className="flex flex-shrink-0 items-center justify-between gap-4 border-t border-[#e5eaf0] pt-4 lg:justify-end lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 dark:border-white/10">
+              <div className="text-right">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#718198] dark:text-slate-400">Delivery</p>
+                <p className="mt-0.5 text-sm font-medium text-[#26334d] dark:text-white">{notificationsEnabled ? 'On' : 'Off'}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={notificationsEnabled}
+                aria-label="Enable email and in-app notifications"
+                disabled={isUpdatingToggle}
+                onClick={handleNotificationToggle}
+                className={`relative h-7 w-12 flex-shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-[#3f8bca] focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60 ${notificationsEnabled
+                  ? 'border-[#087f5b] bg-[#0b8f68]'
+                  : 'border-[#94a3b8] bg-[#a8b3c2] dark:border-slate-500 dark:bg-slate-600'}`}
+              >
+                <span className={`absolute left-0 top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${notificationsEnabled ? 'translate-x-[23px]' : 'translate-x-[3px]'}`} />
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={notificationsEnabled}
-            aria-label="Enable email and in-app notifications"
-            disabled={isUpdatingToggle}
-            onClick={handleNotificationToggle}
-            className={`relative h-7 w-12 flex-shrink-0 rounded-full transition-colors disabled:cursor-wait disabled:opacity-60 ${notificationsEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'}`}
-          >
-            <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-          </button>
         </CardBody>
       </Card>
 
