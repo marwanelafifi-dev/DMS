@@ -29,6 +29,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
+  const [canChangeOwner, setCanChangeOwner] = useState(false);
 
   const [fileNameBase, setFileNameBase] = useState('');
   const [fileNameExtension, setFileNameExtension] = useState('');
@@ -68,6 +69,10 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
         setCategoryOptions((categoryRes.data || []).map((i: { label: string }) => i.label));
         setDepartmentOptions((departmentRes.data || []).map((i: { label: string }) => i.label));
         setTags(doc.tags || []);
+        if (doc.folderId) {
+          const permissionsRes = await apiClient.getMyEffectivePermissions(doc.folderId);
+          if (!cancelled) setCanChangeOwner(permissionsRes.data?.canChangeDocumentOwner === true);
+        }
 
         // Any existing tag that isn't one of the known presets falls back into
         // the free-text "Other" field instead of being silently dropped —
@@ -172,10 +177,13 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
                 </Field>
               </div>
               <Field label="Owner" required>
-                <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass}>
+                <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass} disabled={!canChangeOwner}>
                   <option value="">Select…</option>
                   {users.map((u) => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
                 </select>
+                {!canChangeOwner && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Managers can edit document metadata, but only the folder owner or a user with Admin folder access can change the document owner.</p>
+                )}
               </Field>
             </>
           )}

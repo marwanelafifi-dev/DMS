@@ -243,6 +243,10 @@ export function LibraryBulkActions({
         return;
       }
     }
+    if (action === 'delete' && value.trim() !== 'DELETE') {
+      setError('Type DELETE exactly to confirm.');
+      return;
+    }
     if (!action) return;
     setIsConfirming(true);
     try {
@@ -333,10 +337,14 @@ export function LibraryBulkActions({
                 <div className="space-y-3">
                   <div className="flex gap-3 rounded-[5px] border border-[#efb7ba] bg-[#fff7f7] p-3 text-sm text-[#a83238]">
                     <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                    <span>This permanently removes {selectedCount} selected {selectedCount === 1 ? 'item' : 'items'}.</span>
+                    <span>This moves {selectedCount} selected {selectedCount === 1 ? 'item' : 'items'} to the recoverable Recycle Bin.</span>
                   </div>
                   {containsNonEmptyFolder && <p className="text-sm font-medium text-[#b96a08]">Warning: the selection contains a non-empty folder and all of its documents will be deleted.</p>}
                   <ul className="max-h-28 space-y-1 overflow-y-auto text-sm text-[#52627a]">{selectedNames.slice(0, 5).map((name) => <li key={name}>• {name}</li>)}</ul>
+                  <label className="block text-sm font-medium text-[#34425b] dark:text-slate-100">
+                    Type <span className="font-mono font-bold text-[#c73c44]">DELETE</span> to confirm
+                    <input autoFocus className="field-control mt-2 w-full font-mono" value={value} placeholder="DELETE" onChange={(event) => { setValue(event.target.value); setError(''); }} />
+                  </label>
                 </div>
               )}
               {action === 'rename' && (
@@ -348,7 +356,7 @@ export function LibraryBulkActions({
               {error && <p id="bulk-action-error" role="alert" className="text-sm text-[#c73c44]">{error}</p>}
               <div className="flex justify-end gap-2">
                 <Dialog.Close asChild><Button variant="secondary" type="button" disabled={isConfirming}>Cancel</Button></Dialog.Close>
-                <Button variant={action === 'delete' ? 'danger' : 'primary'} type="button" onClick={confirm} disabled={isConfirming}>
+                <Button variant={action === 'delete' ? 'danger' : 'primary'} type="button" onClick={confirm} disabled={isConfirming || (action === 'delete' && value.trim() !== 'DELETE')}>
                   {isConfirming ? 'Working…' : action === 'rename' && extensionConfirmed ? 'Change extension' : action === 'copy' ? 'Copy items' : action === 'move' ? 'Move items' : action === 'delete' ? 'Delete items' : 'Rename item'}
                 </Button>
               </div>

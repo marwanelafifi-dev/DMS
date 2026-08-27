@@ -27,6 +27,27 @@ describe('document library local operations', () => {
     expect(result.documents.filter((document) => document.folderId === copiedFolder?.folderId)).toHaveLength(7);
   });
 
+  it('clears workflow identity and returns a copied document to Draft', () => {
+    const state = createState();
+    const source = state.documents.find((document) => document.documentId === 'folder-1-txt')!;
+    source.trackingCode = 'SWS-25020010';
+    source.originalDocumentId = 'SWS-25020010';
+    source.hasDocId = true;
+    source.status = 'manager_review';
+
+    const result = copyLibraryItems(
+      state,
+      { folderIds: new Set(), documentIds: new Set([source.documentId]) },
+      'folder-2',
+    );
+    const copied = result.documents.find((document) => document.documentId !== source.documentId && document.fileName.includes('Copy'))!;
+
+    expect(copied.trackingCode).toBeUndefined();
+    expect(copied.originalDocumentId).toBeNull();
+    expect(copied.hasDocId).toBe(false);
+    expect(copied.status).toBe('draft');
+  });
+
   it('prevents moving a folder into itself', () => {
     expect(() => moveLibraryItems(
       createState(),

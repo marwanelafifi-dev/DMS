@@ -1339,9 +1339,12 @@ public class DocumentsController(
             var userId = GetCurrentUserId();
             var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-            var editBaseline = effectiveRole == FolderRoles.Admin || pageAccessRole?.CanEditFiles == true;
+            var editBaseline = (effectiveRole is FolderRoles.Admin or FolderRoles.Manager) || pageAccessRole?.CanEditFiles == true;
             if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.FileEdit, editBaseline))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to edit this document" });
+
+            if (req.OwnerId.HasValue && req.OwnerId.Value != document.OwnerId && effectiveRole != FolderRoles.Admin)
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the folder owner or a user with Admin folder access can change the document owner" });
 
             var previousTitle = document.Title;
             var previousStatus = document.Status;
@@ -1479,6 +1482,97 @@ public class DocumentsController(
     // folder (adminBaseline, same as the FileCut flag already resolved for
     // the UI's own Move button) and Upload/Write permission on the
     // destination (same check CreateDocument already uses).
+    // A copy is a new workflow object: it never inherits the source Doc ID,
+    // approval rows, checkout state, or workflow status.
+    [HttpPost("{id}/copy")]
+    public async Task<ActionResult<object>> CopyDocument(Guid id, [FromBody] CopyDocumentRequest req)
+    {
+        string? copiedObjectKey = null;
+        var copyPersisted = false;
+        try
+        {
+            var source = await context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.DocumentId == id);
+            if (source == null) return NotFound(new { success = false, error = "Document not found" });
+            var sourceVersion = source.CurrentVersionId.HasValue
+                ? await context.DocumentVersions.AsNoTracking().FirstOrDefaultAsync(v => v.VersionId == source.CurrentVersionId.Value)
+                : null;
+            if (sourceVersion == null) return BadRequest(new { success = false, error = "The document has no current file version to copy" });
+            if (!await context.Folders.AnyAsync(f => f.FolderId == req.DestinationFolderId))
+                return BadRequest(new { success = false, error = "Destination folder not found" });
+
+            var userId = GetCurrentUserId();
+            var sourceRole = await GetEffectiveRoleAsync(context, userId, source.FolderId);
+            if (!await accessOverrideService.ResolveAsync(userId, id, source.FolderId, AccessOverrideActions.FileCopy, sourceRole == FolderRoles.Admin))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to copy this document" });
+            var destinationRole = await GetEffectiveRoleAsync(context, userId, req.DestinationFolderId);
+            var destinationAllowsUpload = await HasRolePermissionAsync(context, destinationRole, rp => rp.Upload);
+            if (!await accessOverrideService.ResolveAsync(userId, null, req.DestinationFolderId, AccessOverrideActions.Write, destinationAllowsUpload))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Upload permission in the destination folder" });
+
+            var existingNames = await context.Documents
+                .Where(d => d.FolderId == req.DestinationFolderId && d.CurrentVersionId.HasValue)
+                .Join(context.DocumentVersions, d => d.CurrentVersionId, v => (Guid?)v.VersionId, (_, v) => v.FileName)
+                .ToListAsync();
+            var extension = Path.GetExtension(sourceVersion.FileName);
+            var baseName = Path.GetFileNameWithoutExtension(sourceVersion.FileName);
+            var copiedFileName = $"{baseName} Copy{extension}";
+            var suffix = 2;
+            while (existingNames.Contains(copiedFileName, StringComparer.OrdinalIgnoreCase))
+                copiedFileName = $"{baseName} Copy {suffix++}{extension}";
+
+            var now = DateTime.UtcNow;
+            var copiedDocument = new DmsDocument
+            {
+                DocumentId = Guid.NewGuid(), FolderId = req.DestinationFolderId,
+                Title = $"{source.Title} Copy", TrackingCode = null, OriginalDocumentId = null,
+                Status = "draft", Description = source.Description, Tags = [.. source.Tags],
+                Department = source.Department, Category = source.Category, OwnerId = source.OwnerId,
+                CreatedAt = now, UpdatedAt = now,
+            };
+            var copiedVersion = new DmsDocumentVersion
+            {
+                VersionId = Guid.NewGuid(), DocumentId = copiedDocument.DocumentId,
+                VersionNumber = "1.0", VersionLabel = sourceVersion.VersionLabel,
+                FileName = copiedFileName, FileSizeBytes = sourceVersion.FileSizeBytes,
+                MimeType = sourceVersion.MimeType, Sha256Hash = sourceVersion.Sha256Hash,
+                Status = "draft", MajorVersion = 1, MinorVersion = 0,
+                CreatedAt = now, UpdatedAt = now,
+            };
+            copiedObjectKey = $"documents/{copiedDocument.DocumentId}/{copiedVersion.VersionId}/{copiedFileName}";
+            await using (var sourceStream = await minioService.DownloadAsync(sourceVersion.S3ObjectKey))
+                await minioService.UploadAsync(copiedObjectKey, sourceStream, sourceVersion.MimeType ?? "application/octet-stream");
+            copiedVersion.S3ObjectKey = copiedObjectKey;
+            await using (var transaction = await context.Database.BeginTransactionAsync())
+            {
+                context.Documents.Add(copiedDocument);
+                await context.SaveChangesAsync();
+                context.DocumentVersions.Add(copiedVersion);
+                await context.SaveChangesAsync();
+                copiedDocument.CurrentVersionId = copiedVersion.VersionId;
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            copyPersisted = true;
+
+            await auditService.LogAsync(userId, DOCUMENT_CREATED, new
+            {
+                copiedDocument.DocumentId, CopiedFromDocumentId = source.DocumentId,
+                copiedDocument.FolderId, copiedVersion.FileName,
+                Status = "draft", DocIdCleared = true,
+            });
+            return Ok(new { success = true, data = new { copiedDocument.DocumentId, copiedDocument.FolderId, copiedVersion.FileName, copiedDocument.Status, copiedDocument.TrackingCode } });
+        }
+        catch (Exception ex)
+        {
+            if (copiedObjectKey != null && !copyPersisted)
+            {
+                try { await minioService.DeleteAsync(copiedObjectKey); } catch { }
+            }
+            logger.LogError(ex, "Error copying document {DocumentId}", id);
+            return StatusCode(500, new { success = false, error = "Failed to copy document" });
+        }
+    }
+
     [HttpPost("{id}/move")]
     public async Task<ActionResult<object>> MoveDocument(Guid id, [FromBody] MoveDocumentRequest req)
     {
@@ -1557,69 +1651,20 @@ public class DocumentsController(
         if (document == null)
             return (DocumentDeleteStatus.NotFound, "Document not found");
 
-        var versions = await context.DocumentVersions
-            .Where(v => v.DocumentId == id)
-            .ToListAsync();
+        var deletedAt = DateTime.UtcNow;
+        document.DeletedAt = deletedAt;
+        document.DeletedById = actorUserId;
+        document.DeletionBatchId = Guid.NewGuid();
+        document.UpdatedAt = deletedAt;
+        await context.SaveChangesAsync();
 
-        await using (var transaction = await context.Database.BeginTransactionAsync())
+        await auditService.LogAsync(actorUserId, DOCUMENT_DELETED, new
         {
-            try
-            {
-                // Break the document/current-version cycle before deleting both
-                // sides of the required version-to-document relationship.
-                document.CurrentVersionId = null;
-                await context.SaveChangesAsync();
+            document.DocumentId, document.Title, document.FolderId,
+            document.DeletionBatchId, DeletedAt = deletedAt, Recoverable = true
+        });
 
-                // A single-document approval batch would otherwise become an empty,
-                // permanently orphaned queue record after the document is deleted.
-                var approvalsToDelete = await context.Approvals
-                    .Where(a =>
-                        a.Documents.Any(ad => ad.DocumentId == id)
-                        && a.Documents.All(ad => ad.DocumentId == id))
-                    .ToListAsync();
-
-                context.Approvals.RemoveRange(approvalsToDelete);
-                context.DocumentVersions.RemoveRange(versions);
-                context.Documents.Remove(document);
-                await context.SaveChangesAsync();
-
-                await auditService.LogAsync(actorUserId, DOCUMENT_DELETED, new
-                {
-                    document.DocumentId,
-                    document.Title,
-                    document.FolderId,
-                    VersionsDeleted = versions.Count,
-                    DeletedAt = DateTime.UtcNow
-                });
-
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
-        }
-
-        // Database deletion is authoritative. Storage cleanup only starts after
-        // the transaction commits, so a database failure never destroys the
-        // only readable copy of a live document.
-        foreach (var version in versions)
-        {
-            if (string.IsNullOrEmpty(version.S3ObjectKey))
-                continue;
-
-            try
-            {
-                await minioService.DeleteAsync(version.S3ObjectKey);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO", version.S3ObjectKey);
-            }
-        }
-
-        logger.LogInformation("Deleted document {DocumentId}", id);
+        logger.LogInformation("Moved document {DocumentId} to the recycle bin", id);
         return (DocumentDeleteStatus.Deleted, null);
     }
 
@@ -2055,6 +2100,7 @@ public class DocumentsController(
 
 public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, string? OriginalDocumentId = null);
 public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, Guid? OwnerId = null, string? VersionLabel = null, string? FileName = null);
+public record CopyDocumentRequest(Guid DestinationFolderId);
 public record MoveDocumentRequest(Guid DestinationFolderId);
 public record CheckoutRequest(string? Reason = null);
 public record SubmitRequest(Guid VersionId, string? Comment = null);

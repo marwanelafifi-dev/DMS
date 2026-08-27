@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, Bell, BellRing, Building2, Calendar, CalendarClock, Check, ClipboardCheck, Clock,
   Download, FileWarning, Folder, Info, LogOut, Megaphone, Power, Save, ScrollText,
-  Settings as SettingsIcon, Trash2, Upload, UsersRound,
+  RotateCcw, Settings as SettingsIcon, Trash2, Upload, UsersRound,
 } from 'lucide-react';
 import { Card, CardBody, Button } from '../ui';
 import { apiClient } from '../../utils/api';
@@ -141,6 +141,8 @@ export function DatabaseBackup() {
   const [isExporting, setIsExporting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [recycleItems, setRecycleItems] = useState<Array<{ id: string; type: 'file' | 'folder'; name: string; deletedAt: string; deletedBy?: string | null }>>([]);
+  const [restoringItemId, setRestoringItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
@@ -334,6 +336,31 @@ export function DatabaseBackup() {
     loadStatus();
   }, []);
 
+  const loadRecycleBin = () => {
+    apiClient.getRecycleBin()
+      .then((res) => { if (res.success) setRecycleItems(res.data || []); })
+      .catch(() => showError('Failed to load the recycle bin'));
+  };
+
+  useEffect(() => {
+    loadRecycleBin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleRestoreItem = async (item: { id: string; type: 'file' | 'folder'; name: string }) => {
+    setRestoringItemId(item.id);
+    try {
+      const res = await apiClient.restoreRecycleBinItem(item.type, item.id);
+      if (!res.success) { showError(res.error || 'Failed to restore item'); return; }
+      showSuccess(`${item.name} restored successfully`);
+      loadRecycleBin();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to restore item');
+    } finally {
+      setRestoringItemId(null);
+    }
+  };
+
   const handleExport = async () => {
     setIsExporting(true);
     try {
@@ -462,6 +489,38 @@ export function DatabaseBackup() {
       </div>
 
       <ScheduledBackups />
+
+      <Card className="overflow-hidden">
+        <div className="flex items-start gap-3 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
+          <div className="rounded bg-[#eef4fb] p-2 text-[#3f66c9] dark:bg-blue-900/30 dark:text-blue-300"><RotateCcw className="h-4 w-4" /></div>
+          <div>
+            <h3 className="font-semibold text-[#26334d] dark:text-white">Recycle Bin</h3>
+            <p className="text-sm text-[#718198] dark:text-slate-400">Restore deleted files and complete folder trees</p>
+          </div>
+        </div>
+        <CardBody>
+          {recycleItems.length === 0 ? (
+            <p className="py-6 text-center text-sm text-[#718198]">No deleted files or folders.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-left text-sm">
+                <thead className="border-b border-[#e2e8f0] text-xs uppercase text-[#718198] dark:border-white/10"><tr><th className="px-3 py-2">Type</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Deleted by</th><th className="px-3 py-2">Deleted at</th><th className="px-3 py-2 text-right">Action</th></tr></thead>
+                <tbody>
+                  {recycleItems.map((item) => (
+                    <tr key={`${item.type}-${item.id}`} className="border-b border-[#eef2f7] last:border-0 dark:border-white/5">
+                      <td className="px-3 py-3 capitalize text-[#52627a] dark:text-slate-300">{item.type}</td>
+                      <td className="px-3 py-3 font-medium text-[#26334d] dark:text-white">{item.name}</td>
+                      <td className="px-3 py-3 text-[#718198]">{item.deletedBy || 'Unknown'}</td>
+                      <td className="px-3 py-3 text-[#718198]">{new Date(item.deletedAt).toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right"><Button variant="secondary" disabled={restoringItemId === item.id} onClick={() => handleRestoreItem(item)} leftIcon={<RotateCcw className="h-3.5 w-3.5" />}>{restoringItemId === item.id ? 'Restoring…' : 'Restore'}</Button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
 
       {/* Clear Data */}
       <div className="pt-2">

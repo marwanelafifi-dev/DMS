@@ -171,11 +171,13 @@ public static class AuditActions
     public const string FOLDER_CREATED = "FOLDER_CREATED";
     public const string FOLDER_UPDATED = "FOLDER_UPDATED";
     public const string FOLDER_DELETED = "FOLDER_DELETED";
+    public const string FOLDER_RESTORED = "FOLDER_RESTORED";
     public const string FOLDER_MOVED = "FOLDER_MOVED";
 
     public const string DOCUMENT_CREATED = "DOCUMENT_CREATED";
     public const string DOCUMENT_UPDATED = "DOCUMENT_UPDATED";
     public const string DOCUMENT_DELETED = "DOCUMENT_DELETED";
+    public const string DOCUMENT_RESTORED = "DOCUMENT_RESTORED";
     public const string DOCUMENT_MOVED = "DOCUMENT_MOVED";
     public const string DOCUMENT_UPLOADED = "DOCUMENT_UPLOADED";
     public const string DOCUMENT_VERSION_REVERTED = "DOCUMENT_VERSION_REVERTED";

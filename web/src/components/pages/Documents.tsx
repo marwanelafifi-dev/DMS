@@ -21,7 +21,6 @@ import type { Document, Folder, User } from '../../types';
 import {
   copyLibraryItems,
   deleteLibraryItems,
-  getDescendantFolderIds,
   getInvalidDestinationIds,
   moveLibraryItems,
   renameLibraryItem,
@@ -1486,6 +1485,17 @@ export function Documents() {
         }
       }
 
+      if (action === 'copy' && value) {
+        const realDocumentIds = [...librarySelection.documentIds].filter(isServerDocumentId);
+        for (const docId of realDocumentIds) {
+          const res = await apiClient.copyDocument(docId, value).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to copy a document',
+          }));
+          if (!res.success) return res.error || 'Failed to copy a document';
+        }
+      }
+
       // Rename previously had the exact same "looks like it worked, nothing was ever
       // persisted" problem as Move and Delete — a renamed item reverted to the
       // original name on reload. Real documents/folders now get a real API call first.
@@ -1526,37 +1536,20 @@ export function Documents() {
 
         const realSelectedFolderIds = [...librarySelection.folderIds].filter(isServerDocumentId);
         for (const folderId of realSelectedFolderIds) {
-          const treeFolderIds = [folderId, ...getDescendantFolderIds(folders, folderId)].filter(isServerDocumentId);
-          const treeDocumentIds = allDocuments
-            .filter((document) => treeFolderIds.includes(document.folderId) && isServerDocumentId(document.documentId))
-            .map((document) => document.documentId);
-          for (const docId of treeDocumentIds) {
-            const res = await apiClient.deleteDocument(docId).catch((err: any) => ({
-              success: false,
-              error: err.response?.data?.error || 'Failed to delete a document inside this folder',
-            }));
-            if (!res.success) return res.error || 'Failed to delete a document inside this folder';
-          }
-
-          const remaining = new Set(treeFolderIds);
-          while (remaining.size > 0) {
-            const leaves = [...remaining].filter((id) => !folders.some((f) => f.parentFolderId === id && remaining.has(f.folderId)));
-            if (leaves.length === 0) break; // guards against an unexpected cycle
-            for (const id of leaves) {
-              const res = await apiClient.deleteFolder(id).catch((err: any) => ({
-                success: false,
-                error: err.response?.data?.error || 'Failed to delete a folder',
-              }));
-              if (!res.success) return res.error || 'Failed to delete a folder';
-              remaining.delete(id);
-            }
-          }
+          const res = await apiClient.deleteFolder(folderId).catch((err: any) => ({
+            success: false,
+            error: err.response?.data?.error || 'Failed to delete a folder',
+          }));
+          if (!res.success) return res.error || 'Failed to delete a folder';
         }
       }
 
       const currentState = { folders, documents: allDocuments };
+      const localOnlySelection = action === 'copy'
+        ? { ...librarySelection, documentIds: new Set([...librarySelection.documentIds].filter((id) => !isServerDocumentId(id))) }
+        : librarySelection;
       const nextState = action === 'copy'
-        ? copyLibraryItems(currentState, librarySelection, value ?? '')
+        ? copyLibraryItems(currentState, localOnlySelection, value ?? '')
         : action === 'move'
           ? moveLibraryItems(currentState, librarySelection, value ?? '')
           : action === 'delete'
@@ -1564,6 +1557,9 @@ export function Documents() {
             : renameLibraryItem(currentState, librarySelection, value ?? '');
       setFolders(nextState.folders);
       setAllDocuments(nextState.documents);
+      if (action === 'copy' && [...librarySelection.documentIds].some(isServerDocumentId)) {
+        await refreshServerDocuments(folders);
+      }
       if (action === 'delete' && !nextState.folders.some((folder) => folder.folderId === selectedFolderId)) {
         setSelectedFolderId(nextState.folders[0]?.folderId ?? '');
       }

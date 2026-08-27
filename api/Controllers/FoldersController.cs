@@ -57,7 +57,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             // folder) via the user's global page-access role, same as
             // BypassFolderPermissions — not just per-folder via an Access Override.
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-            var editBaseline = adminBaseline || pageAccessRole?.CanEditFiles == true;
+            var editBaseline = adminBaseline || role == FolderRoles.Manager || pageAccessRole?.CanEditFiles == true;
             var manageFolderPermissionsBaseline = adminBaseline || pageAccessRole?.CanManageFolderPermissions == true;
             var manageFilePermissionsBaseline = adminBaseline || pageAccessRole?.CanManageFilePermissions == true;
 
@@ -104,6 +104,11 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 ViewHistory = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewHistory, Baseline(p => p.ViewOnly)),
                 ViewRelatedTasks = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewRelatedTasks, Baseline(p => p.ViewOnly)),
                 ViewMetadataHistory = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewMetadataHistory, Baseline(p => p.ViewOnly)),
+                // Ownership reassignment is intentionally stronger than ordinary
+                // metadata editing. Assigned Managers may edit metadata, but only
+                // an effective folder Admin (owner/Full Access/explicit Admin)
+                // may transfer a document to another owner.
+                CanChangeDocumentOwner = role == FolderRoles.Admin,
                 UpdatedAt = permission?.UpdatedAt,
             };
 
@@ -728,41 +733,50 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             if (folder == null)
                 return NotFound(new { success = false, error = "Folder not found" });
 
-            // Verify no documents exist
-            var documentCount = await context.Documents
-                .Where(d => d.FolderId == id)
-                .CountAsync();
-
-            if (documentCount > 0)
-                return BadRequest(new
-                {
-                    success = false,
-                    error = $"Cannot delete folder - it contains {documentCount} documents"
-                });
-
-            // Delete permissions first
-            var permissions = await context.FolderPermissions
-                .Where(p => p.FolderId == id)
-                .ToListAsync();
-
-            context.FolderPermissions.RemoveRange(permissions);
-
-            // Delete folder
-            context.Folders.Remove(folder);
+            var currentUserId = GetCurrentUserId();
+            var allFolders = await context.Folders.ToListAsync();
+            var folderIds = new HashSet<Guid> { id };
+            var added = true;
+            while (added)
+            {
+                added = false;
+                foreach (var candidate in allFolders.Where(f => f.ParentFolderId.HasValue && folderIds.Contains(f.ParentFolderId.Value)))
+                    added |= folderIds.Add(candidate.FolderId);
+            }
+            var deletedAt = DateTime.UtcNow;
+            var batchId = Guid.NewGuid();
+            foreach (var deletedFolder in allFolders.Where(f => folderIds.Contains(f.FolderId)))
+            {
+                deletedFolder.DeletedAt = deletedAt;
+                deletedFolder.DeletedById = currentUserId;
+                deletedFolder.DeletionBatchId = batchId;
+                deletedFolder.UpdatedAt = deletedAt;
+            }
+            var documents = await context.Documents.Where(d => folderIds.Contains(d.FolderId)).ToListAsync();
+            foreach (var document in documents)
+            {
+                document.DeletedAt = deletedAt;
+                document.DeletedById = currentUserId;
+                document.DeletionBatchId = batchId;
+                document.UpdatedAt = deletedAt;
+            }
             await context.SaveChangesAsync();
 
-            var currentUserId = GetCurrentUserId();
             await auditService.LogAsync(currentUserId, AuditActions.FOLDER_DELETED, new
             {
                 folder.FolderId,
                 folder.Name,
                 folder.Classification,
-                DeletedAt = DateTime.UtcNow
+                DeletionBatchId = batchId,
+                FolderCount = folderIds.Count,
+                DocumentCount = documents.Count,
+                DeletedAt = deletedAt,
+                Recoverable = true
             });
 
             logger.LogInformation("Deleted folder {FolderId}", id);
 
-            return Ok(new { success = true, message = "Folder deleted successfully" });
+            return Ok(new { success = true, message = "Folder moved to the recycle bin" });
         }
         catch (Exception ex)
         {

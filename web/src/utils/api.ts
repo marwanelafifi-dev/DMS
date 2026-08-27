@@ -45,6 +45,7 @@ export interface RolePermissionFlags {
   viewHistory: boolean;
   viewRelatedTasks: boolean;
   viewMetadataHistory: boolean;
+  canChangeDocumentOwner?: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -437,6 +438,11 @@ class APIClient {
 
   async moveDocument(documentId: string, destinationFolderId: string) {
     const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/move`, { destinationFolderId });
+    return data;
+  }
+
+  async copyDocument(documentId: string, destinationFolderId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/copy`, { destinationFolderId });
     return data;
   }
 
@@ -965,6 +971,17 @@ class APIClient {
   // Email notification configuration (Admin Panel -> Notifications)
   async getEmailConfig() {
     const { data } = await this.client.get<ApiResponse>('/email-config');
+    return data;
+  }
+
+  async getRecycleBin() {
+    const { data } = await this.client.get<ApiResponse>('/recycle-bin');
+    return data;
+  }
+
+  async restoreRecycleBinItem(type: 'file' | 'folder', id: string) {
+    const resource = type === 'file' ? 'documents' : 'folders';
+    const { data } = await this.client.post<ApiResponse>(`/recycle-bin/${resource}/${id}/restore`, {});
     return data;
   }
 

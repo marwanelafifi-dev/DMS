@@ -22,6 +22,7 @@ export function BulkOperationsModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [comments, setComments] = useState('');
   const [reason, setReason] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   // The bulk endpoints return 200 with a per-document {succeeded, failed} breakdown
   // rather than failing the whole request — a report card, not a single toast.
@@ -163,7 +164,7 @@ export function BulkOperationsModal({
               <Trash2 className="w-5 h-5 text-red-600" />
               <div>
                 <p className="font-medium text-red-600">Delete All</p>
-                <p className="text-xs text-red-600">Permanently delete all selected</p>
+                <p className="text-xs text-red-600">Move all selected documents to the Recycle Bin</p>
               </div>
             </button>
           </CardBody>
@@ -214,11 +215,18 @@ export function BulkOperationsModal({
               <div className="flex gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-red-700 dark:text-red-300">
-                  This will permanently delete {selectedDocuments.length} document
-                  {selectedDocuments.length !== 1 ? 's' : ''}. This action cannot be undone.
+                  This will move {selectedDocuments.length} document
+                  {selectedDocuments.length !== 1 ? 's' : ''} to the recoverable Recycle Bin.
                 </p>
               </div>
             </div>
+          )}
+
+          {operation === 'delete' && (
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Type <span className="font-mono font-bold text-red-600">DELETE</span> to confirm
+              <input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} placeholder="DELETE" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono dark:border-navy-700 dark:bg-navy-900 dark:text-white" />
+            </label>
           )}
 
           <div className="space-y-2">
@@ -253,7 +261,7 @@ export function BulkOperationsModal({
                 else if (operation === 'delete') handleBulkDelete();
                 else if (operation === 'download') handleBulkDownload();
               }}
-              disabled={isProcessing}
+              disabled={isProcessing || (operation === 'delete' && deleteConfirmation.trim() !== 'DELETE')}
             >
               {isProcessing ? 'Processing...' : 'Confirm'}
             </Button>

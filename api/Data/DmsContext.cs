@@ -88,6 +88,8 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsFolderPermission>().ToTable("dms_folder_permissions").HasKey(fp => fp.PermissionId);
         modelBuilder.Entity<DmsFolderManager>().ToTable("dms_folder_managers").HasKey(fm => new { fm.FolderId, fm.UserId });
         modelBuilder.Entity<DmsDocument>().ToTable("dms_documents").HasKey(d => d.DocumentId);
+        modelBuilder.Entity<DmsFolder>().HasQueryFilter(f => f.DeletedAt == null);
+        modelBuilder.Entity<DmsDocument>().HasQueryFilter(d => d.DeletedAt == null);
         modelBuilder.Entity<DmsDocumentVersion>().ToTable("dms_document_versions").HasKey(dv => dv.VersionId);
         modelBuilder.Entity<DmsDocumentMetadata>().ToTable("dms_document_metadata").HasKey(dm => dm.MetadataId);
         modelBuilder.Entity<DmsWorkflowTemplate>().ToTable("dms_workflow_templates").HasKey(wt => wt.TemplateId);
@@ -487,7 +489,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsUser>(e => e.HasIndex(u => u.Email).IsUnique());
         modelBuilder.Entity<DmsUser>(e => e.HasIndex(u => u.SsoSubject));
 
-        modelBuilder.Entity<DmsFolder>(e => e.HasIndex(f => new { f.ParentFolderId, f.Name }).IsUnique());
+        modelBuilder.Entity<DmsFolder>(e => e.HasIndex(f => new { f.ParentFolderId, f.Name }).IsUnique().HasFilter("deleted_at IS NULL"));
         modelBuilder.Entity<DmsFolderPermission>(e => e.HasIndex(fp => new { fp.FolderId, fp.UserId }).IsUnique());
         modelBuilder.Entity<DmsDocument>(e => e.HasIndex(d => d.TrackingCode).IsUnique());
         modelBuilder.Entity<DmsDocumentVersion>(e => e.HasIndex(dv => new { dv.DocumentId, dv.VersionNumber }).IsUnique());
