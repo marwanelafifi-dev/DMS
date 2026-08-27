@@ -97,8 +97,13 @@ interface AccessOverrideModalProps {
 export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose }: AccessOverrideModalProps) {
   const { showSuccess, showError } = useToast();
   // A folder-scoped override shows both sections (folder actions + cascaded
-  // file actions); a file-scoped override only shows the file section.
-  const badgeFields = resourceKind === 'folder' ? [...FOLDER_LEVEL_FIELDS, ...FILE_LEVEL_FIELDS] : FILE_LEVEL_FIELDS;
+  // file actions); a file-scoped override only shows the file section. A few
+  // flags (Write/Upload, Edit) intentionally appear in both field lists —
+  // dedupe by key+label so only genuinely distinct labels (e.g. "Write" vs
+  // "Upload" for the same flag) produce two badges, not an exact duplicate.
+  const badgeFields = resourceKind === 'folder'
+    ? Array.from(new Map([...FOLDER_LEVEL_FIELDS, ...FILE_LEVEL_FIELDS].map((f) => [`${f.key}:${f.label}`, f])).values())
+    : FILE_LEVEL_FIELDS;
 
   const [overrides, setOverrides] = useState<AccessOverride[]>([]);
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
@@ -251,7 +256,7 @@ export function AccessOverrideModal({ scope, resourceName, resourceKind, onClose
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {badgeFields.filter((f) => o[f.key] !== null && o[f.key] !== undefined).map((f) => (
-                      <span key={f.key} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${o[f.key] ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300'}`}>
+                      <span key={`${f.key}:${f.label}`} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${o[f.key] ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300'}`}>
                         {o[f.key] ? 'Allow' : 'Deny'} {f.label}
                       </span>
                     ))}
