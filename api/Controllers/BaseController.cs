@@ -154,6 +154,16 @@ public class BaseController : ControllerBase
             folderIds.UnionWith(allFolderIds);
         }
 
+        // A folder's own Owner (see EditFolderModal) now has real, guaranteed
+        // access to it (AccessOverrideService.ResolveAsync) — but that alone
+        // never made the folder actually show up in the library/tree, since
+        // this method (list/browse visibility) is a completely separate
+        // computation. Without this, an owner could open the folder directly
+        // by a known ID/deep link but never find it by browsing.
+        var ownedFolderIds = await context.Folders.AsNoTracking()
+            .Where(f => f.OwnerId == userId).Select(f => f.FolderId).ToListAsync();
+        folderIds.UnionWith(ownedFolderIds);
+
         // A Deny-Read override must be able to take a folder back OUT of view
         // even when the user already holds a per-folder role grant on it (e.g.
         // as the folder's own creator/Admin) — the two computations above are
