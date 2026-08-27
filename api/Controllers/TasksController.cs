@@ -567,7 +567,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 task.DocumentId!.Value,
                 $"A corrected document is back in the {reviewerLabel} queue",
                 resubmittedDocTitle,
-                resubmitStageSelector);
+                resubmitStageSelector,
+                folderManagersOnly: approvalDocument.CurrentStage == "manager_review");
 
             return Ok(new
             {

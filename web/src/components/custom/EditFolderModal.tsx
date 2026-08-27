@@ -29,10 +29,12 @@ export function EditFolderModal({
   const [department, setDepartment] = useState(initialDepartment ?? '');
   const [tags, setTags] = useState<string[]>(initialTags ?? []);
   const [ownerId, setOwnerId] = useState(initialOwnerId ?? '');
+  const [managerIds, setManagerIds] = useState<string[]>([]);
+  const [managerSearch, setManagerSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
+  const [users, setUsers] = useState<Array<{ userId: string; fullName: string; role?: string | null; isActive?: boolean }>>([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
 
   useEffect(() => {
@@ -40,13 +42,15 @@ export function EditFolderModal({
     (async () => {
       setIsLoading(true);
       try {
-        const [usersRes, departmentRes] = await Promise.all([
+        const [usersRes, departmentRes, folderRes] = await Promise.all([
           apiClient.getUsers(),
           apiClient.getDropdownList('department'),
+          apiClient.getFolder(folderId),
         ]);
         if (cancelled) return;
         setUsers(usersRes.data || []);
         setDepartmentOptions((departmentRes.data || []).map((i: { label: string }) => i.label));
+        setManagerIds(folderRes.data?.managerIds || []);
       } catch {
         // Non-fatal — Department/Owner dropdowns just stay empty; Description/
         // Tags don't depend on either fetch.
@@ -55,13 +59,13 @@ export function EditFolderModal({
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [folderId]);
 
   const handleSave = async () => {
     setIsSaving(true);
     setError(null);
     try {
-      const res = await apiClient.updateFolderMetadata(folderId, { description, department, tags, ownerId: ownerId || undefined });
+      const res = await apiClient.updateFolderMetadata(folderId, { description, department, tags, ownerId: ownerId || undefined, managerIds });
       if (!res.success) throw new Error(res.error);
       onSaved();
       onClose();
@@ -108,6 +112,34 @@ export function EditFolderModal({
               <option value="">Select…</option>
               {users.map((u) => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
             </select>
+          </Field>
+          <Field label="Manager(s)">
+            <div className="rounded border border-gray-300 p-2 dark:border-slate-600">
+              <input
+                value={managerSearch}
+                onChange={(e) => setManagerSearch(e.target.value)}
+                className={inputClass}
+                placeholder="Search managers…"
+              />
+              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                {users
+                  .filter((u) => u.userId !== ownerId && u.isActive !== false && u.role === 'Manager')
+                  .filter((u) => u.fullName.toLowerCase().includes(managerSearch.trim().toLowerCase()))
+                  .map((u) => (
+                    <label key={u.userId} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5">
+                      <input
+                        type="checkbox"
+                        checked={managerIds.includes(u.userId)}
+                        onChange={(e) => setManagerIds((current) => e.target.checked
+                          ? [...current, u.userId]
+                          : current.filter((id) => id !== u.userId))}
+                      />
+                      {u.fullName}
+                    </label>
+                  ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Select one or more users with the Manager role. The owner is included automatically.</p>
+            </div>
           </Field>
         </div>
 

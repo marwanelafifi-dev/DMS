@@ -200,7 +200,7 @@ public class NotificationService(DmsContext context, EmailService emailService, 
     // is enforced centrally inside NotifyAsync, so a role-qualifying reviewer
     // with no actual access to this specific document is still silently
     // skipped without this method needing to check it itself.
-    public async Task NotifyStageReviewersAsync(Guid actorUserId, Guid documentId, string title, string? body, Func<DmsPageAccessRole, bool> stageFlagSelector)
+    public async Task NotifyStageReviewersAsync(Guid actorUserId, Guid documentId, string title, string? body, Func<DmsPageAccessRole, bool> stageFlagSelector, bool folderManagersOnly = false)
     {
         var roles = await context.PageAccessRoles.AsNoTracking().ToListAsync();
         var reviewerRoleNames = roles.Where(stageFlagSelector).Select(r => r.Role).ToList();
@@ -211,6 +211,21 @@ public class NotificationService(DmsContext context, EmailService emailService, 
             .Where(u => u.IsActive && u.Role != null && reviewerRoleNames.Contains(u.Role!))
             .Select(u => u.UserId)
             .ToListAsync();
+
+        if (folderManagersOnly)
+        {
+            var folder = await context.Documents.AsNoTracking()
+                .Where(d => d.DocumentId == documentId)
+                .Join(context.Folders.AsNoTracking(), d => d.FolderId, f => f.FolderId, (_, f) => new { f.FolderId, f.OwnerId })
+                .FirstOrDefaultAsync();
+            if (folder == null) return;
+            var assignedIds = await context.FolderManagers.AsNoTracking()
+                .Where(m => m.FolderId == folder.FolderId)
+                .Select(m => m.UserId)
+                .ToListAsync();
+            assignedIds.Add(folder.OwnerId);
+            reviewerIds = reviewerIds.Where(assignedIds.Contains).ToList();
+        }
 
         foreach (var reviewerId in reviewerIds)
             await NotifyAsync(reviewerId, actorUserId, title, body, documentId: documentId);

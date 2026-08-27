@@ -37,6 +37,29 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         return null;
     }
 
+    private async Task<bool> IsFolderOwnerOrManagerAsync(Guid userId, Guid documentId)
+    {
+        var folderId = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => (Guid?)d.FolderId).FirstOrDefaultAsync();
+        if (!folderId.HasValue) return false;
+        return await context.Folders.AnyAsync(f => f.FolderId == folderId && f.OwnerId == userId)
+            || await context.FolderManagers.AnyAsync(m => m.FolderId == folderId && m.UserId == userId);
+    }
+
+    private async Task<string?> GetFolderApprovalRoutingErrorAsync(Guid folderId)
+    {
+        var hasActiveOwner = await context.Folders
+            .Where(f => f.FolderId == folderId)
+            .Join(context.Users.Where(u => u.IsActive), f => f.OwnerId, u => u.UserId, (_, _) => true)
+            .AnyAsync();
+        if (!hasActiveOwner) return "The folder has no active owner. Assign an active owner before submitting for approval.";
+
+        var hasActiveManager = await context.FolderManagers
+            .Where(m => m.FolderId == folderId)
+            .Join(context.Users.Where(u => u.IsActive), m => m.UserId, u => u.UserId, (_, _) => true)
+            .AnyAsync();
+        return hasActiveManager ? null : "The folder has no active manager. Assign at least one manager in Edit Folder before submitting for approval.";
+    }
+
     private static bool StageAllowsAccessCheck(string currentStage, bool canViewQa, bool canViewManager, bool canViewFinal) => currentStage switch
     {
         "qa_review" => canViewQa,
@@ -145,6 +168,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             // applicable File/Folder Permission override).
             foreach (var document in documents)
             {
+                var routingError = await GetFolderApprovalRoutingErrorAsync(document.FolderId);
+                if (routingError != null)
+                    return BadRequest(new { success = false, error = $"{document.Title}: {routingError}" });
+
                 var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
                 var roleAllows = await HasRolePermissionAsync(context, effectiveRole, rp => rp.SubmitForApproval);
                 if (!await accessOverrideService.ResolveAsync(userId, document.DocumentId, document.FolderId, AccessOverrideActions.SubmitForApproval, roleAllows))
@@ -260,6 +287,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (!StageAllowsAccessCheck(approvalDocument.CurrentStage, access?.CanViewQaStage == true, access?.CanViewManagerStage == true, access?.CanViewFinalReleaseStage == true))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to this document's current stage" });
 
+            if (approvalDocument.CurrentStage == "manager_review" && !await IsFolderOwnerOrManagerAsync(userId, documentId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only this folder's owner or assigned managers can review this document" });
+
             if (approvalDocument.Document != null && !await HasFolderReadAccessAsync(context, accessOverrideService, userId, approvalDocument.Document.FolderId))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have access to this document's folder" });
 
@@ -334,13 +364,18 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         // as "nothing to review" rather than "blocked, waiting on someone else".
         // Included here as a read-only, annotated row instead (see linkedTask
         // below) so the reviewer can see what it's waiting on.
-        var query = context.ApprovalDocuments
+        IQueryable<DmsApprovalDocument> query = context.ApprovalDocuments
             .Where(ad => ad.CurrentStage == stage && (ad.Status == "pending" || ad.Status == "correction_requested"))
             .Where(ad => accessibleFolderIds == null || accessibleFolderIds.Contains(ad.Document!.FolderId))
             .Include(ad => ad.Approval).ThenInclude(a => a!.CreatedByUser)
             .Include(ad => ad.Document).ThenInclude(d => d!.Owner)
-            .Include(ad => ad.Version)
-            .OrderByDescending(ad => ad.UpdatedAt);
+            .Include(ad => ad.Version);
+
+        if (stage == "manager_review")
+            query = query.Where(ad => context.Folders.Any(f => f.FolderId == ad.Document!.FolderId && f.OwnerId == userId)
+                || context.FolderManagers.Any(m => m.FolderId == ad.Document!.FolderId && m.UserId == userId));
+
+        query = query.OrderByDescending(ad => ad.UpdatedAt);
 
         var totalCount = await query.CountAsync();
 
@@ -499,7 +534,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             await notificationService.NotifyDocumentSubmitterAsync(documentId, userId, "Your document was accepted by QA", "Now moving to Manager Review.");
 
             var acceptedDocTitle = await context.Documents.Where(d => d.DocumentId == documentId).Select(d => d.Title).FirstOrDefaultAsync();
-            await notificationService.NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Manager Review", acceptedDocTitle, r => r.CanViewManagerStage);
+            await notificationService.NotifyStageReviewersAsync(userId, documentId, "A document is waiting for Manager Review", acceptedDocTitle, r => r.CanViewManagerStage, folderManagersOnly: true);
 
             return Ok(new
             {
@@ -631,6 +666,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
             if (folderCheck != null) return folderCheck;
 
+            if (!await IsFolderOwnerOrManagerAsync(userId, documentId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only this folder's owner or assigned managers can approve this document" });
+
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanApprove))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Approve permission" });
 
@@ -701,6 +739,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
             if (folderCheck != null) return folderCheck;
+
+            if (!await IsFolderOwnerOrManagerAsync(userId, documentId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only this folder's owner or assigned managers can reject this document" });
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });
@@ -798,6 +839,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             var folderCheck = await RequireFolderReadAccessAsync(userId, documentId);
             if (folderCheck != null) return folderCheck;
+
+            if (!await IsFolderOwnerOrManagerAsync(userId, documentId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only this folder's owner or assigned managers can correct this document" });
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanReject))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Reject permission" });

@@ -20,6 +20,7 @@ export interface Folder {
   tags?: string[];
   parentFolderId?: string;
   ownerId: string;
+  managerIds?: string[];
   owner?: User;
   createdAt: string;
   updatedAt: string;

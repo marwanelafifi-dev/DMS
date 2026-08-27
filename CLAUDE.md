@@ -3,13 +3,57 @@
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
-**Current Date:** 2026-08-26
+**Current Date:** 2026-08-27
 
 **Working Directory:** `c:\Users\user\Desktop\DMS`
 
-**Active Branch:** `micro-cloud`
+**Active Branch:** `main`
 
 **Status:** Session 41 — a screenshot-driven bug-fix batch worked entirely from a local checkout with no local Docker/dev-server run (the DMS now runs continuously on the Ubuntu host with real production data, so this session deliberately never started the stack locally — every fix was verified by code tracing plus `npx tsc --noEmit`, and is pushed for the user to pull and rebuild on Ubuntu themselves). Thirty-three items across twelve rounds: the Upload dialog carrying over the previous document's Description/Tags/Version/Category/Department between uploads; a failed upload leaving an undeleted orphan document behind (and multiplying with every retry); a new folder location-path breadcrumb with a Back button; the backend rejecting genuinely-empty (0-byte) file uploads outright, which silently orphaned the document row and permanently broke its preview; a matching frontend "This file is empty" preview state; Ctrl/Cmd+scroll-wheel zoom for the document preview (previously zoomed the whole browser tab); the tag filter scoped to the whole system instead of just the current folder, rebuilt as a folder-scoped multi-select with its own tag search box; two page routes (`/documents`, `/reminders`) with no permission guard at all, letting a direct URL bypass a hidden sidebar link entirely — now guarded, with denial showing an explicit "Access Denied" page instead of a silent bounce to the Dashboard; the Users admin search only matching the currently-loaded page of results instead of every user; the Document Library's main search box being scoped to only the currently-browsed folder instead of everywhere the user has access, now showing each cross-folder result's full folder path; the OCR Document Search page's results tables having no folder-path column and an Actions column that scrolled out of view with no way to click a result at all; Backspace now navigating to the parent folder like a real file explorer; the app-wide centered/width-capped page wrapper leaving large unused margins around the Document Library specifically, plus folder names truncating illegibly in the sidebar tree; the Document Preview's folder field renamed "Path", relocated under the title, and made fully clickable per folder segment; the Move/Copy destination folder picker showing bare, indistinguishable folder names instead of each option's full path; a new browser tab icon/title; removed a redundant subtitle under "Document Library"; navigating away from Document Library to another page and back losing both the folder you were browsing and any open document, now restored via `localStorage`; a Document Preview metadata/toolbar polish pass (metadata reflowed onto one line, Description moved to its own untruncated line, Print relocated beside Download, "History" relabeled "Version History"); the Print dialog closing itself mid-edit while typing a custom page range, caused by a fixed 1-second timer tearing down the print iframe out from under the still-open dialog; local accounts now auto-converting to Google-only (local password cleared) the first time each one actually signs in with Google, instead of via any manual bulk conversion — with the seeded System Admin account explicitly excluded; a Google sign-in blocked by Maintenance Mode showing one generic error instead of the backend's real reason, plus that reason now explicitly saying to contact the system administrator; a new bulk CSV import feature for Users and Groups (Import CSV button on each admin page), reusing the Google-auto-convert behavior so imported users have no password from day one; the Groups "Manage Users" control being a single-selection native dropdown, rebuilt as a searchable multi-select checklist with an "Add Selected" action; new Access/Auth Type/Status filters on the Users admin table, needed once a real 132-user import made the flat list hard to scan; and a real bug where editing a filtered-in Google account's Name/Access/Status could fail with a bogus "email is managed by Google" rejection, caused by the same wrong-array (`users` vs. `allUsers`) lookup mistake as item 9/26; and real email delivery for every document-workflow stage-transition notification (QA/Manager/Final Release), with a new submitter-notified-too behavior and a real access-control gap closed in the same pass — nobody (any role, owner, submitter, or reviewer) is now ever notified about a document they don't actually have real folder- or file-level access to (confirmed working live against a real inbox); every outbound email's branding corrected from "Si-Ware Enterprise DMS" to "DMS - Si-Ware Systems"; a new permanent Audit Trail record of exactly who received every notification, since neither individual emails nor per-recipient notification rows ever showed the full recipient list for one event; the Document Library's folder tree now starting fully collapsed instead of fully expanded; and two new Scheduled Backups destinations — a mounted-filesystem path, and a direct SMB network share with credentials entered in the GUI (worked out live against the user's own real AD-joined Windows Server share). **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
+
+**Current Status:** Session 42 — per-folder Manager Review routing is implemented. Folder owners and explicitly selected folder managers are the only users eligible to act at Manager Review, while global workflow capabilities remain mandatory. Edit Folder now supports multiple managers and synchronizes Owner/Admin and Manager folder grants. Submission fails closed when the folder has no active owner or no active designated manager.
+
+---
+
+## Session 42 (2026-08-27) — Per-Folder Owners and Multiple Managers for Approval Routing
+
+**Status:** Complete in code and ready for deployment migration. The focused Document Library suite passed. `npm run type-check` reached only the five pre-existing documented baseline errors (`unreadCount`, `canEditFiles` ×2, `PendingApprovalItem` ×2). The API could not be compiled locally because this Windows checkout has no `dotnet` executable, and the production Docker stack was deliberately not started locally.
+
+### Requirement and resulting rule
+
+Each folder still has one Owner and can now have one or more designated Managers, selected directly from the folder's Edit dialog. Manager Review eligibility is the intersection of: (1) the user is the folder's active Owner or a designated folder Manager, (2) the user has real read access to the folder, and (3) the user's global page-access role has the required Manager Review plus Approve/Reject capability. Group membership or visibility alone never grants approval authority.
+
+### Changes completed
+
+- Added `dms_folder_managers`, a many-to-many folder/user assignment table (`086_folder_managers.sql`), plus `DmsFolderManager` and its EF Core mapping.
+- Added a searchable multi-select Manager(s) control to Edit Folder. The Owner remains a separate single-select and is automatically included in Manager Review routing without appearing in the Manager checklist.
+- Saving folder metadata synchronizes direct folder grants: the Owner receives Admin; selected Managers receive Manager; removed designated Managers lose only an exact direct Manager grant; and a replaced Owner's automatic Admin grant is removed or converted to Manager when still selected.
+- Folder detail responses now return `managerIds`, allowing Edit Folder to restore all current selections.
+- Manager Review queues and detail/action endpoints now restrict access to the folder Owner and designated Managers. The same enforcement covers approve, reject-with-correction, and manager self-correction.
+- Manager-stage notifications and corrected-document resubmission notifications are sent only to the folder Owner/designated Managers who also qualify through their global role and real document access.
+- Both C-Doc batch submission and the legacy single-document submission path reject submission with a clear error when the folder has no active Owner or no active designated Manager.
+- The legacy approve/reject service now applies the same Owner-or-designated-Manager boundary.
+
+### Files created
+
+- `api/Models/DmsFolderManager.cs`
+- `infra/db/init/086_folder_managers.sql`
+
+### Files modified
+
+- `api/Data/DmsContext.cs`
+- `api/Controllers/FoldersController.cs`
+- `api/Controllers/ApprovalsController.cs`
+- `api/Controllers/TasksController.cs`
+- `api/Services/ApprovalService.cs`
+- `api/Services/NotificationService.cs`
+- `web/src/components/custom/EditFolderModal.tsx`
+- `web/src/types/index.ts`
+- `web/src/utils/api.ts`
+
+### Deployment note
+
+Migration 086 must run before the updated API starts. Existing folders intentionally have no designated managers after migration, so submission remains blocked until an administrator opens Edit Folder and assigns at least one Manager. This is fail-closed by design; there is no fallback to the old shared Manager queue.
 
 ---
 

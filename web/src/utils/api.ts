@@ -380,7 +380,7 @@ class APIClient {
   // Distinct from renameFolder — edits the folder's own Description/
   // Classification/Department/Tags/Owner, gated on the separate "Edit"
   // (FolderEdit) permission.
-  async updateFolderMetadata(folderId: string, metadata: { description?: string; classification?: string; department?: string; tags?: string[]; ownerId?: string }) {
+  async updateFolderMetadata(folderId: string, metadata: { description?: string; classification?: string; department?: string; tags?: string[]; ownerId?: string; managerIds?: string[] }) {
     const { data } = await this.client.put<ApiResponse>(`/folders/${folderId}/metadata`, metadata);
     return data;
   }

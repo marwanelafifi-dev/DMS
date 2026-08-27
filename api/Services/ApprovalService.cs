@@ -6,6 +6,10 @@ namespace DMS.Api.Services;
 
 public class ApprovalService(DmsContext context, AuditService auditService, ILogger<ApprovalService> logger)
 {
+    private async Task<bool> IsOwnerOrManagerAsync(Guid folderId, Guid userId) =>
+        await context.Folders.AnyAsync(f => f.FolderId == folderId && f.OwnerId == userId)
+        || await context.FolderManagers.AnyAsync(m => m.FolderId == folderId && m.UserId == userId);
+
     public async Task<ApprovalResult> SubmitForApprovalAsync(Guid documentId, Guid versionId, Guid userId, string? comment = null)
     {
         try
@@ -15,6 +19,19 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
 
             if (document == null)
                 return ApprovalResult.NotFound("Document not found");
+
+            var hasActiveOwner = await context.Folders
+                .Where(f => f.FolderId == document.FolderId)
+                .Join(context.Users.Where(u => u.IsActive), f => f.OwnerId, u => u.UserId, (_, _) => true)
+                .AnyAsync();
+            if (!hasActiveOwner)
+                return ApprovalResult.Invalid("The folder has no active owner. Assign an active owner before submitting for approval.");
+            var hasActiveManager = await context.FolderManagers
+                .Where(m => m.FolderId == document.FolderId)
+                .Join(context.Users.Where(u => u.IsActive), m => m.UserId, u => u.UserId, (_, _) => true)
+                .AnyAsync();
+            if (!hasActiveManager)
+                return ApprovalResult.Invalid("The folder has no active manager. Assign at least one manager in Edit Folder before submitting for approval.");
 
             var version = await context.DocumentVersions
                 .FirstOrDefaultAsync(v => v.VersionId == versionId && v.DocumentId == documentId);
@@ -80,6 +97,9 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
             if (document == null)
                 return ApprovalResult.NotFound("Document not found");
 
+            if (!await IsOwnerOrManagerAsync(document.FolderId, managerId))
+                return ApprovalResult.Invalid("Only this folder's owner or assigned managers can approve this document");
+
             var version = await context.DocumentVersions
                 .FirstOrDefaultAsync(v => v.VersionId == versionId && v.DocumentId == documentId);
 
@@ -144,6 +164,9 @@ public class ApprovalService(DmsContext context, AuditService auditService, ILog
 
             if (document == null)
                 return ApprovalResult.NotFound("Document not found");
+
+            if (!await IsOwnerOrManagerAsync(document.FolderId, managerId))
+                return ApprovalResult.Invalid("Only this folder's owner or assigned managers can reject this document");
 
             var version = await context.DocumentVersions
                 .FirstOrDefaultAsync(v => v.VersionId == versionId && v.DocumentId == documentId);

@@ -171,6 +171,10 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 .Where(p => p.FolderId == id)
                 .Select(p => new { p.PermissionId, p.UserId, p.Role, p.GrantedAt })
                 .ToListAsync();
+            var managerIds = await context.FolderManagers
+                .Where(m => m.FolderId == id)
+                .Select(m => m.UserId)
+                .ToListAsync();
 
             var documentCount = await context.Documents
                 .Where(d => d.FolderId == id)
@@ -192,6 +196,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                     folder.OwnerId,
                     folder.CreatedAt,
                     folder.UpdatedAt,
+                    ManagerIds = managerIds,
                     Permissions = permissions,
                     DocumentCount = documentCount
                 }
@@ -484,6 +489,11 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             var previousDepartment = folder.Department;
             var previousTags = folder.Tags;
             var previousOwnerId = folder.OwnerId;
+            var previousManagerIds = await context.FolderManagers
+                .Where(m => m.FolderId == id)
+                .Select(m => m.UserId)
+                .ToListAsync();
+            var currentUserId = GetCurrentUserId();
 
             if (req.Description != null)
                 folder.Description = req.Description.Trim();
@@ -499,17 +509,74 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
 
             if (req.OwnerId.HasValue)
             {
-                if (!await context.Users.AnyAsync(u => u.UserId == req.OwnerId.Value))
-                    return BadRequest(new { success = false, error = "Owner not found" });
+                if (!await context.Users.AnyAsync(u => u.UserId == req.OwnerId.Value && u.IsActive))
+                    return BadRequest(new { success = false, error = "Owner not found or disabled" });
                 folder.OwnerId = req.OwnerId.Value;
             }
+
+            if (req.ManagerIds != null)
+            {
+                var managerIds = req.ManagerIds.Where(managerId => managerId != folder.OwnerId).Distinct().ToList();
+                var activeManagerCount = await context.Users.CountAsync(u => managerIds.Contains(u.UserId) && u.IsActive);
+                if (activeManagerCount != managerIds.Count)
+                    return BadRequest(new { success = false, error = "Every selected folder manager must be an active user" });
+
+                var existingManagers = await context.FolderManagers.Where(m => m.FolderId == id).ToListAsync();
+                var removedManagerIds = existingManagers.Where(m => !managerIds.Contains(m.UserId)).Select(m => m.UserId).ToList();
+                context.FolderManagers.RemoveRange(existingManagers.Where(m => removedManagerIds.Contains(m.UserId)));
+                context.FolderManagers.AddRange(managerIds
+                    .Where(managerId => existingManagers.All(m => m.UserId != managerId))
+                    .Select(managerId => new DmsFolderManager { FolderId = id, UserId = managerId }));
+
+                var managerPermissions = await context.FolderPermissions
+                    .Where(p => p.FolderId == id && managerIds.Contains(p.UserId))
+                    .ToListAsync();
+                foreach (var managerId in managerIds)
+                {
+                    var permission = managerPermissions.FirstOrDefault(p => p.UserId == managerId);
+                    if (permission == null)
+                        context.FolderPermissions.Add(new DmsFolderPermission
+                        {
+                            PermissionId = Guid.NewGuid(), FolderId = id, UserId = managerId,
+                            Role = FolderRoles.Manager, GrantedAt = DateTime.UtcNow, GrantedById = currentUserId
+                        });
+                    else if (permission.Role != FolderRoles.Admin)
+                        permission.Role = FolderRoles.Manager;
+                }
+
+                // Keep the direct Folder Permissions list synchronized with the
+                // manager picker. Only remove the exact Manager grant; preserve
+                // any independently stronger Admin grant.
+                var removedManagerPermissions = await context.FolderPermissions
+                    .Where(p => p.FolderId == id && removedManagerIds.Contains(p.UserId) && p.Role == FolderRoles.Manager)
+                    .ToListAsync();
+                context.FolderPermissions.RemoveRange(removedManagerPermissions);
+            }
+
+            if (previousOwnerId != folder.OwnerId)
+            {
+                var previousOwnerPermission = await context.FolderPermissions
+                    .FirstOrDefaultAsync(p => p.FolderId == id && p.UserId == previousOwnerId && p.Role == FolderRoles.Admin);
+                if (previousOwnerPermission != null)
+                {
+                    if (req.ManagerIds?.Contains(previousOwnerId) == true)
+                        previousOwnerPermission.Role = FolderRoles.Manager;
+                    else
+                        context.FolderPermissions.Remove(previousOwnerPermission);
+                }
+            }
+
+            var ownerPermission = await context.FolderPermissions
+                .FirstOrDefaultAsync(p => p.FolderId == id && p.UserId == folder.OwnerId);
+            if (ownerPermission == null)
+                context.FolderPermissions.Add(CreateOwnerPermission(id, folder.OwnerId, currentUserId));
+            else if (ownerPermission.Role != FolderRoles.Admin)
+                ownerPermission.Role = FolderRoles.Admin;
 
             folder.UpdatedAt = DateTime.UtcNow;
 
             context.Folders.Update(folder);
             await context.SaveChangesAsync();
-
-            var currentUserId = GetCurrentUserId();
 
             // Owner is logged by name, not a bare GUID, so the audit entry
             // reads clearly without needing a separate user lookup.
@@ -532,7 +599,8 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                     ("Classification", previousClassification, folder.Classification),
                     ("Department", previousDepartment, folder.Department),
                     ("Tags", previousTags, folder.Tags),
-                    ("Owner", previousOwnerName, newOwnerName)),
+                    ("Owner", previousOwnerName, newOwnerName),
+                    ("Managers", string.Join(", ", previousManagerIds), string.Join(", ", req.ManagerIds ?? previousManagerIds))),
             });
 
             logger.LogInformation("Updated folder metadata {FolderId}", id);
@@ -548,6 +616,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                     folder.Department,
                     folder.Tags,
                     folder.OwnerId,
+                    ManagerIds = await context.FolderManagers.Where(m => m.FolderId == id).Select(m => m.UserId).ToListAsync(),
                     folder.UpdatedAt
                 }
             });
@@ -709,7 +778,8 @@ public record UpdateFolderRequest(
     string? Classification = null,
     string? Department = null,
     string[]? Tags = null,
-    Guid? OwnerId = null
+    Guid? OwnerId = null,
+    List<Guid>? ManagerIds = null
 );
 
 public record MoveFolderRequest(Guid DestinationFolderId);

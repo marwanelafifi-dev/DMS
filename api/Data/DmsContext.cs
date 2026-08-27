@@ -11,6 +11,7 @@ public class DmsContext : DbContext
     public DbSet<DmsUser> Users => Set<DmsUser>();
     public DbSet<DmsFolder> Folders => Set<DmsFolder>();
     public DbSet<DmsFolderPermission> FolderPermissions => Set<DmsFolderPermission>();
+    public DbSet<DmsFolderManager> FolderManagers => Set<DmsFolderManager>();
     public DbSet<DmsDocument> Documents => Set<DmsDocument>();
     public DbSet<DmsDocumentVersion> DocumentVersions => Set<DmsDocumentVersion>();
     public DbSet<DmsDocumentMetadata> DocumentMetadata => Set<DmsDocumentMetadata>();
@@ -85,6 +86,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsUser>().ToTable("dms_users").HasKey(u => u.UserId);
         modelBuilder.Entity<DmsFolder>().ToTable("dms_folders").HasKey(f => f.FolderId);
         modelBuilder.Entity<DmsFolderPermission>().ToTable("dms_folder_permissions").HasKey(fp => fp.PermissionId);
+        modelBuilder.Entity<DmsFolderManager>().ToTable("dms_folder_managers").HasKey(fm => new { fm.FolderId, fm.UserId });
         modelBuilder.Entity<DmsDocument>().ToTable("dms_documents").HasKey(d => d.DocumentId);
         modelBuilder.Entity<DmsDocumentVersion>().ToTable("dms_document_versions").HasKey(dv => dv.VersionId);
         modelBuilder.Entity<DmsDocumentMetadata>().ToTable("dms_document_metadata").HasKey(dm => dm.MetadataId);
@@ -210,6 +212,18 @@ public class DmsContext : DbContext
             .WithMany()
             .HasForeignKey(fp => fp.GrantedById)
             .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<DmsFolderManager>()
+            .HasOne<DmsFolder>()
+            .WithMany()
+            .HasForeignKey(fm => fm.FolderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsFolderManager>()
+            .HasOne<DmsUser>()
+            .WithMany()
+            .HasForeignKey(fm => fm.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Documents: folder (RESTRICT) + owner (RESTRICT) + current version (SET NULL)
         modelBuilder.Entity<DmsDocument>()
