@@ -52,6 +52,9 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             // BypassFolderPermissions role ("Full Access"), which acts as
             // Admin everywhere with no override needed.
             var adminBaseline = role == FolderRoles.Admin;
+            var isFolderOwner = folderId.HasValue && await context.Folders
+                .AsNoTracking()
+                .AnyAsync(f => f.FolderId == folderId.Value && f.OwnerId == userId);
 
             // Edit/ManagePermissions can also be granted role-wide (blanket, every
             // folder) via the user's global page-access role, same as
@@ -106,9 +109,12 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 ViewMetadataHistory = await accessOverrideService.ResolveAsync(userId, null, folderId, AccessOverrideActions.ViewMetadataHistory, Baseline(p => p.ViewOnly)),
                 // Ownership reassignment is intentionally stronger than ordinary
                 // metadata editing. Assigned Managers may edit metadata, but only
-                // an effective folder Admin (owner/Full Access/explicit Admin)
-                // may transfer a document to another owner.
-                CanChangeDocumentOwner = role == FolderRoles.Admin,
+                // the actual folder owner or an effective folder Admin
+                // (Full Access/explicit Admin) may transfer ownership.
+                CanChangeDocumentOwner = isFolderOwner || role == FolderRoles.Admin,
+                // Folder ownership is an administrative assignment. Owning a
+                // folder does not authorize transferring the folder itself.
+                CanChangeFolderOwner = userId == DevSystemAdminId || pageAccessRole?.BypassFolderPermissions == true,
                 UpdatedAt = permission?.UpdatedAt,
             };
 
@@ -499,6 +505,14 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 .Select(m => m.UserId)
                 .ToListAsync();
             var currentUserId = GetCurrentUserId();
+
+            if (req.OwnerId.HasValue && req.OwnerId.Value != folder.OwnerId)
+            {
+                var pageAccessRole = await GetPageAccessRoleAsync(context, currentUserId);
+                var canChangeFolderOwner = currentUserId == DevSystemAdminId || pageAccessRole?.BypassFolderPermissions == true;
+                if (!canChangeFolderOwner)
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only a Full Access administrator can change the folder owner" });
+            }
 
             if (req.Description != null)
                 folder.Description = req.Description.Trim();

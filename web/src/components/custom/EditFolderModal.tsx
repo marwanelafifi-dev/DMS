@@ -29,6 +29,7 @@ export function EditFolderModal({
   const [department, setDepartment] = useState(initialDepartment ?? '');
   const [tags, setTags] = useState<string[]>(initialTags ?? []);
   const [ownerId, setOwnerId] = useState(initialOwnerId ?? '');
+  const [canChangeOwner, setCanChangeOwner] = useState(false);
   const [managerIds, setManagerIds] = useState<string[]>([]);
   const [managerSearch, setManagerSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -50,15 +51,17 @@ export function EditFolderModal({
     (async () => {
       setIsLoading(true);
       try {
-        const [usersRes, departmentRes, folderRes] = await Promise.all([
+        const [usersRes, departmentRes, folderRes, permissionsRes] = await Promise.all([
           apiClient.getUsers(),
           apiClient.getDropdownList('department'),
           apiClient.getFolder(folderId),
+          apiClient.getMyEffectivePermissions(folderId),
         ]);
         if (cancelled) return;
         setUsers(usersRes.data || []);
         setDepartmentOptions((departmentRes.data || []).map((i: { label: string }) => i.label));
         setManagerIds(folderRes.data?.managerIds || []);
+        setCanChangeOwner(permissionsRes.data?.canChangeFolderOwner === true);
       } catch {
         // Non-fatal — Department/Owner dropdowns just stay empty; Description/
         // Tags don't depend on either fetch.
@@ -73,7 +76,13 @@ export function EditFolderModal({
     setIsSaving(true);
     setError(null);
     try {
-      const res = await apiClient.updateFolderMetadata(folderId, { description, department, tags, ownerId: ownerId || undefined, managerIds });
+      const res = await apiClient.updateFolderMetadata(folderId, {
+        description,
+        department,
+        tags,
+        ownerId: canChangeOwner ? ownerId || undefined : undefined,
+        managerIds,
+      });
       if (!res.success) throw new Error(res.error);
       onSaved();
       onClose();
@@ -116,10 +125,13 @@ export function EditFolderModal({
             </select>
           </Field>
           <Field label="Owner">
-            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass} disabled={isLoading}>
+            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass} disabled={isLoading || !canChangeOwner}>
               <option value="">Select…</option>
               {users.map((u) => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
             </select>
+            {!canChangeOwner && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Only a Full Access administrator can change the folder owner.</p>
+            )}
           </Field>
           <Field label="Manager(s)">
             <div className="rounded border border-gray-300 p-2 dark:border-slate-600">

@@ -46,6 +46,7 @@ export interface RolePermissionFlags {
   viewRelatedTasks: boolean;
   viewMetadataHistory: boolean;
   canChangeDocumentOwner?: boolean;
+  canChangeFolderOwner?: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder

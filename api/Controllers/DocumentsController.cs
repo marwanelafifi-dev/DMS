@@ -1343,7 +1343,9 @@ public class DocumentsController(
             if (!await accessOverrideService.ResolveAsync(userId, id, document.FolderId, AccessOverrideActions.FileEdit, editBaseline))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have permission to edit this document" });
 
-            if (req.OwnerId.HasValue && req.OwnerId.Value != document.OwnerId && effectiveRole != FolderRoles.Admin)
+            var isFolderOwner = await context.Folders.AsNoTracking()
+                .AnyAsync(f => f.FolderId == document.FolderId && f.OwnerId == userId);
+            if (req.OwnerId.HasValue && req.OwnerId.Value != document.OwnerId && !isFolderOwner && effectiveRole != FolderRoles.Admin)
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only the folder owner or a user with Admin folder access can change the document owner" });
 
             var previousTitle = document.Title;

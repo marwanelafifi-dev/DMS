@@ -22,14 +22,14 @@ public class AccessOverrideService(DmsContext context)
     // A folder's Owner (see EditFolderModal) gets a guaranteed floor of
     // access to that folder and every file directly inside it — everything
     // except folder Delete, Manage Permissions, and Move (Cut), plus file-level
-    // Manage Permissions and Move. File Delete and Unlock are deliberately
+    // Manage Permissions. File Move, Delete, and Unlock are deliberately
     // included in the owner's guaranteed floor. Explicitly requested as a real effect of the
     // Owner field, which previously was pure display metadata with zero
     // actual permission consequence.
     private static readonly HashSet<string> OwnerExcludedActions = new()
     {
         AccessOverrideActions.Delete, AccessOverrideActions.ManagePermissions, AccessOverrideActions.Cut,
-        AccessOverrideActions.FileManagePermissions, AccessOverrideActions.FileCut,
+        AccessOverrideActions.FileManagePermissions,
     };
 
     private static Func<DmsAccessOverride, bool?> SelectorFor(string action) => action switch

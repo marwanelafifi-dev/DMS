@@ -1,5 +1,33 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 45 (2026-08-27) — Folder Owner File Controls and Ownership Boundaries
+
+**Status:** Complete. No database migration is required for this session.
+
+### Final authorization rules
+
+- The actual folder owner can change the owner of files directly inside that folder. Authorization checks `dms_folders.owner_id` directly instead of relying only on the folder permission role.
+- Selected folder managers can edit ordinary file metadata, but cannot change file ownership unless they independently have Admin/Full Access authorization.
+- The folder owner's guaranteed access floor includes file Move (`FileCut`). Moving a file also requires Write/Upload access to the destination folder. Folder Move remains excluded.
+- Owning a folder does not permit transferring that folder. Folder ownership reassignment is restricted to the system administrator or a role with `BypassFolderPermissions` (Full Access).
+- Edit Folder renders the Owner selector read-only without that administrative capability. The API independently rejects crafted unauthorized folder-owner changes with HTTP 403.
+
+### Files modified
+
+- `api/Controllers/DocumentsController.cs`
+- `api/Controllers/FoldersController.cs`
+- `api/Services/AccessOverrideService.cs`
+- `web/src/components/custom/EditFolderModal.tsx`
+- `web/src/utils/api.ts`
+
+### Verification
+
+- `git diff --check`: passed (line-ending conversion warnings only).
+- Frontend `npm run type-check`: no new errors; existing unrelated errors remain in `NotificationsBell.tsx`, `RolePermissions.tsx`, and `Dashboard.tsx`.
+- Backend compilation was unavailable on the Windows workstation because the .NET SDK is not installed; rebuild and verify the API container during Ubuntu deployment.
+
+---
+
 ## Project Overview
 Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001:2022 compliance. Built on .NET 8 (C#) API, React/TypeScript frontend, PostgreSQL, MinIO, and Redis. Deployed locally on Windows Docker (development) → Ubuntu + Cloudflare Tunnel (production).
 
