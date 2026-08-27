@@ -63,6 +63,7 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
                 o.DownloadZip,
                 o.CreateSubfolder,
                 o.Delete,
+                o.FolderEdit,
                 o.FileRead,
                 o.FileRename,
                 o.FileCopy,
@@ -155,6 +156,7 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
             entity.DownloadZip = req.DownloadZip;
             entity.CreateSubfolder = req.CreateSubfolder;
             entity.Delete = req.Delete;
+            entity.FolderEdit = req.FolderEdit;
             entity.FileRead = req.FileRead;
             entity.FileRename = req.FileRename;
             entity.FileCopy = req.FileCopy;
@@ -237,6 +239,7 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
 public record CreateAccessOverrideRequest(
     Guid? FolderId, Guid? DocumentId, string TargetType, Guid TargetId,
     bool? Read, bool? Write, bool? Rename, bool? Copy, bool? Cut, bool? DownloadZip, bool? CreateSubfolder, bool? Delete,
+    bool? FolderEdit,
     bool? FileRead, bool? FileRename, bool? FileCopy, bool? FileCut,
     bool? Unlock, bool? SubmitForApproval, bool? Download, bool? DownloadForEditing, bool? UploadUpdatedFile, bool? FileDelete,
     bool? FileEdit, bool? ManagePermissions, bool? FileManagePermissions,

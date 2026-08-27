@@ -2110,6 +2110,9 @@ export function Documents() {
             folderName={target?.name ?? ''}
             initialDescription={target?.description}
             initialClassification={target?.classification}
+            initialDepartment={target?.department}
+            initialTags={target?.tags}
+            initialOwnerId={target?.ownerId}
             onClose={() => setEditFolderId(null)}
             onSaved={() => {
               apiClient.getFolders().then((res) => setFolders(res.data || []));

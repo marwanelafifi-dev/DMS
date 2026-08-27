@@ -16,6 +16,8 @@ export interface Folder {
   name: string;
   description?: string;
   classification?: string;
+  department?: string;
+  tags?: string[];
   parentFolderId?: string;
   ownerId: string;
   owner?: User;

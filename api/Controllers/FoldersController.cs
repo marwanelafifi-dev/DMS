@@ -135,6 +135,8 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                     f.Name,
                     f.Description,
                     f.Classification,
+                    f.Department,
+                    f.Tags,
                     f.ParentFolderId,
                     f.OwnerId,
                     f.CreatedAt,
@@ -184,6 +186,8 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                     folder.Name,
                     folder.Description,
                     folder.Classification,
+                    folder.Department,
+                    folder.Tags,
                     folder.ParentFolderId,
                     folder.OwnerId,
                     folder.CreatedAt,
@@ -457,12 +461,12 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
         }
     }
 
-    // PUT /api/folders/{id}/metadata — edit the folder's own Description and
-    // Classification. Gated on the dedicated FolderEdit action (see
-    // RBACMiddleware.ActionForMethod), separate from Rename — hidden by
-    // default (adminBaseline-only), an admin must explicitly grant it per
-    // user/group via a File/Folder Permission override, same as Edit
-    // (document metadata) and Manage Permissions.
+    // PUT /api/folders/{id}/metadata — edit the folder's own Description,
+    // Classification, Department, Tags, and Owner. Gated on the dedicated
+    // FolderEdit action (see RBACMiddleware.ActionForMethod), separate from
+    // Rename — hidden by default (adminBaseline-only), an admin must
+    // explicitly grant it per user/group via a File/Folder Permission
+    // override, same as Edit (document metadata) and Manage Permissions.
     [HttpPut("{id}/metadata")]
     public async Task<ActionResult<object>> UpdateFolderMetadata(Guid id, [FromBody] UpdateFolderRequest req)
     {
@@ -480,6 +484,19 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             if (!string.IsNullOrWhiteSpace(req.Classification))
                 folder.Classification = req.Classification.Trim();
 
+            if (req.Department != null)
+                folder.Department = req.Department.Trim();
+
+            if (req.Tags != null)
+                folder.Tags = req.Tags.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct().ToArray();
+
+            if (req.OwnerId.HasValue)
+            {
+                if (!await context.Users.AnyAsync(u => u.UserId == req.OwnerId.Value))
+                    return BadRequest(new { success = false, error = "Owner not found" });
+                folder.OwnerId = req.OwnerId.Value;
+            }
+
             folder.UpdatedAt = DateTime.UtcNow;
 
             context.Folders.Update(folder);
@@ -491,6 +508,9 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 folder.FolderId,
                 folder.Description,
                 folder.Classification,
+                folder.Department,
+                folder.Tags,
+                folder.OwnerId,
                 folder.UpdatedAt,
                 ChangedFields = req
             });
@@ -505,6 +525,9 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                     folder.FolderId,
                     folder.Description,
                     folder.Classification,
+                    folder.Department,
+                    folder.Tags,
+                    folder.OwnerId,
                     folder.UpdatedAt
                 }
             });
@@ -663,7 +686,10 @@ public record CreateFolderRequest(
 public record UpdateFolderRequest(
     string? Name = null,
     string? Description = null,
-    string? Classification = null
+    string? Classification = null,
+    string? Department = null,
+    string[]? Tags = null,
+    Guid? OwnerId = null
 );
 
 public record MoveFolderRequest(Guid DestinationFolderId);

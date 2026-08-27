@@ -7,6 +7,8 @@ public class DmsFolder
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string Classification { get; set; } = "standard";
+    public string? Department { get; set; }
+    public string[] Tags { get; set; } = Array.Empty<string>();
     public Guid OwnerId { get; set; }
     public string? MetadataSchema { get; set; }
     public string? RetentionPolicy { get; set; }
