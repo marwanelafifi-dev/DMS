@@ -968,6 +968,16 @@ class APIClient {
     return data;
   }
 
+  async getNotificationsEnabled() {
+    const { data } = await this.client.get<ApiResponse>('/email-config/notifications-enabled');
+    return data;
+  }
+
+  async updateNotificationsEnabled(enabled: boolean) {
+    const { data } = await this.client.put<ApiResponse>('/email-config/notifications-enabled', { enabled });
+    return data;
+  }
+
   async updateEmailConfig(config: EmailNotificationConfig) {
     const { data } = await this.client.put<ApiResponse>('/email-config', config);
     return data;

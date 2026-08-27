@@ -103,15 +103,28 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
     // is notified individually instead of just the (nonexistent) single assignee.
     private async Task NotifyTaskAssigneeAsync(DmsTask task, Guid actorUserId, string title)
     {
+        var assigneeIds = new HashSet<Guid>();
         if (task.AssignedToId.HasValue)
-        {
-            await notificationService.NotifyAsync(task.AssignedToId.Value, actorUserId, title, task.Title, taskId: task.TaskId);
-        }
+            assigneeIds.Add(task.AssignedToId.Value);
         else if (task.AssignedToGroupId.HasValue)
-        {
-            foreach (var memberId in await taskService.GetGroupMemberIdsAsync(task.AssignedToGroupId.Value))
-                await notificationService.NotifyAsync(memberId, actorUserId, title, task.Title, taskId: task.TaskId);
-        }
+            assigneeIds.UnionWith(await taskService.GetGroupMemberIdsAsync(task.AssignedToGroupId.Value));
+
+        foreach (var recipientId in assigneeIds)
+            await notificationService.NotifyAsync(recipientId, actorUserId, title, task.Title, taskId: task.TaskId);
+
+        if (!task.DocumentId.HasValue) return;
+        var ownerId = await context.Documents.AsNoTracking()
+            .Where(d => d.DocumentId == task.DocumentId.Value)
+            .Select(d => (Guid?)d.OwnerId)
+            .FirstOrDefaultAsync();
+        if (ownerId.HasValue && !assigneeIds.Contains(ownerId.Value))
+            await notificationService.NotifyAsync(
+                ownerId.Value,
+                actorUserId,
+                "A correction task was assigned for your document",
+                task.Title,
+                documentId: task.DocumentId,
+                taskId: task.TaskId);
     }
 
     // A correction task represents "please fix this specific rejection" — it's

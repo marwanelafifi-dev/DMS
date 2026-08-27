@@ -11,6 +11,37 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class TasksController(DmsContext context, TaskService taskService, MinioService minioService, AuditService auditService, NotificationService notificationService, AccessOverrideService accessOverrideService, ILogger<TasksController> logger) : BaseController
 {
+    private async Task NotifyTaskAssignmentAsync(DmsTask task, Guid actorUserId, string userTitle, string groupTitle)
+    {
+        var assigneeIds = new HashSet<Guid>();
+        if (task.AssignedToId.HasValue)
+            assigneeIds.Add(task.AssignedToId.Value);
+        else if (task.AssignedToGroupId.HasValue)
+            assigneeIds.UnionWith(await taskService.GetGroupMemberIdsAsync(task.AssignedToGroupId.Value));
+
+        foreach (var recipientId in assigneeIds)
+            await notificationService.NotifyAsync(
+                recipientId,
+                actorUserId,
+                task.AssignedToId.HasValue ? userTitle : groupTitle,
+                task.Title,
+                taskId: task.TaskId);
+
+        if (!task.DocumentId.HasValue) return;
+        var ownerId = await context.Documents.AsNoTracking()
+            .Where(d => d.DocumentId == task.DocumentId.Value)
+            .Select(d => (Guid?)d.OwnerId)
+            .FirstOrDefaultAsync();
+        if (ownerId.HasValue && !assigneeIds.Contains(ownerId.Value))
+            await notificationService.NotifyAsync(
+                ownerId.Value,
+                actorUserId,
+                "A task was assigned for your document",
+                task.Title,
+                documentId: task.DocumentId,
+                taskId: task.TaskId);
+    }
+
     // GET /api/tasks — my tasks
     [HttpGet]
     public async Task<ActionResult<object>> GetMyTasks(
@@ -240,15 +271,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 return StatusCode(500, new { success = false, error = "Task was created but its ID was not returned" });
             }
 
-            if (req.AssignedToId.HasValue)
-            {
-                await notificationService.NotifyAsync(req.AssignedToId.Value, managerId, "New task assigned to you", req.Title, taskId: result.ResourceId.Value);
-            }
-            else if (req.AssignedToGroupId.HasValue)
-            {
-                foreach (var memberId in await taskService.GetGroupMemberIdsAsync(req.AssignedToGroupId.Value))
-                    await notificationService.NotifyAsync(memberId, managerId, "New task assigned to your group", req.Title, taskId: result.ResourceId.Value);
-            }
+            var createdTask = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == result.ResourceId.Value);
+            await NotifyTaskAssignmentAsync(createdTask, managerId, "New task assigned to you", "New task assigned to your group");
 
             return CreatedAtAction(nameof(GetTask), new { id = result.ResourceId.Value }, new { success = true, data = result.Data });
         }
@@ -371,11 +395,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             {
                 var title = req.Title ?? task.Title;
                 await auditService.LogAsync(userId, TASK_REASSIGNED, new { TaskId = id, req.AssignedToId, req.AssignedToGroupId });
-                if (req.AssignedToId.HasValue)
-                    await notificationService.NotifyAsync(req.AssignedToId.Value, userId, "A task was reassigned to you", title, taskId: id);
-                else if (req.AssignedToGroupId.HasValue)
-                    foreach (var memberId in await taskService.GetGroupMemberIdsAsync(req.AssignedToGroupId.Value))
-                        await notificationService.NotifyAsync(memberId, userId, "A task was reassigned to your group", title, taskId: id);
+                var reassignedTask = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == id);
+                reassignedTask.Title = title;
+                await NotifyTaskAssignmentAsync(reassignedTask, userId, "A task was reassigned to you", "A task was reassigned to your group");
             }
 
             return Ok(new { success = true, data = result.Data });

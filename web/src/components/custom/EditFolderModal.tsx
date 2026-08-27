@@ -123,7 +123,7 @@ export function EditFolderModal({
               />
               <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
                 {users
-                  .filter((u) => u.userId !== ownerId && u.isActive !== false && u.role === 'Manager')
+                  .filter((u) => u.userId !== ownerId && u.isActive !== false && (u.role === 'Manager' || u.role === 'Full Access'))
                   .filter((u) => u.fullName.toLowerCase().includes(managerSearch.trim().toLowerCase()))
                   .map((u) => (
                     <label key={u.userId} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5">
@@ -138,7 +138,7 @@ export function EditFolderModal({
                     </label>
                   ))}
               </div>
-              <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Select one or more users with the Manager role. The owner is included automatically.</p>
+              <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Select one or more users with the Manager or Full Access role. The owner is included automatically.</p>
             </div>
           </Field>
         </div>

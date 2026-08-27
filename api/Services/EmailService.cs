@@ -33,6 +33,7 @@ public record EmailNotificationConfig(string Method, string? Email, string? AppP
 public class EmailService(IServiceScopeFactory scopeFactory, IConfiguration configuration, ILogger<EmailService> logger)
 {
     public const string SettingKey = "email_notification_config";
+    public const string NotificationsEnabledSettingKey = "notifications_enabled";
     private const string LogoContentId = "siwarelogo";
     private static readonly string LogoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "si-ware-logo-dark.png");
 
@@ -64,6 +65,19 @@ public class EmailService(IServiceScopeFactory scopeFactory, IConfiguration conf
     }
 
     public async Task<bool> IsConfiguredAsync() => (await LoadConfigAsync()).IsConfigured;
+
+    public async Task<bool> AreNotificationsEnabledAsync()
+    {
+        using var scope = scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<DmsContext>();
+        var value = await context.AppSettings.AsNoTracking()
+            .Where(s => s.Key == NotificationsEnabledSettingKey)
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+        // Existing installations have no row yet and must retain their current
+        // behavior. Only an explicit false disables delivery.
+        return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+    }
 
     // One shared visual identity for every notification email the DMS sends —
     // navy header banner with the actual Si-Ware logo (embedded inline via
@@ -104,6 +118,12 @@ public class EmailService(IServiceScopeFactory scopeFactory, IConfiguration conf
 
     public async Task<bool> SendAsync(string toEmail, string subject, string htmlBody)
     {
+        if (!await AreNotificationsEnabledAsync())
+        {
+            logger.LogInformation("Email not sent to {ToEmail} ({Subject}) — notifications are globally disabled", toEmail, subject);
+            return false;
+        }
+
         var config = await LoadConfigAsync();
         if (!config.IsConfigured)
         {
@@ -120,6 +140,9 @@ public class EmailService(IServiceScopeFactory scopeFactory, IConfiguration conf
     // saving them.
     public async Task<(bool Success, string? Error)> SendWithConfigAsync(EmailNotificationConfig config, string toEmail, string subject, string htmlBody)
     {
+        if (!await AreNotificationsEnabledAsync())
+            return (false, "Email and in-app notifications are globally disabled");
+
         if (!config.IsConfigured)
             return (false, "Email and App Password are required");
 

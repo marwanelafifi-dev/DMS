@@ -17,6 +17,40 @@ namespace DMS.Api.Controllers;
 [Route("api/email-config")]
 public class EmailConfigController(DmsContext context, EmailService emailService, AuditService auditService, ILogger<EmailConfigController> logger) : BaseController
 {
+    [HttpGet("notifications-enabled")]
+    public async Task<ActionResult<object>> GetNotificationsEnabled()
+    {
+        return Ok(new { success = true, data = new { enabled = await emailService.AreNotificationsEnabledAsync() } });
+    }
+
+    [HttpPut("notifications-enabled")]
+    public async Task<ActionResult<object>> UpdateNotificationsEnabled([FromBody] UpdateNotificationsEnabledRequest req)
+    {
+        var userId = GetCurrentUserId();
+        var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+        if (pageAccessRole?.BypassFolderPermissions != true)
+            return StatusCode(403, new { success = false, error = "Only a Full Access role can change this setting" });
+
+        var setting = await context.AppSettings.FirstOrDefaultAsync(s => s.Key == EmailService.NotificationsEnabledSettingKey);
+        if (setting == null)
+        {
+            setting = new DmsAppSetting { Key = EmailService.NotificationsEnabledSettingKey };
+            context.AppSettings.Add(setting);
+        }
+        setting.Value = req.Enabled ? "true" : "false";
+        setting.UpdatedAt = DateTime.UtcNow;
+        setting.UpdatedById = userId;
+        await context.SaveChangesAsync();
+
+        await auditService.LogAsync(userId, EMAIL_NOTIFICATION_CONFIG_UPDATED, new
+        {
+            NotificationsEnabled = req.Enabled,
+            Scope = "Email and in-app notifications"
+        });
+
+        return Ok(new { success = true, data = new { enabled = req.Enabled } });
+    }
+
     [HttpGet]
     public async Task<ActionResult<object>> GetConfig()
     {
@@ -99,3 +133,5 @@ public class EmailConfigController(DmsContext context, EmailService emailService
         }
     }
 }
+
+public record UpdateNotificationsEnabledRequest(bool Enabled);

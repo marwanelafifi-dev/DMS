@@ -13,6 +13,9 @@ public class NotificationService(DmsContext context, EmailService emailService, 
 {
     public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null, Guid? announcementId = null)
     {
+        if (!await emailService.AreNotificationsEnabledAsync())
+            return;
+
         if (recipientUserId == actorUserId)
             return;
 
@@ -96,6 +99,45 @@ public class NotificationService(DmsContext context, EmailService emailService, 
         // exactly like every other outbound email in this app.
         if (documentId.HasValue)
             await SendDocumentEmailAsync(recipientUserId, documentId.Value, title, body);
+        else if (taskId.HasValue)
+            await SendTaskEmailAsync(recipientUserId, taskId.Value, title, body);
+    }
+
+    private async Task SendTaskEmailAsync(Guid recipientUserId, Guid taskId, string title, string? body)
+    {
+        try
+        {
+            var recipient = await context.Users.AsNoTracking()
+                .Where(u => u.UserId == recipientUserId && u.IsActive)
+                .Select(u => new { u.Email, u.FullName })
+                .FirstOrDefaultAsync();
+            if (recipient == null || string.IsNullOrWhiteSpace(recipient.Email)) return;
+
+            var task = await context.Tasks.AsNoTracking()
+                .Where(t => t.TaskId == taskId)
+                .Select(t => new { t.Title, t.DueDate })
+                .FirstOrDefaultAsync();
+            if (task == null) return;
+
+            var portalUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
+            var taskUrl = $"{portalUrl}/tasks?highlight={taskId}";
+            var bodyHtml = $"""
+                <p style="margin:0 0 16px;font-size:14px;color:#26334d;">Hello <strong>{System.Net.WebUtility.HtmlEncode(recipient.FullName)}</strong>,</p>
+                <p style="margin:0 0 8px;font-size:14px;color:#26334d;">{System.Net.WebUtility.HtmlEncode(title)}</p>
+                <p style="margin:0 0 8px;font-size:13px;color:#718198;">Task: <strong>{System.Net.WebUtility.HtmlEncode(task.Title)}</strong></p>
+                {(task.DueDate.HasValue ? $"""<p style="margin:0 0 8px;font-size:13px;color:#718198;">Due: <strong>{task.DueDate.Value:yyyy-MM-dd}</strong></p>""" : "")}
+                {(string.IsNullOrWhiteSpace(body) ? "" : $"""<p style="margin:0 0 20px;font-size:14px;color:#52627a;">{System.Net.WebUtility.HtmlEncode(body)}</p>""")}
+                <a href="{taskUrl}" style="display:inline-block;background:#002E5C;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:4px;">
+                  View Task
+                </a>
+                """;
+            var html = EmailService.BuildBrandedHtml(title, "#002E5C", bodyHtml);
+            await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", html);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending task notification email for task {TaskId} to user {UserId}", taskId, recipientUserId);
+        }
     }
 
     private async Task SendDocumentEmailAsync(Guid recipientUserId, Guid documentId, string title, string? body)

@@ -11,7 +11,60 @@ Enterprise Document Management System (QMS + ISMS) for ISO 9001:2015 / ISO 27001
 
 **Status:** Session 41 — a screenshot-driven bug-fix batch worked entirely from a local checkout with no local Docker/dev-server run (the DMS now runs continuously on the Ubuntu host with real production data, so this session deliberately never started the stack locally — every fix was verified by code tracing plus `npx tsc --noEmit`, and is pushed for the user to pull and rebuild on Ubuntu themselves). Thirty-three items across twelve rounds: the Upload dialog carrying over the previous document's Description/Tags/Version/Category/Department between uploads; a failed upload leaving an undeleted orphan document behind (and multiplying with every retry); a new folder location-path breadcrumb with a Back button; the backend rejecting genuinely-empty (0-byte) file uploads outright, which silently orphaned the document row and permanently broke its preview; a matching frontend "This file is empty" preview state; Ctrl/Cmd+scroll-wheel zoom for the document preview (previously zoomed the whole browser tab); the tag filter scoped to the whole system instead of just the current folder, rebuilt as a folder-scoped multi-select with its own tag search box; two page routes (`/documents`, `/reminders`) with no permission guard at all, letting a direct URL bypass a hidden sidebar link entirely — now guarded, with denial showing an explicit "Access Denied" page instead of a silent bounce to the Dashboard; the Users admin search only matching the currently-loaded page of results instead of every user; the Document Library's main search box being scoped to only the currently-browsed folder instead of everywhere the user has access, now showing each cross-folder result's full folder path; the OCR Document Search page's results tables having no folder-path column and an Actions column that scrolled out of view with no way to click a result at all; Backspace now navigating to the parent folder like a real file explorer; the app-wide centered/width-capped page wrapper leaving large unused margins around the Document Library specifically, plus folder names truncating illegibly in the sidebar tree; the Document Preview's folder field renamed "Path", relocated under the title, and made fully clickable per folder segment; the Move/Copy destination folder picker showing bare, indistinguishable folder names instead of each option's full path; a new browser tab icon/title; removed a redundant subtitle under "Document Library"; navigating away from Document Library to another page and back losing both the folder you were browsing and any open document, now restored via `localStorage`; a Document Preview metadata/toolbar polish pass (metadata reflowed onto one line, Description moved to its own untruncated line, Print relocated beside Download, "History" relabeled "Version History"); the Print dialog closing itself mid-edit while typing a custom page range, caused by a fixed 1-second timer tearing down the print iframe out from under the still-open dialog; local accounts now auto-converting to Google-only (local password cleared) the first time each one actually signs in with Google, instead of via any manual bulk conversion — with the seeded System Admin account explicitly excluded; a Google sign-in blocked by Maintenance Mode showing one generic error instead of the backend's real reason, plus that reason now explicitly saying to contact the system administrator; a new bulk CSV import feature for Users and Groups (Import CSV button on each admin page), reusing the Google-auto-convert behavior so imported users have no password from day one; the Groups "Manage Users" control being a single-selection native dropdown, rebuilt as a searchable multi-select checklist with an "Add Selected" action; new Access/Auth Type/Status filters on the Users admin table, needed once a real 132-user import made the flat list hard to scan; and a real bug where editing a filtered-in Google account's Name/Access/Status could fail with a bogus "email is managed by Google" rejection, caused by the same wrong-array (`users` vs. `allUsers`) lookup mistake as item 9/26; and real email delivery for every document-workflow stage-transition notification (QA/Manager/Final Release), with a new submitter-notified-too behavior and a real access-control gap closed in the same pass — nobody (any role, owner, submitter, or reviewer) is now ever notified about a document they don't actually have real folder- or file-level access to (confirmed working live against a real inbox); every outbound email's branding corrected from "Si-Ware Enterprise DMS" to "DMS - Si-Ware Systems"; a new permanent Audit Trail record of exactly who received every notification, since neither individual emails nor per-recipient notification rows ever showed the full recipient list for one event; the Document Library's folder tree now starting fully collapsed instead of fully expanded; and two new Scheduled Backups destinations — a mounted-filesystem path, and a direct SMB network share with credentials entered in the GUI (worked out live against the user's own real AD-joined Windows Server share). **Known follow-up (unchanged):** a reopened PPTX document's preview loses its styled slide view and falls back to plain extracted text (see the two pre-existing failing tests in `Documents.test.tsx`).
 
-**Current Status:** Session 42 — per-folder Manager Review routing is implemented. Folder owners and explicitly selected folder managers are the only users eligible to act at Manager Review, while global workflow capabilities remain mandatory. Edit Folder now supports multiple managers and synchronizes Owner/Admin and Manager folder grants. Submission fails closed when the folder has no active owner or no active designated manager.
+**Current Status:** Session 43 — task assignment/reassignment emails now reach assignees and linked-document owners; Full Access users can be selected as folder managers without losing Admin-level access; documentation-ready email-routing diagrams were added; and Admin Panel → Notifications now has a persisted global kill switch that suppresses every outbound email and new in-app notification, protected by an exact typed `Off` confirmation.
+
+---
+
+## Session 43 (2026-08-27) — Task Emails, Full Access Folder Managers, Notification Diagrams, and Global Notification Kill Switch
+
+**Status:** Complete in code. Frontend type-checking reached only the same five pre-existing documented baseline errors (`unreadCount`, `canEditFiles` ×2, `PendingApprovalItem` ×2). The API was not compiled locally because this checkout has no `dotnet` executable, and the production Docker stack was not started locally.
+
+### 1. Task assignment and reassignment emails
+
+- Every direct task assignee now receives a branded task email; a group assignment emails every active member of the assigned group.
+- Reassignment emails the new individual assignee or every active member of the newly assigned group.
+- Task emails contain the task title, due date when available, and a direct `View Task` link.
+- For a task linked to a document, the document owner receives a separate document-linked email unless already present among the direct/group assignees. The actor/self-notification rule remains unchanged.
+- Correction tasks created by QA, Manager Review, or Final Release use the same assignee/group plus linked-document-owner routing.
+
+### 2. Full Access users in the folder-manager picker
+
+- Edit Folder's Manager(s) checklist now includes active users whose global role is either `Manager` or `Full Access`.
+- The current folder Owner remains excluded from the checklist because ownership includes that user in Manager Review routing automatically.
+- Selecting a Full Access user preserves Admin-level folder access instead of creating a narrower Manager grant that would otherwise take precedence over the user's blanket bypass.
+
+### 3. Documentation diagrams
+
+- Added `docs/images/dms-document-approval-email-flow.png`.
+- Added `docs/images/dms-task-email-routing.png`.
+- Both are high-resolution, documentation-ready raster diagrams covering the complete approval-email and task-email routing rules.
+
+### 4. Global notification kill switch
+
+- Added a persisted `Email and In-App Notifications` toggle to Admin Panel → Notifications. It is enabled by default for existing installations; only an explicit saved `false` disables delivery.
+- Only a Full Access role can change it. The setting is stored under `notifications_enabled` in the existing `dms_app_settings` table, so no schema migration is required.
+- When off, `NotificationService.NotifyAsync` exits before creating a bell notification or `NOTIFICATION_SENT` audit row, and `EmailService` refuses every outbound email path. This centrally covers workflows, document actions, tasks, reminders, announcements, ISO meetings, account-credentials emails, and SMTP test emails while allowing the underlying business operation to continue.
+- Existing notification history is retained and remains readable; disabling affects only new delivery.
+- The SMTP test button is disabled while notifications are off.
+- To prevent accidental shutdown, switching from On to Off opens a warning dialog and requires the administrator to type the exact case-sensitive word `Off`; re-enabling remains a single click.
+- Every toggle change is written to the Audit Trail through `EMAIL_NOTIFICATION_CONFIG_UPDATED` with the new state and its email/in-app scope.
+
+### Files created
+
+- `docs/images/dms-document-approval-email-flow.png`
+- `docs/images/dms-task-email-routing.png`
+
+### Files modified
+
+- `api/Controllers/ApprovalsController.cs`
+- `api/Controllers/EmailConfigController.cs`
+- `api/Controllers/FoldersController.cs`
+- `api/Controllers/TasksController.cs`
+- `api/Services/EmailService.cs`
+- `api/Services/NotificationService.cs`
+- `web/src/components/custom/EditFolderModal.tsx`
+- `web/src/components/custom/NotificationConfig.tsx`
+- `web/src/utils/api.ts`
 
 ---
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Eye, EyeOff, Mail, Globe, Save, Send, Settings as SettingsIcon } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, Eye, EyeOff, Mail, Globe, Save, Send, Settings as SettingsIcon } from 'lucide-react';
 import { Card, CardBody, Button } from '../ui';
+import { ModalOverlay } from '../ui/ModalOverlay';
 import { apiClient, type EmailNotificationConfig, type EmailNotificationMethod } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 
@@ -68,10 +69,17 @@ export function NotificationConfig() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isUpdatingToggle, setIsUpdatingToggle] = useState(false);
+  const [showDisableConfirmation, setShowDisableConfirmation] = useState(false);
+  const [disableConfirmationText, setDisableConfirmationText] = useState('');
 
   useEffect(() => {
-    apiClient.getEmailConfig()
-      .then((res) => { if (res.success && res.data) setConfig({ ...EMPTY_CONFIG, ...res.data }); })
+    Promise.all([apiClient.getEmailConfig(), apiClient.getNotificationsEnabled()])
+      .then(([configRes, enabledRes]) => {
+        if (configRes.success && configRes.data) setConfig({ ...EMPTY_CONFIG, ...configRes.data });
+        if (enabledRes.success) setNotificationsEnabled(enabledRes.data?.enabled !== false);
+      })
       .catch(() => showError('Failed to load notification configuration'))
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,6 +115,31 @@ export function NotificationConfig() {
     }
   };
 
+  const updateNotificationState = async (next: boolean) => {
+    setIsUpdatingToggle(true);
+    try {
+      const res = await apiClient.updateNotificationsEnabled(next);
+      if (!res.success) throw new Error(res.error || 'Failed to update notification status');
+      setNotificationsEnabled(next);
+      setShowDisableConfirmation(false);
+      setDisableConfirmationText('');
+      showSuccess(next ? 'Email and in-app notifications enabled' : 'Email and in-app notifications disabled');
+    } catch (err: any) {
+      showError(err.response?.data?.error || err.message || 'Failed to update notification status');
+    } finally {
+      setIsUpdatingToggle(false);
+    }
+  };
+
+  const handleNotificationToggle = () => {
+    if (notificationsEnabled) {
+      setDisableConfirmationText('');
+      setShowDisableConfirmation(true);
+      return;
+    }
+    void updateNotificationState(true);
+  };
+
   if (isLoading) {
     return <Card><CardBody className="p-8 text-center text-sm text-[#718198]">Loading…</CardBody></Card>;
   }
@@ -117,6 +150,35 @@ export function NotificationConfig() {
         <h2 className="text-lg font-serif font-bold text-[#122344] dark:text-white">Notification Configuration</h2>
         <p className="mt-1 text-sm text-[#718198]">Configure how email notifications are sent from the Admin Portal</p>
       </div>
+
+      <Card className={`overflow-hidden border-2 ${notificationsEnabled ? 'border-emerald-200 dark:border-emerald-900' : 'border-red-200 dark:border-red-900'}`}>
+        <CardBody className="flex items-center justify-between gap-4 p-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className={`rounded-full p-2 ${notificationsEnabled ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+              {notificationsEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+            </div>
+            <div>
+              <h3 className="font-semibold text-[#26334d] dark:text-white">Email and In-App Notifications</h3>
+              <p className="mt-1 text-sm text-[#718198] dark:text-slate-400">
+                {notificationsEnabled
+                  ? 'Enabled — workflow, task, reminder, announcement, and system notifications are being delivered.'
+                  : 'Disabled — no new emails or in-app notifications will be sent. Business operations continue normally.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={notificationsEnabled}
+            aria-label="Enable email and in-app notifications"
+            disabled={isUpdatingToggle}
+            onClick={handleNotificationToggle}
+            className={`relative h-7 w-12 flex-shrink-0 rounded-full transition-colors disabled:cursor-wait disabled:opacity-60 ${notificationsEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+          >
+            <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </CardBody>
+      </Card>
 
       <div className="flex gap-3 rounded-[6px] border border-[#f4dd9a] bg-[#fff8e6] p-4 dark:border-amber-900 dark:bg-amber-900/15">
         <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#b96a08] dark:text-amber-400" />
@@ -163,6 +225,55 @@ export function NotificationConfig() {
         </CardBody>
       </Card>
 
+      {showDisableConfirmation && (
+        <ModalOverlay
+          onClose={() => { if (!isUpdatingToggle) setShowDisableConfirmation(false); }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+        >
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl dark:bg-slate-900">
+            <div className="border-b border-gray-200 px-6 py-4 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-[#122344] dark:text-white">Disable all notifications?</h3>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="flex gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+                <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                <p>No email or in-app notification will be sent while this setting is off. Workflow and business operations will continue normally.</p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">
+                  Type <strong>Off</strong> to confirm
+                </label>
+                <input
+                  autoFocus
+                  value={disableConfirmationText}
+                  onChange={(e) => setDisableConfirmationText(e.target.value)}
+                  className="field-control h-10 w-full"
+                  placeholder="Off"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 border-t border-gray-200 px-6 py-4 dark:border-slate-700">
+              <Button
+                variant="primary"
+                className="flex-1 bg-red-600 hover:bg-red-700"
+                disabled={disableConfirmationText !== 'Off' || isUpdatingToggle}
+                onClick={() => void updateNotificationState(false)}
+              >
+                {isUpdatingToggle ? 'Disabling…' : 'Disable Notifications'}
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                disabled={isUpdatingToggle}
+                onClick={() => setShowDisableConfirmation(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
           <h3 className="section-heading flex items-center gap-2"><selected.icon className="h-4 w-4" />{selected.title} — Configuration</h3>
@@ -208,7 +319,7 @@ export function NotificationConfig() {
             <Button variant="primary" onClick={handleSave} disabled={isSaving} leftIcon={<Save className="h-4 w-4" />}>
               {isSaving ? 'Saving…' : 'Save Configuration'}
             </Button>
-            <Button variant="secondary" onClick={handleTest} disabled={isTesting} leftIcon={<Send className="h-4 w-4" />}>
+            <Button variant="secondary" onClick={handleTest} disabled={isTesting || !notificationsEnabled} leftIcon={<Send className="h-4 w-4" />}>
               {isTesting ? 'Sending…' : 'Send Test Email'}
             </Button>
           </div>

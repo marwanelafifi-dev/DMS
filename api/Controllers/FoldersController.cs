@@ -531,17 +531,26 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 var managerPermissions = await context.FolderPermissions
                     .Where(p => p.FolderId == id && managerIds.Contains(p.UserId))
                     .ToListAsync();
+                var fullAccessManagerIds = await context.Users
+                    .Where(u => managerIds.Contains(u.UserId) && u.Role != null)
+                    .Join(
+                        context.PageAccessRoles.Where(r => r.BypassFolderPermissions),
+                        u => u.Role,
+                        r => r.Role,
+                        (u, _) => u.UserId)
+                    .ToListAsync();
                 foreach (var managerId in managerIds)
                 {
                     var permission = managerPermissions.FirstOrDefault(p => p.UserId == managerId);
+                    var synchronizedRole = fullAccessManagerIds.Contains(managerId) ? FolderRoles.Admin : FolderRoles.Manager;
                     if (permission == null)
                         context.FolderPermissions.Add(new DmsFolderPermission
                         {
                             PermissionId = Guid.NewGuid(), FolderId = id, UserId = managerId,
-                            Role = FolderRoles.Manager, GrantedAt = DateTime.UtcNow, GrantedById = currentUserId
+                            Role = synchronizedRole, GrantedAt = DateTime.UtcNow, GrantedById = currentUserId
                         });
-                    else if (permission.Role != FolderRoles.Admin)
-                        permission.Role = FolderRoles.Manager;
+                    else if (permission.Role != synchronizedRole && permission.Role != FolderRoles.Admin)
+                        permission.Role = synchronizedRole;
                 }
 
                 // Keep the direct Folder Permissions list synchronized with the
