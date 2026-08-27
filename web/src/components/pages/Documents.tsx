@@ -346,6 +346,8 @@ export function Documents() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [departmentFilter, setDepartmentFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
   const [folderPaneWidth, setFolderPaneWidth] = useState(readStoredFolderPaneWidth);
   const [isResizingFolderPane, setIsResizingFolderPane] = useState(false);
   const folderPaneResizeOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -429,6 +431,17 @@ export function Documents() {
     () => (selectedFolder ? buildFolderAncestryPath(selectedFolder, folders) : []),
     [selectedFolder, folders],
   );
+  // Folders "in view" independent of the Tag/Department/Owner filters
+  // themselves — used both to build the filter dropdowns' own option lists
+  // (so picking a tag doesn't shrink the set of tags offered) and as the
+  // base candidate set childFolderRows then narrows further.
+  const foldersInView = useMemo(() => {
+    if (showOnlyMySubmissions) return [];
+    const query = searchQuery.trim().toLowerCase();
+    const candidates = query ? folders : folders.filter((folder) => folder.parentFolderId === selectedFolderId);
+    return candidates.filter((folder) => !query || folder.name.toLowerCase().includes(query));
+  }, [folders, selectedFolderId, showOnlyMySubmissions, searchQuery]);
+
   // Subfolders of the folder being browsed, shown as rows above the files so a
   // folder containing only subfolders is no longer a dead end reading "No
   // documents in this folder". Hidden in the cross-folder "my submissions" view,
@@ -438,14 +451,17 @@ export function Documents() {
   // `pathLabel` so a match found three levels away from wherever you happen to
   // be browsing still tells you exactly where it lives.
   const childFolderRows = useMemo<LibraryFolderRow[]>(() => {
-    if (showOnlyMySubmissions) return [];
+    // Status is document-workflow state, which a folder has none of — a
+    // status filter always hides every folder row. Tags/Department/Owner
+    // are now real folder metadata too (see EditFolderModal), so those
+    // filter folders by their own values instead of hiding them outright.
+    if (statusFilter) return [];
     const query = searchQuery.trim().toLowerCase();
-    // A status or tag filter is about document state, which a folder has none
-    // of — showing folders anyway would look like they'd matched the filter.
-    if (statusFilter || tagFilters.length > 0) return [];
-    const candidates = query ? folders : folders.filter((folder) => folder.parentFolderId === selectedFolderId);
-    return candidates
-      .filter((folder) => !query || folder.name.toLowerCase().includes(query))
+    return foldersInView
+      .filter((folder) => tagFilters.length === 0
+        || (folder.tags ?? []).some((tag) => tagFilters.some((selected) => tag.trim().toLowerCase() === selected.toLowerCase())))
+      .filter((folder) => !departmentFilter || folder.department === departmentFilter)
+      .filter((folder) => !ownerFilter || folder.ownerId === ownerFilter)
       .map((folder) => {
         const ancestry = query ? buildFolderAncestryPath(folder, folders).slice(0, -1) : [];
         return {
@@ -460,7 +476,7 @@ export function Documents() {
           tags: folder.tags,
         };
       });
-  }, [folders, selectedFolderId, allDocuments, showOnlyMySubmissions, searchQuery, statusFilter, tagFilters, allUsers]);
+  }, [foldersInView, folders, allDocuments, searchQuery, statusFilter, tagFilters, departmentFilter, ownerFilter, allUsers]);
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
     ...folders.filter((folder) => selectedFolderIds.has(folder.folderId)).map((folder) => folder.name),
@@ -966,13 +982,14 @@ export function Documents() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Only tags actually present on a document in the folder currently being
-  // browsed — not every tag in the whole system. Clicking into "IT" should only
-  // ever offer tags that exist on documents inside IT, not tags that only exist
-  // on an unrelated "HR" document elsewhere in the library. Deliberately keyed
-  // off `documents` (already folder-scoped, or the cross-folder "my submissions"
-  // view), so it naturally follows whatever set of documents the user is
-  // actually looking at right now.
+  // Only tags actually present on a document OR a subfolder in the folder
+  // currently being browsed — not every tag in the whole system. Clicking
+  // into "IT" should only ever offer tags that exist inside IT, not tags
+  // that only exist on an unrelated "HR" document/folder elsewhere in the
+  // library. Deliberately keyed off `documents` (already folder-scoped, or
+  // the cross-folder "my submissions" view) and `foldersInView` (the same
+  // scoping for folders' own tags — see EditFolderModal), so it naturally
+  // follows whatever the user is actually looking at right now.
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
     for (const document of documents) {
@@ -981,16 +998,51 @@ export function Documents() {
         if (trimmed) tags.add(trimmed);
       }
     }
+    for (const folder of foldersInView) {
+      for (const tag of folder.tags ?? []) {
+        const trimmed = tag.trim();
+        if (trimmed) tags.add(trimmed);
+      }
+    }
     return [...tags].sort((left, right) => left.localeCompare(right));
-  }, [documents]);
+  }, [documents, foldersInView]);
 
-  // Switching folders (or the tags they contain) can leave a previously-picked
-  // tag no longer valid for the new context — drop anything that's no longer
-  // offered rather than silently keep filtering by a tag the user can't see.
+  // Same scoping principle as availableTags, for Department and Owner.
+  const availableDepartments = useMemo(() => {
+    const departments = new Set<string>();
+    for (const document of documents) if (document.department) departments.add(document.department);
+    for (const folder of foldersInView) if (folder.department) departments.add(folder.department);
+    return [...departments].sort((left, right) => left.localeCompare(right));
+  }, [documents, foldersInView]);
+
+  const availableOwners = useMemo(() => {
+    const owners = new Map<string, string>();
+    for (const document of documents) if (document.owner?.userId) owners.set(document.owner.userId, document.owner.fullName);
+    for (const folder of foldersInView) {
+      if (!folder.ownerId) continue;
+      const name = allUsers.find((u) => u.userId === folder.ownerId)?.fullName;
+      if (name) owners.set(folder.ownerId, name);
+    }
+    return [...owners.entries()].map(([userId, fullName]) => ({ userId, fullName })).sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }, [documents, foldersInView, allUsers]);
+
+  // Switching folders (or the values they contain) can leave a previously-picked
+  // filter no longer valid for the new context — drop anything that's no longer
+  // offered rather than silently keep filtering by something the user can't see.
   useEffect(() => {
     setTagFilters((current) => current.filter((tag) => availableTags.includes(tag)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableTags]);
+
+  useEffect(() => {
+    setDepartmentFilter((current) => (current && !availableDepartments.includes(current) ? '' : current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableDepartments]);
+
+  useEffect(() => {
+    setOwnerFilter((current) => (current && !availableOwners.some((o) => o.userId === current) ? '' : current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableOwners]);
 
   const filteredDocuments = useMemo(() => documents.filter((document) => {
     const query = searchQuery.trim();
@@ -1002,8 +1054,10 @@ export function Documents() {
     // common "show me anything tagged ISO 9001 or ISO 27001" expectation.
     const matchesTag = tagFilters.length === 0
       || document.tags.some((tag) => tagFilters.some((selected) => tag.trim().toLowerCase() === selected.toLowerCase()));
-    return matchesSearch && matchesStatus && matchesTag;
-  }), [documents, searchQuery, statusFilter, tagFilters]);
+    const matchesDepartment = !departmentFilter || document.department === departmentFilter;
+    const matchesOwner = !ownerFilter || document.owner?.userId === ownerFilter;
+    return matchesSearch && matchesStatus && matchesTag && matchesDepartment && matchesOwner;
+  }), [documents, searchQuery, statusFilter, tagFilters, departmentFilter, ownerFilter]);
 
   // While searching across the whole library (see `documents` above), a result
   // living outside the folder currently being browsed needs to say where it
@@ -1944,6 +1998,14 @@ export function Documents() {
                 <option value="released">Released</option>
               </select>
               <TagFilterMenu availableTags={availableTags} selectedTags={tagFilters} onChange={setTagFilters} />
+              <select className="field-control h-9 w-full sm:w-[150px]" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} aria-label="Filter by department">
+                <option value="">All departments</option>
+                {availableDepartments.map((department) => <option key={department} value={department}>{department}</option>)}
+              </select>
+              <select className="field-control h-9 w-full sm:w-[150px]" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filter by owner">
+                <option value="">All owners</option>
+                {availableOwners.map((owner) => <option key={owner.userId} value={owner.userId}>{owner.fullName}</option>)}
+              </select>
               <div className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
                 <LibraryBulkActions
                   selectedCount={selectedItemCount}
