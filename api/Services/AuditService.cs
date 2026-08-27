@@ -1,12 +1,70 @@
 using DMS.Api.Data;
 using DMS.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection;
 using System.Text.Json;
 
 namespace DMS.Api.Services;
 
 public class AuditService(DmsContext context, ILogger<AuditService> logger)
 {
+    // Real gap found live: an audit entry for a folder edit or a File/Folder
+    // Permission change never said WHICH folder/file it was about — just a
+    // bare name (or nothing at all), useless once there's more than one
+    // folder with that name anywhere in the tree. Walks the real parent
+    // chain, same ancestry logic the frontend's own breadcrumb already uses.
+    public async Task<string> ResolveFolderPathAsync(Guid? folderId)
+    {
+        if (!folderId.HasValue) return "(no folder)";
+        var names = new List<string>();
+        Guid? currentId = folderId;
+        var guard = 0;
+        while (currentId.HasValue && guard++ < 50)
+        {
+            var folder = await context.Folders.AsNoTracking()
+                .Where(f => f.FolderId == currentId)
+                .Select(f => new { f.Name, f.ParentFolderId })
+                .FirstOrDefaultAsync();
+            if (folder == null) break;
+            names.Insert(0, folder.Name);
+            currentId = folder.ParentFolderId;
+        }
+        return names.Count > 0 ? string.Join(" / ", names) : "(deleted folder)";
+    }
+
+    // Same idea for a document — its own folder's full path plus the file
+    // name itself, so a permission/edit entry says exactly which file, not
+    // just a bare title that could collide with another file elsewhere.
+    public async Task<string> ResolveDocumentPathAsync(Guid? documentId)
+    {
+        if (!documentId.HasValue) return "(no document)";
+        var doc = await context.Documents.AsNoTracking()
+            .Where(d => d.DocumentId == documentId)
+            .Select(d => new { d.Title, d.FolderId })
+            .FirstOrDefaultAsync();
+        if (doc == null) return "(deleted document)";
+        var folderPath = await ResolveFolderPathAsync(doc.FolderId);
+        return $"{folderPath} / {doc.Title}";
+    }
+
+    // A File/Folder Permission override row has ~25 tri-state action flags —
+    // logging the whole entity dumped every one of them (mostly null/
+    // Inherit) plus internal columns (OverrideId, CreatedBy, timestamps).
+    // This picks out only the flags actually set to Allow/Deny, by name, via
+    // reflection over the bool? properties so the list can never drift out
+    // of sync with DmsAccessOverride as new actions are added.
+    public static Dictionary<string, bool> SummarizeOverrideFlags(DmsAccessOverride entity)
+    {
+        var flags = new Dictionary<string, bool>();
+        foreach (var property in typeof(DmsAccessOverride).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.PropertyType != typeof(bool?)) continue;
+            if (property.GetValue(entity) is bool value)
+                flags[property.Name] = value;
+        }
+        return flags;
+    }
+
     // Real gap found live: several "*_UPDATED" audit entries logged the raw
     // request object (ChangedFields = req) — every field the endpoint
     // *accepts*, not what actually changed, plus internal noise like

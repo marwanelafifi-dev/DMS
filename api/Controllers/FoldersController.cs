@@ -437,6 +437,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             await auditService.LogAsync(currentUserId, AuditActions.FOLDER_UPDATED, new
             {
                 folder.FolderId,
+                FolderPath = await auditService.ResolveFolderPathAsync(folder.FolderId),
                 Changes = AuditService.BuildChanges(("Name", previousName, folder.Name)),
             });
 
@@ -525,7 +526,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
             await auditService.LogAsync(currentUserId, AuditActions.FOLDER_UPDATED, new
             {
                 folder.FolderId,
-                FolderName = folder.Name,
+                FolderPath = await auditService.ResolveFolderPathAsync(folder.FolderId),
                 Changes = AuditService.BuildChanges(
                     ("Description", previousDescription, folder.Description),
                     ("Classification", previousClassification, folder.Classification),

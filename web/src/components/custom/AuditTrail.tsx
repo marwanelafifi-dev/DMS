@@ -84,7 +84,7 @@ const buildMetadataEntries = (metadata: Record<string, any> | null): string[] =>
   const entries: string[] = [];
   for (const [key, value] of Object.entries(metadata)) {
     if (key.toLowerCase().endsWith('id')) continue;
-    if (key.toLowerCase() === 'changes') continue;
+    if (key.toLowerCase() === 'changes' || key.toLowerCase() === 'permissions') continue;
     if (value === null || value === undefined || value === '') continue;
     if (typeof value === 'object' && !Array.isArray(value)) continue; // unrecognized nested shape
     entries.push(`${humanizeKey(key)}: ${Array.isArray(value) ? value.join(', ') : value}`);
@@ -95,6 +95,15 @@ const buildMetadataEntries = (metadata: Record<string, any> | null): string[] =>
       if (diff && typeof diff === 'object' && ('from' in diff || 'to' in diff)) {
         entries.push(`${field}: ${formatDiffValue(diff.from)} → ${formatDiffValue(diff.to)}`);
       }
+    }
+  }
+  // A File/Folder Permission override's granted/denied actions (see
+  // AuditService.SummarizeOverrideFlags) — only ever the flags actually set
+  // to Allow/Deny, so this only shows what genuinely changed access.
+  const permissions = metadata.permissions ?? metadata.Permissions;
+  if (permissions && typeof permissions === 'object') {
+    for (const [field, allowed] of Object.entries(permissions as Record<string, boolean>)) {
+      entries.push(`${humanizeKey(field)}: ${allowed ? 'Allow' : 'Deny'}`);
     }
   }
   return entries;

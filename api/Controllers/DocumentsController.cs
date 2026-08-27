@@ -1427,7 +1427,7 @@ public class DocumentsController(
             await auditService.LogAsync(userId, DOCUMENT_UPDATED, new
             {
                 document.DocumentId,
-                DocumentTitle = document.Title,
+                FilePath = await auditService.ResolveDocumentPathAsync(document.DocumentId),
                 Changes = AuditService.BuildChanges(
                     ("Title", previousTitle, document.Title),
                     ("Status", previousStatus, document.Status),

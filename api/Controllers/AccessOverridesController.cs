@@ -180,7 +180,25 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
 
             await context.SaveChangesAsync();
 
-            await auditService.LogAsync(userId, existing == null ? ACCESS_OVERRIDE_CREATED : ACCESS_OVERRIDE_UPDATED, entity);
+            // Real gap found live: this used to log the raw entity — every
+            // override row has ~25 mostly-null tri-state flags plus internal
+            // columns (OverrideId, CreatedBy, timestamps), with no indication
+            // of WHICH folder/file or WHO it targets at all once rendered.
+            var targetName = req.TargetType == "User"
+                ? (await context.Users.AsNoTracking().Where(u => u.UserId == req.TargetId).Select(u => u.FullName).FirstOrDefaultAsync()) ?? req.TargetId.ToString()
+                : (await context.Groups.AsNoTracking().Where(g => g.GroupId == req.TargetId).Select(g => g.Name).FirstOrDefaultAsync()) ?? req.TargetId.ToString();
+            var resourcePath = req.FolderId.HasValue
+                ? await auditService.ResolveFolderPathAsync(req.FolderId)
+                : await auditService.ResolveDocumentPathAsync(req.DocumentId);
+
+            await auditService.LogAsync(userId, existing == null ? ACCESS_OVERRIDE_CREATED : ACCESS_OVERRIDE_UPDATED, new
+            {
+                entity.OverrideId,
+                Target = targetName,
+                req.TargetType,
+                Resource = resourcePath,
+                Permissions = AuditService.SummarizeOverrideFlags(entity),
+            });
 
             logger.LogInformation("{Action} access override {OverrideId} for {TargetType} {TargetId}", existing == null ? "Created" : "Updated", entity.OverrideId, entity.TargetType, entity.TargetId);
 
@@ -218,7 +236,21 @@ public class AccessOverridesController(DmsContext context, AuditService auditSer
             context.AccessOverrides.Remove(entity);
             await context.SaveChangesAsync();
 
-            await auditService.LogAsync(userId, ACCESS_OVERRIDE_DELETED, new { entity.OverrideId, entity.FolderId, entity.DocumentId, entity.TargetType, entity.TargetId });
+            var targetName = entity.TargetType == "User"
+                ? (await context.Users.AsNoTracking().Where(u => u.UserId == entity.TargetId).Select(u => u.FullName).FirstOrDefaultAsync()) ?? entity.TargetId.ToString()
+                : (await context.Groups.AsNoTracking().Where(g => g.GroupId == entity.TargetId).Select(g => g.Name).FirstOrDefaultAsync()) ?? entity.TargetId.ToString();
+            var resourcePath = entity.FolderId.HasValue
+                ? await auditService.ResolveFolderPathAsync(entity.FolderId)
+                : await auditService.ResolveDocumentPathAsync(entity.DocumentId);
+
+            await auditService.LogAsync(userId, ACCESS_OVERRIDE_DELETED, new
+            {
+                entity.OverrideId,
+                Target = targetName,
+                entity.TargetType,
+                Resource = resourcePath,
+                Permissions = AuditService.SummarizeOverrideFlags(entity),
+            });
 
             return Ok(new { success = true, message = "Override deleted" });
         }
