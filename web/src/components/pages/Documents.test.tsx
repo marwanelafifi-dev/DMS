@@ -217,7 +217,7 @@ describe('Document Library', () => {
     expect(screen.getAllByText(/\d{2} \w{3} 2026, \d{2}:\d{2}/).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('shows complete file and folder names in the library table', async () => {
+  it('truncates a long file name to one line (with the full name in a title tooltip) but wraps a long folder name', async () => {
     vi.mocked(apiClient.getFolders).mockResolvedValue({
       success: true,
       data: [
@@ -236,8 +236,12 @@ describe('Document Library', () => {
     const fileName = within(table).getByText('Production Shift Handover.txt');
     const folderName = within(table).getByText('Information Security Policies and Procedures');
 
-    expect(fileName).toHaveClass('whitespace-nowrap');
-    expect(fileName).not.toHaveClass('truncate');
+    // Truncated to keep a long name from pushing the Actions column off
+    // screen (see DocumentList.tsx) — the full name is still available via
+    // the title attribute rather than being silently cut off with no way to
+    // read it.
+    expect(fileName).toHaveClass('truncate');
+    expect(fileName).toHaveAttribute('title', 'Production Shift Handover.txt');
     expect(folderName).toHaveClass('whitespace-normal', 'break-words');
     expect(folderName).not.toHaveClass('truncate');
   });
@@ -250,7 +254,7 @@ describe('Document Library', () => {
     const row = openButton.closest('tr');
     expect(row).not.toBeNull();
 
-    expect(within(row!).getByText('Calibration Procedure SOP-204.pdf')).toHaveClass('whitespace-nowrap');
+    expect(within(row!).getByText('Calibration Procedure SOP-204.pdf')).toHaveClass('truncate');
     expect(within(row!).getByText('Production')).toBeInTheDocument();
     expect(within(row!).getByText('Quality')).toBeInTheDocument();
     expect(within(row!).queryByText('Controlled')).not.toBeInTheDocument();
