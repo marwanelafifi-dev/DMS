@@ -19,8 +19,8 @@ public class DmsApprovalDocument
     // other document in the same batch. QA/Manager/Release actions target one
     // DmsApprovalDocument row at a time; they never touch a sibling document's
     // stage/status just because it was uploaded/submitted together.
-    public string CurrentStage { get; set; } = "qa_review";  // qa_review | manager_review | final_release | released | rejected
-    public string Status { get; set; } = "pending";  // pending | correction_requested | approved | rejected
+    public string CurrentStage { get; set; } = "qa_review";  // qa_review | manager_review | final_release | released | rejected | superseded
+    public string Status { get; set; } = "pending";  // pending | correction_requested | approved | rejected | superseded
     public string? QaNotes { get; set; }
     public string? ManagerNotes { get; set; }
     public string? ReleaseNotes { get; set; }

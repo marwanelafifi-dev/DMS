@@ -1,5 +1,31 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 51 (2026-08-28) — One Active Approval Workflow per Document
+
+**Status:** Complete in code. PostgreSQL migration `090` is required during deployment.
+
+- Root cause of duplicate QA/Manager Review rows: `POST /api/approvals/submit-batch` always created a new approval-document row and never checked for an existing `pending` or `correction_requested` workflow for the same document.
+- Upload New Version compounded the issue by redirecting every non-approved historical workflow row to the new current version, causing two queue rows to display the same file and version.
+- Submission now returns HTTP 409 with a clear message when any selected document already has an active approval workflow.
+- Migration `090_one_active_approval_per_document.sql` retires hidden pending rows left behind after another duplicate released/rejected the shared document, preserves the most relevant remaining active row, retires older duplicates as `superseded`, and adds a partial unique index on `document_id` for active statuses. A correction workflow with an open task is preserved ahead of an accidental newer duplicate.
+- Upload and Revert now redirect only the single live `pending`/`correction_requested` workflow. Approved, rejected, and superseded history remains attached to its original version.
+- Releasing one document can no longer merely hide a second pending duplicate: new duplicates are prevented by both API validation and the database invariant, while existing duplicates are cleaned by migration `090`.
+
+### Files modified
+
+- `api/Controllers/ApprovalsController.cs`
+- `api/Controllers/DocumentsController.cs`
+- `api/Models/DmsApprovalDocument.cs`
+- `infra/db/init/090_one_active_approval_per_document.sql`
+- `CLAUDE.md`
+
+### Verification
+
+- `git diff --check` and `docker compose config --quiet`: passed.
+- The .NET SDK is unavailable on the Windows workstation; rebuild and health-check the API container during Ubuntu deployment.
+
+---
+
 ## Session 50 (2026-08-28) — Controlled Version Deletion, Bulk-Action Governance, and Owner/Manager Precedence
 
 **Status:** Complete in code. PostgreSQL migrations `088` and `089` are required during deployment.

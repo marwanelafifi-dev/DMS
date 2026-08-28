@@ -1043,7 +1043,7 @@ public class DocumentsController(
             // version" endpoint never did. Any document re-uploaded through
             // this path (Document Library's own Upload New Version, not via
             // a task correction) while an approval was still in progress
-            // (Status != "approved") drifted CurrentVersionId away from the
+            // drifted CurrentVersionId away from the
             // version the approval row actually points at — the Document
             // Library's stage lookup, keyed by CurrentVersionId, then finds
             // no match at all and silently falls back to a stale/default
@@ -1052,17 +1052,19 @@ public class DocumentsController(
             // status/notes exactly as they were — this endpoint isn't a
             // review decision, just a newer file for whatever's already
             // in flight.
-            var activeApprovalDocuments = await context.ApprovalDocuments
-                .Where(ad => ad.DocumentId == id && ad.Status != "approved")
-                .ToListAsync();
-            foreach (var activeApprovalDocument in activeApprovalDocuments)
+            var activeApprovalDocument = await context.ApprovalDocuments
+                .Where(ad => ad.DocumentId == id
+                    && (ad.Status == "pending" || ad.Status == "correction_requested"))
+                .OrderByDescending(ad => ad.UpdatedAt)
+                .FirstOrDefaultAsync();
+            if (activeApprovalDocument != null)
                 activeApprovalDocument.VersionId = version.VersionId;
 
             // A new upload after release is a new controlled revision. Keep the
             // historic version Released, but make the new current revision a
             // Draft until it is explicitly submitted. Correction uploads tied
             // to an active approval keep that workflow's current stage.
-            if (activeApprovalDocuments.Count == 0)
+            if (activeApprovalDocument == null)
                 document.Status = "draft";
 
             await context.SaveChangesAsync();
@@ -1179,14 +1181,16 @@ public class DocumentsController(
             document.CurrentVersionId = revertedVersion.VersionId;
             document.UpdatedAt = DateTime.UtcNow;
 
-            // Same re-pointing as UploadVersion above — a revert while an
-            // approval is still in progress must not leave it referencing a
-            // version that's no longer current.
-            var activeApprovalDocumentsForRevert = await context.ApprovalDocuments
-                .Where(ad => ad.DocumentId == id && ad.Status != "approved")
-                .ToListAsync();
-            foreach (var activeApprovalDocument in activeApprovalDocumentsForRevert)
-                activeApprovalDocument.VersionId = revertedVersion.VersionId;
+            // Same re-pointing as UploadVersion above — only the one live
+            // approval may follow a revert. Rejected/approved/superseded
+            // historical workflows remain attached to their original version.
+            var activeApprovalDocumentForRevert = await context.ApprovalDocuments
+                .Where(ad => ad.DocumentId == id
+                    && (ad.Status == "pending" || ad.Status == "correction_requested"))
+                .OrderByDescending(ad => ad.UpdatedAt)
+                .FirstOrDefaultAsync();
+            if (activeApprovalDocumentForRevert != null)
+                activeApprovalDocumentForRevert.VersionId = revertedVersion.VersionId;
 
             await context.SaveChangesAsync();
 

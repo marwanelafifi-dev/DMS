@@ -174,6 +174,24 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (documents.Count != request.DocumentIds.Count)
                 return BadRequest(new { success = false, error = "Some documents not found" });
 
+            // One document can have only one live approval route. Without this
+            // guard, submitting the same document again created a second
+            // DmsApprovalDocument; both rows advanced independently and the
+            // Manager/QA queues displayed the same file twice. Migration 090
+            // adds the matching database invariant for concurrent requests.
+            var requestedDocumentIds = documents.Select(document => document.DocumentId).ToList();
+            var documentAlreadyInReview = await context.ApprovalDocuments
+                .Where(ad => requestedDocumentIds.Contains(ad.DocumentId)
+                    && (ad.Status == "pending" || ad.Status == "correction_requested"))
+                .Select(ad => ad.Document!.Title)
+                .FirstOrDefaultAsync();
+            if (documentAlreadyInReview != null)
+                return Conflict(new
+                {
+                    success = false,
+                    error = $"{documentAlreadyInReview} is already under approval. Complete or reject its current workflow before submitting it again."
+                });
+
             // Previously unchecked beyond ownership — any authenticated user,
             // including Reader, could submit a document into the approval
             // workflow. Now requires SubmitForApproval on the effective role
@@ -239,7 +257,17 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             }
 
             context.Approvals.Add(approval);
-            await context.SaveChangesAsync();
+            try
+            {
+                await context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // The partial unique index from migration 090 is the final
+                // defense when two submissions pass the friendly pre-check
+                // concurrently.
+                return Conflict(new { success = false, error = "One or more selected documents are already under approval. Refresh the page and try again." });
+            }
 
             // Audit
             await auditService.LogAsync(userId, "DOCUMENT_SUBMITTED_FOR_APPROVAL", new
