@@ -11,7 +11,7 @@ from contextlib import closing
 from pathlib import Path
 
 from docling.document_converter import DocumentConverter
-from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -81,6 +81,11 @@ def initialize_database() -> None:
             )
             """
         )
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(documents)").fetchall()
+        }
+        if "document_id" not in columns:
+            connection.execute("ALTER TABLE documents ADD COLUMN document_id TEXT")
         connection.commit()
 
 
@@ -325,30 +330,45 @@ def convert_document(file: UploadFile = File(...)) -> dict[str, str]:
 
 
 @app.post("/api/documents/upload")
-def upload_document(file: UploadFile = File(...)) -> dict[str, int | str]:
+def upload_document(
+    file: UploadFile = File(...),
+    document_id: str | None = Form(default=None),
+) -> dict[str, int | str | None]:
     filename, markdown_content = convert_uploaded_file(file)
     with closing(sqlite3.connect(DATABASE_PATH)) as connection:
         cursor = connection.execute(
-            "INSERT INTO documents (filename, content) VALUES (?, ?)",
-            (filename, markdown_content),
+            "INSERT INTO documents (document_id, filename, content) VALUES (?, ?, ?)",
+            (document_id, filename, markdown_content),
         )
         doc_id = cursor.lastrowid
         connection.commit()
 
     return {
         "id": int(doc_id),
+        "document_id": document_id,
         "filename": filename,
         "content": markdown_content,
     }
 
 
+@app.delete("/api/documents/{document_id}")
+def delete_document_index(document_id: str) -> dict[str, int | bool]:
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection:
+        cursor = connection.execute(
+            "DELETE FROM documents WHERE document_id = ?",
+            (document_id,),
+        )
+        connection.commit()
+    return {"success": True, "deleted": cursor.rowcount}
+
+
 @app.get("/api/documents/search")
-def search_documents(q: str = Query(...)) -> list[dict[str, int | str]]:
+def search_documents(q: str = Query(...)) -> list[dict[str, int | str | None]]:
     with closing(sqlite3.connect(DATABASE_PATH)) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
             """
-            SELECT id, filename, content, created_at
+            SELECT id, document_id, filename, content, created_at
             FROM documents
             WHERE content LIKE ? COLLATE NOCASE
             ORDER BY created_at DESC, id DESC

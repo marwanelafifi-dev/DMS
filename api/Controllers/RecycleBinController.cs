@@ -7,7 +7,12 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/recycle-bin")]
-public class RecycleBinController(DmsContext context, AuditService auditService, MinioService minioService) : BaseController
+public class RecycleBinController(
+    DmsContext context,
+    AuditService auditService,
+    MinioService minioService,
+    IHttpClientFactory httpClientFactory,
+    ILogger<RecycleBinController> logger) : BaseController
 {
     private async Task<bool> IsFullAccessAsync(Guid userId) =>
         (await GetPageAccessRoleAsync(context, userId))?.BypassFolderPermissions == true;
@@ -114,6 +119,22 @@ public class RecycleBinController(DmsContext context, AuditService auditService,
         {
             try { await minioService.DeleteAsync(key); }
             catch { /* Database purge is authoritative; storage cleanup is best-effort. */ }
+        }
+        var ocrClient = httpClientFactory.CreateClient("OcrRag");
+        foreach (var documentId in documentIds)
+        {
+            try
+            {
+                using var response = await ocrClient.DeleteAsync($"api/documents/{documentId}");
+                if (!response.IsSuccessStatusCode)
+                    logger.LogWarning("OCR index cleanup returned {StatusCode} for document {DocumentId}", response.StatusCode, documentId);
+            }
+            catch (Exception ex)
+            {
+                // The database purge remains authoritative; stale OCR rows are
+                // also excluded by the active-document filter in Search.
+                logger.LogWarning(ex, "OCR index cleanup failed for document {DocumentId}", documentId);
+            }
         }
         await auditService.LogAsync(userId, AuditActions.RECYCLE_BIN_PURGED, new { request.EmptyAll, FoldersDeleted = foldersToDelete.Count, DocumentsDeleted = documentsToDelete.Count, FilesDeleted = storageKeys.Count });
         return Ok(new { success = true, message = request.EmptyAll ? "Recycle Bin emptied permanently" : "Selected items deleted permanently" });

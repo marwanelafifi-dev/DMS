@@ -1,5 +1,6 @@
 export interface ParsedDocument {
   id: number;
+  document_id?: string | null;
   filename: string;
   content: string;
   created_at?: string;
@@ -46,9 +47,10 @@ export const doclingApi = {
     }
   },
 
-  async uploadDocument(file: File): Promise<ParsedDocument> {
+  async uploadDocument(file: File, documentId: string): Promise<ParsedDocument> {
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('document_id', documentId);
 
     const response = await fetch(
       `${DOCLING_API_ORIGIN}/api/documents/upload`,

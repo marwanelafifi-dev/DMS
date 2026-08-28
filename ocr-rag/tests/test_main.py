@@ -152,12 +152,38 @@ class DocumentParsingApiTests(unittest.TestCase):
             [
                 {
                     "id": uploaded["id"],
+                    "document_id": None,
                     "filename": "calibration-record.docx",
                     "content": "# Calibration record\n\nUnique local torque verification phrase.",
                     "created_at": ANY,
                 }
             ],
         )
+
+    def test_delete_removes_only_the_requested_document_index(self) -> None:
+        self.main.converter = _RecordingConverter("# Indexed content\n\nUnique purge phrase.")
+        first = self.client.post(
+            "/api/documents/upload",
+            files={"file": ("first.docx", b"first", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_id": "document-to-purge"},
+        )
+        second = self.client.post(
+            "/api/documents/upload",
+            files={"file": ("second.docx", b"second", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_id": "document-to-keep"},
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+
+        response = self.client.delete("/api/documents/document-to-purge")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"success": True, "deleted": 1})
+        remaining = self.client.get(
+            "/api/documents/search",
+            params={"q": "Unique purge phrase"},
+        ).json()
+        self.assertEqual([item["document_id"] for item in remaining], ["document-to-keep"])
 
     def test_convert_returns_markdown_without_adding_a_search_record(self) -> None:
         self.main.converter = _RecordingConverter(

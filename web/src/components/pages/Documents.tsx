@@ -1670,7 +1670,7 @@ export function Documents() {
           setActiveUploadStage('parsing');
           let parsedContent: string | undefined;
           try {
-            const parsedDocument = await doclingApi.uploadDocument(uploadFile);
+            const parsedDocument = await doclingApi.uploadDocument(uploadFile, createdDocument.documentId);
             parsedContent = parsedDocument.content;
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Local parsing failed';

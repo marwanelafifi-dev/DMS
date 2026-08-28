@@ -1661,6 +1661,7 @@ export function Tasks() {
           file={pendingLinkedDocFile}
           onClose={() => setPendingLinkedDocFile(null)}
           onUploaded={handleLinkedDocumentVersionUploaded}
+          workflowMode="correction"
         />
       )}
     </div>

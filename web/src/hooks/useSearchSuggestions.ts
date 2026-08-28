@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { doclingApi, type ParsedDocument } from '../services/doclingApi';
 import { matchesDmsMetadata } from '../utils/dmsMetadataSearch';
 import type { Document } from '../types';
+import { filterActiveOcrDocuments } from '../utils/activeOcrDocuments';
 
 const DEBOUNCE_MS = 200;
 const MIN_QUERY_LENGTH = 2;
@@ -28,8 +29,9 @@ export function useSearchSuggestions(query: string, dmsDocuments: Document[] = [
     const timer = window.setTimeout(async () => {
       setIsLoading(true);
       try {
-        const contentMatches = await doclingApi.searchDocuments(trimmed, controller.signal);
+        const indexedMatches = await doclingApi.searchDocuments(trimmed, controller.signal);
         if (controller.signal.aborted) return;
+        const contentMatches = filterActiveOcrDocuments(indexedMatches, dmsDocuments);
 
         // Some DMS records (e.g. metadata-only entries with no uploaded file
         // version yet) have an empty fileName — fall back to their

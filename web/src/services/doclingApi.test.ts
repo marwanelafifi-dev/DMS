@@ -23,13 +23,14 @@ describe('same-origin Docling API client', () => {
       type: 'application/pdf',
     });
 
-    await expect(doclingApi.uploadDocument(file)).resolves.toEqual(parsedDocument);
+    await expect(doclingApi.uploadDocument(file, 'document-12')).resolves.toEqual(parsedDocument);
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/ocr/api/documents/upload');
     expect(options.method).toBe('POST');
     expect(options.body).toBeInstanceOf(FormData);
     expect((options.body as FormData).get('file')).toBe(file);
+    expect((options.body as FormData).get('document_id')).toBe('document-12');
     expect(options.headers).toBeUndefined();
   });
 

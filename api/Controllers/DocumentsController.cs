@@ -1058,6 +1058,13 @@ public class DocumentsController(
             foreach (var activeApprovalDocument in activeApprovalDocuments)
                 activeApprovalDocument.VersionId = version.VersionId;
 
+            // A new upload after release is a new controlled revision. Keep the
+            // historic version Released, but make the new current revision a
+            // Draft until it is explicitly submitted. Correction uploads tied
+            // to an active approval keep that workflow's current stage.
+            if (activeApprovalDocuments.Count == 0)
+                document.Status = "draft";
+
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, DOCUMENT_UPLOADED, new
@@ -1088,6 +1095,7 @@ public class DocumentsController(
                     version.FileSizeBytes,
                     version.Sha256Hash,
                     version.S3ObjectKey,
+                    version.Status,
                     version.CreatedAt
                 }
             });

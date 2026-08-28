@@ -14,6 +14,7 @@ import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 import { statusLabels } from '../../utils/documentStatus';
 import { resolveLibraryStatus } from '../../fixtures/documentLibrary';
 import { folderPathLabel } from '../../utils/folderPath';
+import { filterActiveOcrDocuments, findActiveDmsDocument } from '../../utils/activeOcrDocuments';
 
 export function Search() {
   const navigate = useNavigate();
@@ -49,30 +50,13 @@ export function Search() {
     maxSize: '',
   });
 
-  const findDmsDocument = useCallback((filename: string) => {
-    if (!filename || !allDmsDocuments.length) return undefined;
-
-    const filenameLower = filename.toLowerCase().trim();
-    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '').toLowerCase().trim();
-
-    // Step 1: Try exact filename match (most reliable)
-    const exactMatch = allDmsDocuments.find(
-      (d) => d.fileName?.toLowerCase().trim() === filenameLower
-    );
-    if (exactMatch) return exactMatch;
-
-    // Step 2: Try name without extension match
-    const nameMatch = allDmsDocuments.find(
-      (d) => (d.name ?? d.title ?? '').toLowerCase().trim() === nameWithoutExt
-    );
-    if (nameMatch) return nameMatch;
-
-    // Step 3: Return undefined if no match (not a partial match fallback)
-    return undefined;
-  }, [allDmsDocuments]);
+  const findDmsDocument = useCallback(
+    (document: ParsedDocument) => findActiveDmsDocument(document, allDmsDocuments),
+    [allDmsDocuments],
+  );
 
   const openInLibrary = useCallback((document: ParsedDocument) => {
-    const dmsDoc = findDmsDocument(document.filename);
+    const dmsDoc = findDmsDocument(document);
     if (dmsDoc) {
       navigate(`/documents?preview=${encodeURIComponent(dmsDoc.documentId)}`);
     } else {
@@ -108,9 +92,11 @@ export function Search() {
     setIsLoading(true);
     setHasSearched(true);
     try {
-      const contentMatches = await doclingApi.searchDocuments(query, signal);
+      const indexedMatches = await doclingApi.searchDocuments(query, signal);
       if (signal?.aborted) return;
-      contentMatchesRef.current = contentMatches;
+      contentMatchesRef.current = indexedMatches;
+
+      const contentMatches = filterActiveOcrDocuments(indexedMatches, allDmsDocumentsRef.current);
 
       const metadataMatches = findMetadataMatches(allDmsDocumentsRef.current, contentMatches, query);
       // No "no results" toast here — the DMS documents list (used for the
@@ -136,8 +122,9 @@ export function Search() {
   // re-running/aborting the OCR search).
   useEffect(() => {
     if (!hasSearched || !searchQuery) return;
-    const metadataMatches = findMetadataMatches(allDmsDocuments, contentMatchesRef.current, searchQuery);
-    setResults([...contentMatchesRef.current, ...metadataMatches]);
+    const contentMatches = filterActiveOcrDocuments(contentMatchesRef.current, allDmsDocuments);
+    const metadataMatches = findMetadataMatches(allDmsDocuments, contentMatches, searchQuery);
+    setResults([...contentMatches, ...metadataMatches]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allDmsDocuments]);
 
@@ -448,7 +435,7 @@ export function Search() {
               </thead>
               <tbody>
                 {results.map((ocrDoc, index) => {
-                  const dmsDoc = findDmsDocument(ocrDoc.filename);
+                  const dmsDoc = findDmsDocument(ocrDoc);
                   const rowBg = index % 2 === 0 ? 'bg-white dark:bg-navy-950' : 'bg-slate-50 dark:bg-slate-900';
                 return (
                     <tr

@@ -69,6 +69,22 @@ describe('parsed document search', () => {
     expect(await screen.findByText('document library preview')).toBeInTheDocument();
   });
 
+  it('hides OCR rows that no longer have an active DMS document', async () => {
+    vi.mocked(doclingApi.searchDocuments).mockResolvedValue([
+      {
+        id: 99,
+        filename: 'permanently-deleted.pptx',
+        content: 'Customer support content from an orphaned OCR row.',
+      },
+    ]);
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({ success: true, data: [] });
+
+    renderSearch('/search?q=customer');
+
+    expect(await screen.findByText(/No parsed documents found/)).toBeInTheDocument();
+    expect(screen.queryByText('permanently-deleted.pptx')).not.toBeInTheDocument();
+  });
+
   it('keeps the existing filtered DMS metadata search available', async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, 'searchDocuments').mockResolvedValue({

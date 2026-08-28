@@ -1,5 +1,58 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 49 (2026-08-28) — Active-Only OCR Search and Controlled New-Version Workflow
+
+**Status:** Complete. No PostgreSQL migration is required. The OCR sidecar performs a backward-compatible SQLite schema upgrade on startup.
+
+### Recycle Bin and OCR search synchronization
+
+- OCR/Docling search results and live suggestions now treat the active, accessible DMS document list as authoritative. A soft-deleted document disappears from search as soon as it enters the Recycle Bin, becomes searchable again if restored, and remains hidden after permanent deletion.
+- The root cause was the OCR sidecar's independent SQLite `documents` index: deleting the PostgreSQL document did not remove its parsed-content row, leaving an orphan result with blank DMS metadata.
+- New OCR index rows now store the stable DMS `document_id`; legacy rows without that column use an exact-filename compatibility fallback only when an active DMS document still exists.
+- Permanent Recycle Bin purge now asks the OCR service to delete index rows for the purged document IDs. This cleanup is best-effort and cannot roll back the authoritative PostgreSQL purge.
+- The OCR SQLite database adds `document_id` automatically with `ALTER TABLE` when the sidecar starts, so the existing `ocrdata` volume is upgraded in place.
+- The browser-facing nginx `/ocr/` gateway permits only GET/POST. OCR index DELETE remains an internal API-to-sidecar operation and is not exposed to browser clients.
+
+### New version lifecycle and approval choice
+
+- Uploading a new version of a Released document no longer leaves the document showing Released. The historical version remains Released in Version History, while the newly uploaded current version and document return to Draft.
+- Upload New Version now offers two explicit actions:
+  - **Save as Draft** uploads the new controlled revision without starting workflow.
+  - **Submit for Approval** uploads the revision and submits that new current version through QA Review → Manager Review → Final Release.
+- Optional approval notes are forwarded to QA with the new submission.
+- Submit for Approval is disabled unless the user's effective document permission includes `SubmitForApproval`; the backend independently enforces that permission and the folder owner/manager routing prerequisites.
+- If upload succeeds but submission fails, the new revision remains safely saved as Draft and the modal reports that partial outcome without uploading a duplicate on retry.
+- Correction-task uploads keep their existing correction/resubmission path and do not create a second approval batch. Uploads already tied to an active workflow continue to re-point that workflow to the new version.
+
+### Files modified
+
+- `api/Controllers/DocumentsController.cs`
+- `api/Controllers/RecycleBinController.cs`
+- `ocr-rag/main.py`
+- `ocr-rag/tests/test_main.py`
+- `web/nginx.conf`
+- `web/src/components/custom/UploadNewVersionModal.tsx`
+- `web/src/components/custom/UploadNewVersionModal.test.tsx`
+- `web/src/components/pages/Documents.tsx`
+- `web/src/components/pages/Documents.test.tsx`
+- `web/src/components/pages/Search.tsx`
+- `web/src/components/pages/Search.test.tsx`
+- `web/src/components/pages/Tasks.tsx`
+- `web/src/hooks/useSearchSuggestions.ts`
+- `web/src/services/doclingApi.ts`
+- `web/src/services/doclingApi.test.ts`
+- `web/src/utils/activeOcrDocuments.ts`
+
+### Verification
+
+- Focused frontend tests: 9/9 passed (`UploadNewVersionModal`, Search, and Docling API client).
+- `docker compose config --quiet`: passed.
+- `git diff --check`: passed (line-ending conversion warnings only).
+- Frontend type-check introduced no new errors; the existing unrelated errors remain in `NotificationsBell.tsx`, `RolePermissions.tsx`, and `Dashboard.tsx`.
+- Python and .NET SDKs are unavailable on the Windows workstation; rebuild and health-check the `api`, `ocr-rag`, and `web` containers during Ubuntu deployment.
+
+---
+
 ## Session 45 (2026-08-27) — Folder Owner File Controls and Ownership Boundaries
 
 **Status:** Complete. No database migration is required for this session.

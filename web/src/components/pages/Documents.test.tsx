@@ -394,8 +394,8 @@ describe('Document Library', () => {
     expect(upload).toHaveBeenNthCalledWith(1, 'uploaded-one', files[0]);
     expect(upload).toHaveBeenNthCalledWith(2, 'uploaded-two', files[1]);
     expect(doclingApi.uploadDocument).toHaveBeenCalledTimes(2);
-    expect(doclingApi.uploadDocument).toHaveBeenNthCalledWith(1, files[0]);
-    expect(doclingApi.uploadDocument).toHaveBeenNthCalledWith(2, files[1]);
+    expect(doclingApi.uploadDocument).toHaveBeenNthCalledWith(1, files[0], 'uploaded-one');
+    expect(doclingApi.uploadDocument).toHaveBeenNthCalledWith(2, files[1], 'uploaded-two');
 
     await user.click(screen.getByRole('button', { name: 'Preview Incoming Audit.pdf' }));
     expect(screen.getByRole('heading', { name: 'Parsed Incoming Audit.pdf' })).toBeInTheDocument();
