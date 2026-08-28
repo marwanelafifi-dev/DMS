@@ -961,17 +961,19 @@ export function UserManagement() {
                 This cannot be undone. If this user still owns documents, tasks, or e-signatures, the deletion will be rejected — deactivate them instead in that case.
               </p>
               <div className="pt-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="ownership-transfer-user" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Or transfer their owned folders/documents/tasks to another user first
                 </label>
                 <select
+                  id="ownership-transfer-user"
                   value={transferToUserId}
                   onChange={(e) => setTransferToUserId(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-gray-900 dark:text-white"
                 >
                   <option value="">Select a user…</option>
-                  {users
+                  {allUsers
                     .filter((u) => u.userId !== deleteConfirm.userId && u.isActive)
+                    .sort((a, b) => a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' }))
                     .map((u) => (
                       <option key={u.userId} value={u.userId}>{u.fullName}</option>
                     ))}

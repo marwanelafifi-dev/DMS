@@ -1,5 +1,46 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 56 (2026-08-28) — Permanent Deletion of Migrated Folders
+
+**Status:** Complete. Database migration required.
+
+- KnowledgeTree and other legacy-imported folders can now be permanently removed through the Recycle Bin like ordinary folders.
+- The legacy archive remains append-only: deleting the live folder detaches its relational reference and records the original folder UUID and deletion time in immutable tombstone fields.
+- Migrated document deletion already follows the equivalent tombstone design from migration `082`; together, migrated files and folders no longer block Recycle Bin purging.
+
+### Files modified
+
+- `infra/db/init/091_legacy_folder_delete_tombstones.sql`
+- `CLAUDE.md`
+
+### Deployment requirement
+
+- Existing PostgreSQL volumes must apply migration `091_legacy_folder_delete_tombstones.sql` manually; restarting the container does not rerun Docker initialization scripts on an existing volume.
+
+---
+
+## Session 55 (2026-08-28) — Complete User Ownership Transfer List
+
+**Status:** Complete. Frontend-only; no database migration is required.
+
+- The permanent user deletion dialog now offers every active user as an ownership-transfer recipient, including users outside the currently displayed Admin Users page.
+- Transfer recipients are no longer restricted by role; another Full Access user can be selected normally.
+- The user being deleted and inactive accounts remain excluded, and eligible recipients are sorted alphabetically.
+
+### Files modified
+
+- `web/src/components/custom/UserManagement.tsx`
+- `web/src/components/custom/UserManagement.test.tsx`
+- `CLAUDE.md`
+
+### Verification
+
+- Frontend regression test covering a transfer recipient loaded outside the current paginated page: passed.
+- Frontend production build: passed.
+- Frontend type-check introduced no new errors; the existing unrelated errors remain in `NotificationsBell.tsx` and `Dashboard.tsx`.
+
+---
+
 ## Session 54 (2026-08-28) — Document Library Return State and Unsaved Edit Recovery
 
 **Status:** Complete. Frontend-only; no database migration is required.
