@@ -139,6 +139,7 @@ export function DatabaseBackup() {
   const { showSuccess, showError } = useToast();
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingDocuments, setIsExportingDocuments] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [recycleItems, setRecycleItems] = useState<Array<{ id: string; type: 'file' | 'folder'; name: string; deletedAt: string; deletedBy?: string | null }>>([]);
@@ -400,6 +401,18 @@ export function DatabaseBackup() {
     }
   };
 
+  const handleDocumentMetadataExport = async () => {
+    setIsExportingDocuments(true);
+    try {
+      await apiClient.downloadDocumentMetadataCsv();
+      showSuccess('Document metadata CSV downloaded');
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to export document metadata');
+    } finally {
+      setIsExportingDocuments(false);
+    }
+  };
+
   const handleChooseFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith('.sql')) {
       showError('Only .sql backup files (from Download Backup) are supported');
@@ -513,6 +526,32 @@ export function DatabaseBackup() {
           </CardBody>
         </Card>
       </div>
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
+          <div className="flex items-start gap-3">
+            <div className="rounded bg-[#eef4fb] p-2 text-[#3f66c9] dark:bg-blue-900/30 dark:text-blue-300"><ScrollText className="h-4 w-4" /></div>
+            <div>
+              <h3 className="font-semibold text-[#26334d] dark:text-white">Document Metadata Export</h3>
+              <p className="text-sm text-[#718198] dark:text-slate-400">Download the current metadata for every active document as a CSV file</p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            onClick={handleDocumentMetadataExport}
+            disabled={isExportingDocuments}
+            leftIcon={<Download className="h-4 w-4" />}
+          >
+            {isExportingDocuments ? 'Preparing CSV…' : 'Export Documents CSV'}
+          </Button>
+        </div>
+        <CardBody>
+          <p className="text-sm leading-6 text-[#526079] dark:text-slate-300">
+            Includes Doc ID, system ID, document and file names, owner, description, full folder path, department,
+            category, tags, status, current version, created date, and modified date. Documents in the Recycle Bin are excluded.
+          </p>
+        </CardBody>
+      </Card>
 
       <ScheduledBackups />
 

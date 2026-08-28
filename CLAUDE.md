@@ -1,5 +1,62 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 53 (2026-08-28) — Admin Document Metadata CSV Export
+
+**Status:** Complete in code. No database migration is required.
+
+- Added **Document Metadata Export** to Admin → Database for Full Access users.
+- The CSV exports every active document and excludes documents currently in the Recycle Bin.
+- Columns: Doc ID, internal system ID, document name, current file name, owner, description, full folder path, department, category, tags, status, current version, created date, and modified date.
+- Folder paths are resolved from the complete parent hierarchy and written in a readable `Root / Child / Folder` format.
+- CSV values are quoted, embedded quotes/newlines are escaped, spreadsheet-formula prefixes are neutralized, and a UTF-8 BOM is included for reliable Excel display.
+- Authorization is enforced by the API, not only by the Admin UI. Every export is recorded in the audit trail as `DOCUMENT_METADATA_EXPORTED` with its document count.
+
+### Files modified
+
+- `api/Controllers/DatabaseBackupController.cs`
+- `api/Services/AuditService.cs`
+- `web/src/components/custom/DatabaseBackup.tsx`
+- `web/src/utils/api.ts`
+- `CLAUDE.md`
+
+### Verification
+
+- `git diff --check`: passed.
+- `docker compose config --quiet`: passed.
+- Frontend production build: passed.
+- Focused Search regression tests: 5/5 passed.
+- Frontend type-check introduced no new errors; the existing unrelated errors remain in `NotificationsBell.tsx` and `Dashboard.tsx`.
+- Local API compilation could not run because the Windows workstation has no .NET SDK and Docker Desktop is not running; rebuild and health-check the API container during Ubuntu deployment.
+
+---
+
+## Session 52 (2026-08-28) — Doc ID Search and Result Visibility
+
+**Status:** Complete. No database migration is required.
+
+- The OCR Document Search metadata merger now searches the real user-facing Doc ID field (`originalDocumentId`) in addition to extracted OCR content and the separate release tracking code.
+- Exact and partial Doc ID searches are case-insensitive and tolerate the same spacing/period normalization used by other metadata fields.
+- Metadata-only OCR results retain the stable DMS `document_id`, preventing a same-filename document in another folder from being linked accidentally.
+- The main results table and the advanced DMS metadata results table now display a dedicated **Doc ID** column.
+- `GET /api/documents?search=...` now matches title, Doc ID, and release tracking code instead of title alone.
+- Search remains access-controlled and excludes Recycle Bin/permanently deleted documents as required. If a reserved Doc ID is absent from search after this fix, check the Full Access Recycle Bin or whether the current user has Read access to its active document.
+
+### Files modified
+
+- `api/Controllers/DocumentsController.cs`
+- `web/src/components/pages/Search.tsx`
+- `web/src/components/pages/Search.test.tsx`
+- `web/src/hooks/useSearchSuggestions.ts`
+- `web/src/utils/dmsMetadataSearch.ts`
+- `CLAUDE.md`
+
+### Verification
+
+- Focused Search tests: 5/5 passed, including a Doc ID-only match with no OCR content result.
+- Frontend type-check introduced no new errors; the existing unrelated errors remain in `NotificationsBell.tsx` and `Dashboard.tsx`.
+
+---
+
 ## Session 51 (2026-08-28) — One Active Approval Workflow per Document
 
 **Status:** Complete in code. PostgreSQL migration `090` is required during deployment.

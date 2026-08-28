@@ -1115,6 +1115,21 @@ class APIClient {
     URL.revokeObjectURL(url);
   }
 
+  async downloadDocumentMetadataCsv() {
+    const response = await this.client.get('/database-backup/documents/export', { responseType: 'blob' });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const match = disposition?.match(/filename="?([^";]+)"?/);
+    const fileName = match?.[1] ?? `dms-document-metadata-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async restoreDatabaseBackup(file: File) {
     const formData = new FormData();
     formData.append('file', file);

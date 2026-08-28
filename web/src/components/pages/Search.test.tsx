@@ -21,6 +21,7 @@ const libraryDocument = {
   documentId: 'dms-document-7',
   folderId: 'folder-1',
   currentVersionId: 'version-7',
+  originalDocumentId: 'SWS-25120005',
   name: 'calibration-record',
   title: 'calibration-record',
   fileName: 'calibration-record.docx',
@@ -81,8 +82,18 @@ describe('parsed document search', () => {
 
     renderSearch('/search?q=customer');
 
-    expect(await screen.findByText(/No parsed documents found/)).toBeInTheDocument();
+    expect(await screen.findByText(/No accessible documents found/)).toBeInTheDocument();
     expect(screen.queryByText('permanently-deleted.pptx')).not.toBeInTheDocument();
+  });
+
+  it('finds an active document by Doc ID and displays the Doc ID column without an OCR content match', async () => {
+    vi.mocked(doclingApi.searchDocuments).mockResolvedValue([]);
+
+    renderSearch('/search?q=SWS-25120005');
+
+    expect(await screen.findByText('calibration-record.docx')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Doc ID' })).toBeInTheDocument();
+    expect(screen.getByText('SWS-25120005')).toBeInTheDocument();
   });
 
   it('keeps the existing filtered DMS metadata search available', async () => {

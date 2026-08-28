@@ -77,6 +77,7 @@ export function Search() {
       .filter(({ doc, displayName }) => displayName && !matchedFileNames.has(displayName.toLowerCase()) && matchesDmsMetadata(doc, query))
       .map(({ doc, displayName }, index): ParsedDocument => ({
         id: -(index + 1),
+        document_id: doc.documentId,
         filename: displayName,
         content: doc.description || '',
         created_at: (doc as any).createdAt,
@@ -261,13 +262,13 @@ export function Search() {
     <div className="space-y-6">
       <div>
         <h1 className="page-heading">OCR Document Search</h1>
-        <p className="page-subtitle">Search Markdown content extracted locally by Docling</p>
+        <p className="page-subtitle">Search document content, Doc IDs, and DMS metadata</p>
       </div>
 
       <Card className="dark:bg-navy-950">
         <CardBody>
           <label className="mb-2 block text-sm font-medium text-[#26334d] dark:text-white" htmlFor="parsed-document-search">
-            Search parsed document contents
+            Search documents
           </label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div ref={searchBoxRef} className="relative min-w-0 flex-1">
@@ -282,7 +283,7 @@ export function Search() {
                 }}
                 onFocus={() => setIsSuggestionsOpen(true)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search extracted text, tables, and headings..."
+                placeholder="Search content, file name, or Doc ID..."
                 role="combobox"
                 aria-expanded={isSuggestionsOpen && searchQuery.trim().length >= 2}
                 aria-controls="ocr-search-suggestions"
@@ -411,7 +412,7 @@ export function Search() {
         <Card>
           <CardBody className="py-12 text-center">
             <SearchIcon className="mx-auto mb-4 h-12 w-12 text-slate-400" />
-            <p className="text-[#718198]">No parsed documents found matching your search.</p>
+            <p className="text-[#718198]">No accessible documents found matching your search.</p>
           </CardBody>
         </Card>
       ) : (
@@ -423,7 +424,7 @@ export function Search() {
                   <th className="w-12 px-4 py-3">
                     <input type="checkbox" className="rounded" />
                   </th>
-                  {['File name', 'Type', 'Folder', 'Department', 'Owner', 'Creation date', 'Modified date', 'Tags', 'Status'].map((heading) => (
+                  {['Doc ID', 'File name', 'Type', 'Folder', 'Department', 'Owner', 'Creation date', 'Modified date', 'Tags', 'Status'].map((heading) => (
                     <th key={heading} className="px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:text-white">
                       {heading}
                     </th>
@@ -444,6 +445,9 @@ export function Search() {
                     >
                       <td className="w-12 px-4 py-4">
                         <input type="checkbox" className="rounded" />
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 font-mono text-sm text-[#52627a] dark:text-slate-300">
+                        {dmsDoc?.originalDocumentId || '—'}
                       </td>
                       <td className="px-6 py-4">
                         <button
@@ -558,7 +562,7 @@ export function Search() {
                 <table className="w-full">
                   <thead className="border-b border-[#dbe2ec] bg-slate-100 dark:border-white/10 dark:bg-slate-900">
                     <tr>
-                      {['Document', 'Folder', 'Status', 'Owner', 'Date'].map((heading) => (
+                      {['Doc ID', 'Document', 'Folder', 'Status', 'Owner', 'Date'].map((heading) => (
                         <th key={heading} className="px-6 py-3 text-left text-sm font-semibold text-[#26334d] dark:text-white">
                           {heading}
                         </th>
@@ -576,6 +580,9 @@ export function Search() {
                         key={document.documentId}
                         className={`border-b border-[#dbe2ec] dark:border-white/10 ${rowBg}`}
                       >
+                        <td className="whitespace-nowrap px-6 py-4 font-mono text-sm text-[#52627a] dark:text-slate-300">
+                          {document.originalDocumentId || '—'}
+                        </td>
                         <td className="px-6 py-4">
                           <button
                             type="button"

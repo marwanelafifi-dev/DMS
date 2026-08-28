@@ -23,6 +23,7 @@ export function matchesDmsMetadata(doc: any, query: string): boolean {
     doc.owner?.fullName,
     doc.folderName,
     doc.description,
+    doc.originalDocumentId,
     doc.trackingCode,
     doc.status,
     doc.status ? statusLabels[doc.status as keyof typeof statusLabels] : undefined,

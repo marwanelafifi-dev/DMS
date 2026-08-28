@@ -2,7 +2,9 @@ using DMS.Api.Data;
 using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using System.Text;
 using static DMS.Api.Services.AuditActions;
 
 namespace DMS.Api.Controllers;
@@ -81,6 +83,118 @@ public class DatabaseBackupController(
         {
             logger.LogError(ex, "Error exporting database backup");
             return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // GET /api/database-backup/documents/export - exports the current metadata
+    // for every active document. Recycled documents are deliberately excluded
+    // so this administrative report matches the live Document Library.
+    [HttpGet("documents/export")]
+    public async Task<IActionResult> ExportDocumentMetadata()
+    {
+        if (!await IsAdminAsync())
+            return StatusCode(403, new { success = false, error = "Only a Full Access role can export document metadata" });
+
+        try
+        {
+            var documents = await context.Documents
+                .AsNoTracking()
+                .Include(document => document.Owner)
+                .Where(document => document.DeletedAt == null)
+                .OrderBy(document => document.OriginalDocumentId)
+                .ThenBy(document => document.Title)
+                .ToListAsync();
+
+            var currentVersionIds = documents
+                .Where(document => document.CurrentVersionId.HasValue)
+                .Select(document => document.CurrentVersionId!.Value)
+                .Distinct()
+                .ToArray();
+            var currentVersions = await context.DocumentVersions
+                .AsNoTracking()
+                .Where(version => currentVersionIds.Contains(version.VersionId))
+                .ToDictionaryAsync(version => version.VersionId);
+
+            var folders = await context.Folders
+                .AsNoTracking()
+                .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name })
+                .ToDictionaryAsync(folder => folder.FolderId);
+
+            string ResolveFolderPath(Guid folderId)
+            {
+                var names = new List<string>();
+                var visited = new HashSet<Guid>();
+                Guid? currentId = folderId;
+
+                while (currentId.HasValue && visited.Add(currentId.Value) && folders.TryGetValue(currentId.Value, out var folder))
+                {
+                    names.Add(folder.Name);
+                    currentId = folder.ParentFolderId;
+                }
+
+                names.Reverse();
+                return string.Join(" / ", names);
+            }
+
+            static string CsvValue(object? value)
+            {
+                var text = value?.ToString() ?? string.Empty;
+                if (text.Length > 0 && "=+-@".Contains(text[0]))
+                    text = $"'{text}";
+                return $"\"{text.Replace("\"", "\"\"")}\"";
+            }
+
+            var csv = new StringBuilder();
+            var headers = new[]
+            {
+                "Doc ID", "System ID", "Document Name", "File Name", "Owner", "Description", "Path",
+                "Department", "Category", "Tags", "Status", "Current Version", "Created Date", "Modified Date"
+            };
+            csv.AppendLine(string.Join(",", headers.Select(CsvValue)));
+
+            foreach (var document in documents)
+            {
+                currentVersions.TryGetValue(document.CurrentVersionId ?? Guid.Empty, out var currentVersion);
+                var values = new object?[]
+                {
+                    document.OriginalDocumentId,
+                    document.DocumentId,
+                    document.Title,
+                    currentVersion?.FileName,
+                    document.Owner?.FullName,
+                    document.Description,
+                    ResolveFolderPath(document.FolderId),
+                    document.Department,
+                    document.Category,
+                    string.Join("; ", document.Tags ?? Array.Empty<string>()),
+                    document.Status,
+                    currentVersion?.VersionLabel ?? currentVersion?.VersionNumber,
+                    document.CreatedAt.ToString("O"),
+                    document.UpdatedAt.ToString("O")
+                };
+                csv.AppendLine(string.Join(",", values.Select(CsvValue)));
+            }
+
+            await auditService.LogAsync(GetCurrentUserId(), DOCUMENT_METADATA_EXPORTED, new
+            {
+                DocumentCount = documents.Count,
+                Format = "CSV"
+            });
+
+            var content = Encoding.UTF8.GetBytes(csv.ToString());
+            var preamble = Encoding.UTF8.GetPreamble();
+            var bytes = new byte[preamble.Length + content.Length];
+            Buffer.BlockCopy(preamble, 0, bytes, 0, preamble.Length);
+            Buffer.BlockCopy(content, 0, bytes, preamble.Length, content.Length);
+
+            var fileName = $"dms-document-metadata-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
+            logger.LogInformation("Document metadata exported by {UserId} ({DocumentCount} documents)", GetCurrentUserId(), documents.Count);
+            return File(bytes, "text/csv; charset=utf-8", fileName);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error exporting document metadata");
+            return StatusCode(500, new { success = false, error = "Failed to export document metadata" });
         }
     }
 

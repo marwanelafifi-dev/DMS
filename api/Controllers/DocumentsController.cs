@@ -56,7 +56,10 @@ public class DocumentsController(
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var searchTerm = search.Trim();
-                query = query.Where(d => EF.Functions.ILike(d.Title, $"%{searchTerm}%"));
+                query = query.Where(d =>
+                    EF.Functions.ILike(d.Title, $"%{searchTerm}%")
+                    || (d.OriginalDocumentId != null && EF.Functions.ILike(d.OriginalDocumentId, $"%{searchTerm}%"))
+                    || (d.TrackingCode != null && EF.Functions.ILike(d.TrackingCode, $"%{searchTerm}%")));
             }
 
             var documents = await (

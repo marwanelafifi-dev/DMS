@@ -42,6 +42,7 @@ export function useSearchSuggestions(query: string, dmsDocuments: Document[] = [
           .filter(({ doc, displayName }) => displayName && !matchedFileNames.has(displayName.toLowerCase()) && matchesDmsMetadata(doc, trimmed))
           .map(({ doc, displayName }, index): ParsedDocument => ({
             id: -(index + 1),
+            document_id: doc.documentId,
             filename: displayName,
             content: doc.description || '',
             created_at: doc.createdAt,
