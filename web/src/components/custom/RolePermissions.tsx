@@ -15,9 +15,11 @@ import { ModalOverlay } from '../ui/ModalOverlay';
 const PERMISSION_KEYS = [
   'canViewDashboard', 'canViewDocumentLibrary', 'canViewApprovals', 'canViewPcar', 'canViewReminders',
   'canDeleteReminders',
+  'canDeleteDocumentVersions',
+  'canManageBulkActions',
   'canSendAnnouncements', 'canViewAdminPanel',
   'canReadAllFolders', 'canReadWriteAllFolders', 'bypassFolderPermissions',
-  'canManageFolderPermissions', 'canManageFilePermissions',
+  'canEditFiles', 'canManageFolderPermissions', 'canManageFilePermissions',
   'canCreateTasks', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
@@ -25,12 +27,15 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDocumentLibrary: 'Document Library',
   canViewReminders: 'Reminders',
   canDeleteReminders: 'Delete Reminders',
+  canDeleteDocumentVersions: 'Delete Old Document Versions',
+  canManageBulkActions: 'Manage Bulk Actions',
   canViewApprovals: 'Approvals (Document Workflow)',
   canViewPcar: 'PCAR / Corrective Action',
   canViewAdminPanel: 'Admin Panel',
   bypassFolderPermissions: 'Full Access to All Folders',
   canReadAllFolders: 'Read Only to All Folders',
   canReadWriteAllFolders: 'Read and Write to All folders',
+  canEditFiles: 'Edit File Metadata',
   canManageFolderPermissions: 'Manage Folder Permissions',
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',

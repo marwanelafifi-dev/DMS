@@ -91,6 +91,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsFolder>().HasQueryFilter(f => f.DeletedAt == null);
         modelBuilder.Entity<DmsDocument>().HasQueryFilter(d => d.DeletedAt == null);
         modelBuilder.Entity<DmsDocumentVersion>().ToTable("dms_document_versions").HasKey(dv => dv.VersionId);
+        modelBuilder.Entity<DmsDocumentVersion>().HasQueryFilter(dv => dv.DeletedAt == null);
         modelBuilder.Entity<DmsDocumentMetadata>().ToTable("dms_document_metadata").HasKey(dm => dm.MetadataId);
         modelBuilder.Entity<DmsWorkflowTemplate>().ToTable("dms_workflow_templates").HasKey(wt => wt.TemplateId);
         modelBuilder.Entity<DmsWorkflow>().ToTable("dms_workflows").HasKey(w => w.WorkflowId);
@@ -269,6 +270,12 @@ public class DmsContext : DbContext
             .HasOne<DmsUser>()
             .WithMany()
             .HasForeignKey(dv => dv.ApprovedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<DmsDocumentVersion>()
+            .HasOne<DmsUser>()
+            .WithMany()
+            .HasForeignKey(dv => dv.DeletedById)
             .OnDelete(DeleteBehavior.SetNull);
 
         // Document Metadata: version (CASCADE)

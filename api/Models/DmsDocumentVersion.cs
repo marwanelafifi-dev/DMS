@@ -28,6 +28,11 @@ public class DmsDocumentVersion
     public int MinorVersion { get; set; } = 0;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    // Version deletion is a compliance-safe tombstone: the row remains so
+    // immutable approval/signature/OCR evidence can continue to reference it,
+    // while normal application queries no longer expose or use the version.
+    public DateTime? DeletedAt { get; set; }
+    public Guid? DeletedById { get; set; }
 
     public DmsDocument? Document { get; set; }
     public DmsUser? SubmittedBy { get; set; }

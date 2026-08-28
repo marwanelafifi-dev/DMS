@@ -39,7 +39,7 @@ export function EditFolderModal({
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
 
   const eligibleManagers = users
-    .filter((u) => u.userId !== ownerId && u.isActive !== false && (u.role === 'Manager' || u.role === 'Full Access'))
+    .filter((u) => u.isActive !== false && (u.userId === ownerId || u.role === 'Manager' || u.role === 'Full Access'))
     .sort((a, b) => {
       const selectedDifference = Number(managerIds.includes(b.userId)) - Number(managerIds.includes(a.userId));
       return selectedDifference || a.fullName.localeCompare(b.fullName);
@@ -177,7 +177,7 @@ export function EditFolderModal({
                     </label>
                   ))}
               </div>
-              <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Select one or more users with the Manager or Full Access role. The owner is included automatically.</p>
+              <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Select one or more users with the Manager or Full Access role. The folder owner can also be selected as a manager.</p>
             </div>
           </Field>
         </div>

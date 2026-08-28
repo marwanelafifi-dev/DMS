@@ -379,6 +379,10 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         // below) so the reviewer can see what it's waiting on.
         IQueryable<DmsApprovalDocument> query = context.ApprovalDocuments
             .Where(ad => ad.CurrentStage == stage && (ad.Status == "pending" || ad.Status == "correction_requested"))
+            // Defensive consistency guard for rows created before the library
+            // bulk-action synchronization fix: a document already released or
+            // rejected can never still be actionable in a review queue.
+            .Where(ad => ad.Document!.Status != "released" && ad.Document!.Status != "rejected")
             .Where(ad => accessibleFolderIds == null || accessibleFolderIds.Contains(ad.Document!.FolderId))
             .Include(ad => ad.Approval).ThenInclude(a => a!.CreatedByUser)
             .Include(ad => ad.Document).ThenInclude(d => d!.Owner)

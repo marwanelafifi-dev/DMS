@@ -48,6 +48,7 @@ export interface RolePermissionFlags {
   viewMetadataHistory: boolean;
   canChangeDocumentOwner?: boolean;
   canChangeFolderOwner?: boolean;
+  canManageBulkActions?: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -87,6 +88,9 @@ export interface PageAccessRoleFlags {
   // Whether this role can delete a reminder — without it, a role can still
   // create/view reminders and mark its own as sent, just not delete any.
   canDeleteReminders: boolean;
+  // Administrative capability for deleting non-current document versions.
+  canDeleteDocumentVersions: boolean;
+  canManageBulkActions: boolean;
 }
 
 // Backs the Admin Panel's Notification Configuration page. Method is one of
@@ -976,6 +980,11 @@ class APIClient {
   // Email notification configuration (Admin Panel -> Notifications)
   async getEmailConfig() {
     const { data } = await this.client.get<ApiResponse>('/email-config');
+    return data;
+  }
+
+  async deleteDocumentVersion(documentId: string, versionId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/documents/${documentId}/versions/${versionId}`);
     return data;
   }
 

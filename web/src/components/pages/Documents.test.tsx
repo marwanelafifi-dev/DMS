@@ -90,6 +90,7 @@ describe('Document Library', () => {
         submitForApproval: true, approve: true, reject: true, adminForceUnlock: true,
         copy: true, cut: true, downloadZip: true, fileCopy: true, fileCut: true,
         viewMetadataHistory: true,
+        canManageBulkActions: true,
       },
     });
     vi.spyOn(doclingApi, 'uploadDocument').mockImplementation(async (file) => ({

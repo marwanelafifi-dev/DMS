@@ -126,6 +126,10 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 // Folder ownership is an administrative assignment. Owning a
                 // folder does not authorize transferring the folder itself.
                 CanChangeFolderOwner = userId == DevSystemAdminId || pageAccessRole?.BypassFolderPermissions == true,
+                // Global role capability returned alongside the effective
+                // folder flags so the library can gate its selection toolbar
+                // without making a second role-list request.
+                CanManageBulkActions = pageAccessRole?.CanManageBulkActions == true,
                 UpdatedAt = permission?.UpdatedAt,
             };
 
@@ -546,7 +550,12 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
 
             if (req.ManagerIds != null)
             {
-                var managerIds = req.ManagerIds.Where(managerId => managerId != folder.OwnerId).Distinct().ToList();
+                // Keep an explicit manager assignment even when it points to
+                // the folder owner. Permission synchronization must still
+                // treat ownership as the stronger assignment: the owner keeps
+                // the single Admin grant while FolderManagers records that the
+                // same person was also selected for Manager Review routing.
+                var managerIds = req.ManagerIds.Distinct().ToList();
                 var activeManagerCount = await context.Users.CountAsync(u => managerIds.Contains(u.UserId) && u.IsActive);
                 if (activeManagerCount != managerIds.Count)
                     return BadRequest(new { success = false, error = "Every selected folder manager must be an active user" });
@@ -558,18 +567,19 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                     .Where(managerId => existingManagers.All(m => m.UserId != managerId))
                     .Select(managerId => new DmsFolderManager { FolderId = id, UserId = managerId }));
 
+                var managerGrantIds = managerIds.Where(managerId => managerId != folder.OwnerId).ToList();
                 var managerPermissions = await context.FolderPermissions
-                    .Where(p => p.FolderId == id && managerIds.Contains(p.UserId))
+                    .Where(p => p.FolderId == id && managerGrantIds.Contains(p.UserId))
                     .ToListAsync();
                 var fullAccessManagerIds = await context.Users
-                    .Where(u => managerIds.Contains(u.UserId) && u.Role != null)
+                    .Where(u => managerGrantIds.Contains(u.UserId) && u.Role != null)
                     .Join(
                         context.PageAccessRoles.Where(r => r.BypassFolderPermissions),
                         u => u.Role,
                         r => r.Role,
                         (u, _) => u.UserId)
                     .ToListAsync();
-                foreach (var managerId in managerIds)
+                foreach (var managerId in managerGrantIds)
                 {
                     var permission = managerPermissions.FirstOrDefault(p => p.UserId == managerId);
                     var synchronizedRole = fullAccessManagerIds.Contains(managerId) ? FolderRoles.Admin : FolderRoles.Manager;

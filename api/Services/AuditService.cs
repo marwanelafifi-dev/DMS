@@ -182,6 +182,7 @@ public static class AuditActions
     public const string DOCUMENT_MOVED = "DOCUMENT_MOVED";
     public const string DOCUMENT_UPLOADED = "DOCUMENT_UPLOADED";
     public const string DOCUMENT_VERSION_REVERTED = "DOCUMENT_VERSION_REVERTED";
+    public const string DOCUMENT_VERSION_DELETED = "DOCUMENT_VERSION_DELETED";
     public const string DOCUMENT_DOWNLOADED = "DOCUMENT_DOWNLOADED";
     public const string DOCUMENT_CHECKOUT = "DOCUMENT_CHECKOUT";
     public const string DOCUMENT_CHECKIN = "DOCUMENT_CHECKIN";

@@ -123,6 +123,15 @@ public class RBACMiddleware
             return false;
         }
 
+        // DELETE /documents/{documentId}/versions/{versionId} has its own
+        // role-wide CanDeleteDocumentVersions gate in DocumentsController.
+        // Do not incorrectly pre-empt it here with the unrelated File Delete
+        // folder action used for deleting the whole document.
+        if (method.Equals("DELETE", StringComparison.OrdinalIgnoreCase)
+            && segments.Length == 6
+            && segments[4].Equals("versions", StringComparison.OrdinalIgnoreCase))
+            return false;
+
         // Get the document
         var document = await dbContext.Documents
             .FirstOrDefaultAsync(d => d.DocumentId == documentId);

@@ -2030,7 +2030,7 @@ export function Documents() {
                   onRequestedActionDismissed={() => setSelectedFolderIds(new Set())}
                   onConfirm={handleBulkAction}
                 />
-                {selectedServerDocuments.length > 0 && (
+                {selectedServerDocuments.length > 0 && myPermissions?.canManageBulkActions && (
                   <Button variant="secondary" onClick={() => setShowBulkOperationsModal(true)}>
                     Bulk Actions ({selectedServerDocuments.length})
                   </Button>

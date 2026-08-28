@@ -76,6 +76,13 @@ public class DmsPageAccessRole
     // else's reminder. Without this flag, a role can still create/view
     // reminders and mark its own as sent, just not delete any.
     public bool CanDeleteReminders { get; set; }
+    // Permanently removes a non-current document version from the usable
+    // version history. This is deliberately a global, separately assignable
+    // administrative capability rather than a folder/file action override.
+    public bool CanDeleteDocumentVersions { get; set; }
+    // Opens and authorizes the multi-document Approve/Reject/Download/Delete
+    // operations. Each operation still keeps its own document-level checks.
+    public bool CanManageBulkActions { get; set; }
     // Set once at creation (true only for the 5 original seeded roles) and
     // carried over verbatim by a rename — the stable identity that delete
     // protection checks, instead of matching against the current role name.

@@ -1225,6 +1225,97 @@ public class DocumentsController(
     // GET /api/documents/{id}/download — download a file
     // The browser receives only the generated PDF, not the original file plus
     // a second browser-to-renderer upload.
+    // DELETE /api/documents/{id}/versions/{versionId} — remove one historical
+    // version from normal use. The current version can never be deleted. The
+    // row is tombstoned instead of physically removed because approval,
+    // signature, and OCR records are immutable compliance evidence and may
+    // still reference it.
+    [HttpDelete("{id}/versions/{versionId}")]
+    public async Task<ActionResult<object>> DeleteHistoricalVersion(Guid id, Guid versionId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (pageAccessRole?.CanDeleteDocumentVersions != true)
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role cannot delete old document versions" });
+
+            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == id);
+            if (document == null)
+                return NotFound(new { success = false, error = "Document not found" });
+
+            // The role flag grants the destructive action, but it does not
+            // reveal documents the caller cannot otherwise access.
+            if (!await HasFolderReadAccessAsync(context, accessOverrideService, userId, document.FolderId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "No permission to access this document" });
+
+            var version = await context.DocumentVersions
+                .FirstOrDefaultAsync(v => v.VersionId == versionId && v.DocumentId == id);
+            if (version == null)
+                return NotFound(new { success = false, error = "Version not found" });
+
+            if (document.CurrentVersionId == version.VersionId)
+                return BadRequest(new { success = false, error = "The current document version cannot be deleted" });
+
+            if (version.IsCheckedOut)
+                return BadRequest(new { success = false, error = "A checked-out version cannot be deleted. Release its editing lock first." });
+
+            var documentPath = await auditService.ResolveDocumentPathAsync(id);
+            var deletedAt = DateTime.UtcNow;
+            version.DeletedAt = deletedAt;
+            version.DeletedById = userId;
+            version.UpdatedAt = deletedAt;
+            await context.SaveChangesAsync();
+
+            await auditService.LogAsync(userId, DOCUMENT_VERSION_DELETED, new
+            {
+                document.DocumentId,
+                DocumentPath = documentPath,
+                version.VersionId,
+                version.VersionNumber,
+                version.VersionLabel,
+                version.FileName,
+                version.Sha256Hash,
+                DeletedAt = deletedAt,
+            });
+
+            // Preserve content whenever another version shares the same
+            // object or immutable compliance evidence references this one.
+            // Otherwise reclaim the now-unreachable object from MinIO.
+            var objectIsShared = await context.DocumentVersions
+                .IgnoreQueryFilters()
+                .AnyAsync(v => v.VersionId != version.VersionId && v.S3ObjectKey == version.S3ObjectKey && v.DeletedAt == null);
+            var hasComplianceEvidence = await context.ApprovalDocuments.AnyAsync(a => a.VersionId == version.VersionId)
+                || await context.OcrIndexes.AnyAsync(o => o.VersionId == version.VersionId)
+                || await context.Esignatures.AnyAsync(e => e.VersionId == version.VersionId);
+
+            var contentRemoved = false;
+            if (!objectIsShared && !hasComplianceEvidence && !string.IsNullOrWhiteSpace(version.S3ObjectKey))
+            {
+                try
+                {
+                    await minioService.DeleteAsync(version.S3ObjectKey);
+                    contentRemoved = true;
+                }
+                catch (Exception ex)
+                {
+                    // The authoritative database deletion already succeeded;
+                    // leave a warning for storage cleanup without resurrecting
+                    // the version in the user-facing history.
+                    logger.LogWarning(ex, "Version {VersionId} was deleted but object {ObjectKey} could not be removed", version.VersionId, version.S3ObjectKey);
+                }
+            }
+
+            logger.LogInformation("Deleted historical version {VersionId} of document {DocumentId}", versionId, id);
+            return Ok(new { success = true, message = "Old version deleted", data = new { version.VersionId, ContentRemoved = contentRemoved } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error deleting version {VersionId} of document {DocumentId}", versionId, id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     [HttpGet("{id}/versions/{versionId}/preview")]
     public async Task<ActionResult> PreviewVersion(Guid id, Guid versionId, CancellationToken cancellationToken)
     {
@@ -1967,6 +2058,55 @@ public class DocumentsController(
     }
 
     // POST /api/documents/bulk-approve — approve multiple documents in one batch
+    private async Task<bool> CanManageBulkActionsAsync(Guid userId) =>
+        (await GetPageAccessRoleAsync(context, userId))?.CanManageBulkActions == true;
+
+    // The legacy library bulk Approve/Reject endpoints update the document and
+    // version directly through ApprovalService. Keep the newer per-document
+    // workflow rows synchronized as well, otherwise a released document remains
+    // visible forever in the QA queue as a stale pending item.
+    private async Task SynchronizeBulkWorkflowAsync(Guid documentId, Guid versionId, bool approved, string? notes)
+    {
+        var rows = await context.ApprovalDocuments
+            .Where(ad => ad.DocumentId == documentId
+                && ad.VersionId == versionId
+                && (ad.Status == "pending" || ad.Status == "correction_requested"))
+            .ToListAsync();
+        if (rows.Count == 0) return;
+
+        var now = DateTime.UtcNow;
+        foreach (var row in rows)
+        {
+            row.CurrentStage = approved ? "released" : "rejected";
+            row.Status = approved ? "approved" : "rejected";
+            row.UpdatedAt = now;
+            if (approved) row.ReleaseNotes = notes?.Trim();
+            else row.ManagerNotes = notes?.Trim();
+        }
+
+        await context.SaveChangesAsync();
+
+        // A batch is terminal only once every one of its per-document rows is
+        // terminal. This keeps its summary record truthful without advancing or
+        // rejecting unrelated sibling documents still under review.
+        foreach (var approvalId in rows.Select(row => row.ApprovalId).Distinct())
+        {
+            var states = await context.ApprovalDocuments
+                .Where(ad => ad.ApprovalId == approvalId)
+                .Select(ad => ad.Status)
+                .ToListAsync();
+            if (states.Any(status => status is "pending" or "correction_requested")) continue;
+
+            var approval = await context.Approvals.FirstOrDefaultAsync(a => a.ApprovalId == approvalId);
+            if (approval == null) continue;
+            var fullyApproved = states.All(status => status == "approved");
+            approval.CurrentStage = fullyApproved ? "released" : "rejected";
+            approval.Status = fullyApproved ? "approved" : "rejected";
+        }
+
+        await context.SaveChangesAsync();
+    }
+
     [HttpPost("bulk-approve")]
     public async Task<ActionResult<object>> BulkApproveDocuments([FromBody] BulkApproveRequest req)
     {
@@ -1974,6 +2114,8 @@ public class DocumentsController(
             return BadRequest(new { success = false, error = "documentIds is required" });
 
         var userId = GetCurrentUserId();
+        if (!await CanManageBulkActionsAsync(userId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role cannot manage bulk actions" });
         var succeeded = new List<Guid>();
         var failed = new List<object>();
 
@@ -1987,7 +2129,11 @@ public class DocumentsController(
             }
 
             var result = await approvalService.ApproveAsync(documentId, document.CurrentVersionId.Value, userId, req.Comments);
-            if (result.Success) succeeded.Add(documentId);
+            if (result.Success)
+            {
+                await SynchronizeBulkWorkflowAsync(documentId, document.CurrentVersionId.Value, approved: true, req.Comments);
+                succeeded.Add(documentId);
+            }
             else failed.Add(new { documentId, error = result.Message });
         }
 
@@ -2005,6 +2151,8 @@ public class DocumentsController(
             return BadRequest(new { success = false, error = "Rejection reason is required" });
 
         var userId = GetCurrentUserId();
+        if (!await CanManageBulkActionsAsync(userId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role cannot manage bulk actions" });
         var succeeded = new List<Guid>();
         var failed = new List<object>();
 
@@ -2018,7 +2166,11 @@ public class DocumentsController(
             }
 
             var result = await approvalService.RejectAsync(documentId, document.CurrentVersionId.Value, userId, req.Reason);
-            if (result.Success) succeeded.Add(documentId);
+            if (result.Success)
+            {
+                await SynchronizeBulkWorkflowAsync(documentId, document.CurrentVersionId.Value, approved: false, req.Reason);
+                succeeded.Add(documentId);
+            }
             else failed.Add(new { documentId, error = result.Message });
         }
 
@@ -2034,6 +2186,8 @@ public class DocumentsController(
             return BadRequest(new { success = false, error = "documentIds is required" });
 
         var userId = GetCurrentUserId();
+        if (!await CanManageBulkActionsAsync(userId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role cannot manage bulk actions" });
         var succeeded = new List<Guid>();
         var failed = new List<object>();
 
@@ -2076,9 +2230,27 @@ public class DocumentsController(
             return BadRequest(new { success = false, error = "documentIds is required" });
 
         var userId = GetCurrentUserId();
+        if (!await CanManageBulkActionsAsync(userId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role cannot manage bulk actions" });
         var documents = await context.Documents
             .Where(d => req.DocumentIds.Contains(d.DocumentId) && d.CurrentVersionId != null)
             .ToListAsync();
+
+        // The global bulk flag authorizes use of the operation, not access to
+        // arbitrary document IDs supplied by a caller. Retain the same real
+        // per-document Download permission used by an individual download.
+        var accessibleDocuments = new List<DmsDocument>();
+        foreach (var document in documents)
+        {
+            var effectiveRole = await GetEffectiveRoleAsync(context, userId, document.FolderId);
+            var roleAllows = await HasRolePermissionAsync(context, effectiveRole, rp => rp.DownloadReadOnly);
+            if (await accessOverrideService.ResolveAsync(userId, document.DocumentId, document.FolderId, AccessOverrideActions.Download, roleAllows))
+                accessibleDocuments.Add(document);
+        }
+
+        documents = accessibleDocuments;
+        if (documents.Count == 0)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to download the selected documents" });
 
         var versionIds = documents.Select(d => d.CurrentVersionId!.Value).ToList();
         var versions = await context.DocumentVersions

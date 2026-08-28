@@ -1,5 +1,64 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 50 (2026-08-28) — Controlled Version Deletion, Bulk-Action Governance, and Owner/Manager Precedence
+
+**Status:** Complete in code. PostgreSQL migrations `088` and `089` are required during deployment.
+
+### Historical document-version deletion
+
+- Added the independently managed global role permission **Delete Old Document Versions** (`can_delete_document_versions`). Existing Full Access roles receive it initially, and administrators can grant or revoke it for any role from Admin → Roles.
+- Authorized users can permanently remove a non-current version from Version History after typing the exact confirmation word `DELETE`. The current version and checked-out versions cannot be deleted.
+- Deletion is compliance-safe: the version row is tombstoned with deletion time and actor so immutable approval, signature, and OCR evidence can retain its reference. Normal application queries hide tombstoned versions.
+- MinIO content is removed only when no active version shares the object and no immutable compliance evidence references it. Every deletion creates a `DOCUMENT_VERSION_DELETED` audit entry.
+
+### Governed bulk actions and workflow synchronization
+
+- Added the independently managed global role permission **Manage Bulk Actions** (`can_manage_bulk_actions`). Existing Full Access roles receive it initially, and administrators can manage it from Admin → Roles.
+- The Document Library shows Bulk Actions only when the current role has this capability. All bulk Approve, Reject, Download, and Delete endpoints independently enforce it; the global flag does not bypass each document's normal access checks.
+- Bulk Approve/Reject now synchronizes the per-document workflow rows and parent approval state. A document approved and released through Bulk Actions no longer remains as a stale pending item in QA Review.
+- Approval queues defensively exclude documents already marked Released or Rejected, including inconsistent rows created before this fix.
+
+### Folder owner and manager assignment
+
+- Edit Folder now allows the current active folder owner to appear in the Manager(s) search and be explicitly selected, even when that user does not hold the global Manager or Full Access role.
+- The API stores the same user in `dms_folder_managers` for Manager Review routing while retaining the owner's stronger folder Admin grant.
+- Owner permission always wins when the same user is both Owner and selected Manager. Manager synchronization never downgrades that user's Owner/Admin permission.
+- If folder ownership changes later, the previous owner keeps Manager permission only when still explicitly selected as a folder manager.
+
+### Files and migrations
+
+- `infra/db/init/088_page_access_role_delete_document_versions.sql`
+- `infra/db/init/089_page_access_role_manage_bulk_actions.sql`
+- `api/Controllers/ApprovalsController.cs`
+- `api/Controllers/DocumentsController.cs`
+- `api/Controllers/FoldersController.cs`
+- `api/Controllers/PageAccessRolesController.cs`
+- `api/Data/DmsContext.cs`
+- `api/Middleware/RBACMiddleware.cs`
+- `api/Models/DmsDocumentVersion.cs`
+- `api/Models/DmsPageAccessRole.cs`
+- `api/Services/AuditService.cs`
+- `web/src/components/custom/BulkOperationsModal.tsx`
+- `web/src/components/custom/EditFolderModal.tsx`
+- `web/src/components/custom/EditFolderModal.test.tsx`
+- `web/src/components/custom/RolePermissions.tsx`
+- `web/src/components/custom/VersionHistoryModal.tsx`
+- `web/src/components/custom/VersionHistoryModal.test.tsx`
+- `web/src/components/pages/Documents.tsx`
+- `web/src/components/pages/Documents.test.tsx`
+- `web/src/hooks/usePageAccess.ts`
+- `web/src/utils/api.ts`
+
+### Verification
+
+- Focused Edit Folder manager-selection test: passed.
+- Focused Version History deletion tests: passed.
+- `git diff --check` and `docker compose config --quiet`: passed.
+- Frontend type-check introduced no new errors; existing unrelated errors remain in `NotificationsBell.tsx` and `Dashboard.tsx`.
+- The .NET SDK is unavailable on the Windows workstation; rebuild and health-check the API container during Ubuntu deployment.
+
+---
+
 ## Session 49 (2026-08-28) — Active-Only OCR Search and Controlled New-Version Workflow
 
 **Status:** Complete. No PostgreSQL migration is required. The OCR sidecar performs a backward-compatible SQLite schema upgrade on startup.

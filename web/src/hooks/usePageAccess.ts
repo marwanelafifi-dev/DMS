@@ -30,6 +30,8 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canResolveDocumentId: false,
   canSendAnnouncements: false,
   canDeleteReminders: false,
+  canDeleteDocumentVersions: false,
+  canManageBulkActions: false,
 };
 
 // Fetches the current user's page/feature access flags (their global role —

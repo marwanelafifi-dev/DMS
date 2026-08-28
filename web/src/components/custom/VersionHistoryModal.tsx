@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, AlertCircle, ArrowLeft, Download, Eye, History, Loader2, RotateCcw } from 'lucide-react';
+import { X, AlertCircle, ArrowLeft, Download, Eye, History, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '../ui';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
@@ -9,6 +9,7 @@ import { MarkdownViewer } from './MarkdownViewer';
 import { parseExcelDocument } from '../../utils/officeParser';
 import type { SpreadsheetSheet } from '../../fixtures/documentLibrary';
 import { ModalOverlay } from '../ui/ModalOverlay';
+import { usePageAccess } from '../../hooks/usePageAccess';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'xml', 'log', 'csv']);
@@ -53,12 +54,15 @@ interface VersionHistoryModalProps {
 
 export function VersionHistoryModal({ documentId, fileName, currentVersionId, onClose, onReverted }: VersionHistoryModalProps) {
   const { showSuccess, showError } = useToast();
+  const pageAccess = usePageAccess();
   const [versions, setVersions] = useState<VersionRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<{ versionLabel: string; content: ReviewContent } | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
+  const [deleteCandidate, setDeleteCandidate] = useState<VersionRow | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const reviewObjectUrlRef = useRef<string | null>(null);
 
   const load = () => {
@@ -181,7 +185,32 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
     }
   };
 
+  const closeDeleteConfirmation = () => {
+    setDeleteCandidate(null);
+    setDeleteConfirmation('');
+  };
+
+  const handleDeleteVersion = async () => {
+    if (!deleteCandidate || deleteConfirmation !== 'DELETE') return;
+    setBusyVersionId(deleteCandidate.versionId);
+    try {
+      const res = await apiClient.deleteDocumentVersion(documentId, deleteCandidate.versionId);
+      if (!res.success) {
+        showError(res.error || 'Failed to delete this old version');
+        return;
+      }
+      showSuccess(`Version ${deleteCandidate.versionNumber} deleted`);
+      closeDeleteConfirmation();
+      load();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to delete this old version');
+    } finally {
+      setBusyVersionId(null);
+    }
+  };
+
   return (
+    <>
     <ModalOverlay
       onClose={onClose}
       className={
@@ -340,6 +369,20 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
                           <RotateCcw className="h-4 w-4" />
                         </button>
                       )}
+                      {!isCurrent && pageAccess?.canDeleteDocumentVersions && (
+                        <button
+                          onClick={() => {
+                            setDeleteCandidate(v);
+                            setDeleteConfirmation('');
+                          }}
+                          disabled={isBusy}
+                          title="Delete this old version"
+                          aria-label={`Delete version ${v.versionNumber}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -358,5 +401,50 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
         </div>
       </div>
     </ModalOverlay>
+    {deleteCandidate && (
+      <ModalOverlay
+        onClose={closeDeleteConfirmation}
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4"
+      >
+        <div role="dialog" aria-modal="true" aria-labelledby="delete-version-title" className="w-full max-w-md rounded-lg bg-white shadow-2xl dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-slate-700">
+            <h3 id="delete-version-title" className="text-lg font-semibold text-navy-900 dark:text-white">Delete old version</h3>
+            <button onClick={closeDeleteConfirmation} aria-label="Close delete confirmation" className="text-gray-500 hover:text-gray-700 dark:text-slate-400">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="space-y-4 px-5 py-4">
+            <div className="flex gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>Version <strong>{deleteCandidate.versionNumber}</strong> will be permanently removed from the version history. This action cannot be undone.</span>
+            </div>
+            <div>
+              <label htmlFor="delete-version-confirmation" className="mb-1.5 block text-sm font-medium text-navy-900 dark:text-white">
+                Type <span className="font-bold text-red-600">DELETE</span> to confirm
+              </label>
+              <input
+                id="delete-version-confirmation"
+                autoFocus
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                className="h-10 w-full rounded border border-gray-300 px-3 text-sm text-navy-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4 dark:border-slate-700">
+            <Button variant="secondary" onClick={closeDeleteConfirmation}>Cancel</Button>
+            <Button
+              variant="danger"
+              disabled={deleteConfirmation !== 'DELETE'}
+              isLoading={busyVersionId === deleteCandidate.versionId}
+              onClick={handleDeleteVersion}
+            >
+              Delete Version
+            </Button>
+          </div>
+        </div>
+      </ModalOverlay>
+    )}
+    </>
   );
 }
