@@ -23,6 +23,7 @@ import { apiClient } from '../../utils/api';
 import { statusLabels, statusStyles } from '../../utils/documentStatus';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { folderAncestryById } from '../../utils/folderPath';
+import { clearDocumentEditDraft, hasActiveDocumentEditDraft, markDocumentEditActive } from '../../utils/documentEditDraft';
 import { Button } from '../ui';
 import type { PdfJsViewerHandle, PdfMatchInfo } from './PdfJsViewer';
 import { PreviewToolbar } from './PreviewToolbar';
@@ -182,7 +183,7 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
 export function DocumentPreview({ document, folders, onNavigateToFolder, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onDocumentUpdated }: DocumentPreviewProps) {
   const folderAncestry = folders ? folderAncestryById(document.folderId, folders) : [];
   const newVersionInputRef = useRef<HTMLInputElement>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(() => hasActiveDocumentEditDraft(document.documentId));
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showRelatedTasks, setShowRelatedTasks] = useState(false);
   const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
@@ -206,6 +207,20 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
   const activeMatchRef = useRef<HTMLElement | null>(null);
   const markdownContainerRef = useRef<HTMLDivElement>(null);
   const pdfViewerRef = useRef<PdfJsViewerHandle>(null);
+
+  const openEditModal = () => {
+    markDocumentEditActive(document.documentId);
+    setShowEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    clearDocumentEditDraft(document.documentId);
+    setShowEditModal(false);
+  };
+
+  useEffect(() => {
+    setShowEditModal(hasActiveDocumentEditDraft(document.documentId));
+  }, [document.documentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -919,7 +934,7 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
               </button>
             )}
             <button
-              onClick={() => setShowEditModal(true)}
+              onClick={openEditModal}
               disabled={!documentPermissions?.edit}
               title={!documentPermissions?.edit ? 'Your role does not have permission to edit this document' : 'Edit description, tags, version, category, department, owner'}
               className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
@@ -1104,7 +1119,7 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
         <EditDocumentModal
           documentId={document.documentId}
           fileName={document.fileName}
-          onClose={() => setShowEditModal(false)}
+          onClose={closeEditModal}
           onSaved={() => onDocumentUpdated?.()}
         />
       )}

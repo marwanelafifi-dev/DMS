@@ -12,17 +12,20 @@ const folders: Folder[] = [
 ];
 
 describe('FolderTree', () => {
-  it('expands and collapses the complete hierarchy without changing individual toggles', async () => {
+  it('starts collapsed and supports expanding or collapsing the complete hierarchy', async () => {
     const user = userEvent.setup();
     render(<FolderTree folders={folders} onSelectFolder={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Grandchild' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Collapse all folders' }));
     expect(screen.queryByRole('button', { name: 'Child' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Root' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Expand all folders' }));
     expect(screen.getByRole('button', { name: 'Grandchild' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Collapse all folders' }));
+    expect(screen.queryByRole('button', { name: 'Child' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Expand all folders' }));
 
     await user.click(screen.getByRole('button', { name: 'Collapse Child' }));
     expect(screen.queryByRole('button', { name: 'Grandchild' })).not.toBeInTheDocument();

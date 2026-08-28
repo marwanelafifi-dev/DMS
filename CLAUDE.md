@@ -1,5 +1,35 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 54 (2026-08-28) — Document Library Return State and Unsaved Edit Recovery
+
+**Status:** Complete. Frontend-only; no database migration is required.
+
+- A normal return to Document Library no longer restores the previously browsed deep folder. It selects a top-level folder and leaves the folder tree fully collapsed.
+- If a document preview was open when the user navigated to another page, returning to Document Library still reopens that document and restores its containing folder path.
+- Unsaved fields in the preview's **Edit Document** dialog are retained across page navigation in tab-scoped `sessionStorage` and restored when the document preview returns.
+- Saving, cancelling, or explicitly closing the Edit Document dialog clears the retained draft. Drafts do not persist beyond the current browser tab/session.
+- Stored edit fields include file name, description, tags, version label, category, department, and owner.
+
+### Files modified
+
+- `web/src/components/pages/Documents.tsx`
+- `web/src/components/pages/Documents.test.tsx`
+- `web/src/components/custom/DocumentPreview.tsx`
+- `web/src/components/custom/EditDocumentModal.tsx`
+- `web/src/components/custom/EditDocumentModal.test.tsx`
+- `web/src/components/custom/FolderTree.test.tsx`
+- `web/src/utils/documentEditDraft.ts`
+- `web/src/utils/documentEditDraft.test.ts`
+- `CLAUDE.md`
+
+### Verification
+
+- Frontend production build: passed.
+- Focused folder-collapse, preview-return, edit-draft, and Document Library navigation tests: 6/6 passed.
+- Frontend type-check introduced no new errors; the existing unrelated errors remain in `NotificationsBell.tsx` and `Dashboard.tsx`.
+
+---
+
 ## Session 53 (2026-08-28) — Admin Document Metadata CSV Export
 
 **Status:** Complete in code. No database migration is required.

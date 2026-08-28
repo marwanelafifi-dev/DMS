@@ -4,6 +4,7 @@ import { X, AlertCircle } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { ModalOverlay } from '../ui/ModalOverlay';
 import { TagSelector } from './TagSelector';
+import { clearDocumentEditDraft, readDocumentEditDraft, writeDocumentEditDraft } from '../../utils/documentEditDraft';
 
 const inputClass = 'w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 
@@ -26,6 +27,7 @@ function splitFileName(name: string): { base: string; extension: string } {
 
 export function EditDocumentModal({ documentId, fileName: initialFileName, onClose, onSaved }: EditDocumentModalProps) {
   const [isLoading, setIsLoading] = useState(true);
+  const [hasInitializedForm, setHasInitializedForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
@@ -57,22 +59,24 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
         if (cancelled) return;
         if (!docRes.success) throw new Error(docRes.error);
         const doc = docRes.data;
+        const storedDraft = readDocumentEditDraft(documentId);
         const { base, extension } = splitFileName(doc.fileName || initialFileName);
-        setFileNameBase(base);
-        setFileNameExtension(extension);
-        setDescription(doc.description || '');
-        setVersionLabel(doc.versionLabel || '');
-        setCategory(doc.category || '');
-        setDepartment(doc.department || '');
-        setOwnerId(doc.ownerId || '');
+        setFileNameBase(storedDraft?.fileNameBase ?? base);
+        setFileNameExtension(storedDraft?.fileNameExtension ?? extension);
+        setDescription(storedDraft?.description ?? doc.description ?? '');
+        setVersionLabel(storedDraft?.versionLabel ?? doc.versionLabel ?? '');
+        setCategory(storedDraft?.category ?? doc.category ?? '');
+        setDepartment(storedDraft?.department ?? doc.department ?? '');
+        setOwnerId(storedDraft?.ownerId ?? doc.ownerId ?? '');
         setUsers(usersRes.data || []);
         setCategoryOptions((categoryRes.data || []).map((i: { label: string }) => i.label));
         setDepartmentOptions((departmentRes.data || []).map((i: { label: string }) => i.label));
-        setTags(doc.tags || []);
+        setTags(storedDraft?.tags ?? doc.tags ?? []);
         if (doc.folderId) {
           const permissionsRes = await apiClient.getMyEffectivePermissions(doc.folderId, documentId);
           if (!cancelled) setCanChangeOwner(permissionsRes.data?.canChangeDocumentOwner === true);
         }
+        if (!cancelled) setHasInitializedForm(true);
 
         // Any existing tag that isn't one of the known presets falls back into
         // the free-text "Other" field instead of being silently dropped —
@@ -86,6 +90,31 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
     return () => { cancelled = true; };
   }, [documentId]);
 
+  useEffect(() => {
+    if (!hasInitializedForm) return;
+    writeDocumentEditDraft(documentId, {
+      fileNameBase,
+      fileNameExtension,
+      description,
+      tags,
+      versionLabel,
+      category,
+      department,
+      ownerId,
+    });
+  }, [
+    hasInitializedForm,
+    documentId,
+    fileNameBase,
+    fileNameExtension,
+    description,
+    tags,
+    versionLabel,
+    category,
+    department,
+    ownerId,
+  ]);
+
   // Tags is optional, per explicit request — matches the main upload form,
   // which never required it either.
   const isFormValid = Boolean(
@@ -96,6 +125,11 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
     && department
     && ownerId,
   );
+
+  const handleClose = () => {
+    clearDocumentEditDraft(documentId);
+    onClose();
+  };
 
   const handleSave = async () => {
     if (!isFormValid) {
@@ -116,7 +150,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
       });
       if (!res.success) throw new Error(res.error);
       onSaved();
-      onClose();
+      handleClose();
     } catch (err: any) {
       setError(err?.response?.data?.error || err.message || 'Failed to save changes');
     } finally {
@@ -125,14 +159,14 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
   };
 
   return (
-    <ModalOverlay onClose={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+    <ModalOverlay onClose={handleClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-navy-900 dark:text-white">Edit Document</h2>
             <p className="truncate text-sm text-gray-500 dark:text-slate-400">{fileNameBase ? `${fileNameBase}${fileNameExtension}` : initialFileName}</p>
           </div>
-          <button onClick={onClose} className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-slate-400" aria-label="Close">
+          <button onClick={handleClose} className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-slate-400" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -191,7 +225,7 @@ export function EditDocumentModal({ documentId, fileName: initialFileName, onClo
 
         <div className="flex gap-3 border-t border-gray-200 px-6 py-4 dark:border-slate-700">
           <Button onClick={handleSave} disabled={isLoading || isSaving || !isFormValid} title={!isFormValid ? 'Please fill in every field' : undefined} className="flex-1">{isSaving ? 'Saving…' : 'Save Changes'}</Button>
-          <Button onClick={onClose} disabled={isSaving} variant="secondary" className="flex-1">Cancel</Button>
+          <Button onClick={handleClose} disabled={isSaving} variant="secondary" className="flex-1">Cancel</Button>
         </div>
       </div>
     </ModalOverlay>

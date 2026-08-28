@@ -114,33 +114,7 @@ function readStoredFolderPaneWidth(): number {
   }
 }
 
-// React Router unmounts Documents.tsx entirely when navigating away to another
-// page (Reminders, Dashboard, ...) — clicking back into Document Library (via
-// the sidebar link or the browser's own Back button) remounts it from scratch,
-// which used to always recompute "the first folder you can write to" as the
-// starting point, silently discarding whatever folder you'd actually
-// navigated deep into. Persisting the last-browsed folder id lets a fresh
-// mount resume exactly where you left off instead.
-const LAST_FOLDER_STORAGE_KEY = 'dms.documentLibrary.lastFolderId';
-
-function readStoredLastFolderId(): string | null {
-  try {
-    return window.localStorage.getItem(LAST_FOLDER_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredLastFolderId(folderId: string) {
-  try {
-    window.localStorage.setItem(LAST_FOLDER_STORAGE_KEY, folderId);
-  } catch {
-    // Private-mode / storage-disabled browsers just won't resume position —
-    // not worth failing anything over.
-  }
-}
-
-// Same idea as the folder position above, one level deeper: if a document was
+// React Router unmounts Documents.tsx entirely when navigating away. If a document was
 // open when the user got navigated away (accidentally clicking a different
 // sidebar link, or anything else that unmounts this page), coming back should
 // reopen that same document, not just land back on the right folder. Cleared
@@ -266,6 +240,8 @@ export function Documents() {
   const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const directPreviewId = searchParams.get('preview');
+  const storedPreviewIdOnMountRef = useRef(directPreviewId ? null : readStoredLastPreviewId());
+  const restoringStoredPreviewRef = useRef(Boolean(storedPreviewIdOnMountRef.current));
   // Warms the pdf.js chunk (~373 KB, the single largest lazy-loaded bundle in
   // the app) as early as possible on a deep-link preview. DocumentPreview only
   // renders <PdfJsViewer> — and therefore only triggers its own dynamic
@@ -290,7 +266,7 @@ export function Documents() {
   // already ask for something specific on its own.
   useEffect(() => {
     if (searchParams.get('preview')) return;
-    const storedPreviewId = readStoredLastPreviewId();
+    const storedPreviewId = storedPreviewIdOnMountRef.current;
     if (!storedPreviewId) return;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -583,14 +559,6 @@ export function Documents() {
       .catch(() => setDropdownOptions({ department: [], category: [], tag: [] }));
   }, []);
 
-  // Remembers wherever the user actually navigates to (via the folder tree,
-  // breadcrumb, search result, Backspace, ...) so a remount after leaving the
-  // page can resume here — see readStoredLastFolderId above for why this is
-  // necessary at all.
-  useEffect(() => {
-    if (selectedFolderId) writeStoredLastFolderId(selectedFolderId);
-  }, [selectedFolderId]);
-
   // Drives which action buttons (Upload, Rename, Delete) are shown as
   // disabled instead of only failing with a 403 after the user clicks them.
   useEffect(() => {
@@ -622,41 +590,27 @@ export function Documents() {
             // fallback effect below picks something reasonable once the user
             // actually starts browsing.
             if (loadedFolders.length > 0 && !startedWithDirectPreviewRef.current) {
-              // Resume wherever the user actually was, if that folder still
-              // exists — navigating to another page and back (or hitting the
-              // browser's own Back button) remounts this component from
-              // scratch, and always recomputing "the first writable folder"
-              // here silently threw away the user's real position, even
-              // though nothing about the state actually needed to reset.
-              const storedFolderId = readStoredLastFolderId();
-              const storedFolderStillExists = Boolean(
-                storedFolderId && loadedFolders.some((folder) => folder.folderId === storedFolderId),
-              );
-              if (storedFolderStillExists && storedFolderId) {
-                if (!cancelled) setSelectedFolderId(storedFolderId);
-              } else {
-                // First-ever visit (or the remembered folder was deleted) —
-                // picking loadedFolders[0] unconditionally would often default to
-                // a folder the current user only has read (or no) access to,
-                // which makes uploads fail with a silent 403 the moment you hit
-                // Upload without first clicking a different folder. Prefer the
-                // first folder the user can actually write to.
-                const writableRoles = new Set(['Writer', 'Manager', 'QA', 'Admin']);
-                let defaultFolderId = loadedFolders[0].folderId;
-                try {
-                  const permsRes = await apiClient.getUserPermissions(DEV_USER_ID);
-                  const writableFolderIds = new Set(
-                    (permsRes.data || [])
-                      .filter((permission: any) => writableRoles.has(permission.role))
-                      .map((permission: any) => permission.folderId),
-                  );
-                  const writableFolder = loadedFolders.find((folder) => writableFolderIds.has(folder.folderId));
-                  if (writableFolder) defaultFolderId = writableFolder.folderId;
-                } catch (error) {
-                  console.error('Failed to load folder permissions:', error);
-                }
-                if (!cancelled) setSelectedFolderId(defaultFolderId);
+              // Normal returns start from a top-level folder so the tree stays
+              // collapsed. An open preview restores its own containing path.
+              const rootFolders = loadedFolders.filter((folder) => (
+                !folder.parentFolderId
+                || !loadedFolders.some((candidate) => candidate.folderId === folder.parentFolderId)
+              ));
+              const writableRoles = new Set(['Writer', 'Manager', 'QA', 'Admin']);
+              let defaultFolderId = rootFolders[0]?.folderId ?? loadedFolders[0].folderId;
+              try {
+                const permsRes = await apiClient.getUserPermissions(DEV_USER_ID);
+                const writableFolderIds = new Set(
+                  (permsRes.data || [])
+                    .filter((permission: any) => writableRoles.has(permission.role))
+                    .map((permission: any) => permission.folderId),
+                );
+                const writableRoot = rootFolders.find((folder) => writableFolderIds.has(folder.folderId));
+                if (writableRoot) defaultFolderId = writableRoot.folderId;
+              } catch (error) {
+                console.error('Failed to load folder permissions:', error);
               }
+              if (!cancelled) setSelectedFolderId(defaultFolderId);
             }
           }
         }
@@ -936,6 +890,11 @@ export function Documents() {
       previewAbortControllerRef.current = null;
       previewRequestRef.current += 1;
       setPreviewDocument(null);
+      if (restoringStoredPreviewRef.current) {
+        restoringStoredPreviewRef.current = false;
+      } else {
+        writeStoredLastPreviewId(null);
+      }
       return;
     }
     writeStoredLastPreviewId(previewId);

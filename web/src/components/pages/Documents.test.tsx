@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Documents } from './Documents';
 import { apiClient, DEV_USER_ID, setCurrentUserId } from '../../utils/api';
-import { mockLibraryFolders } from '../../fixtures/documentLibrary';
+import { mockLibraryDocuments, mockLibraryFolders } from '../../fixtures/documentLibrary';
 import { doclingApi } from '../../services/doclingApi';
 import { AuthContext, type AuthContextValue } from '../../hooks/useAuth';
 
@@ -38,6 +38,9 @@ function renderDocumentLibrary(initialEntry = '/documents') {
 
 describe('Document Library', () => {
   beforeEach(() => {
+    window.localStorage.removeItem('dms.documentLibrary.lastPreviewId');
+    window.localStorage.removeItem('dms.documentLibrary.lastFolderId');
+    window.sessionStorage.clear();
     // Documents.tsx reads DEV_USER_ID directly (not just through useAuth) for
     // default owner/permission checks — keep it in sync with the fixed test user.
     setCurrentUserId(TEST_USER_ID);
@@ -115,6 +118,31 @@ describe('Document Library', () => {
 
     expect(await screen.findByRole('button', { name: 'Folder 1' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Folder 2' })).toBeInTheDocument();
+  });
+
+  it('starts from a collapsed top-level folder instead of restoring a deep folder', async () => {
+    window.localStorage.setItem('dms.documentLibrary.lastFolderId', 'nested-folder');
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [
+        { folderId: 'root-folder', name: 'Root Folder', ownerId: TEST_USER_ID, createdAt: '', updatedAt: '', isArchived: false },
+        { folderId: 'nested-folder', parentFolderId: 'root-folder', name: 'Nested Folder', ownerId: TEST_USER_ID, createdAt: '', updatedAt: '', isArchived: false },
+      ],
+    });
+
+    renderDocumentLibrary();
+
+    expect(await screen.findByRole('button', { name: 'Root Folder' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('button', { name: 'Nested Folder' })).not.toBeInTheDocument();
+  });
+
+  it('reopens the last preview when returning after leaving with a document open', async () => {
+    window.localStorage.setItem('dms.documentLibrary.lastPreviewId', mockLibraryDocuments[0].documentId);
+
+    renderDocumentLibrary();
+
+    expect(await screen.findByRole('button', { name: 'Close document preview' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: mockLibraryDocuments[0].fileName })).toBeInTheDocument();
   });
 
   it('keeps the folder section responsive next to the document table', async () => {
