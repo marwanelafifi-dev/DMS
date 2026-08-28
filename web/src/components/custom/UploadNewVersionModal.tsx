@@ -3,6 +3,7 @@ import { Button } from '../ui';
 import { X, AlertCircle, FileText } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 import { ModalOverlay } from '../ui/ModalOverlay';
+import { doclingApi } from '../../services/doclingApi';
 
 const inputClass = 'w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 
@@ -142,6 +143,18 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
         if (!uploadRes.success) throw new Error(uploadRes.error);
         versionId = uploadRes.data?.versionId;
         if (!versionId) throw new Error('The server did not return the new version ID');
+
+        // Updated files receive the same automatic Doc ID scan as brand-new
+        // documents. Extraction is best-effort and never blocks a successful
+        // version upload; the API preserves an existing ID and only fills a
+        // blank one, so a revision cannot silently change document identity.
+        try {
+          const parsedDocument = await doclingApi.convertDocument(fileToUpload);
+          await apiClient.extractDocId(documentId, parsedDocument.content);
+        } catch {
+          // QA can still keep/correct the existing ID or generate a new one.
+        }
+
         setUploadedVersionId(versionId);
         versionPersistedRef.current = true;
       }

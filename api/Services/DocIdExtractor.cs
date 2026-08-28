@@ -8,7 +8,9 @@ namespace DMS.Api.Services;
 // Examples: "Doc No.: SWS-13100002", "Document ID: QM-2026-0042"
 public static partial class DocIdExtractor
 {
-    // Pattern: matches "Doc No.:", "Document ID:", etc. followed by the ID value.
+    // Pattern: case-insensitively matches DOC.NO, DOC.ID, DOC NO, DOC ID,
+    // Document No, Document ID, and their punctuation/case variants, followed
+    // by the ID value.
     // Docling exports tables as Markdown (e.g. "| Doc No.: | SWS-13100002 |"), so the
     // label and value are often separated by a "|" cell divider and/or multiple
     // punctuation characters (".:") rather than a single colon — the separator here

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../utils/api';
+import { doclingApi } from '../../services/doclingApi';
 import { UploadNewVersionModal } from './UploadNewVersionModal';
 
 const documentId = '11111111-1111-4111-8111-111111111111';
@@ -44,6 +45,14 @@ describe('UploadNewVersionModal workflow choice', () => {
       success: true,
       data: { versionId: 'new-version' },
     });
+    vi.spyOn(doclingApi, 'convertDocument').mockResolvedValue({
+      filename: 'Customer Support Procedure.docx',
+      content: 'DOC.NO: SWS-25120002',
+    });
+    vi.spyOn(apiClient, 'extractDocId').mockResolvedValue({
+      success: true,
+      data: { found: true, originalDocumentId: 'SWS-25120002', alreadySet: true },
+    });
     vi.spyOn(apiClient, 'updateDocument').mockResolvedValue({ success: true, data: {} });
     vi.spyOn(apiClient, 'submitDocumentsForApproval').mockResolvedValue({ success: true, data: {} });
   });
@@ -77,6 +86,8 @@ describe('UploadNewVersionModal workflow choice', () => {
     await user.click(screen.getByRole('button', { name: 'Save as Draft' }));
 
     await waitFor(() => expect(apiClient.uploadDocument).toHaveBeenCalledWith(documentId, file, 'Rev B', ownerId));
+    expect(doclingApi.convertDocument).toHaveBeenCalledWith(file);
+    expect(apiClient.extractDocId).toHaveBeenCalledWith(documentId, 'DOC.NO: SWS-25120002');
     expect(apiClient.submitDocumentsForApproval).not.toHaveBeenCalled();
     expect(onUploaded).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();

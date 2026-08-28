@@ -3,6 +3,7 @@ using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -809,10 +810,9 @@ public class DocumentsController(
     }
 
     /// <summary>
-    /// System auto-generation of a Document ID at QA Triage — QA/Admin only.
-    /// Format: SWS-{n}, where {n} is one more than the highest existing SWS-{n}
-    /// Document ID across all documents (e.g. last one on file is SWS-2, so the
-    /// next generated one is SWS-3).
+    /// System auto-generation of a Document ID at QA Triage.
+    /// Format: SWS-YYMM####, with an atomic four-digit sequence that restarts
+    /// for each UTC calendar month (for example, SWS-26080001).
     /// </summary>
     [HttpPost("{id}/generate-doc-id")]
     public async Task<ActionResult<object>> GenerateDocId(Guid id)
@@ -826,32 +826,62 @@ public class DocumentsController(
             var roleCheck = await RequireQaOrAdminAsync(document.FolderId);
             if (roleCheck != null) return roleCheck;
 
-            var existingIds = await context.Documents
-                .Where(d => d.OriginalDocumentId != null && EF.Functions.ILike(d.OriginalDocumentId, "SWS-%"))
-                .Select(d => d.OriginalDocumentId!)
-                .ToListAsync();
+            var now = DateTime.UtcNow;
+            var periodKey = now.ToString("yyMM", System.Globalization.CultureInfo.InvariantCulture);
+            var currentPeriodPattern = $"^SWS-{periodKey}[0-9]{{4}}$";
 
-            var lastNumber = existingIds
-                .Select(docId => System.Text.RegularExpressions.Regex.Match(docId, @"^SWS-(\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                .Where(match => match.Success)
-                .Select(match => int.Parse(match.Groups[1].Value))
-                .DefaultIfEmpty(0)
-                .Max();
+            await using var transaction = await context.Database.BeginTransactionAsync();
 
-            // The sequence is derived from existing SWS-{n} IDs, so it's normally
-            // unique by construction — this loop is just a safety net against a
-            // gap (e.g. a manually-entered non-sequential "SWS-{n}" value, or a
-            // race with a concurrent request) rather than the expected path.
-            var candidateNumber = lastNumber + 1;
-            var generated = $"SWS-{candidateNumber}";
-            while (await IsDocIdTakenAsync(generated, id))
+            // One counter row per month serializes concurrent generation. The
+            // existing-ID maximum also advances past matching manually entered IDs.
+            await using var sequenceCommand = context.Database.GetDbConnection().CreateCommand();
+            sequenceCommand.Transaction = transaction.GetDbTransaction();
+            sequenceCommand.CommandText = """
+                INSERT INTO dms_document_id_sequences (period_key, last_value, updated_at)
+                VALUES (
+                    @period_key,
+                    COALESCE((
+                        SELECT MAX(RIGHT(original_document_id, 4)::INTEGER)
+                        FROM dms_documents
+                        WHERE original_document_id ~* @period_pattern
+                    ), 0) + 1,
+                    now()
+                )
+                ON CONFLICT (period_key) DO UPDATE
+                SET last_value = GREATEST(
+                        dms_document_id_sequences.last_value + 1,
+                        EXCLUDED.last_value
+                    ),
+                    updated_at = now()
+                RETURNING last_value
+                """;
+
+            var periodParameter = sequenceCommand.CreateParameter();
+            periodParameter.ParameterName = "period_key";
+            periodParameter.Value = periodKey;
+            sequenceCommand.Parameters.Add(periodParameter);
+
+            var patternParameter = sequenceCommand.CreateParameter();
+            patternParameter.ParameterName = "period_pattern";
+            patternParameter.Value = currentPeriodPattern;
+            sequenceCommand.Parameters.Add(patternParameter);
+
+            var nextNumberValue = await sequenceCommand.ExecuteScalarAsync();
+            var nextNumber = Convert.ToInt32(nextNumberValue, System.Globalization.CultureInfo.InvariantCulture);
+
+            if (nextNumber > 9999)
             {
-                candidateNumber += 1;
-                generated = $"SWS-{candidateNumber}";
+                await transaction.RollbackAsync();
+                return Conflict(new
+                {
+                    success = false,
+                    error = $"The Document ID sequence for {periodKey} has reached its 9,999-document limit"
+                });
             }
 
+            var generated = $"SWS-{periodKey}{nextNumber:D4}";
             document.OriginalDocumentId = generated;
-            document.UpdatedAt = DateTime.UtcNow;
+            document.UpdatedAt = now;
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(GetCurrentUserId(), "DOCUMENT_ID_GENERATED", new
@@ -859,6 +889,8 @@ public class DocumentsController(
                 document.DocumentId,
                 originalDocumentId = generated
             });
+
+            await transaction.CommitAsync();
 
             return Ok(new { success = true, data = new { originalDocumentId = generated } });
         }

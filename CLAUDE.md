@@ -1,5 +1,34 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 57 (2026-08-28) — Monthly Document ID Generation
+
+**Status:** Complete in code. Database migration required.
+
+- **Generate from System** now creates Document IDs in the required `SWS-YYMM####` format.
+- The prefix contains the UTC two-digit year and month; August 2026 therefore generates IDs beginning with `SWS-2608`.
+- The four-digit serial starts at `0001` for each month and advances independently, producing values such as `SWS-26080001`.
+- The database counter is atomic, preventing concurrent QA users from receiving the same generated ID.
+- Migration `092` seeds monthly counters from matching IDs already stored in the system, so existing IDs are not reused. Deleted or recycled documents remain part of that reservation.
+- A month is limited to serials `0001` through `9999`; the API returns a clear conflict if that limit is reached.
+- Automatic file detection remains the first source of truth for a Document ID. It recognizes `DOC.NO`, `DOC.ID`, `DOC NO`, `DOC ID`, `Document No`, and `Document ID` case-insensitively, including common punctuation variants.
+- New documents continue to be parsed immediately after upload. Updated-version uploads now receive the same automatic scan; an existing Document ID is preserved, while a blank ID is populated from the updated file when detected.
+- QA retains both resolution choices: keep or manually correct the detected ID, or generate a new ID from the monthly system sequence.
+
+### Files modified
+
+- `api/Controllers/DocumentsController.cs`
+- `api/Services/DocIdExtractor.cs`
+- `infra/db/init/092_monthly_document_id_sequences.sql`
+- `web/src/components/custom/UploadNewVersionModal.tsx`
+- `web/src/components/custom/UploadNewVersionModal.test.tsx`
+- `CLAUDE.md`
+
+### Deployment requirement
+
+- Apply migration `092_monthly_document_id_sequences.sql` to existing PostgreSQL volumes, then rebuild the API container.
+
+---
+
 ## Session 56 (2026-08-28) — Permanent Deletion of Migrated Folders
 
 **Status:** Complete. Database migration required.
