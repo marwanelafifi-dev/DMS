@@ -2,7 +2,7 @@
 
 ## Session 62 (2026-08-30) — Exact-File AI Retrieval and Professional Chat UI
 
-**Status:** Complete in code. Rebuild `api`, `ocr-rag`, and `web`; no database migration is required.
+**Status:** Complete in code. Rebuild `api`, `ocr-rag`, and `web`; PostgreSQL migration `093` is required.
 
 ### Exact-file retrieval
 
@@ -27,6 +27,8 @@
 - Document Preview now includes **Re-index OCR**. It shows an in-progress state and success/error notification. Any user who can read the document can re-index it; inaccessible document bytes are never sent through the browser.
 - Re-indexing does not create a document version or require a database migration. It adds a fresh OCR row, and exact-document lookup always selects the newest row.
 - Large Office-file re-indexing gets a five-minute API-to-OCR timeout instead of the previous 100 seconds. Timeout and service error details are shown in the UI instead of always collapsing to a generic failure toast.
+- Re-index OCR is controlled by the dedicated global-role flag `CanReindexDocuments`, shown in Admin Panel > Roles as **Re-index Document OCR**. The API enforces it in addition to normal document read access, and Document Preview hides the action when it is not granted.
+- Migration `093_page_access_role_reindex_documents.sql` denies existing roles by default and enables the capability for the existing folder-bypass/full-access administrative role, which can then delegate it.
 
 ### Ubuntu deployment
 

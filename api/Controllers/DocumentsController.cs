@@ -46,6 +46,9 @@ public class DocumentsController(
         var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(item => item.DocumentId == id, cancellationToken);
         if (document == null || document.CurrentVersionId == null)
             return NotFound(new { success = false, error = "Document or current version not found" });
+        var pageAccessRole = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+        if (pageAccessRole?.CanReindexDocuments != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have Re-index OCR permission" });
         if (!await accessOverrideService.HasDocumentReadAccessAsync(GetCurrentUserId(), document.DocumentId, document.FolderId))
             return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to read this document" });
 

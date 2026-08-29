@@ -83,6 +83,8 @@ public class DmsPageAccessRole
     // Opens and authorizes the multi-document Approve/Reject/Download/Delete
     // operations. Each operation still keeps its own document-level checks.
     public bool CanManageBulkActions { get; set; }
+    // Allows rebuilding OCR/in-file search for documents the user can read.
+    public bool CanReindexDocuments { get; set; }
     // Set once at creation (true only for the 5 original seeded roles) and
     // carried over verbatim by a rename — the stable identity that delete
     // protection checks, instead of matching against the current role name.

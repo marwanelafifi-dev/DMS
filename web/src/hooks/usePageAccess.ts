@@ -32,6 +32,7 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canDeleteReminders: false,
   canDeleteDocumentVersions: false,
   canManageBulkActions: false,
+  canReindexDocuments: false,
 };
 
 // Fetches the current user's page/feature access flags (their global role —

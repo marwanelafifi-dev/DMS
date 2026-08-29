@@ -78,6 +78,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanDeleteReminders = req.CanDeleteReminders,
                 CanDeleteDocumentVersions = req.CanDeleteDocumentVersions,
                 CanManageBulkActions = req.CanManageBulkActions,
+                CanReindexDocuments = req.CanReindexDocuments,
                 IsBuiltIn = false,
                 UpdatedAt = DateTime.UtcNow,
             };
@@ -133,6 +134,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanDeleteReminders = req.CanDeleteReminders;
             entity.CanDeleteDocumentVersions = req.CanDeleteDocumentVersions;
             entity.CanManageBulkActions = req.CanManageBulkActions;
+            entity.CanReindexDocuments = req.CanReindexDocuments;
             entity.UpdatedAt = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
@@ -208,6 +210,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanDeleteReminders = entity.CanDeleteReminders,
                 CanDeleteDocumentVersions = entity.CanDeleteDocumentVersions,
                 CanManageBulkActions = entity.CanManageBulkActions,
+                CanReindexDocuments = entity.CanReindexDocuments,
                 IsBuiltIn = entity.IsBuiltIn,
                 UpdatedAt = DateTime.UtcNow,
             };
@@ -277,7 +280,8 @@ public record UpdatePageAccessRoleRequest(
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
-    bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false);
+    bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
+    bool CanReindexDocuments = false);
 
 public record RenamePageAccessRoleRequest(string NewRole);
 
@@ -290,4 +294,5 @@ public record CreatePageAccessRoleRequest(
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
-    bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false);
+    bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
+    bool CanReindexDocuments = false);

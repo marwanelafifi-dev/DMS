@@ -50,6 +50,7 @@ export interface RolePermissionFlags {
   canChangeDocumentOwner?: boolean;
   canChangeFolderOwner?: boolean;
   canManageBulkActions?: boolean;
+  canReindexDocuments?: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -92,6 +93,7 @@ export interface PageAccessRoleFlags {
   // Administrative capability for deleting non-current document versions.
   canDeleteDocumentVersions: boolean;
   canManageBulkActions: boolean;
+  canReindexDocuments: boolean;
 }
 
 // Backs the Admin Panel's Notification Configuration page. Method is one of

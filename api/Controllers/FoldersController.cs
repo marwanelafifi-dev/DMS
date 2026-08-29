@@ -130,6 +130,7 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 // folder flags so the library can gate its selection toolbar
                 // without making a second role-list request.
                 CanManageBulkActions = pageAccessRole?.CanManageBulkActions == true,
+                CanReindexDocuments = pageAccessRole?.CanReindexDocuments == true,
                 UpdatedAt = permission?.UpdatedAt,
             };
 

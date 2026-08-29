@@ -950,7 +950,7 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
                 <PencilLine className="h-4 w-4" /> Download for Editing
               </button>
             )}
-            {onReindex && (
+            {onReindex && documentPermissions?.canReindexDocuments && (
               <button
                 onClick={async () => { setIsReindexing(true); try { await onReindex(document); } finally { setIsReindexing(false); } }}
                 disabled={isReindexing}
