@@ -143,20 +143,24 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
         if (!uploadRes.success) throw new Error(uploadRes.error);
         versionId = uploadRes.data?.versionId;
         if (!versionId) throw new Error('The server did not return the new version ID');
-
-        // Updated files receive the same automatic Doc ID scan as brand-new
-        // documents. Extraction is best-effort and never blocks a successful
-        // version upload; the API preserves an existing ID and only fills a
-        // blank one, so a revision cannot silently change document identity.
-        try {
-          const parsedDocument = await doclingApi.convertDocument(fileToUpload);
-          await apiClient.extractDocId(documentId, parsedDocument.content);
-        } catch {
-          // QA can still keep/correct the existing ID or generate a new one.
-        }
-
         setUploadedVersionId(versionId);
         versionPersistedRef.current = true;
+
+        // Updated files receive the same automatic Doc ID scan as brand-new
+        // documents. A parser outage is non-fatal, but once parsing succeeds
+        // an API rejection is shown clearly instead of silently leaving the
+        // user looking at the old ID with no explanation.
+        let parsedContent: string | null = null;
+        try {
+          const parsedDocument = await doclingApi.convertDocument(fileToUpload);
+          parsedContent = parsedDocument.content;
+        } catch {
+          // QA can still manually correct the ID or generate a new one.
+        }
+        if (parsedContent) {
+          const extractionRes = await apiClient.extractDocId(documentId, parsedContent, true);
+          if (!extractionRes.success) throw new Error(extractionRes.error || 'Failed to apply the Document ID detected in the updated file');
+        }
       }
 
       if (!metadataSaved) {

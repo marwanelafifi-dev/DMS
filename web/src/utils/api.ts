@@ -454,8 +454,9 @@ class APIClient {
     return data;
   }
 
-  async extractDocId(documentId: string, text: string) {
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/extract-doc-id`, { text });
+  async extractDocId(documentId: string, text: string, replaceExisting = false) {
+    const endpoint = replaceExisting ? 'extract-updated-doc-id' : 'extract-doc-id';
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/${endpoint}`, { text, replaceExisting });
     return data;
   }
 

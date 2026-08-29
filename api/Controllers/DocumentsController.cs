@@ -719,12 +719,13 @@ public class DocumentsController(
     }
 
     /// <summary>
-    /// Automatic Document ID extraction (runs right after upload, once the frontend's
-    /// existing Docling/OCR pass has produced extracted text). Any Writer+ can trigger
-    /// this — it's detection, not authorization-sensitive — but it only ever fills in
-    /// a blank Document ID, never overwrites one a QA/Admin already set.
+    /// Automatic Document ID extraction after Docling/OCR parsing. Initial-upload
+    /// detection only fills a blank ID. Updated-file detection may replace an
+    /// existing incorrect ID, but only through the dedicated route protected by
+    /// the caller's Upload Updated File permission.
     /// </summary>
     [HttpPost("{id}/extract-doc-id")]
+    [HttpPost("{id}/extract-updated-doc-id")]
     public async Task<ActionResult<object>> ExtractDocId(Guid id, [FromBody] ExtractDocIdRequest req)
     {
         try
@@ -733,12 +734,72 @@ public class DocumentsController(
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
 
+            var extracted = DocIdExtractor.Extract(req.Text);
+
             if (!string.IsNullOrWhiteSpace(document.OriginalDocumentId))
             {
-                return Ok(new { success = true, data = new { found = true, originalDocumentId = document.OriginalDocumentId, alreadySet = true } });
-            }
+                // Ordinary post-upload detection never replaces a resolved ID.
+                // Upload Updated File explicitly opts in because the newly
+                // uploaded revision may contain a corrected controlled ID.
+                if (!req.ReplaceExisting || extracted == null)
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        data = new
+                        {
+                            found = extracted != null,
+                            originalDocumentId = document.OriginalDocumentId,
+                            detectedDocumentId = extracted,
+                            alreadySet = true,
+                            replaced = false
+                        }
+                    });
+                }
 
-            var extracted = DocIdExtractor.Extract(req.Text);
+                var userId = GetCurrentUserId();
+                var folderPermission = await context.FolderPermissions
+                    .FirstOrDefaultAsync(p => p.FolderId == document.FolderId && p.UserId == userId);
+                var effectiveRole = folderPermission?.Role ?? await GetEffectiveRoleAsync(context, userId, document.FolderId);
+                var roleAllowsUpload = await HasRolePermissionAsync(context, effectiveRole, rp => rp.Upload);
+                var canReplaceFromUpdatedFile = await accessOverrideService.ResolveAsync(
+                    userId,
+                    document.DocumentId,
+                    document.FolderId,
+                    AccessOverrideActions.UploadUpdatedFile,
+                    roleAllowsUpload);
+
+                if (!canReplaceFromUpdatedFile)
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Upload Updated File permission is required to replace the detected Document ID" });
+
+                if (string.Equals(document.OriginalDocumentId.Trim(), extracted, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Ok(new { success = true, data = new { found = true, originalDocumentId = document.OriginalDocumentId, detectedDocumentId = extracted, alreadySet = true, replaced = false } });
+                }
+
+                if (await IsDocIdTakenAsync(extracted, id))
+                {
+                    return Conflict(new
+                    {
+                        success = false,
+                        error = $"The detected Document ID \"{extracted}\" is already used by another document"
+                    });
+                }
+
+                var previousDocumentId = document.OriginalDocumentId;
+                document.OriginalDocumentId = extracted;
+                document.UpdatedAt = DateTime.UtcNow;
+                await context.SaveChangesAsync();
+
+                await auditService.LogAsync(userId, "DOCUMENT_ID_REPLACED_FROM_UPDATED_FILE", new
+                {
+                    document.DocumentId,
+                    previousDocumentId,
+                    originalDocumentId = extracted
+                });
+
+                return Ok(new { success = true, data = new { found = true, originalDocumentId = extracted, detectedDocumentId = extracted, alreadySet = true, replaced = true } });
+            }
 
             // A value already used by another document is treated the same as
             // "nothing found" — this is a low-stakes automatic guess, so rather
@@ -934,7 +995,7 @@ public class DocumentsController(
     private async Task<bool> IsDocIdTakenAsync(string docId, Guid? excludeDocumentId = null)
     {
         var normalized = docId.Trim();
-        return await context.Documents.AnyAsync(d =>
+        return await context.Documents.IgnoreQueryFilters().AnyAsync(d =>
             d.OriginalDocumentId != null &&
             d.OriginalDocumentId.ToLower() == normalized.ToLower() &&
             d.DocumentId != excludeDocumentId);
@@ -2349,7 +2410,7 @@ public record BulkApproveRequest(List<Guid> DocumentIds, string? Comments = null
 public record BulkRejectRequest(List<Guid> DocumentIds, string Reason);
 public record BulkDeleteRequest(List<Guid> DocumentIds);
 public record BulkDownloadRequest(List<Guid> DocumentIds);
-public record ExtractDocIdRequest(string? Text);
+public record ExtractDocIdRequest(string? Text, bool ReplaceExisting = false);
 public record SetDocIdRequest(string OriginalDocumentId);
 public sealed record LegacyMetadataField(string Name, string? Value);
 public sealed record LegacyAssociatedFile(

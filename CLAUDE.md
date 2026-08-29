@@ -1,6 +1,6 @@
 # Enterprise DMS v7.4 — Development Notes
 
-## Session 57 (2026-08-28) — Monthly Document ID Generation
+## Session 57 (2026-08-29) — Monthly Document ID Generation and Updated-File Detection
 
 **Status:** Complete in code. Database migration required.
 
@@ -11,21 +11,33 @@
 - Migration `092` seeds monthly counters from matching IDs already stored in the system, so existing IDs are not reused. Deleted or recycled documents remain part of that reservation.
 - A month is limited to serials `0001` through `9999`; the API returns a clear conflict if that limit is reached.
 - Automatic file detection remains the first source of truth for a Document ID. It recognizes `DOC.NO`, `DOC.ID`, `DOC NO`, `DOC ID`, `Document No`, and `Document ID` case-insensitively, including common punctuation variants.
-- New documents continue to be parsed immediately after upload. Updated-version uploads now receive the same automatic scan; an existing Document ID is preserved, while a blank ID is populated from the updated file when detected.
+- New documents continue to be parsed immediately after upload. Updated-version uploads now receive the same automatic scan and replace an incorrect existing Document ID when the updated file contains a different valid ID. Replacement requires the uploader's real **Upload Updated File** permission, remains uniqueness-protected, and is audit-logged with both old and new values.
+- Updated-version extraction uses a dedicated permission-mapped endpoint, so an explicit **Upload Updated File** Allow or Deny governs both the file replacement and its ID detection consistently.
+- Parser unavailability does not invalidate an otherwise successful version upload. If parsing succeeds but applying the detected ID is rejected (for example, because another document already uses it), the upload dialog reports that specific follow-up failure instead of silently retaining the old ID.
 - QA retains both resolution choices: keep or manually correct the detected ID, or generate a new ID from the monthly system sequence.
 
 ### Files modified
 
 - `api/Controllers/DocumentsController.cs`
 - `api/Services/DocIdExtractor.cs`
+- `api/Middleware/RBACMiddleware.cs`
 - `infra/db/init/092_monthly_document_id_sequences.sql`
 - `web/src/components/custom/UploadNewVersionModal.tsx`
 - `web/src/components/custom/UploadNewVersionModal.test.tsx`
+- `web/src/components/custom/ApprovalDetailView.tsx`
+- `web/src/utils/api.ts`
 - `CLAUDE.md`
 
 ### Deployment requirement
 
 - Apply migration `092_monthly_document_id_sequences.sql` to existing PostgreSQL volumes, then rebuild the API container.
+
+### Verification
+
+- Updated-version upload and Document ID detection tests: 2/2 passed.
+- Frontend production build: passed.
+- Docker Compose configuration and diff integrity checks: passed.
+- Local API compilation was unavailable because this Windows workstation has no .NET SDK and Docker Desktop is not running; rebuild and health-check the API container during Ubuntu deployment.
 
 ---
 

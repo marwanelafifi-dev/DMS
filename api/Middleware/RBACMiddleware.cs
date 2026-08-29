@@ -319,6 +319,7 @@ public class RBACMiddleware
             : isFolder ? AccessOverrideActions.Read : AccessOverrideActions.FileRead,
         "POST" => path.EndsWith("/submit", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.SubmitForApproval
             : path.EndsWith("/force-unlock", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.Unlock
+            : path.EndsWith("/extract-updated-doc-id", StringComparison.OrdinalIgnoreCase) ? AccessOverrideActions.UploadUpdatedFile
             : path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase) ? (isFirstVersionUpload ? AccessOverrideActions.Write : AccessOverrideActions.UploadUpdatedFile)
             : AccessOverrideActions.Write,
         // Real bug found live: PUT /api/documents/{id} is the one generic

@@ -87,7 +87,7 @@ describe('UploadNewVersionModal workflow choice', () => {
 
     await waitFor(() => expect(apiClient.uploadDocument).toHaveBeenCalledWith(documentId, file, 'Rev B', ownerId));
     expect(doclingApi.convertDocument).toHaveBeenCalledWith(file);
-    expect(apiClient.extractDocId).toHaveBeenCalledWith(documentId, 'DOC.NO: SWS-25120002');
+    expect(apiClient.extractDocId).toHaveBeenCalledWith(documentId, 'DOC.NO: SWS-25120002', true);
     expect(apiClient.submitDocumentsForApproval).not.toHaveBeenCalled();
     expect(onUploaded).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();

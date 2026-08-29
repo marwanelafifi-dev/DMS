@@ -635,7 +635,7 @@ function DocIdResolutionPanel({
   return (
     <div className={`space-y-3 rounded-lg border p-3 ${isMissing ? 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10' : 'border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-800/50'}`}>
       <p className={`text-sm font-medium ${isMissing ? 'text-amber-900 dark:text-amber-300' : 'text-gray-700 dark:text-slate-300'}`}>
-        {isMissing ? 'Document ID required before accepting' : 'Document ID — edit if a wrong value was extracted'}
+        {isMissing ? 'Document ID required before accepting' : 'Keep this Document ID, correct it manually, or generate a new system ID'}
       </p>
       <div className="flex flex-wrap items-center gap-2 rounded-md bg-white/60 p-2 dark:bg-slate-900/40">
         <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-slate-300" title={fileName}>{fileName}</span>
@@ -653,7 +653,7 @@ function DocIdResolutionPanel({
           className="w-36 rounded border border-gray-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
         />
         <Button type="button" size="sm" variant="secondary" onClick={onSave} disabled={!manualDocIdInput.trim() || busy || isSubmitting}>
-          {isMissing ? 'Save' : 'Correct'}
+          {isMissing ? 'Save' : 'Save Correction'}
         </Button>
         <Button type="button" size="sm" onClick={onGenerate} disabled={busy || isSubmitting}>
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
