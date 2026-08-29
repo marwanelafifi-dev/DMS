@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, ChevronRight, LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
@@ -47,6 +47,22 @@ function readBlobAsText(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error('The document text could not be read'));
     reader.readAsText(blob);
   });
+}
+
+function mergeRefreshedLibraryDocument(
+  current: MockLibraryDocument,
+  refreshed: MockLibraryDocument,
+): MockLibraryDocument {
+  return {
+    ...current,
+    ...refreshed,
+    // A metadata refresh does not reload the document body. Preserve the
+    // already-rendered preview and its download source while replacing the
+    // owner, department, category, status, tags, dates, and other metadata.
+    preview: current.preview.kind === 'unavailable' ? refreshed.preview : current.preview,
+    sourceUrl: current.sourceUrl,
+    fallbackDownload: current.fallbackDownload,
+  };
 }
 
 // allDocuments carries the *resolved* stage-specific status (see
@@ -98,6 +114,8 @@ const FOLDER_PANE_MIN_WIDTH = 168;
 const FOLDER_PANE_MAX_WIDTH = 560;
 const FOLDER_PANE_DEFAULT_WIDTH = 224;
 const FOLDER_PANE_WIDTH_STORAGE_KEY = 'dms.documentLibrary.folderPaneWidth';
+const LAST_LIBRARY_FOLDER_STORAGE_KEY = 'dms.documentLibrary.lastLibraryFolderId';
+const LAST_LIBRARY_PREVIEW_STORAGE_KEY = 'dms.documentLibrary.lastLibraryPreviewId';
 
 function clampFolderPaneWidth(value: number): number {
   if (!Number.isFinite(value)) return FOLDER_PANE_DEFAULT_WIDTH;
@@ -114,29 +132,20 @@ function readStoredFolderPaneWidth(): number {
   }
 }
 
-// React Router unmounts Documents.tsx entirely when navigating away. If a document was
-// open when the user got navigated away (accidentally clicking a different
-// sidebar link, or anything else that unmounts this page), coming back should
-// reopen that same document, not just land back on the right folder. Cleared
-// whenever the preview is closed for a real reason (the X button, or picking
-// a different folder/document) so it never reopens something the user
-// actually finished with.
-const LAST_PREVIEW_STORAGE_KEY = 'dms.documentLibrary.lastPreviewId';
-
-function readStoredLastPreviewId(): string | null {
+function readLibraryLocation(key: string): string | null {
   try {
-    return window.localStorage.getItem(LAST_PREVIEW_STORAGE_KEY);
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function writeStoredLastPreviewId(documentId: string | null) {
+function writeLibraryLocation(key: string, value: string | null) {
   try {
-    if (documentId) window.localStorage.setItem(LAST_PREVIEW_STORAGE_KEY, documentId);
-    else window.localStorage.removeItem(LAST_PREVIEW_STORAGE_KEY);
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
   } catch {
-    // Same private-mode fallback as above — resuming the preview is a nicety.
+    // Storage-disabled browsers keep the location only for the current mount.
   }
 }
 
@@ -236,12 +245,17 @@ async function createNativePreview(
 }
 
 export function Documents() {
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const directPreviewId = searchParams.get('preview');
-  const storedPreviewIdOnMountRef = useRef(directPreviewId ? null : readStoredLastPreviewId());
-  const restoringStoredPreviewRef = useRef(Boolean(storedPreviewIdOnMountRef.current));
+  const storedLibraryFolderOnMountRef = useRef(
+    directPreviewId ? null : readLibraryLocation(LAST_LIBRARY_FOLDER_STORAGE_KEY),
+  );
+  const storedLibraryPreviewOnMountRef = useRef(
+    directPreviewId ? null : readLibraryLocation(LAST_LIBRARY_PREVIEW_STORAGE_KEY),
+  );
   // Warms the pdf.js chunk (~373 KB, the single largest lazy-loaded bundle in
   // the app) as early as possible on a deep-link preview. DocumentPreview only
   // renders <PdfJsViewer> — and therefore only triggers its own dynamic
@@ -257,22 +271,15 @@ export function Documents() {
     if (!directPreviewId) return;
     void import('../custom/PdfJsViewer');
   }, [directPreviewId]);
-  // If a document was open when the user got navigated away to another page
-  // entirely (this component fully unmounts, losing all its state), resume it
-  // on remount by seeding the same `?preview=` param a real deep link would
-  // use — the existing effect further down that watches this param already
-  // knows how to hydrate a preview from it, so this only has to run once,
-  // before that effect's very first check, and only when the URL didn't
-  // already ask for something specific on its own.
   useEffect(() => {
-    if (searchParams.get('preview')) return;
-    const storedPreviewId = storedPreviewIdOnMountRef.current;
-    if (!storedPreviewId) return;
+    if (directPreviewId || !storedLibraryPreviewOnMountRef.current) return;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
-      next.set('preview', storedPreviewId);
+      next.set('preview', storedLibraryPreviewOnMountRef.current!);
       return next;
     }, { replace: true });
+    // Restore once on a plain Document Library mount. External preview links
+    // already have their own preview parameter and never enter this path.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -527,15 +534,23 @@ export function Documents() {
         );
         liveDocuments.forEach((document) => {
           const existing = merged.get(document.documentId);
-          merged.set(document.documentId, existing ? {
-            ...existing,
-            ...document,
-            preview: existing.preview.kind === 'unavailable' ? document.preview : existing.preview,
-            sourceUrl: existing.sourceUrl,
-            fallbackDownload: existing.fallbackDownload,
-          } : document);
+          merged.set(
+            document.documentId,
+            existing ? mergeRefreshedLibraryDocument(existing, document) : document,
+          );
         });
         return [...merged.values()];
+      });
+
+      // The open preview is separate from allDocuments. Keep it synchronized
+      // with the freshly loaded server metadata so an owner change is visible
+      // immediately after Edit Document is saved.
+      setPreviewDocument((current) => {
+        if (!current) return current;
+        const refreshed = liveDocuments.find(
+          (document) => document.documentId === current.documentId,
+        );
+        return refreshed ? mergeRefreshedLibraryDocument(current, refreshed) : current;
       });
     } catch (error) {
       console.error('Failed to load documents:', error);
@@ -590,8 +605,15 @@ export function Documents() {
             // fallback effect below picks something reasonable once the user
             // actually starts browsing.
             if (loadedFolders.length > 0 && !startedWithDirectPreviewRef.current) {
+              const storedFolderId = storedLibraryFolderOnMountRef.current;
+              const storedFolder = storedFolderId
+                ? loadedFolders.find((folder) => folder.folderId === storedFolderId)
+                : undefined;
+              if (storedFolder) {
+                setSelectedFolderId(storedFolder.folderId);
+              } else {
               // Normal returns start from a top-level folder so the tree stays
-              // collapsed. An open preview restores its own containing path.
+              // collapsed when this user has no remembered library location.
               const rootFolders = loadedFolders.filter((folder) => (
                 !folder.parentFolderId
                 || !loadedFolders.some((candidate) => candidate.folderId === folder.parentFolderId)
@@ -611,6 +633,7 @@ export function Documents() {
                 console.error('Failed to load folder permissions:', error);
               }
               if (!cancelled) setSelectedFolderId(defaultFolderId);
+              }
             }
           }
         }
@@ -890,14 +913,8 @@ export function Documents() {
       previewAbortControllerRef.current = null;
       previewRequestRef.current += 1;
       setPreviewDocument(null);
-      if (restoringStoredPreviewRef.current) {
-        restoringStoredPreviewRef.current = false;
-      } else {
-        writeStoredLastPreviewId(null);
-      }
       return;
     }
-    writeStoredLastPreviewId(previewId);
     const requestedDocument = findLibraryDocumentRef.current(previewId);
     if (requestedDocument) {
       setSelectedFolderId(requestedDocument.folderId);
@@ -1108,20 +1125,28 @@ export function Documents() {
     previewAbortControllerRef.current = null;
     previewRequestRef.current += 1;
     setPreviewDocument(null);
+    const returnTo = searchParams.get('returnTo');
+    if (returnTo && /^\/approvals(?:\?tab=(qa-queue|manager-queue|release-queue))?$/.test(returnTo)) {
+      navigate(returnTo, { replace: true });
+      return;
+    }
+    if (!startedWithDirectPreviewRef.current) {
+      writeLibraryLocation(LAST_LIBRARY_PREVIEW_STORAGE_KEY, null);
+    }
     clearPreviewParam();
-    writeStoredLastPreviewId(null);
-  }, [clearPreviewParam]);
+  }, [clearPreviewParam, navigate, searchParams]);
 
   const handleFolderSelect = (folderId: string) => {
     previewAbortControllerRef.current?.abort();
     previewAbortControllerRef.current = null;
     previewRequestRef.current += 1;
     setSelectedFolderId(folderId);
+    writeLibraryLocation(LAST_LIBRARY_FOLDER_STORAGE_KEY, folderId);
+    writeLibraryLocation(LAST_LIBRARY_PREVIEW_STORAGE_KEY, null);
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set());
     setPreviewDocument(null);
     clearPreviewParam();
-    writeStoredLastPreviewId(null);
     if (showOnlyMySubmissions) clearMySubmissionsFilter();
   };
 
@@ -1157,12 +1182,13 @@ export function Documents() {
       return;
     }
     setPreviewDocument(libraryDocument);
+    writeLibraryLocation(LAST_LIBRARY_FOLDER_STORAGE_KEY, libraryDocument.folderId);
+    writeLibraryLocation(LAST_LIBRARY_PREVIEW_STORAGE_KEY, libraryDocument.documentId);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set('preview', libraryDocument.documentId);
       return next;
     }); // Don't use replace:true so browser back button works correctly
-    writeStoredLastPreviewId(libraryDocument.documentId);
   };
 
   // Resolves and triggers the actual file download without any toast — shared
@@ -1338,6 +1364,7 @@ export function Documents() {
       const foldersRes = await apiClient.getFolders();
       setFolders(foldersRes.data || []);
       setSelectedFolderId(res.data.folderId);
+      writeLibraryLocation(LAST_LIBRARY_FOLDER_STORAGE_KEY, res.data.folderId);
       showSuccess(`Folder "${newFolderRequest.name.trim()}" created`);
       setNewFolderRequest(null);
     } catch (error: any) {
@@ -1780,6 +1807,7 @@ export function Documents() {
       return;
     }
     setSelectedFolderId(targetFolder.folderId);
+    writeLibraryLocation(LAST_LIBRARY_FOLDER_STORAGE_KEY, targetFolder.folderId);
     setUploadFiles(files);
     setUploadFileName(files.length === 1 ? splitFileName(files[0].name).base : '');
     setUploadProgress({ complete: 0, total: files.length });

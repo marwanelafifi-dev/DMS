@@ -1,5 +1,51 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 60 (2026-08-29) — Live Preview Metadata and Correct Library/Workflow Return State
+
+**Status:** Complete in code. Frontend-only; no database migration is required.
+
+### Open previews reflect saved metadata immediately
+
+- Saving Edit Document now synchronizes the open preview with the freshly reloaded server metadata instead of updating only the background Document Library collection.
+- Owner, department, category, status, tags, dates, file name, and other saved metadata therefore update in the preview header immediately without closing or refreshing the page.
+- The already-rendered PDF/Office body and its download source are preserved during this metadata-only synchronization, avoiding a redundant document conversion or download.
+
+### Workflow previews return to their originating stage
+
+- Preview links from QA Review, Manager Review, and Final Release now carry an explicit return destination for the exact originating stage.
+- Escape and the preview Close button return to that same workflow stage instead of exposing an unrelated Document Library folder.
+- Workflow tab selection is recorded in the `tab` query parameter, so the selected stage survives the preview round trip.
+- The same return behavior applies whether Preview is opened directly from a workflow queue row or from the Review/Release detail dialog.
+
+### Document Library remembers only real library navigation
+
+- Document Library again restores the last folder selected or document opened by the user inside Document Library.
+- Dedicated storage keys distinguish this user-selected library history from temporary previews launched by Workflow, Search, Notifications, Dashboard, or Tasks.
+- External previews never overwrite the remembered library folder/document. In particular, their containing folder cannot become the apparent default library folder after Escape or later page navigation.
+- Obsolete `lastFolderId` and `lastPreviewId` keys are intentionally ignored, preventing stale paths such as the previously surfaced `2-Axis Gyro` folder from being restored.
+- When there is no valid remembered library folder, the existing top-level writable-folder fallback remains available.
+
+### Files modified
+
+- `web/src/components/custom/ApprovalDetailView.tsx`
+- `web/src/components/pages/Approvals.tsx`
+- `web/src/components/pages/Documents.tsx`
+- `web/src/components/pages/Documents.test.tsx`
+- `CLAUDE.md`
+
+### Verification
+
+- Focused stale-key, last-folder, and last-document restoration tests: 3/3 passing.
+- Production frontend build: successful.
+- `git diff --check`: passed.
+- The repository-wide TypeScript check still reports only the existing unrelated errors in `NotificationsBell.tsx`, `Dashboard.tsx`, and `officeParser.test.ts`.
+
+### Deployment requirement
+
+- Rebuild the `web` container. No API rebuild or database migration is required.
+
+---
+
 ## Session 59 (2026-08-29) — Faster Updated-Office Submission and Workflow Table Containment
 
 **Status:** Complete in code. Frontend-only; no database migration is required.

@@ -45,6 +45,7 @@ interface ApprovalDetailViewProps {
   groups: Array<{ groupId: string; name: string }>;
   onClose: () => void;
   onChanged: () => void;
+  previewReturnTo?: string;
 }
 
 const STAGE_LABEL: Record<string, string> = {
@@ -67,7 +68,7 @@ function formatBytes(bytes?: number | null) {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-export function ApprovalDetailView({ approvalId, documentId, users, groups, onClose, onChanged }: ApprovalDetailViewProps) {
+export function ApprovalDetailView({ approvalId, documentId, users, groups, onClose, onChanged, previewReturnTo }: ApprovalDetailViewProps) {
   const navigate = useNavigate();
   const access = usePageAccess();
   const canApprove = access?.canApprove ?? false;
@@ -264,7 +265,12 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
     );
   };
 
-  const handlePreview = () => navigate(`/documents?preview=${encodeURIComponent(documentId)}`);
+  const handlePreview = () => {
+    const returnQuery = previewReturnTo
+      ? `&returnTo=${encodeURIComponent(previewReturnTo)}`
+      : '';
+    navigate(`/documents?preview=${encodeURIComponent(documentId)}${returnQuery}`);
+  };
   const handleDownload = () => { if (item) apiClient.downloadDocument(documentId, item.versionId).catch(() => {}); };
 
   return (

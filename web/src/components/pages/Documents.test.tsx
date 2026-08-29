@@ -40,6 +40,8 @@ describe('Document Library', () => {
   beforeEach(() => {
     window.localStorage.removeItem('dms.documentLibrary.lastPreviewId');
     window.localStorage.removeItem('dms.documentLibrary.lastFolderId');
+    window.localStorage.removeItem('dms.documentLibrary.lastLibraryPreviewId');
+    window.localStorage.removeItem('dms.documentLibrary.lastLibraryFolderId');
     window.sessionStorage.clear();
     // Documents.tsx reads DEV_USER_ID directly (not just through useAuth) for
     // default owner/permission checks — keep it in sync with the fixed test user.
@@ -120,7 +122,7 @@ describe('Document Library', () => {
     expect(screen.getByRole('button', { name: 'Folder 2' })).toBeInTheDocument();
   });
 
-  it('starts from a collapsed top-level folder instead of restoring a deep folder', async () => {
+  it('ignores the obsolete folder key instead of restoring a stale deep folder', async () => {
     window.localStorage.setItem('dms.documentLibrary.lastFolderId', 'nested-folder');
     vi.mocked(apiClient.getFolders).mockResolvedValue({
       success: true,
@@ -136,13 +138,28 @@ describe('Document Library', () => {
     expect(screen.queryByRole('button', { name: 'Nested Folder' })).not.toBeInTheDocument();
   });
 
-  it('reopens the last preview when returning after leaving with a document open', async () => {
-    window.localStorage.setItem('dms.documentLibrary.lastPreviewId', mockLibraryDocuments[0].documentId);
+  it('restores the last document opened from inside the Document Library', async () => {
+    window.localStorage.setItem('dms.documentLibrary.lastLibraryPreviewId', mockLibraryDocuments[0].documentId);
 
     renderDocumentLibrary();
 
     expect(await screen.findByRole('button', { name: 'Close document preview' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: mockLibraryDocuments[0].fileName })).toBeInTheDocument();
+  });
+
+  it('restores the last folder selected inside the Document Library', async () => {
+    window.localStorage.setItem('dms.documentLibrary.lastLibraryFolderId', 'nested-folder');
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [
+        { folderId: 'root-folder', name: 'Root Folder', ownerId: TEST_USER_ID, createdAt: '', updatedAt: '', isArchived: false },
+        { folderId: 'nested-folder', parentFolderId: 'root-folder', name: 'Nested Folder', ownerId: TEST_USER_ID, createdAt: '', updatedAt: '', isArchived: false },
+      ],
+    });
+
+    renderDocumentLibrary();
+
+    expect(await screen.findByRole('button', { name: 'Nested Folder' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('keeps the folder section responsive next to the document table', async () => {

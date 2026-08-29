@@ -257,7 +257,14 @@ export function Approvals() {
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => {
+                setTab(t.key);
+                setSearchParams((current) => {
+                  const next = new URLSearchParams(current);
+                  next.set('tab', t.key);
+                  return next;
+                }, { replace: true });
+              }}
               className={`px-4 py-2 font-medium text-sm transition-colors ${
                 tab === t.key
                   ? 'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
@@ -292,6 +299,7 @@ export function Approvals() {
           totalCount={qaTotalCount}
           onPageChange={setQaPage}
           actionLabel="Review"
+          originTab="qa-queue"
           onAction={(approvalId, documentId) => { setSelectedApprovalId(approvalId); setFocusDocumentId(documentId); }}
         />
       )}
@@ -309,6 +317,7 @@ export function Approvals() {
           totalCount={managerTotalCount}
           onPageChange={setManagerPage}
           actionLabel="Review"
+          originTab="manager-queue"
           onAction={(approvalId, documentId) => { setSelectedApprovalId(approvalId); setFocusDocumentId(documentId); }}
         />
       )}
@@ -326,6 +335,7 @@ export function Approvals() {
           totalCount={releaseTotalCount}
           onPageChange={setReleasePage}
           actionLabel="Release"
+          originTab="release-queue"
           onAction={(approvalId, documentId) => { setSelectedApprovalId(approvalId); setFocusDocumentId(documentId); }}
         />
       )}
@@ -336,6 +346,7 @@ export function Approvals() {
           documentId={focusDocumentId}
           users={allUsers}
           groups={allGroups}
+          previewReturnTo={tab ? `/approvals?tab=${tab}` : '/approvals'}
           onClose={() => {
             setSelectedApprovalId(null);
             setFocusDocumentId(null);
@@ -366,6 +377,7 @@ interface ApprovalQueueTableProps {
   totalCount: number;
   onPageChange: (page: number) => void;
   actionLabel: string;
+  originTab: ApprovalTab;
   onAction: (approvalId: string, documentId: string) => void;
 }
 
@@ -380,8 +392,11 @@ function ApprovalQueueTable({
   totalCount,
   onPageChange,
   actionLabel,
+  originTab,
   onAction,
 }: ApprovalQueueTableProps) {
+  const navigate = useNavigate();
+
   if (loadError) {
     return (
       <Card className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900">
@@ -413,10 +428,9 @@ function ApprovalQueueTable({
     );
   }
 
-  const navigate = useNavigate();
-
   const handlePreview = (documentId: string) => {
-    navigate(`/documents?preview=${encodeURIComponent(documentId)}`);
+    const returnTo = `/approvals?tab=${originTab}`;
+    navigate(`/documents?preview=${encodeURIComponent(documentId)}&returnTo=${encodeURIComponent(returnTo)}`);
   };
 
   const handleDownload = async (documentId: string, versionId: string) => {
