@@ -13,6 +13,7 @@ import {
   PencilLine,
   Printer,
   Search,
+  ScanText,
   UploadCloud,
   X,
 } from 'lucide-react';
@@ -160,6 +161,7 @@ interface DocumentPreviewProps {
   onDownloadForEditing?: (document: MockLibraryDocument) => void;
   onSubmitForApproval?: (document: MockLibraryDocument) => void;
   onForceUnlock?: (document: MockLibraryDocument) => void;
+  onReindex?: (document: MockLibraryDocument) => Promise<void>;
   // The current user's effective permission flags for this document's
   // folder — gates Submit for Approval / Download for Editing so those
   // buttons are hidden/disabled instead of only failing after a click.
@@ -180,12 +182,13 @@ function PreviewFallback({ message, onDownload }: { message?: string; onDownload
   );
 }
 
-export function DocumentPreview({ document, folders, onNavigateToFolder, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onDocumentUpdated }: DocumentPreviewProps) {
+export function DocumentPreview({ document, folders, onNavigateToFolder, onClose, onDownload, onDownloadForEditing, onSubmitForApproval, onForceUnlock, onReindex, onDocumentUpdated }: DocumentPreviewProps) {
   const folderAncestry = folders ? folderAncestryById(document.folderId, folders) : [];
   const newVersionInputRef = useRef<HTMLInputElement>(null);
   const [showEditModal, setShowEditModal] = useState(() => hasActiveDocumentEditDraft(document.documentId));
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showRelatedTasks, setShowRelatedTasks] = useState(false);
+  const [isReindexing, setIsReindexing] = useState(false);
   const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
   const [documentPermissions, setDocumentPermissions] = useState<RolePermissionFlags | null>(null);
   const [isLoading, setIsLoading] = useState(
@@ -945,6 +948,17 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
             {onDownloadForEditing && (
               <button onClick={() => documentPermissions?.downloadForEditing && onDownloadForEditing(document)} disabled={!documentPermissions?.downloadForEditing} className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Download for Editing: ${document.fileName}`} title={!documentPermissions?.downloadForEditing ? 'Your role does not have Download for Editing permission' : 'Download the original file for editing and lock it for one hour'}>
                 <PencilLine className="h-4 w-4" /> Download for Editing
+              </button>
+            )}
+            {onReindex && (
+              <button
+                onClick={async () => { setIsReindexing(true); try { await onReindex(document); } finally { setIsReindexing(false); } }}
+                disabled={isReindexing}
+                className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-wait disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+                aria-label={`Re-index OCR for ${document.fileName}`}
+                title="Rebuild OCR and in-file search from the current version"
+              >
+                <ScanText className={`h-4 w-4 ${isReindexing ? 'animate-pulse' : ''}`} /> {isReindexing ? 'Re-indexing…' : 'Re-index OCR'}
               </button>
             )}
             <input

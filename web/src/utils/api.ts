@@ -1038,6 +1038,13 @@ class APIClient {
     return data;
   }
 
+  async reindexDocument(documentId: string) {
+    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/reindex`, undefined, {
+      timeout: LONG_RUNNING_WORKFLOW_TIMEOUT_MS,
+    });
+    return data;
+  }
+
   async getRecycleBin() {
     const { data } = await this.client.get<ApiResponse>('/recycle-bin');
     return data;

@@ -37,6 +37,51 @@ public class DocumentsController(
         ".xls", ".xlsm", ".xlsb", ".xlt", ".xltm",
     };
 
+    // Rebuild the OCR/in-file-search row from the current immutable file version.
+    // Permission is checked here so the browser never sends file bytes directly
+    // to the OCR sidecar for a document it cannot read.
+    [HttpPost("{id}/reindex")]
+    public async Task<ActionResult<object>> ReindexDocument(Guid id, CancellationToken cancellationToken)
+    {
+        var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(item => item.DocumentId == id, cancellationToken);
+        if (document == null || document.CurrentVersionId == null)
+            return NotFound(new { success = false, error = "Document or current version not found" });
+        if (!await accessOverrideService.HasDocumentReadAccessAsync(GetCurrentUserId(), document.DocumentId, document.FolderId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to read this document" });
+
+        var version = await context.DocumentVersions.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.VersionId == document.CurrentVersionId.Value, cancellationToken);
+        if (version == null || string.IsNullOrWhiteSpace(version.S3ObjectKey))
+            return BadRequest(new { success = false, error = "The current document file is unavailable" });
+
+        try
+        {
+            await using var source = await minioService.DownloadAsync(version.S3ObjectKey);
+            using var multipart = new MultipartFormDataContent();
+            using var fileContent = new StreamContent(source);
+            if (MediaTypeHeaderValue.TryParse(version.MimeType, out var contentType))
+                fileContent.Headers.ContentType = contentType;
+            multipart.Add(fileContent, "file", version.FileName);
+            multipart.Add(new StringContent(document.DocumentId.ToString()), "document_id");
+
+            var ocrClient = httpClientFactory.CreateClient("OcrRag");
+            using var response = await ocrClient.PostAsync("api/documents/upload", multipart, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("OCR re-index failed for document {DocumentId}: {Status}", id, response.StatusCode);
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, error = "The OCR service could not index this file" });
+            }
+
+            logger.LogInformation("User {UserId} re-indexed document {DocumentId}, version {VersionId}", GetCurrentUserId(), id, version.VersionId);
+            return Ok(new { success = true, data = new { documentId = id, versionId = version.VersionId, fileName = version.FileName } });
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or TaskCanceledException)
+        {
+            logger.LogWarning(exception, "OCR re-index request failed for document {DocumentId}", id);
+            return StatusCode(StatusCodes.Status502BadGateway, new { success = false, error = "The OCR service is unavailable" });
+        }
+    }
+
     // GET /api/documents — list of documents
     [HttpGet]
     public async Task<ActionResult<object>> GetDocuments(

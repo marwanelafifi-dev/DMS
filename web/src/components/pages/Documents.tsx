@@ -2113,6 +2113,15 @@ export function Documents() {
           onDownload={downloadMockDocument}
           onDownloadForEditing={downloadForEditingDocument}
           onForceUnlock={handleForceUnlock}
+          onReindex={async (doc) => {
+            try {
+              await apiClient.reindexDocument(doc.documentId);
+              showSuccess(`OCR and in-file search were rebuilt for "${doc.fileName}".`);
+            } catch (error: any) {
+              showError(error?.response?.data?.error || `Could not re-index "${doc.fileName}".`);
+              throw error;
+            }
+          }}
           permissions={myPermissions}
           onDocumentUpdated={() => void refreshServerDocuments(folders)}
           onSubmitForApproval={(doc) => {

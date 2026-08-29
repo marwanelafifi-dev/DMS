@@ -19,6 +19,13 @@
 - Refined the assistant panel, header, message spacing, contrast, composer, loading state, and user-message text readability.
 - Assistant Markdown now renders as structured paragraphs, lists, and scrollable tables instead of showing raw OCR/table syntax.
 - Every authorized document/task source is a keyboard-accessible hyperlink. Document links open the exact preview through `/documents?preview=...`; task links open the exact task through `/tasks?highlight=...`.
+- The screenshot showing the narrow panel, old welcome copy, gray user text, and old composer is the pre-Session-62 frontend bundle. Rebuilding only `api` cannot update this appearance; Ubuntu must rebuild and recreate `web` as well.
+
+### Manual OCR re-index
+
+- Added permission-checked `POST /api/documents/{id}/reindex`. The API downloads the current immutable version from MinIO and sends it to the private OCR service with its stable DMS document ID.
+- Document Preview now includes **Re-index OCR**. It shows an in-progress state and success/error notification. Any user who can read the document can re-index it; inaccessible document bytes are never sent through the browser.
+- Re-indexing does not create a document version or require a database migration. It adds a fresh OCR row, and exact-document lookup always selects the newest row.
 
 ### Ubuntu deployment
 
