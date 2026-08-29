@@ -2,13 +2,37 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { Documents } from './Documents';
+import { Documents, mergeRefreshedLibraryDocument } from './Documents';
 import { apiClient, DEV_USER_ID, setCurrentUserId } from '../../utils/api';
 import { mockLibraryDocuments, mockLibraryFolders } from '../../fixtures/documentLibrary';
 import { doclingApi } from '../../services/doclingApi';
 import { AuthContext, type AuthContextValue } from '../../hooks/useAuth';
 
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+describe('mergeRefreshedLibraryDocument', () => {
+  it('discards cached preview content when the current version changes', () => {
+    const current = {
+      ...mockLibraryDocuments[0],
+      currentVersionId: 'old-version',
+      sourceUrl: 'blob:old-version',
+      preview: { kind: 'pdf' as const, url: 'blob:old-version' },
+    };
+    const refreshed = {
+      ...current,
+      currentVersionId: 'new-version',
+      originalDocumentId: 'SWS-26010001',
+      sourceUrl: undefined,
+      preview: { kind: 'unavailable' as const, message: 'Reload the current version' },
+    };
+
+    const merged = mergeRefreshedLibraryDocument(current, refreshed);
+
+    expect(merged.originalDocumentId).toBe('SWS-26010001');
+    expect(merged.preview).toEqual(refreshed.preview);
+    expect(merged.sourceUrl).toBeUndefined();
+  });
+});
 
 const authContextValue: AuthContextValue = {
   user: {

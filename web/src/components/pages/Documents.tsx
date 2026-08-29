@@ -49,20 +49,39 @@ function readBlobAsText(blob: Blob): Promise<string> {
   });
 }
 
-function mergeRefreshedLibraryDocument(
+export function mergeRefreshedLibraryDocument(
   current: MockLibraryDocument,
   refreshed: MockLibraryDocument,
 ): MockLibraryDocument {
+  const versionChanged = Boolean(
+    current.currentVersionId
+    && refreshed.currentVersionId
+    && current.currentVersionId !== refreshed.currentVersionId,
+  );
   return {
     ...current,
     ...refreshed,
     // A metadata refresh does not reload the document body. Preserve the
-    // already-rendered preview and its download source while replacing the
-    // owner, department, category, status, tags, dates, and other metadata.
-    preview: current.preview.kind === 'unavailable' ? refreshed.preview : current.preview,
-    sourceUrl: current.sourceUrl,
-    fallbackDownload: current.fallbackDownload,
+    // rendered body only while the current version is unchanged. A new
+    // revision must discard the old PDF/Office URL so its embedded Doc ID and
+    // other file content are loaded from the new current version.
+    preview: !versionChanged && current.preview.kind !== 'unavailable'
+      ? current.preview
+      : refreshed.preview,
+    sourceUrl: versionChanged ? refreshed.sourceUrl : current.sourceUrl,
+    fallbackDownload: versionChanged ? refreshed.fallbackDownload : current.fallbackDownload,
   };
+}
+
+function hasDocumentVersionChanged(
+  current: MockLibraryDocument,
+  refreshed: MockLibraryDocument,
+): boolean {
+  return Boolean(
+    current.currentVersionId
+    && refreshed.currentVersionId
+    && current.currentVersionId !== refreshed.currentVersionId,
+  );
 }
 
 // allDocuments carries the *resolved* stage-specific status (see
@@ -336,6 +355,9 @@ export function Documents() {
   const [isResizingFolderPane, setIsResizingFolderPane] = useState(false);
   const folderPaneResizeOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
   const [previewDocument, setPreviewDocument] = useState<MockLibraryDocument | null>(null);
+  const previewDocumentRef = useRef<MockLibraryDocument | null>(null);
+  previewDocumentRef.current = previewDocument;
+  const [previewReloadToken, setPreviewReloadToken] = useState(0);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const [requestedFolderAction, setRequestedFolderAction] = useState<LibraryBulkAction | null>(null);
@@ -552,6 +574,16 @@ export function Documents() {
         );
         return refreshed ? mergeRefreshedLibraryDocument(current, refreshed) : current;
       });
+      const refreshedOpenDocument = previewDocumentRef.current
+        ? liveDocuments.find((document) => document.documentId === previewDocumentRef.current!.documentId)
+        : undefined;
+      if (
+        previewDocumentRef.current
+        && refreshedOpenDocument
+        && hasDocumentVersionChanged(previewDocumentRef.current, refreshedOpenDocument)
+      ) {
+        setPreviewReloadToken((current) => current + 1);
+      }
     } catch (error) {
       console.error('Failed to load documents:', error);
       showError('Failed to load documents');
@@ -957,7 +989,7 @@ export function Documents() {
     void loadApiDocument();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, previewReloadToken]);
 
   // Only tags actually present on a document OR a subfolder in the folder
   // currently being browsed — not every tag in the whole system. Clicking

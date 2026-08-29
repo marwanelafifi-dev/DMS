@@ -10,6 +10,13 @@
 - Owner, department, category, status, tags, dates, file name, and other saved metadata therefore update in the preview header immediately without closing or refreshing the page.
 - The already-rendered PDF/Office body and its download source are preserved during this metadata-only synchronization, avoiding a redundant document conversion or download.
 
+### Updated versions reload their file content immediately
+
+- The metadata refresh now compares the open preview's `currentVersionId` with the freshly loaded server document.
+- When the current version changes after Upload Updated File or a version revert, the cached PDF/Office preview URL and cached download source are discarded instead of being preserved as though the change were metadata-only.
+- The preview automatically downloads/converts the new current version in place, so embedded content such as a corrected Doc ID (for example, `SWS-26010001`) appears without closing, refreshing, or reopening the document.
+- Owner and other metadata-only edits continue to reuse the already-rendered body; only a real current-version change triggers the additional file reload.
+
 ### Workflow previews return to their originating stage
 
 - Preview links from QA Review, Manager Review, and Final Release now carry an explicit return destination for the exact originating stage.
@@ -36,6 +43,7 @@
 ### Verification
 
 - Focused stale-key, last-folder, and last-document restoration tests: 3/3 passing.
+- Focused version-change cache invalidation regression test: passing.
 - Production frontend build: successful.
 - `git diff --check`: passed.
 - The repository-wide TypeScript check still reports only the existing unrelated errors in `NotificationsBell.tsx`, `Dashboard.tsx`, and `officeParser.test.ts`.
