@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { ScheduledNoticeBanner } from './ScheduledNoticeBanner';
+import { AiChatbot } from '../custom/AiChatbot';
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'dms.sidebar.collapsed';
 
@@ -77,6 +78,7 @@ export function MainLayout() {
           </div>
         </main>
       </div>
+      <AiChatbot />
     </div>
   );
 }

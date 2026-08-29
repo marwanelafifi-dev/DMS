@@ -134,6 +134,7 @@ function App() {
                 <Route path="/admin/notifications" element={<Settings defaultTab="notifications" />} />
                 <Route path="/admin/company-data" element={<Settings defaultTab="company-data" />} />
                 <Route path="/admin/database" element={<Settings defaultTab="database" />} />
+                <Route path="/admin/api-keys" element={<Settings defaultTab="api-keys" />} />
               </Route>
 
               {/* Legacy settings routes */}

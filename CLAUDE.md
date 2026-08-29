@@ -1,5 +1,64 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 61 (2026-08-30) — Permission-Safe AI Assistant, Personal Dashboard Context, and Admin API-Key Management
+
+**Status:** Complete in code. API and frontend rebuilds are required; no database migration is required.
+
+### Professional DMS AI assistant
+
+- Added a floating `DMS AI Assistant` to the authenticated shared layout, available on every application page.
+- The assistant answers from server-built context only: assigned/group-assigned tasks, tasks created by the signed-in user, authorized document metadata, OCR/in-file search text, the signed-in user's personal dashboard summary, their own connected Google Calendar, the shared DMS audit calendar, and visible announcements.
+- Task context explicitly distinguishes `assigned to me` from `created by me` and includes status, priority, due date, and description. Task metadata remains available to its assignee/creator even when an attached file is protected, but the protected file's title/content is never joined into that task context.
+- Document retrieval moved behind the authenticated .NET API. Every OCR row is matched to an active DMS document and checked through `HasDocumentReadAccessAsync`, including document-specific FileRead deny overrides, before text can enter the model prompt or response sources.
+- Direct questions about an inaccessible document return: `You should get access first. Call your system administrator to provide you with the correct access so I can answer your question.`
+- The model prompt treats retrieved text as untrusted business data (not instructions), requires grounded answers and source-title citations, and explicitly refuses another user's dashboard. No endpoint accepts a target dashboard user ID; all personal context is derived from `GetCurrentUserId()` in the authenticated session.
+- When no AI provider key is configured or the provider is unavailable, the assistant remains usable in search-only mode and returns permission-filtered OCR/task/calendar/announcement results.
+
+### Admin Panel — API Keys
+
+- Added `/admin/api-keys`, an `API Keys` Sidebar item, and the corresponding Settings page/tab. Both the page route and all backend operations require the existing Admin Panel access gate; the dedicated API additionally requires `BypassFolderPermissions` (Full Access).
+- Admins can select a provider, configure endpoint/model, enter or replace a key, remove it, and test the live provider connection. Saved secrets are never returned to the browser; the API returns only `isConfigured` and a fixed masked value.
+- Provider configuration is stored in `dms_app_settings` under the reserved `ai_chat_provider_config` key. The API key is encrypted with ASP.NET Core Data Protection before database storage. Docker now persists the Data Protection key ring in the `dataprotectionkeys` volume so ciphertext remains decryptable across container restarts.
+- The old generic App Settings endpoint explicitly blocks reads/writes for this reserved sensitive key, preventing ciphertext disclosure or bypassing the dedicated validation/audit path.
+- Provider changes without a newly supplied key clear the old credential so an OpenAI key cannot accidentally be sent to Anthropic, or vice versa.
+
+### Supported providers
+
+- **OpenAI-compatible:** bearer authentication, Chat Completions request/response format, default endpoint `https://api.openai.com/v1/chat/completions`.
+- **Anthropic Claude:** native Messages API format, `x-api-key` plus `anthropic-version: 2023-06-01`, separate `system` prompt, and native text-content parsing. Default endpoint `https://api.anthropic.com/v1/messages`; the Admin UI suggests `claude-sonnet-5`.
+- Environment configuration remains a bootstrap/fallback (`AI_CHAT_PROVIDER`, `AI_CHAT_ENDPOINT`, `AI_CHAT_MODEL`, `AI_CHAT_API_KEY`), while values saved in the Admin Panel take precedence.
+
+### Files created
+
+- `api/Controllers/AiChatController.cs`
+- `api/Controllers/ApiKeysController.cs`
+- `api/Services/AiChatSettingsService.cs`
+- `web/src/components/custom/AiChatbot.tsx`
+- `web/src/components/custom/ApiKeysSettings.tsx`
+
+### Files modified
+
+- `.env.example`
+- `api/Controllers/AppSettingsController.cs`
+- `api/Program.cs`
+- `api/appsettings.json`
+- `docker-compose.yml`
+- `web/src/App.tsx`
+- `web/src/components/layout/MainLayout.tsx`
+- `web/src/components/layout/Sidebar.tsx`
+- `web/src/components/pages/Settings.tsx`
+- `web/src/utils/api.ts`
+- `CLAUDE.md`
+
+### Verification
+
+- Frontend production build: successful after the final Anthropic-provider changes.
+- `git diff --check`: clean (line-ending warnings only).
+- Repository-wide TypeScript check still reports the same pre-existing errors in `NotificationsBell.tsx`, `Dashboard.tsx`, and `officeParser.test.ts`; the new assistant/API Keys files introduce no additional TypeScript errors.
+- API compilation was not available in this workstation session because the .NET SDK is absent and Docker Desktop is stopped. Rebuild/test the `api` container when Docker is available.
+
+---
+
 ## Session 60 (2026-08-29) — Live Preview Metadata and Correct Library/Workflow Return State
 
 **Status:** Complete in code. Frontend-only; no database migration is required.

@@ -21,6 +21,8 @@ public class AppSettingsController(DmsContext context, AuditService auditService
     [HttpGet("{key}")]
     public async Task<ActionResult<object>> GetSetting(string key)
     {
+        if (key.Equals(AiChatSettingsService.SettingKey, StringComparison.OrdinalIgnoreCase))
+            return StatusCode(403, new { success = false, error = "Sensitive settings are only available through their dedicated admin endpoint" });
         var setting = await context.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == key);
         return Ok(new { success = true, data = new { key, value = setting?.Value ?? "false" } });
     }
@@ -30,6 +32,8 @@ public class AppSettingsController(DmsContext context, AuditService auditService
     {
         try
         {
+            if (key.Equals(AiChatSettingsService.SettingKey, StringComparison.OrdinalIgnoreCase))
+                return StatusCode(403, new { success = false, error = "Use the API Keys admin page to change this setting" });
             var userId = GetCurrentUserId();
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
             if (pageAccessRole?.BypassFolderPermissions != true)

@@ -71,6 +71,10 @@ services:
       Minio__AccessKey: ${MINIO_ROOT_USER}
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
       OcrRag__BaseUrl: "http://ocr-rag:8000"
+      AiChat__Endpoint: ${AI_CHAT_ENDPOINT:-https://api.openai.com/v1/chat/completions}
+      AiChat__Model: ${AI_CHAT_MODEL:-gpt-4.1-mini}
+      AiChat__ApiKey: ${AI_CHAT_API_KEY:-}
+      AiChat__Provider: ${AI_CHAT_PROVIDER:-openai-compatible}
       Jwt__Secret: ${JWT_SECRET}
       Google__ClientId: ${GOOGLE_CLIENT_ID}
       Google__ClientSecret: ${GOOGLE_CLIENT_SECRET}
@@ -80,6 +84,9 @@ services:
       Smtp__Password: ${SMTP_PASSWORD}
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
+    volumes:
+      # Keeps encrypted Admin Panel API-key settings decryptable after restarts.
+      - dataprotectionkeys:/root/.aspnet/DataProtection-Keys
     # Scheduled Backups (Admin Panel → Database) has two independent, optional
     # extra-copy destinations on top of the always-on object-storage save:
     #   1. "Destination Path" — a plain directory *inside this container*.
@@ -222,3 +229,4 @@ volumes:
   pgdata:
   miniodata:
   ocrdata:
+  dataprotectionkeys:

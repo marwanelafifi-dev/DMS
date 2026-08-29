@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bell, Building2, Check, Database, FileText, Lock, LockKeyhole, Settings as SettingsIcon, Users, UsersRound } from 'lucide-react';
+import { Bell, Building2, Check, Database, FileText, KeyRound, Lock, LockKeyhole, Settings as SettingsIcon, Users, UsersRound } from 'lucide-react';
 import { RolePermissions } from '../custom/RolePermissions';
 import { UserManagement } from '../custom/UserManagement';
 import { GroupManagement } from '../custom/GroupManagement';
@@ -8,11 +8,12 @@ import { CompanyData } from '../custom/CompanyData';
 import { NotificationConfig } from '../custom/NotificationConfig';
 import { PlatformSettings } from '../custom/PlatformSettings';
 import { DatabaseBackup } from '../custom/DatabaseBackup';
+import { ApiKeysSettings } from '../custom/ApiKeysSettings';
 import { Card, CardBody } from '../ui';
 import { apiClient } from '../../utils/api';
 import type { Document } from '../../types';
 
-type SettingsTab = 'roles' | 'users' | 'groups' | 'audit' | 'settings' | 'notifications' | 'company-data' | 'database';
+type SettingsTab = 'roles' | 'users' | 'groups' | 'audit' | 'settings' | 'notifications' | 'company-data' | 'database' | 'api-keys';
 
 interface SettingsProps {
   defaultTab?: SettingsTab;
@@ -34,6 +35,12 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
   }, []);
 
   const tabs = [
+    {
+      id: 'api-keys' as SettingsTab,
+      label: 'API Keys',
+      icon: KeyRound,
+      description: 'Manage AI provider credentials',
+    },
     {
       id: 'users' as SettingsTab,
       label: 'Users',
@@ -86,7 +93,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
 
   return (
     <div className="space-y-5">
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && activeTab !== 'api-keys' && (
         <>
           <div>
             <h1 className="page-heading">Admin Panel</h1>
@@ -142,7 +149,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
       {/* Quick Navigation — redundant with the sidebar's own Admin Panel links on
           the Users tab, so it's skipped there; kept for the other tabs since this
           is still the only way to switch between them from within the page. */}
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && activeTab !== 'api-keys' && (
         <>
           <div className="pt-1"><h2 className="section-heading">Administration</h2></div>
           <div className="flex flex-wrap gap-2 rounded-[5px] border border-[#dbe2ec] bg-white p-2 dark:border-white/10 dark:bg-slate-900">
@@ -178,6 +185,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
         {activeTab === 'notifications' && <NotificationConfig />}
         {activeTab === 'company-data' && <CompanyData />}
         {activeTab === 'database' && <DatabaseBackup />}
+        {activeTab === 'api-keys' && <ApiKeysSettings />}
       </div>
     </div>
   );

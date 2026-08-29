@@ -149,6 +149,15 @@ export interface PlatformSettingsBundle {
   security: SecuritySettings;
 }
 
+export interface AiChatProviderSettings {
+  provider: 'openai-compatible' | 'anthropic';
+  endpoint: string;
+  model: string;
+  isConfigured: boolean;
+  maskedKey?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface PageAccessRole extends PageAccessRoleFlags {
   role: string;
   // True only for the 5 originally seeded roles; carried over verbatim by a
@@ -451,6 +460,26 @@ class APIClient {
 
   async moveDocument(documentId: string, destinationFolderId: string) {
     const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/move`, { destinationFolderId });
+    return data;
+  }
+
+  async askAiChat(message: string) {
+    const { data } = await this.client.post<ApiResponse>('/ai-chat', { message });
+    return data;
+  }
+
+  async getAiApiKeySettings() {
+    const { data } = await this.client.get<ApiResponse<AiChatProviderSettings>>('/api-keys');
+    return data;
+  }
+
+  async updateAiApiKeySettings(settings: { provider: 'openai-compatible' | 'anthropic'; endpoint: string; model: string; apiKey?: string; clearApiKey?: boolean }) {
+    const { data } = await this.client.put<ApiResponse<AiChatProviderSettings>>('/api-keys', settings);
+    return data;
+  }
+
+  async testAiApiKey() {
+    const { data } = await this.client.post<ApiResponse>('/api-keys/test');
     return data;
   }
 

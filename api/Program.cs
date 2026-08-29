@@ -45,12 +45,15 @@ builder.Services.AddScoped<AuditCalendarService>();
 builder.Services.AddScoped<UserGoogleCalendarService>();
 builder.Services.AddScoped<AccessOverrideService>();
 builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<AiChatSettingsService>();
+builder.Services.AddDataProtection();
 builder.Services.AddHttpClient("OcrRag", client =>
 {
     var baseUrl = builder.Configuration["OcrRag:BaseUrl"] ?? "http://ocr-rag:8000";
     client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(100);
 });
+builder.Services.AddHttpClient("AiChat", client => client.Timeout = TimeSpan.FromSeconds(60));
 // Falls back to a clear "not configured" error at runtime (IsConfigured
 // false) if Google:ClientSecret/CalendarRedirectUri aren't set — see
 // IGoogleOAuthCalendarClient.cs for what configuring it involves.

@@ -12,6 +12,7 @@ import {
   FileWarning,
   Folder,
   LayoutDashboard,
+  KeyRound,
   Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
@@ -50,6 +51,7 @@ const adminItems = [
   { label: 'Company Data', path: '/admin/company-data', icon: Building2 },
   { label: 'Audit Trail', path: '/admin/audit', icon: ScrollText },
   { label: 'Database', path: '/admin/database', icon: Database },
+  { label: 'API Keys', path: '/admin/api-keys', icon: KeyRound },
 ];
 
 export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = false, onToggleCollapse }: SidebarProps) {
