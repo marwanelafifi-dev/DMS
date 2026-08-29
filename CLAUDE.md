@@ -26,6 +26,7 @@
 - Added permission-checked `POST /api/documents/{id}/reindex`. The API downloads the current immutable version from MinIO and sends it to the private OCR service with its stable DMS document ID.
 - Document Preview now includes **Re-index OCR**. It shows an in-progress state and success/error notification. Any user who can read the document can re-index it; inaccessible document bytes are never sent through the browser.
 - Re-indexing does not create a document version or require a database migration. It adds a fresh OCR row, and exact-document lookup always selects the newest row.
+- Large Office-file re-indexing gets a five-minute API-to-OCR timeout instead of the previous 100 seconds. Timeout and service error details are shown in the UI instead of always collapsing to a generic failure toast.
 
 ### Ubuntu deployment
 

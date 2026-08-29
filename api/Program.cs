@@ -51,7 +51,8 @@ builder.Services.AddHttpClient("OcrRag", client =>
 {
     var baseUrl = builder.Configuration["OcrRag:BaseUrl"] ?? "http://ocr-rag:8000";
     client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
-    client.Timeout = TimeSpan.FromSeconds(100);
+    // Large Office files can take several minutes to parse during re-indexing.
+    client.Timeout = TimeSpan.FromMinutes(5);
 });
 builder.Services.AddHttpClient("AiChat", client => client.Timeout = TimeSpan.FromSeconds(60));
 // Falls back to a clear "not configured" error at runtime (IsConfigured

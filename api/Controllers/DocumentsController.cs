@@ -68,14 +68,20 @@ public class DocumentsController(
             using var response = await ocrClient.PostAsync("api/documents/upload", multipart, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("OCR re-index failed for document {DocumentId}: {Status}", id, response.StatusCode);
-                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, error = "The OCR service could not index this file" });
+                var detail = await response.Content.ReadAsStringAsync(cancellationToken);
+                logger.LogWarning("OCR re-index failed for document {DocumentId}: {Status} {Detail}", id, response.StatusCode, detail);
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, error = $"The OCR service could not index this file (OCR status {(int)response.StatusCode})" });
             }
 
             logger.LogInformation("User {UserId} re-indexed document {DocumentId}, version {VersionId}", GetCurrentUserId(), id, version.VersionId);
             return Ok(new { success = true, data = new { documentId = id, versionId = version.VersionId, fileName = version.FileName } });
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or TaskCanceledException)
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "OCR re-index timed out for document {DocumentId}", id);
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { success = false, error = "OCR processing timed out. Check the OCR service logs and try again" });
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException)
         {
             logger.LogWarning(exception, "OCR re-index request failed for document {DocumentId}", id);
             return StatusCode(StatusCodes.Status502BadGateway, new { success = false, error = "The OCR service is unavailable" });
