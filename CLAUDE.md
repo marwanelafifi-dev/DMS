@@ -1,5 +1,45 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 59 (2026-08-29) — Faster Updated-Office Submission and Workflow Table Containment
+
+**Status:** Complete in code. Frontend-only; no database migration is required.
+
+### Updated Office files submit faster
+
+- Updated DOCX, PPTX, XLSX, and XLSM files no longer require a second multi-megabyte upload to the Docling/LibreOffice container solely for automatic Document ID detection.
+- The browser now extracts searchable text directly from the modern Office container before applying the detected Document ID. DOCX extraction scans the complete body plus headers and footers because controlled-document IDs commonly appear outside the main body.
+- PPTX extraction scans slides and speaker notes; spreadsheet extraction scans every worksheet.
+- PDF, legacy Office, malformed, and unsupported files retain the existing Docling compatibility fallback, so automatic Document ID detection is not removed for those formats.
+- The stored document upload, metadata update, and approval workflow remain unchanged; this optimization removes only the redundant conversion step from the common modern-Office path.
+
+### Document Workflow table remains contained
+
+- Approval queue tables now use a fixed layout with explicit proportions for Document ID, file, owner, department, status, submitted date, and actions.
+- Long descriptions show the first 12 words followed by an ellipsis instead of expanding the table beyond the viewport.
+- Hovering over a shortened description exposes the complete original text through the browser tooltip.
+- File name, owner, department, and submitted date also truncate within their assigned columns, while their complete values remain available through hover text.
+- The Actions column is reserved and remains visible without requiring horizontal scrolling.
+
+### Files modified
+
+- `web/src/utils/officeParser.ts`
+- `web/src/utils/officeParser.test.ts`
+- `web/src/components/custom/UploadNewVersionModal.tsx`
+- `web/src/components/custom/UploadNewVersionModal.test.tsx`
+- `web/src/components/pages/Approvals.tsx`
+- `CLAUDE.md`
+
+### Verification
+
+- Focused Office extraction and updated-version modal tests: 4/4 passing.
+- Production frontend build: successful.
+
+### Deployment requirement
+
+- Rebuild the `web` container. No API rebuild or database migration is required.
+
+---
+
 ## Session 58 (2026-08-29) — Updated-File Upload Timeout
 
 **Status:** Complete. Frontend/proxy configuration only; no database migration is required.

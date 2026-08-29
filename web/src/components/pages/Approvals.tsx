@@ -64,6 +64,13 @@ const statusLabel = (status: string) => status
   .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
   .join(' ');
 
+const descriptionPreview = (description: string, maximumWords = 12) => {
+  const words = description.trim().split(/\s+/).filter(Boolean);
+  return words.length > maximumWords
+    ? `${words.slice(0, maximumWords).join(' ')}...`
+    : words.join(' ');
+};
+
 const extensionStyles: Record<string, string> = {
   txt: 'bg-slate-100 text-slate-600',
   doc: 'bg-blue-50 text-blue-700',
@@ -427,8 +434,17 @@ function ApprovalQueueTable({
 
   return (
     <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="data-table w-full" aria-label="Approval queue">
+      <div className="min-w-0 overflow-hidden">
+        <table className="data-table w-full table-fixed" aria-label="Approval queue">
+          <colgroup>
+            <col className="w-[9%]" />
+            <col className="w-[29%]" />
+            <col className="w-[12%]" />
+            <col className="w-[13%]" />
+            <col className="w-[10%]" />
+            <col className="w-[12%]" />
+            <col className="w-[15%]" />
+          </colgroup>
           <thead className="sticky top-0 z-10">
             <tr>
               <th>Doc ID</th>
@@ -446,20 +462,22 @@ function ApprovalQueueTable({
                 key={doc.documentId}
                 className={`${approval.blocked ? 'bg-[#fffaf0] dark:bg-amber-900/10' : index % 2 ? 'bg-[#f8fafc] dark:bg-slate-800/35' : 'bg-white dark:bg-slate-900'} hover:bg-[#f2f6fa] dark:hover:bg-slate-800/60`}
               >
-                <td className="text-[#52627a] dark:text-slate-200">
+                <td className="overflow-hidden text-[#52627a] dark:text-slate-200">
                   {doc.originalDocumentId ? (
                     <span className="font-mono text-xs" title={doc.documentId}>{doc.originalDocumentId}</span>
                   ) : (
                     <span className="font-mono text-xs italic text-[#93a4bd]" title={`No Document ID set — internal ID: ${doc.documentId}`}>Not set</span>
                   )}
                 </td>
-                <td className="min-w-0">
+                <td className="max-w-0 overflow-hidden">
                   <button type="button" onClick={() => handlePreview(doc.documentId)} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open ${doc.fileName}`}>
                     <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded ${extensionStyleFor(doc.fileName)}`}><FileText className="h-4 w-4" /></span>
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1 overflow-hidden">
                       <span className="block truncate text-sm font-semibold text-[#2e4083] dark:text-slate-100" title={doc.fileName}>{doc.fileName}</span>
                       {doc.description && (
-                        <span className="mt-0.5 block truncate text-xs text-[#718198]" title={doc.description}>{doc.description}</span>
+                        <span className="mt-0.5 block truncate text-xs text-[#718198]" title={doc.description}>
+                          {descriptionPreview(doc.description)}
+                        </span>
                       )}
                       {doc.submissionNote && (
                         <span className="mt-0.5 block truncate text-xs italic text-blue-600 dark:text-blue-300" title={`Approval note: ${doc.submissionNote}`}>Note: {doc.submissionNote}</span>
@@ -467,9 +485,9 @@ function ApprovalQueueTable({
                     </span>
                   </button>
                 </td>
-                <td className="text-[#52627a] dark:text-slate-200">{doc.ownerName}</td>
-                <td className="text-[#52627a] dark:text-slate-200">{doc.department}</td>
-                <td>
+                <td className="overflow-hidden text-[#52627a] dark:text-slate-200"><span className="block truncate" title={doc.ownerName}>{doc.ownerName}</span></td>
+                <td className="overflow-hidden text-[#52627a] dark:text-slate-200"><span className="block truncate" title={doc.department}>{doc.department}</span></td>
+                <td className="overflow-hidden">
                   <span className={`rounded px-2 py-1 text-xs font-medium ${statusStyles[approval.status] ?? 'bg-[#edf1f5] text-[#62718a]'}`}>
                     {statusLabel(approval.status)}
                   </span>
@@ -482,9 +500,9 @@ function ApprovalQueueTable({
                     </div>
                   )}
                 </td>
-                <td className="text-[11px] text-[#718198]">{formatDate(approval.createdAt)}</td>
-                <td className="text-right">
-                  <div className="flex items-center justify-end gap-2">
+                <td className="overflow-hidden text-[11px] text-[#718198]"><span className="block truncate" title={formatDate(approval.createdAt)}>{formatDate(approval.createdAt)}</span></td>
+                <td className="whitespace-nowrap text-right">
+                  <div className="flex items-center justify-end gap-1.5">
                     <button
                       type="button"
                       title="Preview"

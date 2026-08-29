@@ -5,6 +5,63 @@ const WORD_PARAGRAPH_LIMIT = 10;
 const PRESENTATION_SLIDE_LIMIT = 10;
 const SPREADSHEET_ROW_LIMIT = 100;
 
+/**
+ * Extract searchable text directly from modern Office files without sending
+ * the same upload through the much slower Docling/LibreOffice service. This is
+ * intentionally separate from the preview parsers below: previews are capped
+ * for rendering, while Document ID detection must inspect the complete file,
+ * including Word headers/footers where controlled-document IDs commonly live.
+ */
+export async function extractOfficeDocumentText(blob: Blob, fileName: string): Promise<string | null> {
+  try {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    if (!extension || !['docx', 'pptx', 'xlsx', 'xlsm'].includes(extension)) return null;
+
+    const buffer = await readBlobAsArrayBuffer(blob);
+
+    if (extension === 'xlsx' || extension === 'xlsm') {
+      const workbook = readExcel(buffer);
+      const text = workbook.SheetNames
+        .map((sheetName) => {
+          const sheet = workbook.Sheets[sheetName];
+          return sheet ? `${sheetName}\n${xlsxUtils.sheet_to_csv(sheet)}` : '';
+        })
+        .filter(Boolean)
+        .join('\n');
+      return text.trim() || null;
+    }
+
+    const { default: JSZip } = await import('jszip');
+    const zip = await new JSZip().loadAsync(buffer);
+    const officeXmlPaths = Object.keys(zip.files)
+      .filter((path) => extension === 'docx'
+        ? /^word\/(?:document|header\d+|footer\d+)\.xml$/i.test(path)
+        : /^ppt\/(?:slides\/slide\d+|notesSlides\/notesSlide\d+)\.xml$/i.test(path))
+      .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+
+    const sections: string[] = [];
+    for (const path of officeXmlPaths) {
+      const xml = await zip.file(path)?.async('text');
+      if (!xml) continue;
+
+      const parsed = new DOMParser().parseFromString(xml, 'application/xml');
+      if (parsed.querySelector('parsererror')) continue;
+      const text = Array.from(parsed.getElementsByTagNameNS('*', 't'))
+        .map((node) => node.textContent || '')
+        .filter(Boolean)
+        .join(' ');
+      if (text.trim()) sections.push(text.trim());
+    }
+
+    const text = sections.join('\n');
+    return text || null;
+  } catch {
+    // A legacy or malformed Office container is expected to fall back to the
+    // server-side parser; it is not an upload failure by itself.
+    return null;
+  }
+}
+
 // Some Blob-like sources (older browsers, certain test doubles) don't implement
 // `arrayBuffer()` even though they implement the rest of the Blob contract — fall
 // back to FileReader so the whole parser doesn't silently throw and get swallowed

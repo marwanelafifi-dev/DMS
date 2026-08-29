@@ -86,8 +86,8 @@ describe('UploadNewVersionModal workflow choice', () => {
     await user.click(screen.getByRole('button', { name: 'Save as Draft' }));
 
     await waitFor(() => expect(apiClient.uploadDocument).toHaveBeenCalledWith(documentId, file, 'Rev B', ownerId));
-    expect(doclingApi.convertDocument).toHaveBeenCalledWith(file);
-    expect(apiClient.extractDocId).toHaveBeenCalledWith(documentId, 'DOC.NO: SWS-25120002', true);
+    await waitFor(() => expect(apiClient.extractDocId).toHaveBeenCalledWith(documentId, 'DOC.NO: SWS-25120002', true));
+    expect(doclingApi.convertDocument).toHaveBeenCalledWith(file); // invalid test fixture uses the compatibility fallback
     expect(apiClient.submitDocumentsForApproval).not.toHaveBeenCalled();
     expect(onUploaded).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();

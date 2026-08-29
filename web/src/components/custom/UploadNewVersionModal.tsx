@@ -154,8 +154,17 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
         let parsedContent: string | null = null;
         try {
           activeStep = 'Reading the Document ID from the updated file';
-          const parsedDocument = await doclingApi.convertDocument(fileToUpload);
-          parsedContent = parsedDocument.content;
+          const { extractOfficeDocumentText } = await import('../../utils/officeParser');
+          parsedContent = await extractOfficeDocumentText(fileToUpload, finalFileName);
+
+          // PDF, legacy Office, and malformed modern Office files still use
+          // Docling as the compatibility fallback. Normal DOCX/PPTX/XLSX files
+          // are read locally, avoiding a second multi-megabyte network upload
+          // and server-side LibreOffice conversion before submission.
+          if (!parsedContent) {
+            const parsedDocument = await doclingApi.convertDocument(fileToUpload);
+            parsedContent = parsedDocument.content;
+          }
         } catch {
           // QA can still manually correct the ID or generate a new one.
         }
