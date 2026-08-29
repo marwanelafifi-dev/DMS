@@ -10,6 +10,9 @@
 - A file-name question that does not exactly match an accessible document returns a permission/name warning with no unrelated sources. This intentionally does not reveal whether a similarly named protected document exists.
 - Exact-document questions exclude task, calendar, announcement, and dashboard context from that model request, preventing unrelated workspace information from influencing the document answer.
 - Added `GET /api/documents/by-document/{document_id}` to the internal OCR service to return the newest indexed row for one document. The authenticated .NET API performs the permission check before calling it.
+- Retrieval context is now intent-scoped. Document questions do not append calendar, announcement, dashboard, or task data; those categories are included only when the question asks for them.
+- Broad OCR matches are ranked by filename/title and content relevance and limited to three candidates. Search-only fallback shows only the best authorized document instead of dumping the same OCR bundle for unrelated questions.
+- When an AI provider is unavailable, the fallback says so explicitly and presents one cleaned search excerpt. OCR image comments and HTML spacing artifacts are removed.
 
 ### Professional chat presentation
 
