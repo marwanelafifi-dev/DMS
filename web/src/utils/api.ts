@@ -149,12 +149,18 @@ export interface PlatformSettingsBundle {
   security: SecuritySettings;
 }
 
-export interface AiChatProviderSettings {
+export interface AiProviderConfig {
   provider: 'openai-compatible' | 'anthropic';
   endpoint: string;
   model: string;
+  enabled: boolean;
   isConfigured: boolean;
   maskedKey?: string | null;
+}
+
+export interface AiChatProviderSettings {
+  primaryProvider: 'openai-compatible' | 'anthropic';
+  providers: AiProviderConfig[];
   updatedAt?: string | null;
 }
 
@@ -473,13 +479,13 @@ class APIClient {
     return data;
   }
 
-  async updateAiApiKeySettings(settings: { provider: 'openai-compatible' | 'anthropic'; endpoint: string; model: string; apiKey?: string; clearApiKey?: boolean }) {
+  async updateAiApiKeySettings(settings: { primaryProvider: 'openai-compatible' | 'anthropic'; providers: Array<{ provider: 'openai-compatible' | 'anthropic'; endpoint: string; model: string; enabled: boolean; apiKey?: string; clearApiKey?: boolean }> }) {
     const { data } = await this.client.put<ApiResponse<AiChatProviderSettings>>('/api-keys', settings);
     return data;
   }
 
-  async testAiApiKey() {
-    const { data } = await this.client.post<ApiResponse>('/api-keys/test');
+  async testAiApiKey(provider: 'openai-compatible' | 'anthropic') {
+    const { data } = await this.client.post<ApiResponse>('/api-keys/test', { provider });
     return data;
   }
 

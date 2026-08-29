@@ -17,72 +17,90 @@ public class ApiKeysController(DmsContext context, AiChatSettingsService setting
     public async Task<ActionResult<object>> GetSettings()
     {
         if (!await IsAdminAsync()) return Forbidden();
-        var settings = await settingsService.LoadAsync();
-        return Ok(new { success = true, data = Public(settings) });
+        return Ok(new { success = true, data = Public(await settingsService.LoadAsync()) });
     }
 
     [HttpPut]
     public async Task<ActionResult<object>> Update([FromBody] UpdateAiChatSettingsRequest request)
     {
         if (!await IsAdminAsync()) return Forbidden();
-        var provider = request.Provider?.Trim().ToLowerInvariant();
-        if (provider is not ("openai-compatible" or "anthropic"))
-            return BadRequest(new { success = false, error = "Provider must be OpenAI-compatible or Anthropic Claude." });
-        if (!Uri.TryCreate(request.Endpoint?.Trim(), UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
-            return BadRequest(new { success = false, error = "The provider endpoint must be a valid HTTPS URL." });
-        if (string.IsNullOrWhiteSpace(request.Model) || request.Model.Length > 100)
-            return BadRequest(new { success = false, error = "A valid model name is required." });
-        if (request.ApiKey?.Length > 500)
-            return BadRequest(new { success = false, error = "The API key is too long." });
+        if (request.Providers?.Count != 2) return BadRequest(new { success = false, error = "Both provider configurations are required." });
+        foreach (var provider in request.Providers)
+        {
+            if (AiChatSettingsService.NormalizeProvider(provider.Provider) == null)
+                return BadRequest(new { success = false, error = "Unsupported AI provider." });
+            if (!Uri.TryCreate(provider.Endpoint?.Trim(), UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+                return BadRequest(new { success = false, error = $"The {provider.Provider} endpoint must be a valid HTTPS URL." });
+            if (string.IsNullOrWhiteSpace(provider.Model) || provider.Model.Length > 100)
+                return BadRequest(new { success = false, error = $"A valid model is required for {provider.Provider}." });
+            if (provider.ApiKey?.Length > 500) return BadRequest(new { success = false, error = "An API key is too long." });
+        }
 
-        var saved = await settingsService.SaveAsync(provider, endpoint.ToString(), request.Model, request.ApiKey, request.ClearApiKey, GetCurrentUserId());
-        await auditService.LogAsync(GetCurrentUserId(), APP_SETTING_UPDATED, new { Group = "api_keys", saved.Provider, saved.Endpoint, saved.Model, saved.IsConfigured });
-        return Ok(new { success = true, data = Public(saved) });
+        try
+        {
+            var saved = await settingsService.SaveAsync(request.PrimaryProvider, request.Providers, GetCurrentUserId());
+            await auditService.LogAsync(GetCurrentUserId(), APP_SETTING_UPDATED, new
+            {
+                Group = "api_keys", saved.PrimaryProvider,
+                Providers = saved.Providers.Select(item => new { item.Provider, item.Endpoint, item.Model, item.Enabled, item.IsConfigured }),
+            });
+            return Ok(new { success = true, data = Public(saved) });
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { success = false, error = exception.Message });
+        }
     }
 
     [HttpPost("test")]
-    public async Task<ActionResult<object>> Test(CancellationToken cancellationToken)
+    public async Task<ActionResult<object>> Test([FromBody] TestAiProviderRequest request, CancellationToken cancellationToken)
     {
         if (!await IsAdminAsync()) return Forbidden();
+        var providerName = AiChatSettingsService.NormalizeProvider(request.Provider);
+        if (providerName == null) return BadRequest(new { success = false, error = "Unsupported AI provider." });
         var settings = await settingsService.LoadAsync();
-        if (!settings.IsConfigured || string.IsNullOrWhiteSpace(settings.ApiKey))
-            return BadRequest(new { success = false, error = "Save an API key before testing the connection." });
+        var provider = settings.Providers.First(item => item.Provider == providerName);
+        if (!provider.IsConfigured || string.IsNullOrWhiteSpace(provider.ApiKey))
+            return BadRequest(new { success = false, error = "Save this provider's API key before testing it." });
+
         try
         {
             var client = httpClientFactory.CreateClient("AiChat");
             object payload;
-            if (settings.Provider == "anthropic")
+            if (provider.Provider == AiChatSettingsService.AnthropicProvider)
             {
-                client.DefaultRequestHeaders.Add("x-api-key", settings.ApiKey);
+                client.DefaultRequestHeaders.Add("x-api-key", provider.ApiKey);
                 client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-                payload = new { model = settings.Model, max_tokens = 5, temperature = 0, messages = new[] { new { role = "user", content = "Reply OK" } } };
+                payload = new { model = provider.Model, max_tokens = 5, temperature = 0, messages = new[] { new { role = "user", content = "Reply OK" } } };
             }
             else
             {
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
-                payload = new { model = settings.Model, temperature = 0, max_tokens = 5, messages = new[] { new { role = "user", content = "Reply OK" } } };
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
+                payload = new { model = provider.Model, temperature = 0, max_tokens = 5, messages = new[] { new { role = "user", content = "Reply OK" } } };
             }
-            using var response = await client.PostAsJsonAsync(settings.Endpoint, payload, cancellationToken);
+            using var response = await client.PostAsJsonAsync(provider.Endpoint, payload, cancellationToken);
             if (!response.IsSuccessStatusCode)
-                return BadRequest(new { success = false, error = $"Provider returned HTTP {(int)response.StatusCode}. Check the endpoint, model, and key." });
-            return Ok(new { success = true, data = new { connected = true }, message = "Connection successful." });
+                return BadRequest(new { success = false, error = $"Provider returned HTTP {(int)response.StatusCode}. Check its endpoint, model, and key." });
+            return Ok(new { success = true, data = new { connected = true, provider = provider.Provider }, message = "Connection successful." });
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
-            return BadRequest(new { success = false, error = "The provider could not be reached. Check the endpoint and network access." });
+            return BadRequest(new { success = false, error = "The provider could not be reached. Check its endpoint and network access." });
         }
     }
 
     private ObjectResult Forbidden() => StatusCode(403, new { success = false, error = "Only a Full Access role can manage API keys." });
     private static object Public(AiChatProviderSettings settings) => new
     {
-        settings.Provider,
-        settings.Endpoint,
-        settings.Model,
-        settings.IsConfigured,
-        maskedKey = settings.IsConfigured ? "••••••••••••" : null,
+        settings.PrimaryProvider,
+        Providers = settings.Providers.Select(item => new
+        {
+            item.Provider, item.Endpoint, item.Model, item.Enabled, item.IsConfigured,
+            maskedKey = item.IsConfigured ? "••••••••••••" : null,
+        }),
         settings.UpdatedAt,
     };
 }
 
-public record UpdateAiChatSettingsRequest(string Provider, string Endpoint, string Model, string? ApiKey = null, bool ClearApiKey = false);
+public record UpdateAiChatSettingsRequest(string PrimaryProvider, List<AiProviderUpdate> Providers);
+public record TestAiProviderRequest(string Provider);

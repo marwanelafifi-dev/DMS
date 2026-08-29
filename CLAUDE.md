@@ -17,10 +17,11 @@
 ### Admin Panel — API Keys
 
 - Added `/admin/api-keys`, an `API Keys` Sidebar item, and the corresponding Settings page/tab. Both the page route and all backend operations require the existing Admin Panel access gate; the dedicated API additionally requires `BypassFolderPermissions` (Full Access).
-- Admins can select a provider, configure endpoint/model, enter or replace a key, remove it, and test the live provider connection. Saved secrets are never returned to the browser; the API returns only `isConfigured` and a fixed masked value.
-- Provider configuration is stored in `dms_app_settings` under the reserved `ai_chat_provider_config` key. The API key is encrypted with ASP.NET Core Data Protection before database storage. Docker now persists the Data Protection key ring in the `dataprotectionkeys` volume so ciphertext remains decryptable across container restarts.
+- Admins can enable and configure OpenAI-compatible and Anthropic simultaneously, with independent endpoint/model/key fields and independent live connection tests. One enabled provider is selected as Primary; when both are enabled and configured, the chatbot automatically falls back to the secondary provider if the primary request fails.
+- Both provider configurations are stored in `dms_app_settings` under the reserved `ai_chat_provider_config` key. Each API key is encrypted independently with ASP.NET Core Data Protection before database storage. Docker persists the Data Protection key ring in the `dataprotectionkeys` volume so ciphertext remains decryptable across container restarts.
+- Saved secrets are never returned to the browser; the API returns only per-provider `isConfigured` flags and fixed masked values. Removing one provider key does not affect the other.
 - The old generic App Settings endpoint explicitly blocks reads/writes for this reserved sensitive key, preventing ciphertext disclosure or bypassing the dedicated validation/audit path.
-- Provider changes without a newly supplied key clear the old credential so an OpenAI key cannot accidentally be sent to Anthropic, or vice versa.
+- Existing one-provider settings are migrated in memory into the new dual-provider shape on first load, preserving the configured key and adding the other provider with safe defaults.
 
 ### Supported providers
 
@@ -52,7 +53,7 @@
 
 ### Verification
 
-- Frontend production build: successful after the final Anthropic-provider changes.
+- Frontend production build: successful after the final dual-provider/failover changes.
 - `git diff --check`: clean (line-ending warnings only).
 - Repository-wide TypeScript check still reports the same pre-existing errors in `NotificationsBell.tsx`, `Dashboard.tsx`, and `officeParser.test.ts`; the new assistant/API Keys files introduce no additional TypeScript errors.
 - API compilation was not available in this workstation session because the .NET SDK is absent and Docker Desktop is stopped. Rebuild/test the `api` container when Docker is available.
