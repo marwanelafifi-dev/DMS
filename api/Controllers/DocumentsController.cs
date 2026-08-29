@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Hangfire;
 using static DMS.Api.Services.AuditActions;
 
 namespace DMS.Api.Controllers;
@@ -21,6 +22,7 @@ public class DocumentsController(
     ApprovalService approvalService,
     AccessOverrideService accessOverrideService,
     NotificationService notificationService,
+    IBackgroundJobClient backgroundJobs,
     IHttpClientFactory httpClientFactory,
     ILogger<DocumentsController> logger) : BaseController
 {
@@ -66,6 +68,7 @@ public class DocumentsController(
                 fileContent.Headers.ContentType = contentType;
             multipart.Add(fileContent, "file", version.FileName);
             multipart.Add(new StringContent(document.DocumentId.ToString()), "document_id");
+            multipart.Add(new StringContent(version.VersionId.ToString()), "version_id");
 
             var ocrClient = httpClientFactory.CreateClient("OcrRag");
             using var response = await ocrClient.PostAsync("api/documents/upload", multipart, cancellationToken);
@@ -1218,6 +1221,7 @@ public class DocumentsController(
                 document.Status = "draft";
 
             await context.SaveChangesAsync();
+            backgroundJobs.Enqueue<OcrIndexService>(service => service.ReindexJobAsync(id));
 
             await auditService.LogAsync(userId, DOCUMENT_UPLOADED, new
             {
@@ -1343,6 +1347,7 @@ public class DocumentsController(
                 activeApprovalDocumentForRevert.VersionId = revertedVersion.VersionId;
 
             await context.SaveChangesAsync();
+            backgroundJobs.Enqueue<OcrIndexService>(service => service.ReindexJobAsync(id));
 
             await auditService.LogAsync(userId, DOCUMENT_VERSION_REVERTED, new
             {

@@ -1688,7 +1688,11 @@ export function Documents() {
           setActiveUploadStage('parsing');
           let parsedContent: string | undefined;
           try {
-            const parsedDocument = await doclingApi.uploadDocument(uploadFile, createdDocument.documentId);
+            // The API now queues durable OCR indexing after the version is
+            // committed. This stateless conversion is only needed immediately
+            // for upload-time Doc ID extraction; indexing here as well would
+            // race and duplicate the server-side job.
+            const parsedDocument = await doclingApi.convertDocument(uploadFile);
             parsedContent = parsedDocument.content;
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Local parsing failed';

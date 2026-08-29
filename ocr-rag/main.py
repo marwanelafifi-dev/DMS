@@ -86,6 +86,8 @@ def initialize_database() -> None:
         }
         if "document_id" not in columns:
             connection.execute("ALTER TABLE documents ADD COLUMN document_id TEXT")
+        if "version_id" not in columns:
+            connection.execute("ALTER TABLE documents ADD COLUMN version_id TEXT")
         connection.commit()
 
 
@@ -333,12 +335,13 @@ def convert_document(file: UploadFile = File(...)) -> dict[str, str]:
 def upload_document(
     file: UploadFile = File(...),
     document_id: str | None = Form(default=None),
+    version_id: str | None = Form(default=None),
 ) -> dict[str, int | str | None]:
     filename, markdown_content = convert_uploaded_file(file)
     with closing(sqlite3.connect(DATABASE_PATH)) as connection:
         cursor = connection.execute(
-            "INSERT INTO documents (document_id, filename, content) VALUES (?, ?, ?)",
-            (document_id, filename, markdown_content),
+            "INSERT INTO documents (document_id, version_id, filename, content) VALUES (?, ?, ?, ?)",
+            (document_id, version_id, filename, markdown_content),
         )
         doc_id = cursor.lastrowid
         connection.commit()
@@ -346,6 +349,7 @@ def upload_document(
     return {
         "id": int(doc_id),
         "document_id": document_id,
+        "version_id": version_id,
         "filename": filename,
         "content": markdown_content,
     }
@@ -397,3 +401,29 @@ def get_document_index(document_id: str) -> dict[str, int | str | None]:
     if row is None:
         raise HTTPException(status_code=404, detail="Document OCR index not found")
     return dict(row)
+
+
+@app.get("/api/documents/indexed-ids")
+def get_indexed_document_ids() -> list[str]:
+    """Return stable DMS IDs that currently have at least one OCR row."""
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection:
+        rows = connection.execute(
+            "SELECT DISTINCT document_id FROM documents WHERE document_id IS NOT NULL AND document_id <> ''"
+        ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
+@app.get("/api/documents/index-inventory")
+def get_index_inventory() -> list[dict[str, str | None]]:
+    """Return the newest indexed DMS version for each stable document ID."""
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT document_id, version_id
+            FROM documents newest
+            WHERE document_id IS NOT NULL AND document_id <> ''
+              AND id = (SELECT MAX(id) FROM documents candidate WHERE candidate.document_id = newest.document_id)
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]

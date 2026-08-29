@@ -1174,6 +1174,16 @@ class APIClient {
     URL.revokeObjectURL(url);
   }
 
+  async getOcrIndexStatus() {
+    const { data } = await this.client.get<ApiResponse>('/database-backup/ocr-index/status');
+    return data;
+  }
+
+  async queueOcrReindex(documentIds: string[] = [], allMissing = false, allDocuments = false) {
+    const { data } = await this.client.post<ApiResponse>('/database-backup/ocr-index/reindex', { documentIds, allMissing, allDocuments });
+    return data;
+  }
+
   async downloadDocumentMetadataCsv() {
     const response = await this.client.get('/database-backup/documents/export', { responseType: 'blob' });
     const disposition = response.headers['content-disposition'] as string | undefined;

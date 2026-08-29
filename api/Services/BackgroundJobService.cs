@@ -84,6 +84,13 @@ public static class BackgroundJobExtensions
             service => service.RunScheduledCheckAsync(),
             Cron.MinuteInterval(5));
 
+        // Self-healing OCR inventory: process up to ten missing documents per
+        // run so large legacy libraries recover gradually without a load spike.
+        recurringJobManager.AddOrUpdate<OcrIndexService>(
+            "auto-index-missing-documents",
+            service => service.AutoIndexMissingAsync(),
+            Cron.MinuteInterval(10));
+
         // Add more jobs here as needed
         // recurringJobManager.AddOrUpdate("job-name", ...);
     }

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using System.Text;
+using Hangfire;
 using static DMS.Api.Services.AuditActions;
 
 namespace DMS.Api.Controllers;
@@ -24,7 +25,8 @@ namespace DMS.Api.Controllers;
 public class DatabaseBackupController(
     DmsContext context, IConfiguration configuration, DatabaseExportService exportService,
     ScheduledBackupService scheduledBackupService, MinioService minioService,
-    AuditService auditService, ILogger<DatabaseBackupController> logger) : BaseController
+    AuditService auditService, OcrIndexService ocrIndexService, IBackgroundJobClient backgroundJobs,
+    ILogger<DatabaseBackupController> logger) : BaseController
 {
     private const string LastBackupSettingKey = "database_last_backup_at";
 
@@ -32,6 +34,30 @@ public class DatabaseBackupController(
     {
         var role = await GetPageAccessRoleAsync(context, GetCurrentUserId());
         return role?.BypassFolderPermissions == true;
+    }
+
+    [HttpGet("ocr-index/status")]
+    public async Task<ActionResult<object>> GetOcrIndexStatus(CancellationToken cancellationToken)
+    {
+        if (!await IsAdminAsync()) return StatusCode(403, new { success = false, error = "Only a Full Access role can manage OCR indexing" });
+        var items = await ocrIndexService.GetStatusAsync(cancellationToken);
+        return Ok(new { success = true, data = new { items, total = items.Count, indexed = items.Count(item => item.IsIndexed), missing = items.Count(item => !item.IsIndexed) } });
+    }
+
+    [HttpPost("ocr-index/reindex")]
+    public async Task<ActionResult<object>> QueueOcrReindex([FromBody] OcrReindexRequest request, CancellationToken cancellationToken)
+    {
+        if (!await IsAdminAsync()) return StatusCode(403, new { success = false, error = "Only a Full Access role can manage OCR indexing" });
+        var status = await ocrIndexService.GetStatusAsync(cancellationToken);
+        var allowed = status.Select(item => item.DocumentId).ToHashSet();
+        var ids = request.AllDocuments
+            ? status.Select(item => item.DocumentId).ToList()
+            : request.AllMissing
+                ? status.Where(item => !item.IsIndexed).Select(item => item.DocumentId).ToList()
+                : request.DocumentIds.Where(allowed.Contains).Distinct().ToList();
+        if (ids.Count > 0)
+            backgroundJobs.Enqueue<OcrIndexService>(service => service.ReindexBatchJobAsync(ids));
+        return Ok(new { success = true, data = new { queued = ids.Count }, message = $"Queued {ids.Count} document(s) for OCR indexing" });
     }
 
     [HttpGet("status")]
@@ -505,3 +531,5 @@ public class DatabaseBackupController(
         }
     }
 }
+
+public sealed record OcrReindexRequest(List<Guid> DocumentIds, bool AllMissing = false, bool AllDocuments = false);

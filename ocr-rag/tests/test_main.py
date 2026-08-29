@@ -187,6 +187,21 @@ class DocumentParsingApiTests(unittest.TestCase):
             404,
         )
 
+    def test_index_inventory_tracks_the_newest_dms_version(self) -> None:
+        self.main.converter = _RecordingConverter("# Version-aware OCR")
+        response = self.client.post(
+            "/api/documents/upload",
+            files={"file": ("version-aware.docx", b"versioned", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_id": "version-aware-document", "version_id": "version-42"},
+        )
+        self.assertEqual(response.status_code, 200)
+        inventory = self.client.get("/api/documents/index-inventory")
+        self.assertEqual(inventory.status_code, 200)
+        self.assertIn(
+            {"document_id": "version-aware-document", "version_id": "version-42"},
+            inventory.json(),
+        )
+
     def test_delete_removes_only_the_requested_document_index(self) -> None:
         self.main.converter = _RecordingConverter("# Indexed content\n\nUnique purge phrase.")
         first = self.client.post(

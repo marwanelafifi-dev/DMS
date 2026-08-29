@@ -30,6 +30,14 @@
 - Re-index OCR is controlled by the dedicated global-role flag `CanReindexDocuments`, shown in Admin Panel > Roles as **Re-index Document OCR**. The API enforces it in addition to normal document read access, and Document Preview hides the action when it is not granted.
 - Migration `093_page_access_role_reindex_documents.sql` denies existing roles by default and enables the capability for the existing folder-bypass/full-access administrative role, which can then delegate it.
 
+### Automatic and bulk OCR indexing
+
+- Current-version uploads and version reverts now enqueue server-side OCR indexing through Hangfire immediately after the database transaction succeeds.
+- A recurring self-healing job scans every ten minutes and processes up to ten missing/stale documents per run. It does not depend on a user opening the file or having the manual Re-index permission.
+- OCR rows now store the DMS `version_id`. Inventory compares each document's current version with its newest indexed version, so a failed update is detected as stale even if an older version had OCR content. The OCR SQLite schema upgrades itself on startup.
+- Admin Panel > Database now shows every current document with Indexed/Missing status, selection checkboxes, **Re-index selected**, **Re-index all missing**, **Re-index all files**, and Refresh controls.
+- Admin batch operations enqueue one sequential Hangfire batch rather than starting many expensive Office conversions concurrently.
+
 ### Ubuntu deployment
 
 From the repository directory, pull the commit and run:

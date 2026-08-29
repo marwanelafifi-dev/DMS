@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, Bell, BellRing, Building2, Calendar, CalendarClock, Check, ClipboardCheck, Clock,
   Download, FileWarning, Folder, Info, LogOut, Megaphone, Power, Save, ScrollText,
-  RotateCcw, Settings as SettingsIcon, Trash2, Upload, UsersRound,
+  RefreshCw, RotateCcw, ScanText, Settings as SettingsIcon, Trash2, Upload, UsersRound,
 } from 'lucide-react';
 import { Card, CardBody, Button } from '../ui';
 import { apiClient } from '../../utils/api';
@@ -148,6 +148,10 @@ export function DatabaseBackup() {
   const [purgeMode, setPurgeMode] = useState<'selected' | 'all' | null>(null);
   const [isPurging, setIsPurging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ocrItems, setOcrItems] = useState<Array<{ documentId: string; title: string; fileName: string; isIndexed: boolean }>>([]);
+  const [selectedOcrIds, setSelectedOcrIds] = useState<Set<string>>(new Set());
+  const [isLoadingOcr, setIsLoadingOcr] = useState(false);
+  const [isQueueingOcr, setIsQueueingOcr] = useState(false);
 
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("We're doing maintenance — we'll be right back.");
@@ -177,6 +181,34 @@ export function DatabaseBackup() {
   useEffect(() => {
     loadSystemControls();
   }, []);
+
+  const loadOcrStatus = async () => {
+    setIsLoadingOcr(true);
+    try {
+      const res = await apiClient.getOcrIndexStatus();
+      setOcrItems(res.data?.items || []);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to load OCR index status');
+    } finally {
+      setIsLoadingOcr(false);
+    }
+  };
+
+  useEffect(() => { void loadOcrStatus(); }, []);
+
+  const queueOcr = async (allMissing: boolean, allDocuments = false) => {
+    setIsQueueingOcr(true);
+    try {
+      const res = await apiClient.queueOcrReindex([...selectedOcrIds], allMissing, allDocuments);
+      showSuccess(res.message || 'OCR indexing queued');
+      setSelectedOcrIds(new Set());
+      window.setTimeout(() => void loadOcrStatus(), 2500);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to queue OCR indexing');
+    } finally {
+      setIsQueueingOcr(false);
+    }
+  };
 
   const handleToggleMaintenance = async (nextEnabled: boolean) => {
     setIsSavingMaintenance(true);
@@ -457,6 +489,29 @@ export function DatabaseBackup() {
           </p>
         </div>
       </div>
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
+          <div className="rounded bg-blue-50 p-2 text-[#3f66c9] dark:bg-blue-900/20"><ScanText className="h-4 w-4" /></div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-[#26334d] dark:text-white">Document OCR Index</h3>
+            <p className="text-sm text-[#718198] dark:text-slate-400">{ocrItems.filter(item => item.isIndexed).length} indexed · {ocrItems.filter(item => !item.isIndexed).length} missing · missing files are also repaired automatically every 10 minutes</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => void loadOcrStatus()} disabled={isLoadingOcr} leftIcon={<RefreshCw className={`h-4 w-4 ${isLoadingOcr ? 'animate-spin' : ''}`} />}>Refresh</Button>
+          <Button variant="secondary" size="sm" onClick={() => void queueOcr(false)} disabled={selectedOcrIds.size === 0 || isQueueingOcr}>Re-index selected ({selectedOcrIds.size})</Button>
+          <Button variant="primary" size="sm" onClick={() => void queueOcr(true)} disabled={!ocrItems.some(item => !item.isIndexed) || isQueueingOcr}>Re-index all missing</Button>
+          <Button variant="secondary" size="sm" onClick={() => void queueOcr(false, true)} disabled={ocrItems.length === 0 || isQueueingOcr}>Re-index all files</Button>
+        </div>
+        <div className="max-h-72 overflow-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-[#f8fafc] text-xs uppercase text-[#718198] dark:bg-slate-800 dark:text-slate-400"><tr><th className="w-10 px-4 py-2"><input type="checkbox" aria-label="Select all missing OCR files" checked={ocrItems.some(item => !item.isIndexed) && ocrItems.filter(item => !item.isIndexed).every(item => selectedOcrIds.has(item.documentId))} onChange={(event) => setSelectedOcrIds(event.target.checked ? new Set(ocrItems.filter(item => !item.isIndexed).map(item => item.documentId)) : new Set())} /></th><th className="px-3 py-2">Document</th><th className="px-3 py-2">File</th><th className="px-3 py-2">Status</th></tr></thead>
+            <tbody className="divide-y divide-[#e2e8f0] dark:divide-white/10">
+              {ocrItems.map(item => <tr key={item.documentId} className="text-[#334155] dark:text-slate-200"><td className="px-4 py-2"><input type="checkbox" disabled={item.isIndexed} checked={selectedOcrIds.has(item.documentId)} onChange={(event) => setSelectedOcrIds(current => { const next = new Set(current); event.target.checked ? next.add(item.documentId) : next.delete(item.documentId); return next; })} aria-label={`Select ${item.title} for OCR indexing`} /></td><td className="px-3 py-2 font-medium">{item.title}</td><td className="max-w-xs truncate px-3 py-2 text-[#718198]">{item.fileName}</td><td className="px-3 py-2"><span className={`rounded-full px-2 py-1 text-xs font-medium ${item.isIndexed ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'}`}>{item.isIndexed ? 'Indexed' : 'Missing'}</span></td></tr>)}
+              {!isLoadingOcr && ocrItems.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-[#718198]">No document versions found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="overflow-hidden">
