@@ -1,5 +1,26 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 58 (2026-08-29) — Updated-File Upload Timeout
+
+**Status:** Complete. Frontend/nginx only; no database migration is required.
+
+- Document uploads no longer inherit the generic 30-second Axios timeout used by ordinary API calls. New and updated-file uploads now allow up to five minutes for browser transfer, MinIO storage, database persistence, audit logging, and notification work.
+- The nginx `/api/` proxy now uses matching five-minute read/send timeouts while retaining a short connection timeout and the existing 100 MB upload limit.
+- OCR/Doc ID parsing already uses a separate five-minute nginx path and remains unchanged.
+- A timed-out request may still have completed on the server after the browser stopped waiting. Before retrying an upload that previously showed `timeout of 30000ms exceeded`, check Version History to avoid creating a duplicate revision.
+
+### Files modified
+
+- `web/src/utils/api.ts`
+- `web/nginx.conf`
+- `CLAUDE.md`
+
+### Deployment requirement
+
+- Rebuild the web container so both the frontend timeout and nginx proxy settings take effect.
+
+---
+
 ## Session 57 (2026-08-29) — Monthly Document ID Generation and Updated-File Detection
 
 **Status:** Complete in code. Database migration required.

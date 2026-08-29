@@ -3,6 +3,7 @@ import type { ApiResponse, LegacyMetadataHistory } from '../types';
 
 const API_BASE = '/api';
 const TOKEN_STORAGE_KEY = 'dms_session_token';
+const FILE_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
 // A task/PCAR is assigned to exactly one of a User or a Group — a group
 // assignment is one shared task visible to every member, not a fan-out of
@@ -505,7 +506,8 @@ class APIClient {
 
     const { data } = await this.client.post<ApiResponse>(
       `/documents/${documentId}/upload`,
-      formData
+      formData,
+      { timeout: FILE_UPLOAD_TIMEOUT_MS },
     );
     return data;
   }
