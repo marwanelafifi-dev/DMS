@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using DMS.Api.Data;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -41,8 +42,13 @@ public class AiChatController(
         if (accessibleFolderIds != null)
             accessibleDocumentsQuery = accessibleDocumentsQuery.Where(d => accessibleFolderIds.Contains(d.FolderId));
 
-        var candidateDocuments = await accessibleDocumentsQuery
-            .Select(d => new ChatDocument(d.DocumentId, d.FolderId, d.Title, d.OriginalDocumentId, d.Description, d.Status))
+        var candidateDocuments = await (
+            from document in accessibleDocumentsQuery
+            join version in context.DocumentVersions.AsNoTracking()
+                on document.CurrentVersionId equals (Guid?)version.VersionId into versions
+            from version in versions.DefaultIfEmpty()
+            select new ChatDocument(document.DocumentId, document.FolderId, document.Title, version == null ? null : version.FileName,
+                document.OriginalDocumentId, document.Description, document.Status))
             .ToListAsync(cancellationToken);
         var accessibleDocuments = new List<ChatDocument>();
         foreach (var document in candidateDocuments)
@@ -52,8 +58,29 @@ public class AiChatController(
         }
         var accessibleById = accessibleDocuments.ToDictionary(d => d.DocumentId.ToString(), StringComparer.OrdinalIgnoreCase);
 
-        var searchTerms = ExtractSearchTerms(question).Take(6).ToArray();
-        var ocrRows = await SearchOcrAsync(searchTerms, cancellationToken);
+        var explicitDocument = accessibleDocuments
+            .Where(document => (!string.IsNullOrWhiteSpace(document.FileName) && question.Contains(document.FileName, StringComparison.OrdinalIgnoreCase))
+                || question.Contains(document.Title, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(document => Math.Max(document.FileName?.Length ?? 0, document.Title.Length))
+            .FirstOrDefault();
+        var containsFileExtension = Regex.IsMatch(question, @"\.(pdf|docx?|docm|xlsx?|xlsm|pptx?|pptm|txt|csv|png|jpe?g|tiff?)\b", RegexOptions.IgnoreCase);
+        if (containsFileExtension && explicitDocument == null)
+        {
+            const string exactFileAnswer = "I couldn't find that exact file among the documents you can access. Check the file name, or contact your system administrator to request access.";
+            return Ok(new { success = true, data = new { answer = exactFileAnswer, accessDenied = true, sources = Array.Empty<object>() } });
+        }
+
+        List<OcrRow> ocrRows;
+        if (explicitDocument != null)
+        {
+            var exactRow = await GetOcrDocumentAsync(explicitDocument.DocumentId, cancellationToken);
+            ocrRows = exactRow == null ? [] : [exactRow];
+        }
+        else
+        {
+            var searchTerms = ExtractSearchTerms(question).Take(6).ToArray();
+            ocrRows = await SearchOcrAsync(searchTerms, cancellationToken);
+        }
         var deniedMatch = ocrRows.Any(row => row.DocumentId != null && !accessibleById.ContainsKey(row.DocumentId));
         var asksAboutFile = question.Contains("file", StringComparison.OrdinalIgnoreCase)
             || question.Contains("document", StringComparison.OrdinalIgnoreCase)
@@ -65,6 +92,12 @@ public class AiChatController(
             .Select(group => group.First())
             .Take(8)
             .ToList();
+
+        if (explicitDocument != null && allowedRows.Count == 0)
+        {
+            var noOcrAnswer = $"I found {explicitDocument.Title}, but its OCR/in-file text is not available yet. Ask your system administrator to re-index the file, then try again.";
+            return Ok(new { success = true, data = new { answer = noOcrAnswer, accessDenied = false, sources = new[] { new ChatSource("document", explicitDocument.DocumentId.ToString(), explicitDocument.Title) } } });
+        }
 
         // A direct filename/Doc-ID question that only resolves to protected OCR rows
         // must not be softened into a guess from unrelated accessible material.
@@ -104,9 +137,12 @@ public class AiChatController(
             .OrderByDescending(announcement => announcement.CreatedAt).Take(20)
             .Select(announcement => new ChatAnnouncement(announcement.Title, announcement.Message, announcement.CreatedAt))
             .ToListAsync(cancellationToken);
+        var taskIntent = question.Contains("task", StringComparison.OrdinalIgnoreCase) || question.Contains("PCAR", StringComparison.OrdinalIgnoreCase);
         var sources = allowedRows
             .Select(row => new ChatSource("document", row.DocumentId!, accessibleById[row.DocumentId!].Title))
-            .Concat(safeTasks.Select(task => new ChatSource("task", task.TaskId.ToString(), task.Title)))
+            .Concat(explicitDocument == null && taskIntent
+                ? safeTasks.Take(12).Select(task => new ChatSource("task", task.TaskId.ToString(), task.Title))
+                : Enumerable.Empty<ChatSource>())
             .ToList();
 
         var dashboard = new ChatDashboard(
@@ -114,9 +150,12 @@ public class AiChatController(
             safeTasks.Count(task => task.IsAssignedToMe && task.DueDate < now && task.Status != "completed" && task.Status != "done"),
             safeTasks.Count(task => task.IsCreatedByMe && task.Status != "completed" && task.Status != "done"),
             accessibleDocuments.Count);
-        var contextText = BuildContext(allowedRows, accessibleById, safeTasks, calendarEvents, announcements, dashboard);
+        IEnumerable<ChatTask> contextTasks = explicitDocument == null ? safeTasks : Enumerable.Empty<ChatTask>();
+        IEnumerable<ChatCalendarEvent> contextCalendar = explicitDocument == null ? calendarEvents : Enumerable.Empty<ChatCalendarEvent>();
+        IEnumerable<ChatAnnouncement> contextAnnouncements = explicitDocument == null ? announcements : Enumerable.Empty<ChatAnnouncement>();
+        var contextText = BuildContext(allowedRows, accessibleById, contextTasks, contextCalendar, contextAnnouncements, dashboard, includeDashboard: explicitDocument == null);
         var answer = await GenerateAnswerAsync(question, contextText, cancellationToken)
-            ?? BuildGroundedFallback(allowedRows, accessibleById, safeTasks, calendarEvents, announcements);
+            ?? BuildGroundedFallback(allowedRows, accessibleById, contextTasks, contextCalendar, contextAnnouncements);
 
         if (string.IsNullOrWhiteSpace(answer) && deniedMatch)
             return Ok(new { success = true, data = new { answer = AccessDeniedAnswer, accessDenied = true, sources = Array.Empty<object>() } });
@@ -143,6 +182,24 @@ public class AiChatController(
             }
         });
         return (await Task.WhenAll(requests)).SelectMany(rows => rows).ToList();
+    }
+
+    private async Task<OcrRow?> GetOcrDocumentAsync(Guid documentId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("OcrRag");
+            return await client.GetFromJsonAsync<OcrRow>($"api/documents/by-document/{documentId}", cancellationToken);
+        }
+        catch (HttpRequestException exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            logger.LogWarning(exception, "Exact OCR lookup failed for document {DocumentId}", documentId);
+            return null;
+        }
     }
 
     private async Task<string?> GenerateAnswerAsync(string question, string groundedContext, CancellationToken cancellationToken)
@@ -188,7 +245,7 @@ public class AiChatController(
         question.Split(new[] { ' ', '\t', '\r', '\n', '.', ',', ':', ';', '?', '!', '(', ')', '[', ']', '"', '\'' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(word => word.Trim()).Where(word => word.Length >= 3 && !StopWords.Contains(word)).Distinct(StringComparer.OrdinalIgnoreCase);
 
-    private static string BuildContext(IEnumerable<OcrRow> rows, IReadOnlyDictionary<string, ChatDocument> documents, IEnumerable<ChatTask> tasks, IEnumerable<ChatCalendarEvent> calendarEvents, IEnumerable<ChatAnnouncement> announcements, ChatDashboard dashboard)
+    private static string BuildContext(IEnumerable<OcrRow> rows, IReadOnlyDictionary<string, ChatDocument> documents, IEnumerable<ChatTask> tasks, IEnumerable<ChatCalendarEvent> calendarEvents, IEnumerable<ChatAnnouncement> announcements, ChatDashboard dashboard, bool includeDashboard)
     {
         var builder = new StringBuilder();
         foreach (var row in rows)
@@ -198,7 +255,8 @@ public class AiChatController(
         }
         foreach (var task in tasks)
             builder.AppendLine($"TASK [{task.Title}] Relationship: {(task.IsAssignedToMe ? "assigned to me" : "")} {(task.IsCreatedByMe ? "created by me" : "")}; Status: {task.Status}; Due: {task.DueDate}; Priority: {task.RiskSeverity}; Details: {task.Description}");
-        builder.AppendLine($"MY DASHBOARD: Open assigned tasks={dashboard.OpenAssignedTasks}; Overdue assigned tasks={dashboard.OverdueAssignedTasks}; Open tasks I created={dashboard.OpenCreatedTasks}; Documents I can access={dashboard.AccessibleDocuments}.");
+        if (includeDashboard)
+            builder.AppendLine($"MY DASHBOARD: Open assigned tasks={dashboard.OpenAssignedTasks}; Overdue assigned tasks={dashboard.OverdueAssignedTasks}; Open tasks I created={dashboard.OpenCreatedTasks}; Documents I can access={dashboard.AccessibleDocuments}.");
         foreach (var calendarEvent in calendarEvents)
             builder.AppendLine($"CALENDAR [{calendarEvent.Source}] {calendarEvent.Title}; Date/start: {calendarEvent.Date}; Location/phase: {calendarEvent.LocationOrPhase}; Standard: {calendarEvent.Standard}; Details: {calendarEvent.Details}");
         foreach (var announcement in announcements)
@@ -223,7 +281,7 @@ public class AiChatController(
     }
 
     private static string Limit(string? value, int length) => string.IsNullOrWhiteSpace(value) ? "" : value.Length <= length ? value : value[..length] + "…";
-    private sealed record ChatDocument(Guid DocumentId, Guid FolderId, string Title, string? OriginalDocumentId, string? Description, string Status);
+    private sealed record ChatDocument(Guid DocumentId, Guid FolderId, string Title, string? FileName, string? OriginalDocumentId, string? Description, string Status);
     private sealed record ChatTask(Guid TaskId, Guid? DocumentId, string Title, string? Description, string Status, string? RiskSeverity, DateTime? DueDate, bool IsAssignedToMe, bool IsCreatedByMe);
     private sealed record ChatCalendarEvent(string Title, string Date, string? LocationOrPhase, string? Standard, string? Details, string Source);
     private sealed record ChatAnnouncement(string Title, string Message, DateTime CreatedAt);

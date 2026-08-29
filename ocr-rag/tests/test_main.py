@@ -160,6 +160,33 @@ class DocumentParsingApiTests(unittest.TestCase):
             ],
         )
 
+    def test_document_lookup_returns_only_the_newest_exact_document_index(self) -> None:
+        self.main.converter = _RecordingConverter("# First indexed version")
+        first = self.client.post(
+            "/api/documents/upload",
+            files={"file": ("incident-plan-v1.docx", b"first", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_id": "incident-response-plan"},
+        )
+        self.assertEqual(first.status_code, 200)
+
+        self.main.converter = _RecordingConverter("# Current incident response plan")
+        latest = self.client.post(
+            "/api/documents/upload",
+            files={"file": ("incident-plan-v2.docx", b"second", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_id": "incident-response-plan"},
+        )
+        self.assertEqual(latest.status_code, 200)
+
+        response = self.client.get("/api/documents/by-document/incident-response-plan")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["id"], latest.json()["id"])
+        self.assertEqual(response.json()["content"], "# Current incident response plan")
+        self.assertEqual(
+            self.client.get("/api/documents/by-document/not-authorized-or-missing").status_code,
+            404,
+        )
+
     def test_delete_removes_only_the_requested_document_index(self) -> None:
         self.main.converter = _RecordingConverter("# Indexed content\n\nUnique purge phrase.")
         first = self.client.post(

@@ -377,3 +377,23 @@ def search_documents(q: str = Query(...)) -> list[dict[str, int | str | None]]:
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+@app.get("/api/documents/by-document/{document_id}")
+def get_document_index(document_id: str) -> dict[str, int | str | None]:
+    """Return only the newest OCR row for one already-authorized DMS document."""
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            """
+            SELECT id, document_id, filename, content, created_at
+            FROM documents
+            WHERE document_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (document_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Document OCR index not found")
+    return dict(row)

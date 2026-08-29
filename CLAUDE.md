@@ -1,5 +1,44 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 62 (2026-08-30) — Exact-File AI Retrieval and Professional Chat UI
+
+**Status:** Complete in code. Rebuild `api`, `ocr-rag`, and `web`; no database migration is required.
+
+### Exact-file retrieval
+
+- Questions containing an accessible document's full file name or title now resolve that document first and retrieve OCR text only by its DMS document ID. The chatbot does not broaden an exact-file question into word-by-word matches from unrelated documents.
+- A file-name question that does not exactly match an accessible document returns a permission/name warning with no unrelated sources. This intentionally does not reveal whether a similarly named protected document exists.
+- Exact-document questions exclude task, calendar, announcement, and dashboard context from that model request, preventing unrelated workspace information from influencing the document answer.
+- Added `GET /api/documents/by-document/{document_id}` to the internal OCR service to return the newest indexed row for one document. The authenticated .NET API performs the permission check before calling it.
+
+### Professional chat presentation
+
+- Refined the assistant panel, header, message spacing, contrast, composer, loading state, and user-message text readability.
+- Assistant Markdown now renders as structured paragraphs, lists, and scrollable tables instead of showing raw OCR/table syntax.
+- Every authorized document/task source is a keyboard-accessible hyperlink. Document links open the exact preview through `/documents?preview=...`; task links open the exact task through `/tasks?highlight=...`.
+
+### Ubuntu deployment
+
+From the repository directory, pull the commit and run:
+
+```bash
+docker compose build api ocr-rag web
+docker compose up -d api ocr-rag web
+docker compose ps
+docker compose logs --tail=100 api ocr-rag web
+```
+
+Then hard-refresh the browser and test an exact filename. If the assistant reports that OCR text is unavailable, re-index/upload that document and retry.
+
+### Verification
+
+- OCR exact-document endpoint has coverage for newest-version selection and missing-document `404` behavior.
+- Frontend production build: successful.
+- `git diff --check`: clean (line-ending warnings only).
+- Python and the .NET SDK are unavailable on this Windows workstation, so run the OCR test suite and compile the API through the Ubuntu containers during deployment.
+
+---
+
 ## Session 61 (2026-08-30) — Permission-Safe AI Assistant, Personal Dashboard Context, and Admin API-Key Management
 
 **Status:** Complete in code. API and frontend rebuilds are required; no database migration is required.
