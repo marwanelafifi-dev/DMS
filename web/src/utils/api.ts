@@ -3,7 +3,7 @@ import type { ApiResponse, LegacyMetadataHistory } from '../types';
 
 const API_BASE = '/api';
 const TOKEN_STORAGE_KEY = 'dms_session_token';
-const FILE_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const LONG_RUNNING_WORKFLOW_TIMEOUT_MS = 5 * 60 * 1000;
 
 // A task/PCAR is assigned to exactly one of a User or a Group — a group
 // assignment is one shared task visible to every member, not a fan-out of
@@ -441,7 +441,11 @@ class APIClient {
   }
 
   async updateDocument(documentId: string, documentData: any) {
-    const { data } = await this.client.put<ApiResponse>(`/documents/${documentId}`, documentData);
+    const { data } = await this.client.put<ApiResponse>(
+      `/documents/${documentId}`,
+      documentData,
+      { timeout: LONG_RUNNING_WORKFLOW_TIMEOUT_MS },
+    );
     return data;
   }
 
@@ -457,7 +461,11 @@ class APIClient {
 
   async extractDocId(documentId: string, text: string, replaceExisting = false) {
     const endpoint = replaceExisting ? 'extract-updated-doc-id' : 'extract-doc-id';
-    const { data } = await this.client.post<ApiResponse>(`/documents/${documentId}/${endpoint}`, { text, replaceExisting });
+    const { data } = await this.client.post<ApiResponse>(
+      `/documents/${documentId}/${endpoint}`,
+      { text, replaceExisting },
+      { timeout: LONG_RUNNING_WORKFLOW_TIMEOUT_MS },
+    );
     return data;
   }
 
@@ -507,7 +515,7 @@ class APIClient {
     const { data } = await this.client.post<ApiResponse>(
       `/documents/${documentId}/upload`,
       formData,
-      { timeout: FILE_UPLOAD_TIMEOUT_MS },
+      { timeout: LONG_RUNNING_WORKFLOW_TIMEOUT_MS },
     );
     return data;
   }
@@ -580,11 +588,15 @@ class APIClient {
 
   // Approval Workflow (C-Doc)
   async submitDocumentsForApproval(documentIds: string[], category: string, notes?: string) {
-    const { data } = await this.client.post<ApiResponse>('/approvals/submit-batch', {
-      documentIds,
-      category,
-      approvalNotes: notes,
-    });
+    const { data } = await this.client.post<ApiResponse>(
+      '/approvals/submit-batch',
+      {
+        documentIds,
+        category,
+        approvalNotes: notes,
+      },
+      { timeout: LONG_RUNNING_WORKFLOW_TIMEOUT_MS },
+    );
     return data;
   }
 

@@ -181,6 +181,14 @@ services:
       # postgres/redis/minio/ocr-rag are never exposed through this, on purpose.
       - "--providers.docker.exposedByDefault=false"
       - "--entrypoints.web.address=:80"
+      # Updated document uploads can include several megabytes of file data.
+      # The public /api route goes directly through Traefik (not web/nginx),
+      # so its request/response limits must match the five-minute client limit.
+      # Without these settings Traefik can close a slow upload as HTTP 499 even
+      # though both Axios and nginx are prepared to keep waiting.
+      - "--entrypoints.web.transport.respondingTimeouts.readTimeout=300s"
+      - "--entrypoints.web.transport.respondingTimeouts.writeTimeout=300s"
+      - "--entrypoints.web.transport.respondingTimeouts.idleTimeout=300s"
       - "--api.insecure=true"
       - "--ping=true"
     ports:

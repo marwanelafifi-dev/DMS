@@ -134,6 +134,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
     }
     setSavingAction(action);
     setError(null);
+    let activeStep = 'Uploading the updated file';
     try {
       let versionId = uploadedVersionId;
       if (!versionId) {
@@ -152,24 +153,28 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
         // user looking at the old ID with no explanation.
         let parsedContent: string | null = null;
         try {
+          activeStep = 'Reading the Document ID from the updated file';
           const parsedDocument = await doclingApi.convertDocument(fileToUpload);
           parsedContent = parsedDocument.content;
         } catch {
           // QA can still manually correct the ID or generate a new one.
         }
         if (parsedContent) {
+          activeStep = 'Applying the Document ID from the updated file';
           const extractionRes = await apiClient.extractDocId(documentId, parsedContent, true);
           if (!extractionRes.success) throw new Error(extractionRes.error || 'Failed to apply the Document ID detected in the updated file');
         }
       }
 
       if (!metadataSaved) {
+        activeStep = 'Saving the document metadata';
         const updateRes = await apiClient.updateDocument(documentId, { description, tags: tagList, category, department });
         if (!updateRes.success) throw new Error(updateRes.error);
         setMetadataSaved(true);
       }
 
       if (action === 'submit') {
+        activeStep = 'Submitting the document for QA approval';
         const submitRes = await apiClient.submitDocumentsForApproval(
           [documentId],
           category,
@@ -186,13 +191,14 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
       onClose();
     } catch (err: any) {
       const message = err?.response?.data?.error || err.message || 'Failed to upload the new version';
+      const stepMessage = `${activeStep} failed: ${message}`;
       if (versionPersistedRef.current && !uploadNotifiedRef.current) {
         uploadNotifiedRef.current = true;
         onUploaded();
       }
       setError(versionPersistedRef.current
-        ? `The new version was saved as Draft, but the next action failed: ${message}`
-        : message);
+        ? `The new version was saved as Draft, but the next action failed. ${stepMessage}`
+        : stepMessage);
     } finally {
       setSavingAction(null);
     }

@@ -2,22 +2,27 @@
 
 ## Session 58 (2026-08-29) — Updated-File Upload Timeout
 
-**Status:** Complete. Frontend/nginx only; no database migration is required.
+**Status:** Complete. Frontend/proxy configuration only; no database migration is required.
 
 - Document uploads no longer inherit the generic 30-second Axios timeout used by ordinary API calls. New and updated-file uploads now allow up to five minutes for browser transfer, MinIO storage, database persistence, audit logging, and notification work.
 - The nginx `/api/` proxy now uses matching five-minute read/send timeouts while retaining a short connection timeout and the existing 100 MB upload limit.
+- Production gateway traffic routes `/api` directly from Traefik to the API container and therefore bypasses `web/nginx.conf`. Traefik's web entrypoint now has matching five-minute read, write, and idle timeouts; this closes the separate path that surfaced as HTTP `499` after the browser timeout was extended.
+- Document metadata saving, updated-file Document ID application, and batch approval submission also use the five-minute workflow timeout. These are later calls in the same dialog and must not fall back to the generic 30-second limit after the binary upload succeeds.
+- Upload New Version errors now name the exact failed stage: file upload, Document ID reading/application, metadata saving, or QA submission. If the binary version has already been persisted, the dialog explicitly confirms it was retained as Draft and retrying continues the remaining steps without uploading a duplicate version.
 - OCR/Doc ID parsing already uses a separate five-minute nginx path and remains unchanged.
 - A timed-out request may still have completed on the server after the browser stopped waiting. Before retrying an upload that previously showed `timeout of 30000ms exceeded`, check Version History to avoid creating a duplicate revision.
 
 ### Files modified
 
 - `web/src/utils/api.ts`
+- `web/src/components/custom/UploadNewVersionModal.tsx`
 - `web/nginx.conf`
+- `docker-compose.yml`
 - `CLAUDE.md`
 
 ### Deployment requirement
 
-- Rebuild the web container so both the frontend timeout and nginx proxy settings take effect.
+- Rebuild the web container so the frontend timeout and nginx settings take effect, and recreate Traefik so its entrypoint timeout configuration is reloaded.
 
 ---
 
