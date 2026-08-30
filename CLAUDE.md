@@ -1,5 +1,34 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 63 (2026-08-30) — Scheduled Backup Reliability and Timezone Fix
+
+**Status:** Complete in code. Rebuild `api` and `web`; no database migration is required.
+
+### Automatic backup scheduling
+
+- Fixed scheduled backups interpreting the Admin Panel time as UTC. Daily, weekly, monthly, and hourly checks now use the timezone configured under Admin Panel > Platform Settings > General (default: `Africa/Cairo`).
+- The Scheduled Backups time label now displays the active platform timezone, removing ambiguity about which clock the server uses.
+- Replaced the fragile exact five-minute time window with a due-time check. If Hangfire runs late or the API restarts after the configured time, the next check catches up once for the current daily/monthly period instead of silently missing the backup.
+- Hourly schedules also catch up once within the current hour when the first Hangfire check is delayed beyond minute five.
+- A failed scheduled export is no longer recorded as completed. Hangfire can retry it on the next five-minute check; the last-run period key advances only after `RunAndSaveAsync` succeeds.
+- Added an informational log for each enabled scheduled-backup check showing the resolved local time, timezone, and enabled frequencies. Invalid or unavailable timezone identifiers are logged and safely fall back to UTC.
+- Manual **Run Backup Now** behavior remains unchanged and continues to use the same database export, MinIO upload, optional destination-path/SMB copy, and retention path as automatic backups.
+
+### Files modified
+
+- `api/Services/ScheduledBackupService.cs`
+- `api/Controllers/DatabaseBackupController.cs`
+- `web/src/components/custom/ScheduledBackups.tsx`
+- `CLAUDE.md`
+
+### Verification
+
+- Frontend production build: successful.
+- `git diff --check`: clean (line-ending warnings only).
+- The .NET SDK is unavailable on this Windows workstation, so compile and verify the API through the Ubuntu Docker rebuild during deployment.
+
+---
+
 ## Session 62 (2026-08-30) — Exact-File AI Retrieval and Professional Chat UI
 
 **Status:** Complete in code. Rebuild `api`, `ocr-rag`, and `web`; PostgreSQL migration `093` is required.

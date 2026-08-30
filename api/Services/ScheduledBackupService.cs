@@ -80,12 +80,31 @@ public class ScheduledBackupService(
         await context.SaveChangesAsync();
     }
 
-    private static bool TimeMatches(DateTime now, string configTime)
+    private static bool TimeHasPassed(DateTime now, string configTime)
     {
         if (!TimeSpan.TryParse(configTime, out var target))
             return false;
-        var diff = Math.Abs((now.TimeOfDay - target).TotalMinutes);
-        return diff < 5 || diff > 1435; // handles the midnight wraparound
+        return now.TimeOfDay >= target;
+    }
+
+    private async Task<(DateTime Now, string TimeZone)> GetScheduleTimeAsync()
+    {
+        var general = await PlatformSettingsService.LoadGeneralAsync(context);
+        try
+        {
+            var timeZone = TimeZoneInfo.FindSystemTimeZoneById(general.Timezone);
+            return (TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone), general.Timezone);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            logger.LogWarning(ex, "Scheduled backup timezone {TimeZone} was not found; falling back to UTC", general.Timezone);
+            return (DateTime.UtcNow, "UTC");
+        }
+        catch (InvalidTimeZoneException ex)
+        {
+            logger.LogWarning(ex, "Scheduled backup timezone {TimeZone} is invalid; falling back to UTC", general.Timezone);
+            return (DateTime.UtcNow, "UTC");
+        }
     }
 
     // The entry point Hangfire calls every 5 minutes. Checks every enabled
@@ -99,42 +118,49 @@ public class ScheduledBackupService(
             if (!config.Enabled || config.Frequencies.Length == 0)
                 return;
 
-            var now = DateTime.UtcNow;
+            var (now, timeZone) = await GetScheduleTimeAsync();
             var lastRun = await LoadLastRunAsync();
             var updated = lastRun;
 
-            if (config.Frequencies.Contains("hourly") && now.Minute < 5)
+            logger.LogInformation(
+                "Checking scheduled backups at {LocalTime} ({TimeZone}); enabled frequencies: {Frequencies}",
+                now, timeZone, string.Join(", ", config.Frequencies));
+
+            if (config.Frequencies.Contains("hourly"))
             {
                 var periodKey = now.ToString("yyyyMMddHH");
                 if (lastRun.Hourly != periodKey)
                 {
-                    await RunAndSaveAsync(config, "hourly");
-                    updated = updated with { Hourly = periodKey };
+                    var result = await RunAndSaveAsync(config, "hourly");
+                    if (result.Success)
+                        updated = updated with { Hourly = periodKey };
                 }
             }
 
-            if (config.Frequencies.Contains("daily") && TimeMatches(now, config.Time))
+            if (config.Frequencies.Contains("daily") && TimeHasPassed(now, config.Time))
             {
                 var periodKey = now.ToString("yyyyMMdd");
                 if (lastRun.Daily != periodKey)
                 {
-                    await RunAndSaveAsync(config, "daily");
-                    updated = updated with { Daily = periodKey };
+                    var result = await RunAndSaveAsync(config, "daily");
+                    if (result.Success)
+                        updated = updated with { Daily = periodKey };
                 }
             }
 
-            if (config.Frequencies.Contains("weekly") && TimeMatches(now, config.Time) &&
+            if (config.Frequencies.Contains("weekly") && TimeHasPassed(now, config.Time) &&
                 string.Equals(now.DayOfWeek.ToString(), config.DayOfWeek, StringComparison.OrdinalIgnoreCase))
             {
                 var periodKey = now.ToString("yyyyMMdd");
                 if (lastRun.Weekly != periodKey)
                 {
-                    await RunAndSaveAsync(config, "weekly");
-                    updated = updated with { Weekly = periodKey };
+                    var result = await RunAndSaveAsync(config, "weekly");
+                    if (result.Success)
+                        updated = updated with { Weekly = periodKey };
                 }
             }
 
-            if (config.Frequencies.Contains("monthly") && TimeMatches(now, config.Time))
+            if (config.Frequencies.Contains("monthly") && TimeHasPassed(now, config.Time))
             {
                 var targetDay = Math.Min(config.DayOfMonth, DateTime.DaysInMonth(now.Year, now.Month));
                 if (now.Day == targetDay)
@@ -142,8 +168,9 @@ public class ScheduledBackupService(
                     var periodKey = now.ToString("yyyyMM");
                     if (lastRun.Monthly != periodKey)
                     {
-                        await RunAndSaveAsync(config, "monthly");
-                        updated = updated with { Monthly = periodKey };
+                        var result = await RunAndSaveAsync(config, "monthly");
+                        if (result.Success)
+                            updated = updated with { Monthly = periodKey };
                     }
                 }
             }
@@ -153,7 +180,7 @@ public class ScheduledBackupService(
                 var setting = await context.AppSettings.FirstOrDefaultAsync(s => s.Key == ScheduledBackupKeys.LastRun)
                     ?? new DmsAppSetting { Key = ScheduledBackupKeys.LastRun };
                 setting.Value = JsonSerializer.Serialize(updated);
-                setting.UpdatedAt = now;
+                setting.UpdatedAt = DateTime.UtcNow;
                 if (context.Entry(setting).State == EntityState.Detached)
                     context.AppSettings.Add(setting);
                 await context.SaveChangesAsync();

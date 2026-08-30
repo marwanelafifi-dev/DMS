@@ -429,6 +429,7 @@ public class DatabaseBackupController(
         try
         {
             var config = await scheduledBackupService.LoadConfigAsync();
+            var generalSettings = await PlatformSettingsService.LoadGeneralAsync(context);
             var objectKeys = (await minioService.ListAsync(ScheduledBackupKeys.ObjectPrefix))
                 .OrderByDescending(k => k)
                 .ToList();
@@ -447,6 +448,7 @@ public class DatabaseBackupController(
                 data = new
                 {
                     config,
+                    scheduleTimeZone = generalSettings.Timezone,
                     files,
                     lastBackup = files.FirstOrDefault(),
                 },

@@ -62,13 +62,14 @@ export function ScheduledBackups() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRunningNow, setIsRunningNow] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
+  const [scheduleTimeZone, setScheduleTimeZone] = useState('UTC');
 
   const load = () => {
     setIsLoading(true);
     apiClient.getBackupSchedule()
       .then((res) => {
         if (!res.success || !res.data) return;
-        const { config, files: fileList } = res.data;
+        const { config, files: fileList, scheduleTimeZone: loadedTimeZone } = res.data;
         setEnabled(config.enabled);
         setFrequencies(config.frequencies ?? []);
         setTime(config.time);
@@ -84,6 +85,7 @@ export function ScheduledBackups() {
         setSmbPassword(config.networkShare?.password ?? '');
         setSmbSubPath(config.networkShare?.subPath ?? '');
         setFiles(fileList ?? []);
+        setScheduleTimeZone(loadedTimeZone ?? 'UTC');
       })
       .catch(() => showError('Failed to load backup schedule'))
       .finally(() => setIsLoading(false));
@@ -203,7 +205,7 @@ export function ScheduledBackups() {
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Time (24h)</label>
+            <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Time (24h, {scheduleTimeZone})</label>
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="field-control h-10 w-full" />
           </div>
           <div>
