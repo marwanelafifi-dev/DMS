@@ -156,9 +156,13 @@ export function AiChatbot() {
       )}
 
       <div className="group fixed bottom-5 right-5 z-[75] flex items-center gap-3">
-        {!open && !hasOpened && (
-          <span className="chat-message-in hidden select-none items-center rounded-full bg-white px-3.5 py-2 text-xs font-medium text-[#27366f] shadow-lg ring-1 ring-black/5 sm:flex dark:bg-slate-800 dark:text-blue-200">
-            Need help? Ask the AI Assistant
+        {!open && (
+          <span
+            className={`chat-message-in hidden select-none items-center rounded-full bg-white px-3.5 py-2 text-xs font-medium text-[#27366f] shadow-lg ring-1 ring-black/5 sm:flex dark:bg-slate-800 dark:text-blue-200 ${
+              hasOpened ? 'opacity-0 transition-opacity duration-150 group-hover:opacity-100' : ''
+            }`}
+          >
+            {hasOpened ? 'DMS AI Assistant' : 'Need help? Ask the AI Assistant'}
           </span>
         )}
         <button
@@ -166,6 +170,7 @@ export function AiChatbot() {
           className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-lg shadow-[#232f6b]/30 transition hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30"
           aria-label={open ? 'Close AI assistant' : 'Open AI assistant'}
           aria-expanded={open}
+          title="DMS AI Assistant — click to chat"
         >
           {!open && !hasOpened && <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-[#3a5aa0]/50" aria-hidden />}
           {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
