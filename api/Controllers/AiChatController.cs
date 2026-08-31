@@ -61,21 +61,19 @@ public class AiChatController(
 
         var explicitDocument = FindExplicitDocument(question, accessibleDocuments);
 
-        // A follow-up like "what does it say about X" names no file at all — if the
-        // question has a reference cue and the recent turns (sent by the browser;
-        // no server-side session storage) named a specific accessible document, treat
-        // this question as being about that same document instead of falling through
-        // to a broad, unscoped search.
+        // Sticky document context: once a document has been established in this
+        // conversation, every later question stays about that same document by
+        // default — regardless of phrasing ("it", "the document", or no reference
+        // cue at all, e.g. "let me know the KPIs"). The only ways to leave it are
+        // (1) the current question explicitly names a different accessible
+        // document (handled above), (2) an explicit request to change the
+        // source/document, or (3) the question clearly isn't about a document at
+        // all (tasks/calendar/announcements/dashboard with no document wording).
         var recentConversation = BuildRecentConversation(request.History);
         if (explicitDocument == null && !string.IsNullOrEmpty(recentConversation)
-            && Regex.IsMatch(question, @"\b(it|that file|this file|that document|this document|the file|the document)\b", RegexOptions.IgnoreCase))
+            && !DocumentContextResetPhrase.IsMatch(question)
+            && !LooksLikeNonDocumentTopic(question))
         {
-            // Deliberately NOT FindExplicitDocument here: that picks the LONGEST
-            // matching title/filename, which is wrong for a pronoun follow-up — a
-            // shorter-named document discussed one turn ago should win over a
-            // longer-named one mentioned earlier in the same conversation window.
-            // "It"/"the document" means whatever was just talked about, so this
-            // picks whichever accessible document was mentioned LAST in the text.
             explicitDocument = FindMostRecentlyMentionedDocument(recentConversation, accessibleDocuments);
         }
 
@@ -408,6 +406,29 @@ public class AiChatController(
     // explicit labeling phrase ("Doc ID", "doc no.") so ordinary standard
     // references such as "ISO-9001" don't get misread as an unresolved Doc ID.
     private static readonly Regex DocIdLikeToken = new(@"\b[A-Za-z]{2,10}-\d{4,}\b", RegexOptions.Compiled);
+
+    // An explicit request to stop discussing the currently-active sticky document.
+    private static readonly Regex DocumentContextResetPhrase = new(
+        @"\b(different (document|file|source)|another (document|file)|change (the )?(source|document|file)|new (document|file|source)|stop (talking about|discussing) (this|that|the) (document|file)|not (about )?(this|that) (document|file)|forget (this|that|the) (document|file)|switch (document|file|source))\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// True when a question clearly asks about something other than a document
+    /// (tasks/calendar/announcements/dashboard) with no document-related wording
+    /// at all — used to stop the sticky-document default from wrongly forcing an
+    /// unrelated question (e.g. "what tasks are assigned to me") onto whatever
+    /// document was last discussed.
+    /// </summary>
+    private static bool LooksLikeNonDocumentTopic(string question)
+    {
+        bool Has(params string[] values) => values.Any(value => question.Contains(value, StringComparison.OrdinalIgnoreCase));
+        if (Has("file", "document", "doc", "ocr", "content", "text", "kpi", "detail", "page", "section", "policy", "procedure", "revision"))
+            return false;
+        return Has("task", "PCAR", "assigned to me", "created by me", "due date", "overdue",
+            "calendar", "meeting", "appointment", "schedule", "audit date", "event",
+            "announcement", "notice", "company news",
+            "dashboard", "my summary", "my overview");
+    }
 
     private static string NormalizeDocId(string value) => Regex.Replace(value, @"[\s\-\.]", "").ToUpperInvariant();
 
