@@ -66,18 +66,8 @@ public class AiChatController(
             // More than one accessible document shares this name (a real case:
             // two documents both titled essentially "Backup Process Techniques").
             // Guessing which one silently would risk answering from the wrong
-            // document without the user ever knowing — ask instead, and give the
-            // full folder path for each (reusing the same audit-log path resolver
-            // used elsewhere in the app) so a same-named document in a different
-            // folder is easy to tell apart.
-            var candidateLines = new List<string>();
-            foreach (var candidate in explicitMatch.AmbiguousCandidates)
-            {
-                var path = await auditService.ResolveFolderPathAsync(candidate.FolderId);
-                candidateLines.Add($"- **{candidate.Title}** (Doc ID: {candidate.OriginalDocumentId ?? "none"}) — {path}");
-            }
-            var clarification = "I found more than one document you can access with that name:\n" + string.Join("\n", candidateLines)
-                + "\n\nPlease tell me which one you mean — its Doc ID is the most reliable way.";
+            // document without the user ever knowing — ask instead.
+            var clarification = await BuildAmbiguousDocumentAnswerAsync(explicitMatch.AmbiguousCandidates);
             return Ok(new { success = true, data = new { answer = clarification, accessDenied = false, sources = Array.Empty<object>() } });
         }
         var explicitDocument = explicitMatch.Document;
@@ -96,6 +86,25 @@ public class AiChatController(
             && !LooksLikeNonDocumentTopic(question))
         {
             explicitDocument = FindMostRecentlyMentionedDocument(recentConversation, accessibleDocuments);
+        }
+
+        // Last resort before falling through to broad keyword search — no exact
+        // name match and no active sticky-context document, but the question
+        // still shares a distinctive word (not just any word — see
+        // FindWordOverlapCandidates) with more than one accessible document's
+        // name (e.g. "Backup" between "Backup Techniques" and "Backup Process-
+        // Techniques"). Deliberately placed after sticky context, never before
+        // it — a real follow-up in an ongoing document conversation must not get
+        // derailed just because it happens to repeat a word from that document's
+        // own name.
+        if (explicitDocument == null)
+        {
+            var wordOverlapCandidates = FindWordOverlapCandidates(question, accessibleDocuments);
+            if (wordOverlapCandidates.Count > 1)
+            {
+                var clarification = await BuildAmbiguousDocumentAnswerAsync(wordOverlapCandidates);
+                return Ok(new { success = true, data = new { answer = clarification, accessDenied = false, sources = Array.Empty<object>() } });
+            }
         }
 
         var containsFileExtension = Regex.IsMatch(question, @"\.(pdf|docx?|docm|xlsx?|xlsm|pptx?|pptm|txt|csv|png|jpe?g|tiff?)\b", RegexOptions.IgnoreCase);
@@ -450,6 +459,47 @@ public class AiChatController(
             "announcement", "notice", "company news",
             "dashboard", "my summary", "my overview");
     }
+
+    /// <summary>
+    /// Builds the shared clarification text for any ambiguous-document case
+    /// (same-name and word-overlap alike) — every candidate's title, Doc ID, and
+    /// full folder path (via the existing audit-log path resolver), so a
+    /// same-or-similarly-named document in a different folder is easy to tell
+    /// apart without guessing.
+    /// </summary>
+    private async Task<string> BuildAmbiguousDocumentAnswerAsync(List<ChatDocument> candidates)
+    {
+        var candidateLines = new List<string>();
+        foreach (var candidate in candidates)
+        {
+            var path = await auditService.ResolveFolderPathAsync(candidate.FolderId);
+            candidateLines.Add($"- **{candidate.Title}** (Doc ID: {candidate.OriginalDocumentId ?? "none"}) — {path}");
+        }
+        return "I found more than one document you can access with that name:\n" + string.Join("\n", candidateLines)
+            + "\n\nPlease tell me which one you mean — its Doc ID is the most reliable way.";
+    }
+
+    /// <summary>
+    /// A looser fallback than <see cref="ResolveExplicitDocument"/>'s full-name
+    /// match — finds every accessible document that shares at least one
+    /// distinctive word (same stopword-filtered extraction as broad search
+    /// terms, so common filler words never count) with the question, even when
+    /// neither document's full title/filename appears verbatim. Returns every
+    /// matching document regardless of count; the caller only treats it as
+    /// ambiguous when more than one comes back — a single shared word with
+    /// exactly one document isn't a strong enough signal to resolve on its own.
+    /// </summary>
+    private static List<ChatDocument> FindWordOverlapCandidates(string text, IEnumerable<ChatDocument> documents)
+    {
+        var questionWords = ExtractSearchTerms(text).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (questionWords.Count == 0) return [];
+        return documents.Where(document => TitleWords(document).Any(questionWords.Contains)).ToList();
+    }
+
+    private static IEnumerable<string> TitleWords(ChatDocument document) =>
+        string.IsNullOrWhiteSpace(document.FileName)
+            ? ExtractSearchTerms(document.Title)
+            : ExtractSearchTerms(document.Title).Concat(ExtractSearchTerms(document.FileName));
 
     private static string NormalizeDocId(string value) => Regex.Replace(value, @"[\s\-\.]", "").ToUpperInvariant();
 
