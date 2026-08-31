@@ -69,7 +69,7 @@ export function AiChatbot() {
   return (
     <>
       {open && (
-        <section className="fixed bottom-24 right-4 z-50 flex h-[min(720px,calc(100vh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_-20px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900" aria-label="DMS AI Assistant">
+        <section className="fixed bottom-24 right-4 z-[75] flex h-[min(720px,calc(100vh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_-20px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900" aria-label="DMS AI Assistant">
           <header className="flex items-center gap-3 bg-gradient-to-r from-[#27366f] to-[#34558f] px-5 py-4 text-white">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20"><Sparkles className="h-5 w-5" /></span>
             <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold tracking-wide">DMS AI Assistant</h2><p className="mt-0.5 flex items-center gap-1.5 text-xs text-blue-100"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />Secure workspace assistant</p></div>
@@ -121,7 +121,7 @@ export function AiChatbot() {
         </section>
       )}
 
-      <button onClick={() => setOpen((value) => !value)} className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#2f3e83] text-white shadow-lg transition hover:scale-105 hover:bg-[#26346f] focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30" aria-label={open ? 'Close AI assistant' : 'Open AI assistant'} aria-expanded={open}>{open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}</button>
+      <button onClick={() => setOpen((value) => !value)} className="fixed bottom-5 right-5 z-[75] flex h-14 w-14 items-center justify-center rounded-full bg-[#2f3e83] text-white shadow-lg transition hover:scale-105 hover:bg-[#26346f] focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30" aria-label={open ? 'Close AI assistant' : 'Open AI assistant'} aria-expanded={open}>{open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}</button>
     </>
   );
 }

@@ -2,7 +2,7 @@
 
 ## Session 65 (2026-08-31) — AI Assistant: Doc ID Resolution Fix and LLM Query Understanding
 
-**Status:** Complete in code, including two more real bugs found live after deploying the sticky-context design ("Sources dropped from conversation history" and "Hallucinated answer content" below). Rebuild `api` and `web` together — the last two fixes touch both. No database migration is required. Verified by manual code review plus balanced brace/paren counts (no .NET SDK/Docker on this Windows workstation) — the Doc ID fix itself was confirmed working live by the user on Ubuntu mid-session; nothing from the sticky-context work onward has been re-tested live yet.
+**Status:** Complete in code, including three more real bugs found live after deploying the sticky-context design ("Sources dropped from conversation history", "Hallucinated answer content", and "Assistant hidden behind the document preview" below). Rebuild `api` and `web` together — the last two content fixes and the z-index fix all touch `web`. No database migration is required. Verified by manual code review plus balanced brace/paren counts (no .NET SDK/Docker on this Windows workstation) — the Doc ID fix itself was confirmed working live by the user on Ubuntu mid-session; nothing from the sticky-context work onward has been re-tested live yet.
 
 ### Real bug found via live testing: exact Doc ID questions never resolved
 
@@ -45,6 +45,12 @@
 - Fixed retrieval: added `ExtractRelevantExcerpt(content, question, maxLength)` — instead of always starting at position 0, it finds the **last** occurrence of any keyword extracted from the question (trying a simple singular/plural variant too, e.g. "KPIs" question vs. a "KPI" table header) and centers a much larger window (20,000 chars, up from 5,000) on it. Falls back to the plain leading excerpt when no keyword is found anywhere in the content. The overall context cap (`BuildContext`'s final `Limit`) was also raised from 30,000 to 45,000 characters to accommodate the larger per-document window. The *last* occurrence (not first) was chosen deliberately: a term mentioned once early (e.g. in a revision-history summary) and again later is far more likely to have its actual detail near the later mention, matching this exact case.
 - Fixed the model's behavior directly: `GenerateAnswerAsync`'s system prompt now explicitly instructs it to report facts/figures/table contents exactly as written — never paraphrasing a specific number, metric name, or detail into a different-but-plausible one — and to say plainly when a detail isn't present in the retrieved excerpt instead of ever offering an invented "example/typical" substitute.
 - `BuildGroundedFallback` (the no-AI-provider degraded path) was left untouched — it already just shows a raw excerpt with an explicit "AI answering is currently unavailable" disclosure, so it was never at risk of this specific failure mode.
+
+### Real bug found via live testing: assistant hidden behind the document preview
+
+- Reported live: opening any document made the floating AI Assistant button (and, if already open, its panel) disappear entirely — no way to open or use it while previewing a file, one of the most natural times to actually want it.
+- Root cause: `DocumentPreview.tsx`'s full-screen overlay renders at `z-[70]`, while `AiChatbot.tsx`'s floating button and open panel were both `z-50`. A higher z-index always wins, so the preview completely covered the assistant.
+- Fixed by raising both the floating button and the open panel to `z-[75]` — above the document preview (`70`), but still below every actual modal dialog opened from within it (Version History, Upload New Version, and the various dropdown menus all start at `z-[80]` and go up to `z-[101]`), so the assistant doesn't compete for visual space with a focused modal task, only with the preview's own background.
 
 ### Files modified
 
