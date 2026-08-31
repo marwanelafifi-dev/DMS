@@ -13,6 +13,7 @@
 - A failed scheduled export is no longer recorded as completed. Hangfire can retry it on the next five-minute check; the last-run period key advances only after `RunAndSaveAsync` succeeds.
 - Added an informational log for each enabled scheduled-backup check showing the resolved local time, timezone, and enabled frequencies. Invalid or unavailable timezone identifiers are logged and safely fall back to UTC.
 - Manual **Run Backup Now** behavior remains unchanged and continues to use the same database export, MinIO upload, optional destination-path/SMB copy, and retention path as automatic backups.
+- Fixed the Saved Backup Files list and **Last backup** summary sorting by filename instead of MinIO's actual `LastModified` timestamp. A newer `daily` backup could previously appear below every older `manual` backup because the frequency word occurs before the timestamp in each filename.
 
 ### Files modified
 

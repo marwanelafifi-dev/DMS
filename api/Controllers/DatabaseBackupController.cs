@@ -29,6 +29,7 @@ public class DatabaseBackupController(
     ILogger<DatabaseBackupController> logger) : BaseController
 {
     private const string LastBackupSettingKey = "database_last_backup_at";
+    private sealed record ScheduledBackupFileResponse(string FileName, long SizeBytes, DateTime? LastModified);
 
     private async Task<bool> IsAdminAsync()
     {
@@ -430,17 +431,20 @@ public class DatabaseBackupController(
         {
             var config = await scheduledBackupService.LoadConfigAsync();
             var generalSettings = await PlatformSettingsService.LoadGeneralAsync(context);
-            var objectKeys = (await minioService.ListAsync(ScheduledBackupKeys.ObjectPrefix))
-                .OrderByDescending(k => k)
-                .ToList();
+            var objectKeys = await minioService.ListAsync(ScheduledBackupKeys.ObjectPrefix);
 
-            var files = new List<object>();
+            var files = new List<ScheduledBackupFileResponse>();
             foreach (var key in objectKeys)
             {
                 var fileName = key[ScheduledBackupKeys.ObjectPrefix.Length..];
                 var stat = await minioService.StatAsync(key);
-                files.Add(new { fileName, sizeBytes = stat?.SizeBytes ?? 0, lastModified = stat?.LastModified });
+                files.Add(new ScheduledBackupFileResponse(fileName, stat?.SizeBytes ?? 0, stat?.LastModified));
             }
+
+            files = files
+                .OrderByDescending(file => file.LastModified)
+                .ThenByDescending(file => file.FileName, StringComparer.Ordinal)
+                .ToList();
 
             return Ok(new
             {
