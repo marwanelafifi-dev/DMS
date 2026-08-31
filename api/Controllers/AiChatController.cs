@@ -451,34 +451,56 @@ public class AiChatController(
             .FirstOrDefault();
     }
 
+    // Strips everything but letters/digits down to single spaces and lowercases —
+    // makes "Backup Process-Techniques" and "Backup Process/Techniques" (or any
+    // other punctuation/casing variant a model's own prose might use) compare
+    // equal, since the only thing that matters here is which words were said.
+    private static string NormalizeForLooseMatch(string value) => Regex.Replace(value, @"[^A-Za-z0-9]+", " ").Trim().ToLowerInvariant();
+
     /// <summary>
-    /// For resolving a pronoun follow-up ("it", "the document") against recent
-    /// conversation text — picks whichever accessible document's filename, title,
-    /// or Doc ID last appears (by raw character position) in <paramref name="text"/>,
-    /// not whichever has the longest name. A conversation can mention several
-    /// documents; "it" always refers to whatever was discussed most recently, so
-    /// recency of mention must win over string length.
+    /// For resolving a follow-up against recent conversation text — picks
+    /// whichever accessible document's filename, title, or Doc ID last appears in
+    /// <paramref name="text"/>, not whichever has the longest name. A conversation
+    /// can mention several documents; a follow-up always refers to whatever was
+    /// discussed most recently, so recency of mention must win over string length.
+    /// Title/filename matching tolerates punctuation/spacing differences since the
+    /// model's own prose can paraphrase the exact title from one answer to the next.
     /// </summary>
     private static ChatDocument? FindMostRecentlyMentionedDocument(string text, IEnumerable<ChatDocument> documents)
     {
+        var documentList = documents as IReadOnlyCollection<ChatDocument> ?? documents.ToList();
+
+        // A Doc ID mention is unambiguous and rare enough to always win outright.
+        // Kept on raw text and never mixed with the normalized index space below.
+        ChatDocument? bestById = null;
+        var bestByIdIndex = -1;
+        foreach (var document in documentList)
+        {
+            if (string.IsNullOrWhiteSpace(document.OriginalDocumentId) || document.OriginalDocumentId.Length < 4) continue;
+            var normalizedDocId = NormalizeDocId(document.OriginalDocumentId);
+            foreach (Match match in DocIdLikeToken.Matches(text))
+            {
+                if (match.Index > bestByIdIndex && NormalizeDocId(match.Value) == normalizedDocId)
+                {
+                    bestByIdIndex = match.Index;
+                    bestById = document;
+                }
+            }
+        }
+        if (bestById != null) return bestById;
+
+        var normalizedText = NormalizeForLooseMatch(text);
         ChatDocument? best = null;
         var bestIndex = -1;
-        foreach (var document in documents)
+        foreach (var document in documentList)
         {
-            var index = text.LastIndexOf(document.Title, StringComparison.OrdinalIgnoreCase);
+            var normalizedTitle = NormalizeForLooseMatch(document.Title);
+            var index = normalizedTitle.Length == 0 ? -1 : normalizedText.LastIndexOf(normalizedTitle, StringComparison.Ordinal);
             if (!string.IsNullOrWhiteSpace(document.FileName))
             {
-                var fileNameIndex = text.LastIndexOf(document.FileName, StringComparison.OrdinalIgnoreCase);
+                var normalizedFileName = NormalizeForLooseMatch(document.FileName);
+                var fileNameIndex = normalizedFileName.Length == 0 ? -1 : normalizedText.LastIndexOf(normalizedFileName, StringComparison.Ordinal);
                 if (fileNameIndex > index) index = fileNameIndex;
-            }
-            if (!string.IsNullOrWhiteSpace(document.OriginalDocumentId) && document.OriginalDocumentId.Length >= 4)
-            {
-                var normalizedDocId = NormalizeDocId(document.OriginalDocumentId);
-                foreach (Match match in DocIdLikeToken.Matches(text))
-                {
-                    if (match.Index > index && NormalizeDocId(match.Value) == normalizedDocId)
-                        index = match.Index;
-                }
             }
             if (index > bestIndex)
             {

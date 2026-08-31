@@ -31,10 +31,22 @@ export function AiChatbot() {
     // can resolve against what was just discussed. This is a client-side sliding
     // window only — nothing is persisted server-side, and it resets on refresh
     // exactly like `messages` itself does.
+    //
+    // The "Authorized sources" list shown in the UI is a separate, exact,
+    // structured field (message.sources) — not part of the model's free-form
+    // prose (message.text), which can paraphrase or vary punctuation on the
+    // document's title from one answer to the next. The backend's sticky-
+    // document-context matching needs the *exact* title, so it's appended here
+    // verbatim rather than relying on the prose to have reproduced it faithfully.
     const history = messages
       .filter((message) => message !== welcome)
       .slice(-6)
-      .map((message) => ({ role: message.role, content: message.text }));
+      .map((message) => ({
+        role: message.role,
+        content: message.sources?.length
+          ? `${message.text}\n[Sources: ${message.sources.map((source) => source.title).join(', ')}]`
+          : message.text,
+      }));
     setMessages((current) => [...current, { role: 'user', text: question }]);
     setInput('');
     setLoading(true);
