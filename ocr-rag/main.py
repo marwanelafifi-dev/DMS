@@ -444,24 +444,33 @@ def search_documents(q: str = Query(...)) -> list[dict[str, int | str | float | 
             if match_query is None:
                 return []
             try:
+                # bm25() and a window function (ROW_NUMBER) cannot be evaluated in
+                # the same SELECT — SQLite's FTS5 auxiliary functions only work in a
+                # plain, unwindowed query with a direct MATCH constraint. Compute the
+                # rank in its own inner query first, then apply ROW_NUMBER() in a
+                # second layer over the already-materialized `rank` column.
                 rows = connection.execute(
                     """
                     SELECT id, document_id, filename, content, created_at, rank
                     FROM (
                         SELECT
-                            d.id AS id,
-                            d.document_id AS document_id,
-                            d.filename AS filename,
-                            d.content AS content,
-                            d.created_at AS created_at,
-                            -bm25(documents_fts, 10.0, 1.0) AS rank,
+                            id, document_id, filename, content, created_at, rank,
                             ROW_NUMBER() OVER (
-                                PARTITION BY d.document_id
-                                ORDER BY d.id DESC
+                                PARTITION BY document_id
+                                ORDER BY id DESC
                             ) AS newest_match_for_document
-                        FROM documents_fts
-                        JOIN documents d ON d.id = documents_fts.rowid
-                        WHERE documents_fts MATCH ?
+                        FROM (
+                            SELECT
+                                d.id AS id,
+                                d.document_id AS document_id,
+                                d.filename AS filename,
+                                d.content AS content,
+                                d.created_at AS created_at,
+                                -bm25(documents_fts, 10.0, 1.0) AS rank
+                            FROM documents_fts
+                            JOIN documents d ON d.id = documents_fts.rowid
+                            WHERE documents_fts MATCH ?
+                        )
                     )
                     WHERE newest_match_for_document = 1
                     ORDER BY rank DESC

@@ -2,7 +2,7 @@
 
 ## Session 64 (2026-08-31) — AI Assistant: Ranked Search, On-Demand Indexing, Session Memory
 
-**Status:** Complete in code. Rebuild `ocr-rag`, `api`, and `web`; no database migration is required. Not yet built or run in this session — this Windows workstation has no .NET SDK, no Python interpreter, and Docker Desktop was not running, so verification was careful manual code review plus a clean `npx tsc --noEmit` on the frontend changes. Build, run the OCR test suite, and exercise the live stack on Ubuntu before considering this done.
+**Status:** Complete in code, with one real bug found and fixed from live Ubuntu logs after first deployment (see below). Rebuild `ocr-rag` again to pick up the fix; no database migration is required. This Windows workstation has no .NET SDK, no Python interpreter, and Docker Desktop was not running, so all verification was either manual code review or done live against the user's own Ubuntu deployment — see Verification.
 
 ### Context
 
@@ -14,6 +14,7 @@ The AI Assistant was reported as "very stupid." Auditing the existing code first
 - Added an FTS5 external-content virtual table (`documents_fts`, mirroring `filename`/`content`) with `AFTER INSERT`/`AFTER DELETE` triggers to stay in sync (rows in `documents` are insert-only elsewhere in this file, so no `UPDATE` trigger is needed) and a one-time backfill of existing rows when the table is freshly created. If FTS5 isn't compiled into a given SQLite build, a feature-detected flag falls back automatically to the original substring scan.
 - `/api/documents/search` now ranks by BM25 (`bm25(documents_fts, 10.0, 1.0)`, weighting filename hits 10x over content hits), dedupes to the newest row per `document_id` (via `ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY id DESC)` — stale/superseded historical OCR rows no longer pollute results), and caps results at 25.
 - `AiChatController.cs` now aggregates the real BM25 `Rank` returned per keyword call instead of the old title/content substring-counting heuristic (`SearchScore`, removed).
+- **Real bug found on first Ubuntu deployment, from live `docker compose logs ocr-rag` output:** every search hit `unable to use function bm25 in the requested context` and silently fell back to the plain substring scan — the fallback worked exactly as designed (every request still returned 200 OK), which is why the feature looked fully broken only in hindsight, not from any user-visible error. Root cause: SQLite's FTS5 `bm25()` auxiliary function cannot be evaluated in the same `SELECT` as a window function (`ROW_NUMBER() OVER (...)`) — combining the dedup-to-newest-row window function with the BM25 rank calculation in one query statement is exactly the "requested context" FTS5 disallows. Fixed by splitting the query into nested subqueries: the innermost `SELECT` computes `bm25`/`rank` alone against a plain `MATCH` constraint with no window function present, and a second layer applies `ROW_NUMBER()` over the already-materialized `rank` column instead of re-evaluating `bm25()` alongside it.
 
 ### On-demand OCR indexing for missing or stale content
 
@@ -41,8 +42,10 @@ The AI Assistant was reported as "very stupid." Auditing the existing code first
 ### Verification
 
 - Frontend: `npx tsc --noEmit` clean — only the same three pre-existing, unrelated baseline errors (`NotificationsBell.tsx`, `Dashboard.tsx`, `officeParser.test.ts`).
-- Backend/OCR service: not compiled or run this session — no .NET SDK, no Python interpreter, and Docker Desktop was not running on this workstation. Verified by careful manual line-by-line review instead (SQL syntax for the FTS5 virtual table/triggers/window-function dedup, JSON property-name mapping between the OCR service's snake_case fields and the C# records, brace/paren balance across every edited method).
-- New/extended `ocr-rag/tests/test_main.py` coverage (not yet run): ranking order (filename match outranks content-only match), dedup-to-newest-row-per-document, and the FTS5-unavailable fallback path via monkeypatching the feature-detection flag.
+- Backend/OCR service: could not be compiled or run on this Windows workstation (no .NET SDK, no Python interpreter, Docker Desktop was not running) — initial verification was careful manual line-by-line code review only.
+- The user deployed and tested against their real Ubuntu host (`/opt/dms`) themselves. That live run surfaced the bm25/window-function bug above via `docker compose logs ocr-rag` — every search request still returned 200 OK (the automatic LIKE-based fallback masked it from the end user), so this was only caught by actually reading server logs, not by observing a user-facing error.
+- The bm25/window-function fix has not yet been re-verified against a live rebuild — rebuild `ocr-rag` on Ubuntu (`docker compose build ocr-rag && docker compose up -d ocr-rag`) and confirm `docker compose logs ocr-rag` no longer shows the `unable to use function bm25 in the requested context` warning on a subsequent search.
+- New/extended `ocr-rag/tests/test_main.py` coverage (ranking order, dedup-to-newest-row-per-document, FTS5-unavailable fallback) has still not been run anywhere — run `docker compose exec ocr-rag python -m pytest tests/test_main.py -v` on Ubuntu.
 
 ### Deployment (Ubuntu)
 
