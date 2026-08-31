@@ -454,11 +454,17 @@ public class AiChatController(
     private static string NormalizeDocId(string value) => Regex.Replace(value, @"[\s\-\.]", "").ToUpperInvariant();
 
     /// <summary>
-    /// Resolves one specific document a piece of text is "about" — by exact
-    /// filename, title, or Doc ID (tolerant of spacing/hyphen/case differences,
-    /// matching the normalization the rest of the DMS already uses for Doc ID
-    /// search). Only ever searches the caller-supplied, already
-    /// permission-checked <paramref name="documents"/> list.
+    /// Resolves one specific document a piece of text is "about" — by Doc ID
+    /// (tolerant of spacing/hyphen/case differences, matching the normalization
+    /// the rest of the DMS already uses for Doc ID search) or by filename/title,
+    /// tolerant of punctuation/spacing differences too (a real case: typing
+    /// "Backup Process Techniques" for a document actually titled "Backup
+    /// Process-Techniques" — without this tolerance, the exact-substring check
+    /// silently fails and the question falls through to sticky context instead
+    /// of being recognized as the user explicitly naming a document, which can
+    /// leave the conversation stuck on whatever document was previously active).
+    /// Only ever searches the caller-supplied, already permission-checked
+    /// <paramref name="documents"/> list.
     ///
     /// A Doc ID match always wins outright and is never ambiguous — Doc IDs are
     /// enforced unique across the DMS (a case-insensitive database constraint).
@@ -471,16 +477,23 @@ public class AiChatController(
     private static ExplicitDocumentMatch ResolveExplicitDocument(string text, IEnumerable<ChatDocument> documents)
     {
         var documentList = documents as IReadOnlyCollection<ChatDocument> ?? documents.ToList();
-        var normalizedText = NormalizeDocId(text);
+        var normalizedDocIdText = NormalizeDocId(text);
 
         var docIdMatch = documentList.FirstOrDefault(document =>
             !string.IsNullOrWhiteSpace(document.OriginalDocumentId) && document.OriginalDocumentId.Length >= 4
-            && normalizedText.Contains(NormalizeDocId(document.OriginalDocumentId)));
+            && normalizedDocIdText.Contains(NormalizeDocId(document.OriginalDocumentId)));
         if (docIdMatch != null) return new ExplicitDocumentMatch(docIdMatch, []);
 
+        var normalizedLooseText = NormalizeForLooseMatch(text);
         var nameMatches = documentList
-            .Where(document => (!string.IsNullOrWhiteSpace(document.FileName) && text.Contains(document.FileName, StringComparison.OrdinalIgnoreCase))
-                || text.Contains(document.Title, StringComparison.OrdinalIgnoreCase))
+            .Where(document =>
+            {
+                var normalizedTitle = NormalizeForLooseMatch(document.Title);
+                if (normalizedTitle.Length > 0 && normalizedLooseText.Contains(normalizedTitle)) return true;
+                if (string.IsNullOrWhiteSpace(document.FileName)) return false;
+                var normalizedFileName = NormalizeForLooseMatch(document.FileName);
+                return normalizedFileName.Length > 0 && normalizedLooseText.Contains(normalizedFileName);
+            })
             .ToList();
 
         return nameMatches.Count switch
