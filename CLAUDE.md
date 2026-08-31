@@ -2,7 +2,7 @@
 
 ## Session 65 (2026-08-31) — AI Assistant: Doc ID Resolution Fix and LLM Query Understanding
 
-**Status:** Complete in code, including three more real bugs found live after deploying the sticky-context design ("Sources dropped from conversation history", "Hallucinated answer content", and "Assistant hidden behind the document preview" below). Rebuild `api` and `web` together — the last two content fixes and the z-index fix all touch `web`. No database migration is required. Verified by manual code review plus balanced brace/paren counts (no .NET SDK/Docker on this Windows workstation) — the Doc ID fix itself was confirmed working live by the user on Ubuntu mid-session; nothing from the sticky-context work onward has been re-tested live yet.
+**Status:** Complete in code, including three real bugs found live after deploying the sticky-context design ("Sources dropped from conversation history", "Hallucinated answer content", and "Assistant hidden behind the document preview") plus one proactive quality enhancement requested afterward ("Multi-chunk retrieval within a document"). Rebuild `api` and `web` together. No database migration is required. Verified by manual code review plus balanced brace/paren counts (no .NET SDK/Docker on this Windows workstation) — the Doc ID fix itself was confirmed working live by the user on Ubuntu mid-session; nothing from the sticky-context work onward has been re-tested live yet.
 
 ### Real bug found via live testing: exact Doc ID questions never resolved
 
@@ -52,6 +52,12 @@
 - Root cause: `DocumentPreview.tsx`'s full-screen overlay renders at `z-[70]`, while `AiChatbot.tsx`'s floating button and open panel were both `z-50`. A higher z-index always wins, so the preview completely covered the assistant.
 - Fixed by raising both the floating button and the open panel to `z-[75]` — above the document preview (`70`), but still below every actual modal dialog opened from within it (Version History, Upload New Version, and the various dropdown menus all start at `z-[80]` and go up to `z-[101]`), so the assistant doesn't compete for visual space with a focused modal task, only with the preview's own background.
 
+### Quality enhancement: multi-chunk retrieval within a document
+
+- Per explicit follow-up request to keep improving retrieval quality: the excerpt-windowing fix above still only ever picks **one** contiguous window per document. If the real answer is scattered across two sections (one KPI mentioned on page 3, a related detail on page 20), a single window still only ever catches one of them.
+- `ExtractRelevantExcerpt` was rewritten to split each document's extracted text into overlapping 4,000-character chunks (400-character overlap, so a passage sitting right on a chunk boundary still lands whole inside at least one chunk), score every chunk by how many times any question keyword (including the existing singular/plural variant handling) appears in it, and include the top 3 highest-scoring chunks — reassembled in their **original document order** (not score order), with a `…` gap marker between any two that aren't adjacent — instead of one best-guess window. Still respects the same overall per-document budget (20,000 characters) and falls back to the plain leading excerpt when no keyword is found anywhere in the document, unchanged from before.
+- This generalizes rather than replaces the earlier single-window fix — same keyword-based approach, same fallback behavior, just no longer limited to exactly one relevant location per document.
+
 ### Files modified
 
 - `api/Controllers/AiChatController.cs`
@@ -61,7 +67,7 @@
 ### Verification
 
 - Frontend: `npx tsc --noEmit` clean — only the same three pre-existing, unrelated baseline errors (`NotificationsBell.tsx`, `Dashboard.tsx`, `officeParser.test.ts`).
-- Backend: manual code review only — brace/paren counts balanced (145/145, 468/468 in the final state) across the whole file; no local `dotnet build` available on this workstation.
+- Backend: manual code review only — brace/paren counts balanced (149/149, 490/490 in the final state) across the whole file; no local `dotnet build` available on this workstation.
 - The Doc ID resolution fix was confirmed working live by the user on Ubuntu (asking "SWS-25120007" now correctly resolves to and answers about "Backup Process-Techniques", the exact scenario from the original bug report). Nothing from the sticky-context work onward — including this excerpt-windowing and anti-hallucination fix — has been rebuilt or re-tested live yet.
 - Rebuild both `api` and `web` on Ubuntu (`docker compose build api web && docker compose up -d api web`), then repeat the exact multi-turn scenario that surfaced all of this session's bugs: ask about "Backup Process-Techniques" (by Doc ID or filename), then ask "let me know the KPIs" as a follow-up. Confirm it (1) stays on the same document, and (2) reports the real single-row "Synology Backup" KPI from the Measurements table, not an invented list of generic backup metrics.
 - Also worth testing: an unrelated follow-up afterward (e.g. "what tasks are assigned to me") should not get forced onto that document; naming a different accessible document, or saying "let's talk about a different document," should correctly switch away from it; and asking about a genuinely-missing detail should now get an honest "not available" instead of a plausible-sounding invention. Check `docker compose logs api` for `"AI provider {Provider} failed"` / `"Could not parse AI query-understanding response"` warnings that would mean the query-understanding step is silently falling back to the old heuristics.

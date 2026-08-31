@@ -555,42 +555,88 @@ public class AiChatController(
         return Limit(builder.ToString(), 45000);
     }
 
+    // Chunking parameters for ExtractRelevantExcerpt. Overlap exists so a
+    // relevant passage sitting right on a chunk boundary still lands whole
+    // inside at least one chunk instead of being split across two low scorers.
+    private const int ChunkSize = 4000;
+    private const int ChunkOverlap = 400;
+    private const int MaxChunksPerDocument = 3;
+
     /// <summary>
     /// A large document's extracted text can easily exceed what's worth sending
     /// in one prompt — but always taking the first N characters silently loses
     /// whatever the actual question is about if it happens to live on, say, page
-    /// 15 of a multi-page policy (a real case: a "KPIs" question needed a table
-    /// that only appeared far past the old fixed 5,000-character cutoff, and the
-    /// model started inventing plausible-sounding substitutes once it ran out of
-    /// real content). Finds the LAST occurrence of any keyword from the question
-    /// (a term mentioned once early — e.g. in a revision-history summary — and
-    /// again later is far more likely to have its actual detail near that later
-    /// mention, not the first one) and centers the excerpt window there instead
-    /// of always starting at position 0. Tries a simple singular/plural variant
-    /// of each keyword too, since a table header may say "KPI" where the
-    /// question says "KPIs". Falls back to the plain leading excerpt when no
-    /// keyword is found in the content at all.
+    /// 15 of a multi-page policy. A single best-guess window has the same problem
+    /// one level down: if the real answer is scattered across two sections (one
+    /// KPI mentioned on page 3, a related one on page 20), a single window still
+    /// only ever catches one of them. This splits the document into overlapping
+    /// chunks, scores each by how many times any question keyword (including a
+    /// simple singular/plural variant — a table header may say "KPI" where the
+    /// question says "KPIs") appears in it, and includes the top few chunks —
+    /// in their original document order, not score order, with a gap marker
+    /// between non-adjacent ones — instead of just one contiguous window. Falls
+    /// back to the plain leading excerpt when no keyword is found anywhere.
     /// </summary>
     private static string ExtractRelevantExcerpt(string content, string question, int maxLength)
     {
         if (content.Length <= maxLength) return content;
 
-        var matchIndex = -1;
-        foreach (var keyword in ExtractSearchTerms(question))
+        var keywords = ExtractSearchTerms(question).SelectMany(SingularPluralVariants)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (keywords.Length == 0) return Limit(content, maxLength);
+
+        var scoredChunks = ChunkContent(content, ChunkSize, ChunkOverlap)
+            .Select(chunk => (chunk.Start, chunk.Text, Score: CountKeywordOccurrences(chunk.Text, keywords)))
+            .Where(scored => scored.Score > 0)
+            .ToList();
+        if (scoredChunks.Count == 0) return Limit(content, maxLength);
+
+        var selected = scoredChunks
+            .OrderByDescending(scored => scored.Score)
+            .Take(MaxChunksPerDocument)
+            .OrderBy(scored => scored.Start)
+            .ToList();
+
+        var builder = new StringBuilder();
+        var budgetRemaining = maxLength;
+        var previousEnd = -1;
+        foreach (var chunk in selected)
         {
-            foreach (var variant in SingularPluralVariants(keyword))
+            if (budgetRemaining <= 0) break;
+            if (previousEnd >= 0 && chunk.Start > previousEnd) builder.Append("\n…\n");
+            var text = chunk.Text.Length > budgetRemaining ? chunk.Text[..budgetRemaining] : chunk.Text;
+            builder.Append(text);
+            budgetRemaining -= text.Length;
+            previousEnd = chunk.Start + chunk.Text.Length;
+        }
+        return builder.ToString();
+    }
+
+    private static IEnumerable<(int Start, string Text)> ChunkContent(string content, int chunkSize, int overlap)
+    {
+        var start = 0;
+        while (start < content.Length)
+        {
+            var length = Math.Min(chunkSize, content.Length - start);
+            yield return (start, content.Substring(start, length));
+            if (start + length >= content.Length) yield break;
+            start += chunkSize - overlap;
+        }
+    }
+
+    private static int CountKeywordOccurrences(string text, string[] keywords)
+    {
+        var count = 0;
+        foreach (var keyword in keywords)
+        {
+            var index = 0;
+            while ((index = text.IndexOf(keyword, index, StringComparison.OrdinalIgnoreCase)) >= 0)
             {
-                var index = content.LastIndexOf(variant, StringComparison.OrdinalIgnoreCase);
-                if (index > matchIndex) matchIndex = index;
+                count++;
+                index += keyword.Length;
             }
         }
-        if (matchIndex < 0) return Limit(content, maxLength);
-
-        var start = Math.Max(0, matchIndex - maxLength / 4);
-        if (start + maxLength > content.Length) start = Math.Max(0, content.Length - maxLength);
-        var length = Math.Min(maxLength, content.Length - start);
-        var excerpt = content.Substring(start, length);
-        return (start > 0 ? "…" : "") + excerpt + (start + length < content.Length ? "…" : "");
+        return count;
     }
 
     private static IEnumerable<string> SingularPluralVariants(string keyword)
