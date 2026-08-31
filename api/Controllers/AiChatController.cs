@@ -351,18 +351,31 @@ public class AiChatController(
     /// the keyword heuristics) when no AI provider is configured or the call/parse
     /// fails for any reason — this must never block search-only mode.
     /// </summary>
-    // The exact JSON shape AnalyzeQueryAsync's caller parses. Kept in code and
-    // always appended to whatever prompt text is actually in effect (default
-    // or admin-customized), rather than living only inside the editable prompt
-    // itself — a real gap found live: an admin who opened the new "AI
-    // Assistant Prompts" page and saved it even once (without editing
-    // anything) before a later field (e.g. "adminInfo") was added to the
-    // default would freeze that customized copy on the old contract forever,
-    // silently breaking every future category added this way. Rebuilding the
-    // containers never touches what's already persisted in the database, so
-    // this can't be fixed by redeploying alone — it has to not be possible.
+    // The exact JSON shape AND category classification rules
+    // AnalyzeQueryAsync's caller depends on. Kept entirely in code and always
+    // appended to whatever prompt text is actually in effect (default or
+    // admin-customized) — nothing semantically load-bearing lives only inside
+    // the editable prompt. A real gap found live: appending only the JSON
+    // *shape* (field names) here wasn't enough — the model still had no
+    // instruction for WHEN "adminInfo" should be true, since that guidance
+    // lived solely in the editable default prompt text. An admin who opened
+    // the new "AI Assistant Prompts" page and saved it even once (without
+    // editing anything) before a later category was added to the default
+    // would freeze that customized copy on the old rules forever, and
+    // rebuilding the containers never touches what's already persisted in
+    // dms_app_settings — so this can't be fixed by redeploying alone. The
+    // only category classification the editable prompt is still allowed to
+    // influence going forward is search-term *phrasing style*, which has no
+    // correctness requirement the rest of the code depends on.
     private const string QueryUnderstandingJsonContract =
-        " Respond with ONLY a single-line JSON object — no markdown fences, no commentary, no extra text — in exactly this shape: {\"searchTerms\": [\"...\"], \"documents\": true, \"tasks\": false, \"calendar\": false, \"announcements\": false, \"dashboard\": false, \"adminInfo\": false}.";
+        " Respond with ONLY a single-line JSON object — no markdown fences, no commentary, no extra text — in exactly this shape: {\"searchTerms\": [\"...\"], \"documents\": true, \"tasks\": false, \"calendar\": false, \"announcements\": false, \"dashboard\": false, \"adminInfo\": false}." +
+        " \"documents\": true for a question about a specific file/document's content, a policy, procedure, or anything that would be answered from an uploaded file." +
+        " \"tasks\": true for a question about the signed-in user's own assigned or created tasks/PCARs." +
+        " \"calendar\": true for a question about meetings, schedules, or audit dates." +
+        " \"announcements\": true for a question about posted company announcements." +
+        " \"dashboard\": true for a question about the signed-in user's own task/document summary counts." +
+        " \"adminInfo\": true for a question about system administration data itself — which users exist, a user's role/status/email, which users belong to a group or team, group/sub-group structure/membership, or what a page-access role can do." +
+        " One or more of these six booleans must be true; if none clearly apply, default \"documents\" to true.";
 
     private async Task<QueryUnderstanding?> AnalyzeQueryAsync(string question, string recentConversation, string systemPrompt, CancellationToken cancellationToken)
     {
