@@ -69,18 +69,31 @@ export function AiChatbot() {
   return (
     <>
       {open && (
-        <section className="fixed bottom-24 right-4 z-[75] flex h-[min(720px,calc(100vh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_-20px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900" aria-label="DMS AI Assistant">
-          <header className="flex items-center gap-3 bg-gradient-to-r from-[#27366f] to-[#34558f] px-5 py-4 text-white">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20"><Sparkles className="h-5 w-5" /></span>
-            <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold tracking-wide">DMS AI Assistant</h2><p className="mt-0.5 flex items-center gap-1.5 text-xs text-blue-100"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />Secure workspace assistant</p></div>
-            <button onClick={() => setOpen(false)} className="rounded-lg p-2 hover:bg-white/10" aria-label="Close AI assistant"><X className="h-5 w-5" /></button>
+        <section className="chat-panel-in fixed bottom-24 right-4 z-[75] flex h-[min(720px,calc(100vh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)] ring-1 ring-black/[0.03] dark:border-white/10 dark:bg-slate-900" aria-label="DMS AI Assistant">
+          <header className="relative flex items-center gap-3 overflow-hidden bg-gradient-to-br from-[#1f2c5c] via-[#27366f] to-[#3a5aa0] px-5 py-4 text-white">
+            <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
+              <span className="absolute inset-0 rounded-xl bg-white/10" aria-hidden />
+              <Sparkles className="h-5 w-5" />
+            </span>
+            <div className="relative min-w-0 flex-1">
+              <h2 className="text-sm font-semibold tracking-wide">DMS AI Assistant</h2>
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-blue-100/90">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                </span>
+                Secure workspace assistant
+              </p>
+            </div>
+            <button onClick={() => setOpen(false)} className="relative rounded-lg p-2 transition hover:bg-white/10 active:scale-95" aria-label="Close AI assistant"><X className="h-5 w-5" /></button>
           </header>
 
-          <div className="flex-1 space-y-5 overflow-y-auto bg-[#f6f8fb] p-4 dark:bg-slate-950">
+          <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-[#f7f9fc] to-[#eef2f8] p-4 dark:from-slate-950 dark:to-slate-950">
             {messages.map((message, index) => (
-              <div key={index} className={`flex items-end gap-2.5 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {message.role === 'assistant' && <span className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e6edf7] text-[#2f4d83] dark:bg-slate-800 dark:text-blue-300"><Bot className="h-4 w-4" /></span>}
-                <div className={`max-w-[84%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'rounded-br-md bg-[#315f91] !text-white shadow-sm' : message.accessDenied ? 'rounded-bl-md border border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}>
+              <div key={index} className={`chat-message-in flex items-end gap-2.5 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {message.role === 'assistant' && <span className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#e6edf7] to-[#d7e3f5] text-[#2f4d83] ring-1 ring-[#2f4d83]/10 dark:from-slate-800 dark:to-slate-800 dark:text-blue-300 dark:ring-white/10"><Bot className="h-4 w-4" /></span>}
+                <div className={`max-w-[84%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'rounded-br-md bg-gradient-to-br from-[#3a5aa0] to-[#274f7b] !text-white shadow-md shadow-[#274f7b]/20' : message.accessDenied ? 'rounded-bl-md border border-amber-200 bg-amber-50 text-amber-950 shadow-sm dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100' : 'rounded-bl-md border border-slate-200/80 border-l-2 border-l-[#3a5aa0]/40 bg-white text-slate-700 shadow-sm dark:border-slate-700 dark:border-l-blue-400/30 dark:bg-slate-900 dark:text-slate-200'}`}>
                   {message.accessDenied && <ShieldAlert className="mb-1.5 h-5 w-5 text-amber-600" />}
                   {message.role === 'assistant' ? (
                     <ReactMarkdown components={{
@@ -98,8 +111,8 @@ export function AiChatbot() {
                     <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700">
                       <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Authorized sources</p>
                       {message.sources.map((source) => (
-                        <Link to={sourceHref(source)} onClick={() => setOpen(false)} key={`${source.type}-${source.id}`} className="group mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-[#2f5f96] transition hover:bg-blue-50 hover:text-[#244c7c] focus:outline-none focus:ring-2 focus:ring-blue-300 dark:text-blue-300 dark:hover:bg-blue-950/40">
-                          {source.type === 'document' ? <FileText className="h-4 w-4 shrink-0" /> : <ClipboardList className="h-4 w-4 shrink-0" />}<span className="min-w-0 flex-1 truncate underline decoration-blue-300/70 underline-offset-2">{source.title}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-50 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
+                        <Link to={sourceHref(source)} onClick={() => setOpen(false)} key={`${source.type}-${source.id}`} className="group mb-1.5 flex w-full items-center gap-2 rounded-lg border border-transparent bg-slate-50/80 px-2.5 py-2 text-left text-xs font-medium text-[#2f5f96] transition hover:-translate-y-0.5 hover:border-blue-100 hover:bg-blue-50 hover:shadow-sm hover:text-[#244c7c] focus:outline-none focus:ring-2 focus:ring-blue-300 dark:bg-slate-800/60 dark:text-blue-300 dark:hover:border-blue-900 dark:hover:bg-blue-950/40">
+                          {source.type === 'document' ? <FileText className="h-4 w-4 shrink-0" /> : <ClipboardList className="h-4 w-4 shrink-0" />}<span className="min-w-0 flex-1 truncate">{source.title}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-50 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
                         </Link>
                       ))}
                     </div>
@@ -107,21 +120,30 @@ export function AiChatbot() {
                 </div>
               </div>
             ))}
-            {loading && <div className="ml-10 flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900"><Loader2 className="h-4 w-4 animate-spin text-[#3f8bca]" />Searching your authorized workspace…</div>}
+            {loading && (
+              <div className="chat-message-in ml-10 flex w-fit items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white px-4 py-2.5 text-xs font-medium text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <span className="flex items-center gap-1">
+                  <span className="chat-typing-dot h-1.5 w-1.5 rounded-full bg-[#3a5aa0]" style={{ animationDelay: '0ms' }} />
+                  <span className="chat-typing-dot h-1.5 w-1.5 rounded-full bg-[#3a5aa0]" style={{ animationDelay: '160ms' }} />
+                  <span className="chat-typing-dot h-1.5 w-1.5 rounded-full bg-[#3a5aa0]" style={{ animationDelay: '320ms' }} />
+                </span>
+                Searching your authorized workspace…
+              </div>
+            )}
             <div ref={bottomRef} />
           </div>
 
           <form onSubmit={submit} className="border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-1.5 shadow-sm focus-within:border-[#3c89c9] focus-within:ring-2 focus-within:ring-[#3c89c9]/15 dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-1.5 shadow-sm transition focus-within:border-[#3c89c9] focus-within:shadow-[0_0_0_3px_rgba(60,137,201,0.15)] dark:border-slate-700 dark:bg-slate-950">
               <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={2} maxLength={2000} placeholder="Ask about a task, file, calendar item, or announcement…" aria-label="Ask the DMS AI Assistant" className="max-h-28 min-h-[44px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 dark:text-white" />
-              <button type="submit" disabled={!input.trim() || loading} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#315f91] text-white transition hover:bg-[#274f7b] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send question">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button>
+              <button type="submit" disabled={!input.trim() || loading} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#3a5aa0] to-[#274f7b] text-white shadow-sm transition hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100" aria-label="Send question">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button>
             </div>
             <p className="mt-2 text-center text-[10px] text-slate-400">Permission-filtered answers • Verify critical information against the source</p>
           </form>
         </section>
       )}
 
-      <button onClick={() => setOpen((value) => !value)} className="fixed bottom-5 right-5 z-[75] flex h-14 w-14 items-center justify-center rounded-full bg-[#2f3e83] text-white shadow-lg transition hover:scale-105 hover:bg-[#26346f] focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30" aria-label={open ? 'Close AI assistant' : 'Open AI assistant'} aria-expanded={open}>{open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}</button>
+      <button onClick={() => setOpen((value) => !value)} className="fixed bottom-5 right-5 z-[75] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-lg shadow-[#232f6b]/30 transition hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30" aria-label={open ? 'Close AI assistant' : 'Open AI assistant'} aria-expanded={open}>{open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}</button>
     </>
   );
 }

@@ -46,6 +46,7 @@ builder.Services.AddScoped<UserGoogleCalendarService>();
 builder.Services.AddScoped<AccessOverrideService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<AiChatSettingsService>();
+builder.Services.AddScoped<AiChatPromptsService>();
 builder.Services.AddScoped<OcrIndexService>();
 builder.Services.AddDataProtection();
 builder.Services.AddHttpClient("OcrRag", client =>

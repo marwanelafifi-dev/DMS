@@ -166,6 +166,14 @@ export interface AiChatProviderSettings {
   updatedAt?: string | null;
 }
 
+export interface AiChatPrompts {
+  answerGenerationPrompt: string;
+  queryUnderstandingPrompt: string;
+  updatedAt?: string | null;
+  defaultAnswerGenerationPrompt: string;
+  defaultQueryUnderstandingPrompt: string;
+}
+
 export interface PageAccessRole extends PageAccessRoleFlags {
   role: string;
   // True only for the 5 originally seeded roles; carried over verbatim by a
@@ -488,6 +496,16 @@ class APIClient {
 
   async testAiApiKey(provider: 'openai-compatible' | 'anthropic') {
     const { data } = await this.client.post<ApiResponse>('/api-keys/test', { provider });
+    return data;
+  }
+
+  async getAiChatPrompts() {
+    const { data } = await this.client.get<ApiResponse<AiChatPrompts>>('/ai-chat-prompts');
+    return data;
+  }
+
+  async updateAiChatPrompts(prompts: { answerGenerationPrompt?: string; queryUnderstandingPrompt?: string }) {
+    const { data } = await this.client.put<ApiResponse<AiChatPrompts>>('/ai-chat-prompts', prompts);
     return data;
   }
 

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, PlugZap, Save, ShieldCheck, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, MessageSquareText, PlugZap, RotateCcw, Save, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiClient, type AiChatProviderSettings, type AiProviderConfig } from '../../utils/api';
+import { apiClient, type AiChatProviderSettings, type AiChatPrompts, type AiProviderConfig } from '../../utils/api';
 import { Button } from '../ui';
 
 type ProviderName = AiProviderConfig['provider'];
@@ -12,6 +12,11 @@ const labels: Record<ProviderName, { name: string; description: string }> = {
   anthropic: { name: 'Anthropic Claude', description: 'Native Claude Messages API' },
 };
 
+const promptFields: Array<{ key: 'answerGenerationPrompt' | 'queryUnderstandingPrompt'; defaultKey: 'defaultAnswerGenerationPrompt' | 'defaultQueryUnderstandingPrompt'; name: string; description: string }> = [
+  { key: 'answerGenerationPrompt', defaultKey: 'defaultAnswerGenerationPrompt', name: 'Answer Generation', description: 'Instructs the model how to answer once a question, its authorized context, and recent conversation are ready.' },
+  { key: 'queryUnderstandingPrompt', defaultKey: 'defaultQueryUnderstandingPrompt', name: 'Query Understanding', description: 'Instructs the model how to rephrase a question into search terms and decide which context categories are relevant, before retrieval runs.' },
+];
+
 export function ApiKeysSettings() {
   const [settings, setSettings] = useState<AiChatProviderSettings | null>(null);
   const [primaryProvider, setPrimaryProvider] = useState<ProviderName>('openai-compatible');
@@ -19,6 +24,11 @@ export function ApiKeysSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<ProviderName | null>(null);
+
+  const [prompts, setPrompts] = useState<AiChatPrompts | null>(null);
+  const [promptDrafts, setPromptDrafts] = useState<{ answerGenerationPrompt: string; queryUnderstandingPrompt: string }>({ answerGenerationPrompt: '', queryUnderstandingPrompt: '' });
+  const [promptsLoading, setPromptsLoading] = useState(true);
+  const [savingPrompts, setSavingPrompts] = useState(false);
 
   const apply = (value: AiChatProviderSettings) => {
     setSettings(value);
@@ -31,7 +41,34 @@ export function ApiKeysSettings() {
       .then((response) => { if (response.data) apply(response.data); })
       .catch((error) => toast.error(error?.response?.data?.error || 'Could not load API key settings'))
       .finally(() => setLoading(false));
+
+    apiClient.getAiChatPrompts()
+      .then((response) => {
+        if (response.data) {
+          setPrompts(response.data);
+          setPromptDrafts({ answerGenerationPrompt: response.data.answerGenerationPrompt, queryUnderstandingPrompt: response.data.queryUnderstandingPrompt });
+        }
+      })
+      .catch((error) => toast.error(error?.response?.data?.error || 'Could not load AI assistant prompts'))
+      .finally(() => setPromptsLoading(false));
   }, []);
+
+  const savePrompts = async (event: FormEvent) => {
+    event.preventDefault();
+    setSavingPrompts(true);
+    try {
+      const response = await apiClient.updateAiChatPrompts(promptDrafts);
+      if (response.data) {
+        setPrompts(response.data);
+        setPromptDrafts({ answerGenerationPrompt: response.data.answerGenerationPrompt, queryUnderstandingPrompt: response.data.queryUnderstandingPrompt });
+      }
+      toast.success('AI assistant prompts saved');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || 'Could not save AI assistant prompts');
+    } finally {
+      setSavingPrompts(false);
+    }
+  };
 
   const updateProvider = (name: ProviderName, update: Partial<DraftProvider>) => {
     setProviders((current) => current.map((provider) => provider.provider === name ? { ...provider, ...update } : provider));
@@ -126,6 +163,55 @@ export function ApiKeysSettings() {
         </div>
       </form>
       {settings?.updatedAt && <p className="text-xs text-[#718198]">Last updated {new Date(settings.updatedAt).toLocaleString()}</p>}
+
+      <div className="pt-2">
+        <h1 className="page-heading">AI Assistant Prompts</h1>
+        <p className="page-subtitle">See and edit exactly what the assistant is instructed to do, before any question reaches a provider above.</p>
+      </div>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+        <div className="flex gap-3"><Sparkles className="mt-0.5 h-5 w-5 shrink-0" /><p>These are the exact system prompts sent to whichever provider above answers a question. Leave a field blank and save to reset that one prompt back to its built-in default.</p></div>
+      </div>
+
+      {promptsLoading ? (
+        <div className="flex min-h-32 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#3f8bca]" /></div>
+      ) : (
+        <form onSubmit={savePrompts} className="space-y-4">
+          {promptFields.map((field) => {
+            const value = promptDrafts[field.key];
+            const defaultValue = prompts?.[field.defaultKey] ?? '';
+            const isDefault = value.trim() === defaultValue.trim();
+            return (
+              <section key={field.key} className="overflow-hidden rounded-lg border border-[#dbe2ec] bg-white dark:border-white/10 dark:bg-slate-900">
+                <header className="flex flex-wrap items-center gap-3 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e8f0f8] text-[#2f5f96] dark:bg-blue-900/30 dark:text-blue-300"><MessageSquareText className="h-5 w-5" /></span>
+                  <div className="min-w-0 flex-1"><h2 className="section-heading">{field.name}</h2><p className="text-xs text-[#718198]">{field.description}</p></div>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${isDefault ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'}`}>{isDefault ? 'Using default' : 'Customized'}</span>
+                </header>
+                <div className="p-5">
+                  <textarea
+                    value={value}
+                    onChange={(event) => setPromptDrafts((current) => ({ ...current, [field.key]: event.target.value }))}
+                    rows={8}
+                    maxLength={8000}
+                    spellCheck={false}
+                    className="w-full rounded-md border border-[#cbd5e3] bg-white px-3 py-2.5 font-mono text-xs leading-5 outline-none focus:border-[#3c89c9] focus:ring-2 focus:ring-[#3c89c9]/15 dark:border-slate-700 dark:bg-slate-950"
+                  />
+                  <p className="mt-1.5 text-right text-xs text-[#718198]">{value.length.toLocaleString()} / 8,000</p>
+                </div>
+                <footer className="flex flex-wrap justify-end gap-2 border-t border-[#e2e8f0] bg-slate-50 px-5 py-3 dark:border-white/10 dark:bg-slate-950/40">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setPromptDrafts((current) => ({ ...current, [field.key]: defaultValue }))} disabled={isDefault}><RotateCcw className="h-4 w-4" />Reset to default</Button>
+                </footer>
+              </section>
+            );
+          })}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#dbe2ec] bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+            <p className="text-sm text-[#718198]">Changes apply to the next question asked — no restart required.</p>
+            <Button type="submit" disabled={savingPrompts}>{savingPrompts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save prompts</Button>
+          </div>
+        </form>
+      )}
+      {prompts?.updatedAt && <p className="text-xs text-[#718198]">Last updated {new Date(prompts.updatedAt).toLocaleString()}</p>}
     </div>
   );
 }
