@@ -2,7 +2,7 @@
 
 ## Session 65 (2026-08-31) — AI Assistant: Doc ID Resolution Fix and LLM Query Understanding
 
-**Status:** Complete in code. Rebuild `api`; no database migration is required. Not yet built or run — same environment limitation as Session 64 (no .NET SDK, no Python interpreter, Docker Desktop not running on this Windows workstation). Verified by manual code review plus a balanced brace/paren count over the whole file; needs a real Ubuntu rebuild and live test before considering it done.
+**Status:** Complete in code, including a second real bug found via live testing on Ubuntu right after the Doc ID fix below was deployed (see "Pronoun follow-up resolved to the wrong document"). Rebuild `api` again to pick up that fix; no database migration is required. Verified by manual code review plus balanced brace/paren counts (no .NET SDK/Docker on this Windows workstation) — the Doc ID fix itself was confirmed working live by the user; the pronoun-recency fix below has not yet been re-verified live.
 
 ### Real bug found via live testing: exact Doc ID questions never resolved
 
@@ -19,6 +19,12 @@
 - Runs only when the question does **not** already resolve to one exact file (`explicitDocument == null`) — every existing use of `intent`/`searchTerms` was already gated on that condition, so exact-file questions (including the Doc ID fix above) pay zero extra latency/cost for this step.
 - Falls back to the original keyword heuristics (`DetectIntent`/`ExtractSearchTerms`) whenever no AI provider is configured, the call fails, or the response can't be parsed as valid JSON — this must never break the existing search-only mode. The same "if nothing else matched, default to documents" safety net from the old heuristic is preserved (`NormalizeIntent`).
 
+### Real bug found via live testing: pronoun follow-up resolved to the wrong document
+
+- After confirming the Doc ID fix above worked live (asking "SWS-25120007" correctly answered about "Backup Process-Techniques"), the very next follow-up — "let me know the kpis in the document?", asked specifically to check the KPIs the previous answer had already mentioned for that same document — answered instead about a completely unrelated document ("Project Management Dashboard user guide"), quoting real content from it.
+- Root cause: the pronoun/history-based fallback (added in Session 64 to resolve "it"/"the document" to whatever was just discussed) reused `FindExplicitDocument`, whose tie-break picks the **longest** matching title/filename string. Once a conversation's recent-history window mentions more than one accessible document, "the document" incorrectly resolved to whichever one happened to have the longer name — not whichever was actually discussed most recently, which is the entire point of a pronoun reference.
+- Fixed by adding `FindMostRecentlyMentionedDocument(text, documents)`, used only for this history-based fallback: for each accessible document it finds the last raw-text position at which its filename, title, or Doc ID appears, and returns whichever document was mentioned **latest** in the conversation — recency, not string length. The primary same-question resolution (`FindExplicitDocument`, longest-match) is unchanged, since that's for disambiguating multiple candidates within one question, a different problem.
+
 ### Files modified
 
 - `api/Controllers/AiChatController.cs`
@@ -26,9 +32,10 @@
 
 ### Verification
 
-- Manual code review only — brace/paren counts balanced (133/133, 391/391) across the whole file; no local `dotnet build` available on this workstation.
-- Not yet rebuilt or tested against the live stack. Rebuild `api` on Ubuntu (`docker compose build api && docker compose up -d api`), then re-test the exact screenshot scenario ("Doc id SWS-25120007" should now resolve directly, not list unrelated sources) and a paraphrased broad question (e.g. asking about a document's topic using words that don't appear in the question but are semantically related) to confirm the query-understanding step is actually improving recall.
-- Also worth confirming via `docker compose logs api` that `AnalyzeQueryAsync` isn't silently failing to parse the model's JSON response on the configured provider (Anthropic/OpenAI-compatible) — the "AI provider {Provider} failed" / "Could not parse AI query-understanding response" warnings would show this.
+- Manual code review only — brace/paren counts balanced (139/139, 408/408 after both fixes) across the whole file; no local `dotnet build` available on this workstation.
+- The Doc ID resolution fix was confirmed working live by the user on Ubuntu (asking "SWS-25120007" now correctly resolves to and answers about "Backup Process-Techniques", the exact scenario from the original bug report).
+- The pronoun-recency fix has **not** yet been rebuilt or re-tested live. Rebuild `api` on Ubuntu (`docker compose build api && docker compose up -d api`), then repeat the exact failing scenario: ask about a specific document, get an answer, then ask a pronoun follow-up ("what are the kpis in the document?") and confirm it now answers from the same document instead of an unrelated one that happens to have a longer name.
+- Also worth testing a paraphrased broad question (words that don't literally appear in the target document) to confirm the LLM query-understanding step is actually improving recall, and checking `docker compose logs api` for `"AI provider {Provider} failed"` / `"Could not parse AI query-understanding response"` warnings that would mean it's silently falling back to the old heuristics.
 
 ---
 

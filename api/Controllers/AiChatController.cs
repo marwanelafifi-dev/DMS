@@ -70,7 +70,13 @@ public class AiChatController(
         if (explicitDocument == null && !string.IsNullOrEmpty(recentConversation)
             && Regex.IsMatch(question, @"\b(it|that file|this file|that document|this document|the file|the document)\b", RegexOptions.IgnoreCase))
         {
-            explicitDocument = FindExplicitDocument(recentConversation, accessibleDocuments);
+            // Deliberately NOT FindExplicitDocument here: that picks the LONGEST
+            // matching title/filename, which is wrong for a pronoun follow-up — a
+            // shorter-named document discussed one turn ago should win over a
+            // longer-named one mentioned earlier in the same conversation window.
+            // "It"/"the document" means whatever was just talked about, so this
+            // picks whichever accessible document was mentioned LAST in the text.
+            explicitDocument = FindMostRecentlyMentionedDocument(recentConversation, accessibleDocuments);
         }
 
         var containsFileExtension = Regex.IsMatch(question, @"\.(pdf|docx?|docm|xlsx?|xlsm|pptx?|pptm|txt|csv|png|jpe?g|tiff?)\b", RegexOptions.IgnoreCase);
@@ -422,6 +428,44 @@ public class AiChatController(
                     && normalizedText.Contains(NormalizeDocId(document.OriginalDocumentId))))
             .OrderByDescending(document => Math.Max(document.FileName?.Length ?? 0, Math.Max(document.Title.Length, document.OriginalDocumentId?.Length ?? 0)))
             .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// For resolving a pronoun follow-up ("it", "the document") against recent
+    /// conversation text — picks whichever accessible document's filename, title,
+    /// or Doc ID last appears (by raw character position) in <paramref name="text"/>,
+    /// not whichever has the longest name. A conversation can mention several
+    /// documents; "it" always refers to whatever was discussed most recently, so
+    /// recency of mention must win over string length.
+    /// </summary>
+    private static ChatDocument? FindMostRecentlyMentionedDocument(string text, IEnumerable<ChatDocument> documents)
+    {
+        ChatDocument? best = null;
+        var bestIndex = -1;
+        foreach (var document in documents)
+        {
+            var index = text.LastIndexOf(document.Title, StringComparison.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(document.FileName))
+            {
+                var fileNameIndex = text.LastIndexOf(document.FileName, StringComparison.OrdinalIgnoreCase);
+                if (fileNameIndex > index) index = fileNameIndex;
+            }
+            if (!string.IsNullOrWhiteSpace(document.OriginalDocumentId) && document.OriginalDocumentId.Length >= 4)
+            {
+                var normalizedDocId = NormalizeDocId(document.OriginalDocumentId);
+                foreach (Match match in DocIdLikeToken.Matches(text))
+                {
+                    if (match.Index > index && NormalizeDocId(match.Value) == normalizedDocId)
+                        index = match.Index;
+                }
+            }
+            if (index > bestIndex)
+            {
+                bestIndex = index;
+                best = document;
+            }
+        }
+        return best;
     }
 
     private static IEnumerable<string> ExtractSearchTerms(string question) =>
