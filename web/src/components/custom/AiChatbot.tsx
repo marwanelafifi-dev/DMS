@@ -79,8 +79,18 @@ export function AiChatbot() {
               <Sparkles className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-bold tracking-wide text-white">DMS AI Assistant</h2>
-              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-blue-100/90">
+              {/*
+                Inline color styles here, not Tailwind text-color classNames:
+                globals.css has a bare `h2 { color: ... }` / `p { color: ... }`
+                rule that keeps winning over the equivalent Tailwind utility
+                class regardless of className order or !important-free
+                specificity tricks (the same bug class documented in Session 7
+                of this project, for a different pair of elements). An inline
+                style always wins over any external stylesheet rule, so this
+                is the one fix that can't be silently defeated again.
+              */}
+              <h2 className="text-sm font-bold tracking-wide" style={{ color: '#ffffff' }}>DMS AI Assistant</h2>
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: 'rgba(219, 234, 254, 0.9)' }}>
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-300" />

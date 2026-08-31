@@ -351,12 +351,25 @@ public class AiChatController(
     /// the keyword heuristics) when no AI provider is configured or the call/parse
     /// fails for any reason — this must never block search-only mode.
     /// </summary>
+    // The exact JSON shape AnalyzeQueryAsync's caller parses. Kept in code and
+    // always appended to whatever prompt text is actually in effect (default
+    // or admin-customized), rather than living only inside the editable prompt
+    // itself — a real gap found live: an admin who opened the new "AI
+    // Assistant Prompts" page and saved it even once (without editing
+    // anything) before a later field (e.g. "adminInfo") was added to the
+    // default would freeze that customized copy on the old contract forever,
+    // silently breaking every future category added this way. Rebuilding the
+    // containers never touches what's already persisted in the database, so
+    // this can't be fixed by redeploying alone — it has to not be possible.
+    private const string QueryUnderstandingJsonContract =
+        " Respond with ONLY a single-line JSON object — no markdown fences, no commentary, no extra text — in exactly this shape: {\"searchTerms\": [\"...\"], \"documents\": true, \"tasks\": false, \"calendar\": false, \"announcements\": false, \"dashboard\": false, \"adminInfo\": false}.";
+
     private async Task<QueryUnderstanding?> AnalyzeQueryAsync(string question, string recentConversation, string systemPrompt, CancellationToken cancellationToken)
     {
         var userPrompt = string.IsNullOrWhiteSpace(recentConversation)
             ? $"Question:\n{question}"
             : $"Recent conversation:\n{recentConversation}\n\nQuestion:\n{question}";
-        var raw = await CallAiProviderAsync(systemPrompt, userPrompt, 300, cancellationToken);
+        var raw = await CallAiProviderAsync(systemPrompt + QueryUnderstandingJsonContract, userPrompt, 300, cancellationToken);
         if (string.IsNullOrWhiteSpace(raw)) return null;
 
         var jsonText = ExtractJsonObject(raw);
