@@ -118,6 +118,13 @@
 - When `AdminInfo` is detected, `Ask()` checks `BypassFolderPermissions` immediately (before any document search runs) and returns an explicit "Only a Full Access role can view system administration data... " denial for anyone else — never a silent fallback to unrelated document content. For a Full Access caller, `BuildAdminInfoLinesAsync` fetches every Page Access Role (with its granted capabilities), every user (name/email/role/status, capped at 300), and every Group (description, members, sub-groups) and folds them into the same `BuildContext`/`BuildGroundedFallback` pipeline as every other category, as plain `ROLE [...]`/`USER [...]`/`GROUP [...]` lines.
 - `DescribeRoleGrants` lists a role's granted capabilities via reflection over every `bool` property on `DmsPageAccessRole` (skipping the internal `IsBuiltIn` marker) rather than a hand-maintained list — so a future new permission flag automatically shows up here with nothing to keep in sync.
 
+### Real bug found via live testing: admin-info detection too rigid, and header contrast fix wasn't enough
+
+- Reported live immediately after deploying the admin-info feature above: "let me know the IT group users" still got the generic "I couldn't find that in your tasks or in the OCR/in-file content..." fallback instead of a real group-membership answer.
+- Root cause: `LooksLikeAdminInfoQuestion`'s original keyword list only matched fixed phrases like "user group" — "IT group users" says the words in the opposite order and never matches an exact phrase list. This app's own Groups admin page literally labels every group's description "X Team Members", so "team" is exactly as natural a word for this as "group".
+- Fixed by replacing the fixed-phrase list with a co-occurrence check: true if the question mentions a group/role-ish word (`group`, `team`, `role`, ...) **and** a people-ish word (`user`, `member`, `who is`, `staff`, ...) anywhere, in any order — plus a short list of unambiguous standalone phrases ("admin panel", "administrator", "all users", ...) that don't need a second word to be co-present. `DetectIntent` and `LooksLikeNonDocumentTopic` were both refactored to call this one shared helper instead of maintaining two separate, now-inevitably-drifting phrase lists.
+- Also reported in the same message: the header title contrast fix from earlier in this session still wasn't good enough. Rather than continue tuning the decorative glow's opacity/position a third time, removed it entirely — the header is now a plain gradient background with bold white text and no decorative overlay competing for contrast at all.
+
 ### Files modified
 
 - `api/Controllers/AiChatController.cs`

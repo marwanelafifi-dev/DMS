@@ -74,14 +74,12 @@ export function AiChatbot() {
     <>
       {open && (
         <section className="chat-panel-in fixed bottom-24 right-4 z-[75] flex h-[min(720px,calc(100vh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)] ring-1 ring-black/[0.03] dark:border-white/10 dark:bg-slate-900" aria-label="DMS AI Assistant">
-          <header className="relative flex items-center gap-3 overflow-hidden bg-gradient-to-br from-[#1f2c5c] via-[#27366f] to-[#3a5aa0] px-5 py-4 text-white">
-            <div className="pointer-events-none absolute -right-2 -top-16 h-20 w-20 rounded-full bg-white/[0.06] blur-2xl" aria-hidden />
-            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-              <span className="absolute inset-0 rounded-xl bg-white/10" aria-hidden />
+          <header className="flex items-center gap-3 bg-gradient-to-br from-[#1f2c5c] via-[#27366f] to-[#3a5aa0] px-5 py-4 text-white">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
               <Sparkles className="h-5 w-5" />
             </span>
-            <div className="relative min-w-0 flex-1">
-              <h2 className="text-sm font-semibold tracking-wide text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.3)]">DMS AI Assistant</h2>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-bold tracking-wide text-white">DMS AI Assistant</h2>
               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-blue-100/90">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60" />

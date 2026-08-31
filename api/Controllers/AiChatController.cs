@@ -477,10 +477,28 @@ public class AiChatController(
         return Has("task", "PCAR", "assigned to me", "created by me", "due date", "overdue",
             "calendar", "meeting", "appointment", "schedule", "audit date", "event",
             "announcement", "notice", "company news",
-            "dashboard", "my summary", "my overview",
-            "admin panel", "administrator", "administrators", "system admin", "user group", "user groups",
-            "group members", "members of", "who is in", "who are in", "list of users", "list users", "all users",
-            "page access role", "access role", "user role", "user roles");
+            "dashboard", "my summary", "my overview")
+            || LooksLikeAdminInfoQuestion(question);
+    }
+
+    /// <summary>
+    /// Whether a question is about system administration data (Users/Groups/
+    /// Roles) — deliberately a co-occurrence check ("mentions a group/role-ish
+    /// word AND a people-ish word") rather than a fixed phrase list. A real gap
+    /// found live: "let me know the IT group users" doesn't match any exact
+    /// phrase like "user group" (wrong word order) — natural phrasing varies far
+    /// more than a phrase list can enumerate, and this app's own Groups admin
+    /// page literally labels group descriptions "IT Team Members", so "team" is
+    /// as natural a word here as "group".
+    /// </summary>
+    private static bool LooksLikeAdminInfoQuestion(string question)
+    {
+        bool Has(params string[] values) => values.Any(value => question.Contains(value, StringComparison.OrdinalIgnoreCase));
+        if (Has("admin panel", "system admin", "administrator", "administrators", "all users", "list users", "list of users", "page access role"))
+            return true;
+        var mentionsGroupOrRole = Has("group", "groups", "team", "teams", "role", "roles");
+        var mentionsPeople = Has("user", "users", "member", "members", "who is", "who are", "who's", "list of", "employees", "staff", "people");
+        return mentionsGroupOrRole && mentionsPeople;
     }
 
     /// <summary>
@@ -648,9 +666,7 @@ public class AiChatController(
         var calendar = Has("calendar", "meeting", "appointment", "schedule", "audit date", "event");
         var announcements = Has("announcement", "notice", "company news");
         var dashboard = Has("dashboard", "my summary", "my overview");
-        var adminInfo = Has("admin panel", "administrator", "administrators", "system admin", "user group", "user groups",
-            "group members", "members of", "who is in", "who are in", "list of users", "list users", "all users",
-            "page access role", "access role", "user role", "user roles");
+        var adminInfo = LooksLikeAdminInfoQuestion(question);
         var documents = Has("file", "document", "OCR", "in-file", "policy", "procedure", "plan", "report", "register", "revision", "doc id", "doc no")
             || Regex.IsMatch(question, @"\.(pdf|docx?|docm|xlsx?|xlsm|pptx?|pptm|txt|csv|png|jpe?g|tiff?)\b", RegexOptions.IgnoreCase)
             || (!tasks && !calendar && !announcements && !dashboard && !adminInfo);
