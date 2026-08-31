@@ -471,8 +471,8 @@ class APIClient {
     return data;
   }
 
-  async askAiChat(message: string) {
-    const { data } = await this.client.post<ApiResponse>('/ai-chat', { message });
+  async askAiChat(message: string, history?: { role: string; content: string }[]) {
+    const { data } = await this.client.post<ApiResponse>('/ai-chat', { message, history });
     return data;
   }
 

@@ -1,5 +1,63 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 64 (2026-08-31) — AI Assistant: Ranked Search, On-Demand Indexing, Session Memory
+
+**Status:** Complete in code. Rebuild `ocr-rag`, `api`, and `web`; no database migration is required. Not yet built or run in this session — this Windows workstation has no .NET SDK, no Python interpreter, and Docker Desktop was not running, so verification was careful manual code review plus a clean `npx tsc --noEmit` on the frontend changes. Build, run the OCR test suite, and exercise the live stack on Ubuntu before considering this done.
+
+### Context
+
+The AI Assistant was reported as "very stupid." Auditing the existing code first (rather than assuming a permission bug) confirmed Sessions 61/62's permission enforcement is solid: `AccessOverrideService.HasDocumentReadAccessAsync` gates every document before its OCR text can reach the model, both folder-level and file-level Deny overrides are consulted, and Top-3 ranking happens after permission filtering, not before. The real problems were retrieval quality and two related gaps.
+
+### Real ranked search (replacing substring `LIKE`)
+
+- `ocr-rag/main.py`'s `/api/documents/search` previously did one raw `LIKE '%q%' COLLATE NOCASE` scan against `content` only (never `filename`), ordered by `created_at DESC` with no relevance ranking at all — and `AiChatController` ranked the merged results with a naive `+5 per title hit / +1 per content hit` counting heuristic.
+- Added an FTS5 external-content virtual table (`documents_fts`, mirroring `filename`/`content`) with `AFTER INSERT`/`AFTER DELETE` triggers to stay in sync (rows in `documents` are insert-only elsewhere in this file, so no `UPDATE` trigger is needed) and a one-time backfill of existing rows when the table is freshly created. If FTS5 isn't compiled into a given SQLite build, a feature-detected flag falls back automatically to the original substring scan.
+- `/api/documents/search` now ranks by BM25 (`bm25(documents_fts, 10.0, 1.0)`, weighting filename hits 10x over content hits), dedupes to the newest row per `document_id` (via `ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY id DESC)` — stale/superseded historical OCR rows no longer pollute results), and caps results at 25.
+- `AiChatController.cs` now aggregates the real BM25 `Rank` returned per keyword call instead of the old title/content substring-counting heuristic (`SearchScore`, removed).
+
+### On-demand OCR indexing for missing or stale content
+
+- Previously, a question naming a specific accessible file with no OCR yet (just uploaded) or stale OCR (updated since last indexed) got a permanent "ask your administrator to re-index the file" answer, even though the reusable in-process `OcrIndexService.ReindexAsync` and a 10-minute recurring background job already existed.
+- `GET /api/documents/by-document/{document_id}` (the OCR service's exact-lookup endpoint) now also returns `version_id`, so the API can detect staleness by comparing it against the document's actual current version.
+- When the exact-file path resolves to an accessible document with missing or stale OCR, `AiChatController` now calls `OcrIndexService.ReindexAsync` directly (no self-HTTP call), bounded to 60 seconds via a linked `CancellationTokenSource`. On success it answers normally; on timeout or any indexing failure (MinIO/network errors are caught the same way `OcrIndexService`'s own background-job callers already do) it replies that indexing has started and to ask again shortly, instead of blaming the user's access or blocking indefinitely.
+- This on-demand trigger requires only the read access already verified for that document — not the separate `CanReindexDocuments` role flag — since it is a request-scoped side effect of a question the user is already authorized to ask, not a general document-management action.
+- Scoped to the exact-file question path only; broad/keyword questions that don't resolve to one specific file continue to rely on the existing 10-minute `auto-index-missing-documents` background job for coverage.
+
+### Session-scoped conversation memory
+
+- The chat was completely stateless: `AiChatRequest` was `{ Message }` only, and the frontend never sent the messages it already renders, so two related follow-up questions in the same conversation were treated as entirely unrelated.
+- `AiChatRequest` now accepts an optional `History` (list of `{ Role, Content }` turns). The frontend (`AiChatbot.tsx`) sends the last 6 visible messages from its own already-rendered state with each new question — no new database table, no cross-device persistence; this resets on refresh exactly like the chat window itself already does.
+- The backend folds `History` into the LLM prompt as a "Recent conversation" transcript (explicitly labeled untrusted/context-only, never new instructions) ahead of the current question, and also uses it to resolve pronoun follow-ups ("what about that file," "what does it say about X") to the specific document named in the previous turn, instead of falling through to an unscoped broad search.
+
+### Files modified
+
+- `ocr-rag/main.py`
+- `ocr-rag/tests/test_main.py`
+- `api/Controllers/AiChatController.cs`
+- `web/src/components/custom/AiChatbot.tsx`
+- `web/src/utils/api.ts`
+- `CLAUDE.md`
+
+### Verification
+
+- Frontend: `npx tsc --noEmit` clean — only the same three pre-existing, unrelated baseline errors (`NotificationsBell.tsx`, `Dashboard.tsx`, `officeParser.test.ts`).
+- Backend/OCR service: not compiled or run this session — no .NET SDK, no Python interpreter, and Docker Desktop was not running on this workstation. Verified by careful manual line-by-line review instead (SQL syntax for the FTS5 virtual table/triggers/window-function dedup, JSON property-name mapping between the OCR service's snake_case fields and the C# records, brace/paren balance across every edited method).
+- New/extended `ocr-rag/tests/test_main.py` coverage (not yet run): ranking order (filename match outranks content-only match), dedup-to-newest-row-per-document, and the FTS5-unavailable fallback path via monkeypatching the feature-detection flag.
+
+### Deployment (Ubuntu)
+
+```bash
+git pull
+docker compose build ocr-rag api web
+docker compose up -d ocr-rag api web
+docker compose logs ocr-rag --tail=50   # confirm no "FTS5 is not available" warning
+docker compose exec ocr-rag python -m pytest tests/test_main.py -v
+```
+
+Then manually verify against the live app: ask about a just-uploaded file with no OCR yet (should index then answer, not say "ask your administrator"); ask a broad keyword question and confirm filename matches rank above content-only matches; ask a follow-up question with a pronoun reference ("what about its due date") right after a document-specific answer and confirm it resolves to the same document; re-confirm a Deny-overridden document still never appears in either the exact-file or broad-search path.
+
+---
+
 ## Session 63 (2026-08-30) — Scheduled Backup Reliability and Timezone Fix
 
 **Status:** Complete in code. Rebuild `api` and `web`; no database migration is required.

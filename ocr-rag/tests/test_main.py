@@ -156,9 +156,79 @@ class DocumentParsingApiTests(unittest.TestCase):
                     "filename": "calibration-record.docx",
                     "content": "# Calibration record\n\nUnique local torque verification phrase.",
                     "created_at": ANY,
+                    "rank": ANY,
                 }
             ],
         )
+
+    def test_search_ranks_filename_matches_above_content_only_matches(self) -> None:
+        self.main.converter = _RecordingConverter(
+            "Unrelated administrative note with no relevant zqrelevance keyword at all."
+        )
+        self.client.post(
+            "/api/documents/upload",
+            files={"file": ("zqrelevance-spec.docx", b"a", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+
+        self.main.converter = _RecordingConverter(
+            "Detailed zqrelevance calibration verification procedure described here."
+        )
+        self.client.post(
+            "/api/documents/upload",
+            files={"file": ("meeting-notes.docx", b"b", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+
+        response = self.client.get("/api/documents/search", params={"q": "zqrelevance"})
+
+        self.assertEqual(response.status_code, 200)
+        results = response.json()
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["filename"], "zqrelevance-spec.docx")
+        self.assertEqual(results[1]["filename"], "meeting-notes.docx")
+        self.assertGreater(results[0]["rank"], results[1]["rank"])
+
+    def test_search_deduplicates_to_the_newest_row_per_document(self) -> None:
+        self.main.converter = _RecordingConverter("Old zzyzxaudit finding text.")
+        self.client.post(
+            "/api/documents/upload",
+            files={"file": ("audit-v1.docx", b"a", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_id": "dedup-audit-document"},
+        )
+
+        self.main.converter = _RecordingConverter("Current zzyzxaudit finding text, refreshed.")
+        latest = self.client.post(
+            "/api/documents/upload",
+            files={"file": ("audit-v2.docx", b"b", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            data={"document_id": "dedup-audit-document"},
+        )
+
+        response = self.client.get("/api/documents/search", params={"q": "zzyzxaudit"})
+
+        self.assertEqual(response.status_code, 200)
+        matches = [item for item in response.json() if item["document_id"] == "dedup-audit-document"]
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["id"], latest.json()["id"])
+        self.assertEqual(matches[0]["content"], "Current zzyzxaudit finding text, refreshed.")
+
+    def test_search_falls_back_to_substring_matching_when_fts5_is_unavailable(self) -> None:
+        self.main.converter = _RecordingConverter("Contains the zqfallback marker phrase.")
+        self.client.post(
+            "/api/documents/upload",
+            files={"file": ("fallback-check.docx", b"a", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+
+        original_fts5_available = self.main.FTS5_AVAILABLE
+        self.main.FTS5_AVAILABLE = False
+        try:
+            response = self.client.get("/api/documents/search", params={"q": "zqfallback"})
+        finally:
+            self.main.FTS5_AVAILABLE = original_fts5_available
+
+        self.assertEqual(response.status_code, 200)
+        results = response.json()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["filename"], "fallback-check.docx")
+        self.assertIsNone(results[0]["rank"])
 
     def test_document_lookup_returns_only_the_newest_exact_document_index(self) -> None:
         self.main.converter = _RecordingConverter("# First indexed version")

@@ -27,11 +27,19 @@ export function AiChatbot() {
     event.preventDefault();
     const question = input.trim();
     if (!question || loading) return;
+    // Sent with each new question so a follow-up like "what about its due date"
+    // can resolve against what was just discussed. This is a client-side sliding
+    // window only — nothing is persisted server-side, and it resets on refresh
+    // exactly like `messages` itself does.
+    const history = messages
+      .filter((message) => message !== welcome)
+      .slice(-6)
+      .map((message) => ({ role: message.role, content: message.text }));
     setMessages((current) => [...current, { role: 'user', text: question }]);
     setInput('');
     setLoading(true);
     try {
-      const response = await apiClient.askAiChat(question);
+      const response = await apiClient.askAiChat(question, history);
       setMessages((current) => [...current, {
         role: 'assistant', text: response.data.answer, sources: response.data.sources, accessDenied: response.data.accessDenied,
       }]);

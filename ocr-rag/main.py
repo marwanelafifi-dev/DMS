@@ -49,6 +49,11 @@ _libreoffice_semaphore = threading.BoundedSemaphore(LIBREOFFICE_MAX_CONCURRENT)
 _preview_cache_locks_guard = threading.Lock()
 _preview_cache_storage_guard = threading.Lock()
 
+# Set by initialize_database() once at startup based on whether this SQLite
+# build actually has FTS5 compiled in. When False, search falls back to the
+# original substring LIKE scan instead of failing outright.
+FTS5_AVAILABLE = False
+
 
 class PreviewCacheLockEntry:
     def __init__(self) -> None:
@@ -89,6 +94,55 @@ def initialize_database() -> None:
         if "version_id" not in columns:
             connection.execute("ALTER TABLE documents ADD COLUMN version_id TEXT")
         connection.commit()
+
+        global FTS5_AVAILABLE
+        fts_table_existed = (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'documents_fts'"
+            ).fetchone()
+            is not None
+        )
+        try:
+            connection.execute(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+                    filename, content, content='documents', content_rowid='id'
+                )
+                """
+            )
+            # Rows are append-only elsewhere in this file (INSERT on upload,
+            # DELETE on document purge) — no UPDATE ever touches `documents`,
+            # so only these two triggers are needed to keep the index in sync.
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS documents_fts_ai AFTER INSERT ON documents BEGIN
+                    INSERT INTO documents_fts(rowid, filename, content)
+                    VALUES (new.id, new.filename, new.content);
+                END
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS documents_fts_ad AFTER DELETE ON documents BEGIN
+                    INSERT INTO documents_fts(documents_fts, rowid, filename, content)
+                    VALUES ('delete', old.id, old.filename, old.content);
+                END
+                """
+            )
+            if not fts_table_existed:
+                connection.execute(
+                    "INSERT INTO documents_fts(rowid, filename, content) "
+                    "SELECT id, filename, content FROM documents"
+                )
+            connection.commit()
+            FTS5_AVAILABLE = True
+        except sqlite3.OperationalError as error:
+            logger.warning(
+                "FTS5 is not available in this SQLite build; search will fall back "
+                "to substring matching: %s",
+                error,
+            )
+            FTS5_AVAILABLE = False
 
 
 initialize_database()
@@ -366,16 +420,69 @@ def delete_document_index(document_id: str) -> dict[str, int | bool]:
     return {"success": True, "deleted": cursor.rowcount}
 
 
+def build_fts5_match_query(term: str) -> str | None:
+    """Wrap the caller's single keyword as a quoted FTS5 phrase-prefix query.
+
+    Always quoting the term prevents it from being interpreted as FTS5 boolean/
+    column-filter syntax (AND/OR/NOT/column:), and the trailing `*` keeps the
+    same "partial word" recall the old substring LIKE search had (e.g. "polic"
+    still matches "policy"/"policies").
+    """
+    cleaned = term.replace('"', '""').strip()
+    if not cleaned:
+        return None
+    return f'"{cleaned}"*'
+
+
 @app.get("/api/documents/search")
-def search_documents(q: str = Query(...)) -> list[dict[str, int | str | None]]:
+def search_documents(q: str = Query(...)) -> list[dict[str, int | str | float | None]]:
     with closing(sqlite3.connect(DATABASE_PATH)) as connection:
         connection.row_factory = sqlite3.Row
+
+        if FTS5_AVAILABLE:
+            match_query = build_fts5_match_query(q)
+            if match_query is None:
+                return []
+            try:
+                rows = connection.execute(
+                    """
+                    SELECT id, document_id, filename, content, created_at, rank
+                    FROM (
+                        SELECT
+                            d.id AS id,
+                            d.document_id AS document_id,
+                            d.filename AS filename,
+                            d.content AS content,
+                            d.created_at AS created_at,
+                            -bm25(documents_fts, 10.0, 1.0) AS rank,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY d.document_id
+                                ORDER BY d.id DESC
+                            ) AS newest_match_for_document
+                        FROM documents_fts
+                        JOIN documents d ON d.id = documents_fts.rowid
+                        WHERE documents_fts MATCH ?
+                    )
+                    WHERE newest_match_for_document = 1
+                    ORDER BY rank DESC
+                    LIMIT 25
+                    """,
+                    (match_query,),
+                ).fetchall()
+                return [dict(row) for row in rows]
+            except sqlite3.OperationalError as error:
+                logger.warning(
+                    "FTS5 search query failed, falling back to substring matching: %s",
+                    error,
+                )
+
         rows = connection.execute(
             """
-            SELECT id, document_id, filename, content, created_at
+            SELECT id, document_id, filename, content, created_at, NULL AS rank
             FROM documents
             WHERE content LIKE ? COLLATE NOCASE
             ORDER BY created_at DESC, id DESC
+            LIMIT 25
             """,
             (f"%{q}%",),
         ).fetchall()
@@ -390,7 +497,7 @@ def get_document_index(document_id: str) -> dict[str, int | str | None]:
         connection.row_factory = sqlite3.Row
         row = connection.execute(
             """
-            SELECT id, document_id, filename, content, created_at
+            SELECT id, document_id, version_id, filename, content, created_at
             FROM documents
             WHERE document_id = ?
             ORDER BY created_at DESC, id DESC
