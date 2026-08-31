@@ -99,8 +99,14 @@ public class AiChatController(
         // Techniques"). Deliberately placed after sticky context, never before
         // it — a real follow-up in an ongoing document conversation must not get
         // derailed just because it happens to repeat a word from that document's
-        // own name.
-        if (explicitDocument == null)
+        // own name. Also skipped outright for a question that clearly isn't about
+        // a document at all (tasks/calendar/announcements/dashboard/admin-info) —
+        // a real bug found live: "what is the role of this user" shares "role"
+        // and "user" with several unrelated document titles (Access Rights
+        // Matrix, User Security Policy, ...) purely by coincidence, which kept
+        // sending every admin-info question into a document-disambiguation
+        // prompt before the AdminInfo intent below ever got a chance to run.
+        if (explicitDocument == null && !LooksLikeNonDocumentTopic(question))
         {
             var wordOverlapCandidates = FindWordOverlapCandidates(question, accessibleDocuments);
             if (wordOverlapCandidates.Count > 1)
@@ -521,7 +527,7 @@ public class AiChatController(
     private static bool LooksLikeAdminInfoQuestion(string question)
     {
         bool Has(params string[] values) => values.Any(value => question.Contains(value, StringComparison.OrdinalIgnoreCase));
-        if (Has("admin panel", "system admin", "administrator", "administrators", "all users", "list users", "list of users", "page access role"))
+        if (Has("admin panel", "admin info", "system admin", "administrator", "administrators", "all users", "list users", "list of users", "page access role"))
             return true;
         var mentionsGroupOrRole = Has("group", "groups", "team", "teams", "role", "roles");
         var mentionsPeople = Has("user", "users", "member", "members", "who is", "who are", "who's", "list of", "employees", "staff", "people");
