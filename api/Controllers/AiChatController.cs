@@ -18,6 +18,7 @@ public class AiChatController(
     AiChatSettingsService settingsService,
     UserGoogleCalendarService calendarService,
     OcrIndexService ocrIndexService,
+    AuditService auditService,
     ILogger<AiChatController> logger) : BaseController
 {
     private const string AccessDeniedAnswer = "You should get access first. Call your system administrator to provide you with the correct access so I can answer your question.";
@@ -59,7 +60,27 @@ public class AiChatController(
         }
         var accessibleById = accessibleDocuments.ToDictionary(d => d.DocumentId.ToString(), StringComparer.OrdinalIgnoreCase);
 
-        var explicitDocument = FindExplicitDocument(question, accessibleDocuments);
+        var explicitMatch = ResolveExplicitDocument(question, accessibleDocuments);
+        if (explicitMatch.AmbiguousCandidates.Count > 1)
+        {
+            // More than one accessible document shares this name (a real case:
+            // two documents both titled essentially "Backup Process Techniques").
+            // Guessing which one silently would risk answering from the wrong
+            // document without the user ever knowing — ask instead, and give the
+            // full folder path for each (reusing the same audit-log path resolver
+            // used elsewhere in the app) so a same-named document in a different
+            // folder is easy to tell apart.
+            var candidateLines = new List<string>();
+            foreach (var candidate in explicitMatch.AmbiguousCandidates)
+            {
+                var path = await auditService.ResolveFolderPathAsync(candidate.FolderId);
+                candidateLines.Add($"- **{candidate.Title}** (Doc ID: {candidate.OriginalDocumentId ?? "none"}) — {path}");
+            }
+            var clarification = "I found more than one document you can access with that name:\n" + string.Join("\n", candidateLines)
+                + "\n\nPlease tell me which one you mean — its Doc ID is the most reliable way.";
+            return Ok(new { success = true, data = new { answer = clarification, accessDenied = false, sources = Array.Empty<object>() } });
+        }
+        var explicitDocument = explicitMatch.Document;
 
         // Sticky document context: once a document has been established in this
         // conversation, every later question stays about that same document by
@@ -438,17 +459,36 @@ public class AiChatController(
     /// matching the normalization the rest of the DMS already uses for Doc ID
     /// search). Only ever searches the caller-supplied, already
     /// permission-checked <paramref name="documents"/> list.
+    ///
+    /// A Doc ID match always wins outright and is never ambiguous — Doc IDs are
+    /// enforced unique across the DMS (a case-insensitive database constraint).
+    /// A filename/title match has no such guarantee: two accessible documents can
+    /// genuinely share the same or a near-identical name (a real case in this
+    /// DMS). When more than one matches that way, this deliberately returns no
+    /// single answer — the caller must ask the user to disambiguate rather than
+    /// silently guessing which document to answer from.
     /// </summary>
-    private static ChatDocument? FindExplicitDocument(string text, IEnumerable<ChatDocument> documents)
+    private static ExplicitDocumentMatch ResolveExplicitDocument(string text, IEnumerable<ChatDocument> documents)
     {
+        var documentList = documents as IReadOnlyCollection<ChatDocument> ?? documents.ToList();
         var normalizedText = NormalizeDocId(text);
-        return documents
+
+        var docIdMatch = documentList.FirstOrDefault(document =>
+            !string.IsNullOrWhiteSpace(document.OriginalDocumentId) && document.OriginalDocumentId.Length >= 4
+            && normalizedText.Contains(NormalizeDocId(document.OriginalDocumentId)));
+        if (docIdMatch != null) return new ExplicitDocumentMatch(docIdMatch, []);
+
+        var nameMatches = documentList
             .Where(document => (!string.IsNullOrWhiteSpace(document.FileName) && text.Contains(document.FileName, StringComparison.OrdinalIgnoreCase))
-                || text.Contains(document.Title, StringComparison.OrdinalIgnoreCase)
-                || (!string.IsNullOrWhiteSpace(document.OriginalDocumentId) && document.OriginalDocumentId.Length >= 4
-                    && normalizedText.Contains(NormalizeDocId(document.OriginalDocumentId))))
-            .OrderByDescending(document => Math.Max(document.FileName?.Length ?? 0, Math.Max(document.Title.Length, document.OriginalDocumentId?.Length ?? 0)))
-            .FirstOrDefault();
+                || text.Contains(document.Title, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return nameMatches.Count switch
+        {
+            0 => new ExplicitDocumentMatch(null, []),
+            1 => new ExplicitDocumentMatch(nameMatches[0], []),
+            _ => new ExplicitDocumentMatch(null, nameMatches),
+        };
     }
 
     // Strips everything but letters/digits down to single spaces and lowercases —
@@ -678,6 +718,7 @@ public class AiChatController(
 
     private static string Limit(string? value, int length) => string.IsNullOrWhiteSpace(value) ? "" : value.Length <= length ? value : value[..length] + "…";
     private sealed record ChatDocument(Guid DocumentId, Guid FolderId, string Title, string? FileName, string? OriginalDocumentId, string? Description, string Status, Guid? CurrentVersionId);
+    private sealed record ExplicitDocumentMatch(ChatDocument? Document, List<ChatDocument> AmbiguousCandidates);
     private sealed record ChatTask(Guid TaskId, Guid? DocumentId, string Title, string? Description, string Status, string? RiskSeverity, DateTime? DueDate, bool IsAssignedToMe, bool IsCreatedByMe);
     private sealed record ChatCalendarEvent(string Title, string Date, string? LocationOrPhase, string? Standard, string? Details, string Source);
     private sealed record ChatAnnouncement(string Title, string Message, DateTime CreatedAt);
