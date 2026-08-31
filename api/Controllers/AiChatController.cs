@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using DMS.Api.Data;
+using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -139,13 +140,6 @@ public class AiChatController(
             searchTerms = queryUnderstanding is { SearchTerms.Count: > 0 }
                 ? queryUnderstanding.SearchTerms.Take(6).ToArray()
                 : ExtractSearchTerms(question).Take(8).ToArray();
-            // Temporary diagnostic — remove once the admin-info detection issue
-            // is confirmed fixed live. Shows exactly which path decided intent
-            // and what it decided, since static code review alone couldn't
-            // explain a real, repeated live failure.
-            logger.LogInformation(
-                "AiChat intent diagnostic: question={Question} usedLlm={UsedLlm} keywordAdminInfo={KeywordAdminInfo} finalAdminInfo={FinalAdminInfo} finalIntent={FinalIntent}",
-                question, queryUnderstanding != null, LooksLikeAdminInfoQuestion(question), intent.AdminInfo, intent);
         }
         else
         {

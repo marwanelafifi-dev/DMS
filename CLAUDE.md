@@ -1,5 +1,32 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 66 (2026-08-31) — Critical Fix: a Missing `using` Directive Silently Blocked Every AI Assistant Fix Since Session 65
+
+**Status:** Complete in code. Rebuild `api` (frontend unaffected). No database migration is required.
+
+### The real root cause of every "the fix didn't work" report after Session 65
+
+- Every AI Assistant fix made after (and including) the admin-info/Admin Panel awareness feature — sticky-context punctuation tolerance, document disambiguation, word-overlap detection, the admin-editable system prompts, the `AdminInfo` intent category itself, and several header-visibility attempts — was committed as correct, reviewed code, but **never actually ran**, because the API container had silently been serving a stale, previously-successful build image on every `docker compose up -d`/`--force-recreate` since the commit that introduced `DescribeRoleGrants`.
+- Root cause, found only after asking for the actual `docker compose build --no-cache api` output (a plain `up -d --force-recreate` reports "Running" even when the underlying image failed to rebuild and Docker silently reused the last good one): `api/Controllers/AiChatController.cs`'s `DescribeRoleGrants(DmsPageAccessRole role)` referenced `DmsPageAccessRole` directly with no corresponding `using DMS.Api.Models;` in the file — every other reference to page-access-role data in this controller went through `var`/type inference, so this was the only place that needed the explicit import. Compiler error: `CS0246: The type or namespace name 'DmsPageAccessRole' could not be found`.
+- This explains the entire string of "still not fixed" reports: six commits' worth of genuinely correct code (sticky-context punctuation normalization, `AdminInfo` intent detection and its Full-Access gate, `BuildAdminInfoLinesAsync`, the header inline-style fix, etc.) had been sitting in the repository the whole time without ever being compiled into a running image.
+- Fixed by adding `using DMS.Api.Models;` to `AiChatController.cs`. Verified via a brace/paren balance check (191/191 braces, 629/629 parens) since the .NET SDK is unavailable on this Windows workstation; a full local `dotnet build` was not possible, so the true confirmation is the next Ubuntu rebuild actually completing without error.
+- Removed the temporary diagnostic logging added earlier in Session 65 while searching for this bug (`logger.LogInformation("AiChat intent diagnostic: ...")`) — no longer needed now that the real cause is a compile failure, not a logic bug.
+
+### Lesson for future debugging in this codebase
+
+- `docker compose up -d --force-recreate` reporting a container as "Running" is **not** proof that the most recent code actually built. If a fix appears to have no effect after a rebuild, ask for the literal output of `docker compose build --no-cache <service>` (or `docker compose build <service>` without `--force-recreate` on `up`) before re-investigating the logic itself — a silent stale-image reuse looks identical to a real logic bug from the outside.
+
+### Files modified
+
+- `api/Controllers/AiChatController.cs`
+
+### Verification
+
+- Brace/paren balance check: clean.
+- Not yet verified against a real `dotnet publish`/Docker build — the .NET SDK and Docker are unavailable on this Windows workstation. The user must rebuild `api` on Ubuntu (`docker compose build api`, watching for a clean `dotnet publish` completion with no `error CS...` lines) and confirm the build succeeds before retesting any AI Assistant behavior from Session 65, since none of that session's fixes have ever actually run in a deployed container up to this point.
+
+---
+
 ## Session 65 (2026-08-31) — AI Assistant: Doc ID Resolution Fix and LLM Query Understanding
 
 **Status:** Complete in code, including four real bugs found live after deploying the sticky-context design ("Sources dropped from conversation history", "Hallucinated answer content", "Assistant hidden behind the document preview", and "Stuck sticky context couldn't be overridden by naming a document with different punctuation"), three proactive quality enhancements requested afterward ("Multi-chunk retrieval within a document", "Same-name document disambiguation", and "Word-overlap document disambiguation"), a chat UI redesign, and a new admin-editable system-prompts feature. Rebuild `api` and `web` together. No database migration is required (the new prompts feature reuses the existing `dms_app_settings` key/value table). Verified by manual code review plus balanced brace/paren counts and a clean `npx tsc --noEmit` (no .NET SDK/Docker on this Windows workstation) — the Doc ID fix itself was confirmed working live by the user on Ubuntu mid-session; nothing from the sticky-context work onward has been re-tested live yet.
