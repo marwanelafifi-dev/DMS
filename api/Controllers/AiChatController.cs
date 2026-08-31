@@ -142,8 +142,27 @@ public class AiChatController(
         }
         else
         {
-            intent = new ChatIntent(false, false, false, false, false);
+            intent = new ChatIntent(false, false, false, false, false, false);
             searchTerms = [];
+        }
+
+        // System administration data (users, groups, roles) is Full-Access-only,
+        // regardless of any per-folder grant — the same "Full Access acts as admin
+        // everywhere" boundary every other admin-only AI Assistant capability in
+        // this controller already uses. Checked up front and denied explicitly
+        // rather than silently omitting the category, since a Full-Access-only
+        // question falling through to an unrelated document search would be far
+        // more confusing than a clear "you need Full Access" answer.
+        var canViewAdminInfo = false;
+        if (explicitDocument == null && intent.AdminInfo)
+        {
+            var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            if (pageAccessRole?.BypassFolderPermissions != true)
+            {
+                const string adminInfoDenied = "Only a Full Access role can view system administration data (users, groups, roles) through the assistant. Contact your system administrator if you need this.";
+                return Ok(new { success = true, data = new { answer = adminInfoDenied, accessDenied = true, sources = Array.Empty<object>() } });
+            }
+            canViewAdminInfo = true;
         }
 
         List<OcrRow> ocrRows;
@@ -263,9 +282,10 @@ public class AiChatController(
         IEnumerable<ChatCalendarEvent> contextCalendar = explicitDocument == null && intent.Calendar ? calendarEvents : Enumerable.Empty<ChatCalendarEvent>();
         IEnumerable<ChatAnnouncement> contextAnnouncements = explicitDocument == null && intent.Announcements ? announcements : Enumerable.Empty<ChatAnnouncement>();
         var includeDashboard = explicitDocument == null && intent.Dashboard;
-        var contextText = BuildContext(question, allowedRows, accessibleById, contextTasks, contextCalendar, contextAnnouncements, dashboard, includeDashboard);
+        List<string> adminInfoLines = canViewAdminInfo ? await BuildAdminInfoLinesAsync(cancellationToken) : [];
+        var contextText = BuildContext(question, allowedRows, accessibleById, contextTasks, contextCalendar, contextAnnouncements, dashboard, includeDashboard, adminInfoLines);
         var answer = await GenerateAnswerAsync(question, contextText, recentConversation, prompts.AnswerGenerationPrompt, cancellationToken)
-            ?? BuildGroundedFallback(allowedRows, accessibleById, contextTasks, contextCalendar, contextAnnouncements, dashboard, includeDashboard);
+            ?? BuildGroundedFallback(allowedRows, accessibleById, contextTasks, contextCalendar, contextAnnouncements, dashboard, includeDashboard, adminInfoLines);
 
         if (string.IsNullOrWhiteSpace(answer) && deniedMatch)
             return Ok(new { success = true, data = new { answer = AccessDeniedAnswer, accessDenied = true, sources = Array.Empty<object>() } });
@@ -354,7 +374,7 @@ public class AiChatController(
                     .ToList()
                 : new List<string>();
             bool GetBool(string name) => TryGetPropertyCaseInsensitive(root, name, out var element) && element.ValueKind == JsonValueKind.True;
-            return new QueryUnderstanding(searchTerms, GetBool("documents"), GetBool("tasks"), GetBool("calendar"), GetBool("announcements"), GetBool("dashboard"));
+            return new QueryUnderstanding(searchTerms, GetBool("documents"), GetBool("tasks"), GetBool("calendar"), GetBool("announcements"), GetBool("dashboard"), GetBool("adminInfo"));
         }
         catch (JsonException exception)
         {
@@ -389,8 +409,8 @@ public class AiChatController(
 
     private static ChatIntent NormalizeIntent(QueryUnderstanding understanding)
     {
-        var intent = new ChatIntent(understanding.Documents, understanding.Tasks, understanding.Calendar, understanding.Announcements, understanding.Dashboard);
-        return intent.Documents || intent.Tasks || intent.Calendar || intent.Announcements || intent.Dashboard
+        var intent = new ChatIntent(understanding.Documents, understanding.Tasks, understanding.Calendar, understanding.Announcements, understanding.Dashboard, understanding.AdminInfo);
+        return intent.Documents || intent.Tasks || intent.Calendar || intent.Announcements || intent.Dashboard || intent.AdminInfo
             ? intent
             : intent with { Documents = true };
     }
@@ -457,7 +477,10 @@ public class AiChatController(
         return Has("task", "PCAR", "assigned to me", "created by me", "due date", "overdue",
             "calendar", "meeting", "appointment", "schedule", "audit date", "event",
             "announcement", "notice", "company news",
-            "dashboard", "my summary", "my overview");
+            "dashboard", "my summary", "my overview",
+            "admin panel", "administrator", "administrators", "system admin", "user group", "user groups",
+            "group members", "members of", "who is in", "who are in", "list of users", "list users", "all users",
+            "page access role", "access role", "user role", "user roles");
     }
 
     /// <summary>
@@ -625,10 +648,13 @@ public class AiChatController(
         var calendar = Has("calendar", "meeting", "appointment", "schedule", "audit date", "event");
         var announcements = Has("announcement", "notice", "company news");
         var dashboard = Has("dashboard", "my summary", "my overview");
+        var adminInfo = Has("admin panel", "administrator", "administrators", "system admin", "user group", "user groups",
+            "group members", "members of", "who is in", "who are in", "list of users", "list users", "all users",
+            "page access role", "access role", "user role", "user roles");
         var documents = Has("file", "document", "OCR", "in-file", "policy", "procedure", "plan", "report", "register", "revision", "doc id", "doc no")
             || Regex.IsMatch(question, @"\.(pdf|docx?|docm|xlsx?|xlsm|pptx?|pptm|txt|csv|png|jpe?g|tiff?)\b", RegexOptions.IgnoreCase)
-            || (!tasks && !calendar && !announcements && !dashboard);
-        return new ChatIntent(documents, tasks, calendar, announcements, dashboard);
+            || (!tasks && !calendar && !announcements && !dashboard && !adminInfo);
+        return new ChatIntent(documents, tasks, calendar, announcements, dashboard, adminInfo);
     }
 
     private static string BuildRecentConversation(List<AiChatTurn>? history)
@@ -639,7 +665,7 @@ public class AiChatController(
         return Limit(string.Join("\n", lines), 2000);
     }
 
-    private static string BuildContext(string question, IEnumerable<OcrRow> rows, IReadOnlyDictionary<string, ChatDocument> documents, IEnumerable<ChatTask> tasks, IEnumerable<ChatCalendarEvent> calendarEvents, IEnumerable<ChatAnnouncement> announcements, ChatDashboard dashboard, bool includeDashboard)
+    private static string BuildContext(string question, IEnumerable<OcrRow> rows, IReadOnlyDictionary<string, ChatDocument> documents, IEnumerable<ChatTask> tasks, IEnumerable<ChatCalendarEvent> calendarEvents, IEnumerable<ChatAnnouncement> announcements, ChatDashboard dashboard, bool includeDashboard, IEnumerable<string> adminInfoLines)
     {
         var builder = new StringBuilder();
         foreach (var row in rows)
@@ -655,7 +681,69 @@ public class AiChatController(
             builder.AppendLine($"CALENDAR [{calendarEvent.Source}] {calendarEvent.Title}; Date/start: {calendarEvent.Date}; Location/phase: {calendarEvent.LocationOrPhase}; Standard: {calendarEvent.Standard}; Details: {calendarEvent.Details}");
         foreach (var announcement in announcements)
             builder.AppendLine($"ANNOUNCEMENT [{announcement.Title}] Posted: {announcement.CreatedAt:O}; Message: {announcement.Message}");
+        foreach (var line in adminInfoLines)
+            builder.AppendLine(line);
         return Limit(builder.ToString(), 45000);
+    }
+
+    /// <summary>
+    /// System administration data (roles, users, groups/sub-groups) for the AI
+    /// Assistant's "adminInfo" context category. The caller must have already
+    /// confirmed the signed-in user holds a Full Access role before calling this
+    /// — it is never filtered per-caller beyond that single blanket check, since
+    /// this is exactly what Admin Panel → Users/Groups/Roles already shows any
+    /// Full Access user in full.
+    /// </summary>
+    private async Task<List<string>> BuildAdminInfoLinesAsync(CancellationToken cancellationToken)
+    {
+        var lines = new List<string>();
+
+        var roles = await context.PageAccessRoles.AsNoTracking()
+            .OrderBy(role => role.Role)
+            .ToListAsync(cancellationToken);
+        foreach (var role in roles)
+            lines.Add($"ROLE [{role.Role}] Grants: {DescribeRoleGrants(role)}.");
+
+        var users = await context.Users.AsNoTracking()
+            .OrderBy(user => user.FullName)
+            .Take(300)
+            .Select(user => new { user.FullName, user.Email, user.Role, user.IsActive })
+            .ToListAsync(cancellationToken);
+        foreach (var user in users)
+            lines.Add($"USER [{user.FullName}] Email: {user.Email}; Role: {user.Role ?? "No Access"}; Status: {(user.IsActive ? "Active" : "Inactive")}.");
+
+        var groups = await context.Groups.AsNoTracking()
+            .OrderBy(group => group.Name)
+            .ToListAsync(cancellationToken);
+        var memberRows = await context.GroupMembers.AsNoTracking()
+            .Include(member => member.User)
+            .Select(member => new { member.GroupId, UserName = member.User!.FullName })
+            .ToListAsync(cancellationToken);
+        var subgroupRows = await context.GroupSubgroups.AsNoTracking()
+            .Include(subgroup => subgroup.ChildGroup)
+            .Select(subgroup => new { subgroup.ParentGroupId, ChildName = subgroup.ChildGroup!.Name })
+            .ToListAsync(cancellationToken);
+        foreach (var group in groups)
+        {
+            var members = memberRows.Where(member => member.GroupId == group.GroupId).Select(member => member.UserName).ToList();
+            var subgroups = subgroupRows.Where(subgroup => subgroup.ParentGroupId == group.GroupId).Select(subgroup => subgroup.ChildName).ToList();
+            lines.Add($"GROUP [{group.Name}] Description: {group.Description ?? "(none)"}; Members: {(members.Count > 0 ? string.Join(", ", members) : "none")}; Sub-groups: {(subgroups.Count > 0 ? string.Join(", ", subgroups) : "none")}.");
+        }
+
+        return lines;
+    }
+
+    // Reflects over every boolean flag on the role (except IsBuiltIn, an
+    // internal delete-protection marker, not a real capability) so a newly
+    // added permission flag automatically shows up here with no separate list
+    // to keep in sync.
+    private static string DescribeRoleGrants(DmsPageAccessRole role)
+    {
+        var grants = typeof(DmsPageAccessRole).GetProperties()
+            .Where(property => property.PropertyType == typeof(bool) && property.Name != "IsBuiltIn" && (bool)property.GetValue(role)!)
+            .Select(property => Regex.Replace(property.Name, "(?<!^)([A-Z])", " $1").Trim())
+            .ToList();
+        return grants.Count > 0 ? string.Join(", ", grants) : "no special capabilities";
     }
 
     // Chunking parameters for ExtractRelevantExcerpt. Overlap exists so a
@@ -750,10 +838,11 @@ public class AiChatController(
             : keyword + "s";
     }
 
-    private static string BuildGroundedFallback(IEnumerable<OcrRow> rows, IReadOnlyDictionary<string, ChatDocument> documents, IEnumerable<ChatTask> tasks, IEnumerable<ChatCalendarEvent> calendarEvents, IEnumerable<ChatAnnouncement> announcements, ChatDashboard dashboard, bool includeDashboard)
+    private static string BuildGroundedFallback(IEnumerable<OcrRow> rows, IReadOnlyDictionary<string, ChatDocument> documents, IEnumerable<ChatTask> tasks, IEnumerable<ChatCalendarEvent> calendarEvents, IEnumerable<ChatAnnouncement> announcements, ChatDashboard dashboard, bool includeDashboard, IEnumerable<string> adminInfoLines)
     {
         var taskList = tasks.ToList();
         var rowList = rows.ToList();
+        var adminInfoList = adminInfoLines.ToList();
         var parts = new List<string>();
         if (includeDashboard)
             parts.Add($"Your dashboard summary:\n- Open assigned tasks: {dashboard.OpenAssignedTasks}\n- Overdue assigned tasks: {dashboard.OverdueAssignedTasks}\n- Open tasks you created: {dashboard.OpenCreatedTasks}\n- Accessible documents: {dashboard.AccessibleDocuments}");
@@ -768,6 +857,8 @@ public class AiChatController(
             parts.Add("Upcoming calendar items:\n" + string.Join("\n", calendarEvents.Take(5).Select(item => $"• {item.Title} — {item.Date}")));
         if (announcements.Any())
             parts.Add("Latest announcements:\n" + string.Join("\n", announcements.Take(3).Select(item => $"• {item.Title}: {Limit(item.Message, 200)}")));
+        if (adminInfoList.Count > 0)
+            parts.Add("Admin info:\n" + string.Join("\n", adminInfoList.Take(30).Select(line => $"• {line}")));
         return string.Join("\n\n", parts);
     }
 
@@ -787,8 +878,8 @@ public class AiChatController(
     private sealed record ChatAnnouncement(string Title, string Message, DateTime CreatedAt);
     private sealed record ChatDashboard(int OpenAssignedTasks, int OverdueAssignedTasks, int OpenCreatedTasks, int AccessibleDocuments);
     private sealed record ChatSource(string Type, string Id, string Title);
-    private sealed record ChatIntent(bool Documents, bool Tasks, bool Calendar, bool Announcements, bool Dashboard);
-    private sealed record QueryUnderstanding(List<string> SearchTerms, bool Documents, bool Tasks, bool Calendar, bool Announcements, bool Dashboard);
+    private sealed record ChatIntent(bool Documents, bool Tasks, bool Calendar, bool Announcements, bool Dashboard, bool AdminInfo);
+    private sealed record QueryUnderstanding(List<string> SearchTerms, bool Documents, bool Tasks, bool Calendar, bool Announcements, bool Dashboard, bool AdminInfo);
     private sealed record OcrRow(
         int Id,
         [property: System.Text.Json.Serialization.JsonPropertyName("document_id")] string? DocumentId,

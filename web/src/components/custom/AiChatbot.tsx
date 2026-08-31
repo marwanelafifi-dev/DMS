@@ -14,6 +14,10 @@ const welcome: ChatMessage = {
 
 export function AiChatbot() {
   const [open, setOpen] = useState(false);
+  // Draws attention to the assistant (pulsing ring + label) until the user
+  // has actually opened it once in this session — no point still trying to
+  // grab attention once they've already found it.
+  const [hasOpened, setHasOpened] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
@@ -71,13 +75,13 @@ export function AiChatbot() {
       {open && (
         <section className="chat-panel-in fixed bottom-24 right-4 z-[75] flex h-[min(720px,calc(100vh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)] ring-1 ring-black/[0.03] dark:border-white/10 dark:bg-slate-900" aria-label="DMS AI Assistant">
           <header className="relative flex items-center gap-3 overflow-hidden bg-gradient-to-br from-[#1f2c5c] via-[#27366f] to-[#3a5aa0] px-5 py-4 text-white">
-            <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+            <div className="pointer-events-none absolute -right-2 -top-16 h-20 w-20 rounded-full bg-white/[0.06] blur-2xl" aria-hidden />
             <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
               <span className="absolute inset-0 rounded-xl bg-white/10" aria-hidden />
               <Sparkles className="h-5 w-5" />
             </span>
             <div className="relative min-w-0 flex-1">
-              <h2 className="text-sm font-semibold tracking-wide">DMS AI Assistant</h2>
+              <h2 className="text-sm font-semibold tracking-wide text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.3)]">DMS AI Assistant</h2>
               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-blue-100/90">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60" />
@@ -143,7 +147,22 @@ export function AiChatbot() {
         </section>
       )}
 
-      <button onClick={() => setOpen((value) => !value)} className="fixed bottom-5 right-5 z-[75] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-lg shadow-[#232f6b]/30 transition hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30" aria-label={open ? 'Close AI assistant' : 'Open AI assistant'} aria-expanded={open}>{open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}</button>
+      <div className="group fixed bottom-5 right-5 z-[75] flex items-center gap-3">
+        {!open && !hasOpened && (
+          <span className="chat-message-in hidden select-none items-center rounded-full bg-white px-3.5 py-2 text-xs font-medium text-[#27366f] shadow-lg ring-1 ring-black/5 sm:flex dark:bg-slate-800 dark:text-blue-200">
+            Need help? Ask the AI Assistant
+          </span>
+        )}
+        <button
+          onClick={() => setOpen((value) => { const next = !value; if (next) setHasOpened(true); return next; })}
+          className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-lg shadow-[#232f6b]/30 transition hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30"
+          aria-label={open ? 'Close AI assistant' : 'Open AI assistant'}
+          aria-expanded={open}
+        >
+          {!open && !hasOpened && <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-[#3a5aa0]/50" aria-hidden />}
+          {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+        </button>
+      </div>
     </>
   );
 }
