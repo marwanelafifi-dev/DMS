@@ -1,5 +1,37 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 65 (2026-08-31) — AI Assistant: Doc ID Resolution Fix and LLM Query Understanding
+
+**Status:** Complete in code. Rebuild `api`; no database migration is required. Not yet built or run — same environment limitation as Session 64 (no .NET SDK, no Python interpreter, Docker Desktop not running on this Windows workstation). Verified by manual code review plus a balanced brace/paren count over the whole file; needs a real Ubuntu rebuild and live test before considering it done.
+
+### Real bug found via live testing: exact Doc ID questions never resolved
+
+- Reported live: asking the assistant "Doc id SWS-25120007" (a real, accessible document's own Doc ID, confirmed present in the OCR Document Search page) returned "not found in the authorized context provided" with three completely unrelated documents listed as sources — while asking by the exact file name a moment later worked correctly.
+- Root cause: `AiChatController`'s exact-file resolver (`explicitDocument`) only ever matched a question's text against `FileName`/`Title` substrings — it never checked `OriginalDocumentId` (the Doc ID field), even though that field was already loaded into `ChatDocument` and already permission-checked. A Doc-ID-only question fell through to the broad keyword search instead, where the generic word "Doc" (present in many unrelated documents' OCR text) dominated the Top-3 ranking and buried the actual target.
+- Fixed by extracting the matching logic into a shared `FindExplicitDocument(text, documents)` helper that also matches `OriginalDocumentId`, tolerant of spacing/hyphen/case differences (normalizing both sides before comparing) to match the tolerance the rest of the DMS already applies to Doc ID search (Session 52). Applied to both the primary resolution and the pronoun/history-based follow-up fallback added in Session 64.
+- Added a second, narrower fix for the "asked about a Doc ID that doesn't exist/isn't accessible" case: a question containing an explicit labeling phrase ("Doc ID", "doc no.", "document number") together with a Doc-ID-shaped token (`SWS-25120007`-style — short letter prefix, hyphen, 4+ digits) that still doesn't resolve now returns the same "couldn't find that exact file... contact your administrator" answer instead of falling through to the noisy broad search. Deliberately requires the labeling phrase, not just any hyphenated alphanumeric token, so ordinary standard references like "ISO-9001"/"ISO-27001" (extremely common in this DMS's own domain) don't get misread as an unresolved Doc ID.
+
+### LLM-driven query understanding (replacing keyword-heuristic search terms and intent)
+
+- Per explicit request to make the assistant "more smart": search terms for the broad/keyword path were extracted by a dumb whitespace/punctuation split plus a stopword list (`ExtractSearchTerms`), and which context categories to include (documents/tasks/calendar/announcements/dashboard) was decided by literal keyword matching (`DetectIntent`, e.g. "has the word 'task'" → task intent). Both missed obviously-relevant content whenever a question was phrased differently than the underlying document/category.
+- Added `AnalyzeQueryAsync`: one small, cheap LLM call (reusing the same configured provider(s) as the main answer, via a new shared `CallAiProviderAsync` helper extracted from `GenerateAnswerAsync`) that rephrases the question into up to 6 better full-text search phrases (synonyms/likely alternate wording, not just literal words) and returns which of the five context categories are actually relevant, as a single JSON object.
+- This call only ever sees the user's own question and their own recent-conversation text — never any document/task/calendar content — so it introduces no new permission surface.
+- Runs only when the question does **not** already resolve to one exact file (`explicitDocument == null`) — every existing use of `intent`/`searchTerms` was already gated on that condition, so exact-file questions (including the Doc ID fix above) pay zero extra latency/cost for this step.
+- Falls back to the original keyword heuristics (`DetectIntent`/`ExtractSearchTerms`) whenever no AI provider is configured, the call fails, or the response can't be parsed as valid JSON — this must never break the existing search-only mode. The same "if nothing else matched, default to documents" safety net from the old heuristic is preserved (`NormalizeIntent`).
+
+### Files modified
+
+- `api/Controllers/AiChatController.cs`
+- `CLAUDE.md`
+
+### Verification
+
+- Manual code review only — brace/paren counts balanced (133/133, 391/391) across the whole file; no local `dotnet build` available on this workstation.
+- Not yet rebuilt or tested against the live stack. Rebuild `api` on Ubuntu (`docker compose build api && docker compose up -d api`), then re-test the exact screenshot scenario ("Doc id SWS-25120007" should now resolve directly, not list unrelated sources) and a paraphrased broad question (e.g. asking about a document's topic using words that don't appear in the question but are semantically related) to confirm the query-understanding step is actually improving recall.
+- Also worth confirming via `docker compose logs api` that `AnalyzeQueryAsync` isn't silently failing to parse the model's JSON response on the configured provider (Anthropic/OpenAI-compatible) — the "AI provider {Provider} failed" / "Could not parse AI query-understanding response" warnings would show this.
+
+---
+
 ## Session 64 (2026-08-31) — AI Assistant: Ranked Search, On-Demand Indexing, Session Memory
 
 **Status:** Complete in code, with one real bug found and fixed from live Ubuntu logs after first deployment (see below). Rebuild `ocr-rag` again to pick up the fix; no database migration is required. This Windows workstation has no .NET SDK, no Python interpreter, and Docker Desktop was not running, so all verification was either manual code review or done live against the user's own Ubuntu deployment — see Verification.
