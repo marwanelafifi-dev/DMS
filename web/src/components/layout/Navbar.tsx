@@ -1,6 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { CircleHelp, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useDarkMode } from '../../hooks/useDarkMode';
 import { useSearchSuggestions } from '../../hooks/useSearchSuggestions';
@@ -9,6 +9,7 @@ import { SearchSuggestionsDropdown } from '../custom/SearchSuggestionsDropdown';
 import { NotificationsBell } from '../custom/NotificationsBell';
 import type { ParsedDocument } from '../../services/doclingApi';
 import { roleLabel } from '../../utils/roleLabels';
+import { usePageGuide } from '../page-guide/PageGuideProvider';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -18,6 +19,7 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
+  const { openCurrentGuide, hasCurrentGuide } = usePageGuide();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -133,6 +135,16 @@ export function Navbar({ onMenuClick: _onMenuClick }: NavbarProps) {
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+
+          <button
+            onClick={openCurrentGuide}
+            disabled={!hasCurrentGuide}
+            className="rounded-md p-2 text-[#52627a] hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label="Open page guide"
+            title="Open page guide"
+          >
+            <CircleHelp className="h-5 w-5" />
           </button>
 
           <NotificationsBell />
