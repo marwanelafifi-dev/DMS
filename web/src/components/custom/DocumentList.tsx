@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronLeft, ChevronRight, Copy, Download, Eye, FileEdit, FilePen, FileText, Folder as FolderIcon, FolderInput, FolderPlus, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Download, Eye, FileEdit, FilePen, FileText, Folder as FolderIcon, FolderInput, FolderPlus, Link2, Mail, MoreVertical, Pencil, PencilLine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
 import type { RolePermissionFlags } from '../../utils/api';
 import { formatDateTime } from '../../utils/formatters';
@@ -85,14 +85,28 @@ export interface LibraryFolderRow {
   tags?: string[];
 }
 
+export interface LibraryShortcutRow {
+  shortcutId: string;
+  targetType: 'folder' | 'document';
+  targetId: string;
+  name: string;
+  description?: string | null;
+}
+
+type LibraryLinkTarget = { type: 'folder' | 'document'; id: string; name: string };
+
 interface DocumentListProps {
   documents: MockLibraryDocument[];
   folders?: LibraryFolderRow[];
+  shortcuts?: LibraryShortcutRow[];
   selectedFolderIds?: Set<string>;
   onSelectedFolderIdsChange?: (ids: Set<string>) => void;
   onFolderOpen?: (folderId: string) => void;
   onFolderAction?: (action: 'rename' | 'edit' | 'copy' | 'cut' | 'delete' | 'download' | 'permissions', folderId: string) => void;
   onCreateSubfolder?: (parentFolderId: string) => void;
+  onCreateShortcut?: (target: LibraryLinkTarget) => void;
+  onShareLink?: (target: LibraryLinkTarget, mode: 'copy' | 'email') => void;
+  onDeleteShortcut?: (shortcutId: string) => void;
   // Per-folder, because a subfolder's overrides can differ from the folder being
   // browsed. `undefined` means "not loaded yet" and is treated as "not allowed",
   // so an action is never enabled before the server has confirmed it.
@@ -112,6 +126,8 @@ interface DocumentListProps {
   // The effective permissions for the folder currently being browsed — every
   // row here belongs to that same folder, so one fetch covers all of them.
   permissions?: RolePermissionFlags | null;
+  canCreateShortcuts?: boolean;
+  canShareDocumentLinks?: boolean;
 }
 
 type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'category' | 'owner' | 'modifiedAt' | 'tags' | 'status';
@@ -154,11 +170,15 @@ function SelectionCheckbox({ checked, indeterminate = false, onChange, label }: 
 export function DocumentList({
   documents,
   folders = [],
+  shortcuts = [],
   selectedFolderIds = new Set(),
   onSelectedFolderIdsChange,
   onFolderOpen,
   onFolderAction,
   onCreateSubfolder,
+  onCreateShortcut,
+  onShareLink,
+  onDeleteShortcut,
   getFolderPermissions,
   onRequestFolderPermissions,
   isLoading = false,
@@ -173,6 +193,8 @@ export function DocumentList({
   onDocumentAction,
   canDownloadForEditing = false,
   permissions,
+  canCreateShortcuts = false,
+  canShareDocumentLinks = false,
 }: DocumentListProps) {
   const [sortBy, setSortBy] = useState<SortKey>('fileName');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -324,6 +346,48 @@ export function DocumentList({
           </tr>
         </thead>
         <tbody>
+          {currentPage === 1 && shortcuts.map((shortcut) => {
+            const isFolder = shortcut.targetType === 'folder';
+            const target: LibraryLinkTarget = { type: shortcut.targetType, id: shortcut.targetId, name: shortcut.name };
+            const openShortcut = () => isFolder
+              ? onFolderOpen?.(shortcut.targetId)
+              : onDocumentClick(shortcut.targetId);
+            return (
+              <tr key={`shortcut-${shortcut.shortcutId}`} className="bg-[#f5f8fd] hover:bg-[#edf3fa] dark:bg-slate-900/80 dark:hover:bg-slate-800/70">
+                <td className="px-3"><span className="block h-4 w-4" aria-hidden="true" /></td>
+                <td className="text-[#93a4bd]">—</td>
+                <td className="min-w-0">
+                  <button type="button" onClick={openShortcut} className="flex w-full min-w-0 items-center gap-2 text-left" aria-label={`Open shortcut to ${shortcut.name}`}>
+                    <span className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-[#e8f1fb] text-[#2f6f9f]">
+                      {isFolder ? <FolderIcon className="h-4 w-4 fill-current" /> : <FileText className="h-4 w-4" />}
+                      <Link2 className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded bg-white p-px text-[#2f6f9f] dark:bg-slate-900" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold leading-5 text-[#2e4083] dark:text-slate-100" title={shortcut.name}>{shortcut.name}</span>
+                      <span className="mt-0.5 block truncate text-xs text-[#52627a]">Shortcut to original {isFolder ? 'folder' : 'file'}{shortcut.description ? ` · ${shortcut.description}` : ''}</span>
+                    </span>
+                  </button>
+                </td>
+                <td className="text-[#52627a] dark:text-slate-200">Original {isFolder ? 'folder' : 'file'}</td>
+                {visibleColumns.has('department') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('category') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('owner') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('modifiedAt') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('tags') && <td className="text-[#93a4bd]">—</td>}
+                {visibleColumns.has('status') && <td><span className="inline-block rounded bg-[#e8f1fb] px-2 py-1 text-xs font-medium text-[#2f6f9f]">Shortcut</span></td>}
+                <td className="text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button type="button" title="Open original" onClick={openShortcut} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#2f3e83] text-white hover:bg-[#263472] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]" aria-label={`Open original ${shortcut.name}`}>
+                      <Link2 className="h-4 w-4" />
+                    </button>
+                    {canCreateShortcuts && <button type="button" title="Remove shortcut" onClick={() => onDeleteShortcut?.(shortcut.shortcutId)} className="inline-flex h-9 w-9 items-center justify-center rounded-[4px] bg-[#f1f4f8] text-[#c73c44] hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:bg-slate-800" aria-label={`Remove shortcut ${shortcut.name}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
           {/* Only on the first page: subfolders are a navigation aid for the
               folder you're in, not part of the paginated file listing, so
               repeating them above every page of files would just be noise. */}
@@ -410,6 +474,31 @@ export function DocumentList({
                             onSelect={() => onFolderAction?.('download', folder.folderId)}
                           >
                             <Download className="h-4 w-4" /> Download as ZIP
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!canCreateShortcuts}
+                            title={!canCreateShortcuts ? 'Your role does not have permission to create shortcuts' : undefined}
+                            onSelect={() => onCreateShortcut?.({ type: 'folder', id: folder.folderId, name: folder.name })}
+                          >
+                            <Link2 className="h-4 w-4" /> Create shortcut
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!canShareDocumentLinks}
+                            title={!canShareDocumentLinks ? 'Your role does not have permission to share protected links' : undefined}
+                            onSelect={() => onShareLink?.({ type: 'folder', id: folder.folderId, name: folder.name }, 'copy')}
+                          >
+                            <Link2 className="h-4 w-4" /> Get protected link
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className={rowMenuItemClass}
+                            disabled={!canShareDocumentLinks}
+                            title={!canShareDocumentLinks ? 'Your role does not have permission to share protected links' : undefined}
+                            onSelect={() => onShareLink?.({ type: 'folder', id: folder.folderId, name: folder.name }, 'email')}
+                          >
+                            <Mail className="h-4 w-4" /> Share by email
                           </DropdownMenu.Item>
                           <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
                           <DropdownMenu.Item
@@ -526,6 +615,31 @@ export function DocumentList({
                           onSelect={() => onDownloadForEditing?.(document.documentId)}
                         >
                           <PencilLine className="h-4 w-4" /> Download for Editing
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Separator className="my-1 h-px bg-[#e2e8f0] dark:bg-slate-800" />
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!canCreateShortcuts}
+                          title={!canCreateShortcuts ? 'Your role does not have permission to create shortcuts' : undefined}
+                          onSelect={() => onCreateShortcut?.({ type: 'document', id: document.documentId, name: document.fileName })}
+                        >
+                          <Link2 className="h-4 w-4" /> Create shortcut
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!canShareDocumentLinks}
+                          title={!canShareDocumentLinks ? 'Your role does not have permission to share protected links' : undefined}
+                          onSelect={() => onShareLink?.({ type: 'document', id: document.documentId, name: document.fileName }, 'copy')}
+                        >
+                          <Link2 className="h-4 w-4" /> Get protected link
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          className={rowMenuItemClass}
+                          disabled={!canShareDocumentLinks}
+                          title={!canShareDocumentLinks ? 'Your role does not have permission to share protected links' : undefined}
+                          onSelect={() => onShareLink?.({ type: 'document', id: document.documentId, name: document.fileName }, 'email')}
+                        >
+                          <Mail className="h-4 w-4" /> Share by email
                         </DropdownMenu.Item>
                         <DropdownMenu.Item
                           className={rowMenuItemClass}

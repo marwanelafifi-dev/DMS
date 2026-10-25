@@ -43,6 +43,11 @@ public class DmsPageAccessRole
     // sensitive compliance capabilities, opt-in per role.
     public bool CanViewAllHistoricalPcars { get; set; }
     public bool CanImportHistoricalPcars { get; set; }
+    // Library shortcuts are aliases, while protected links may be copied or
+    // sent through DMS email. Both are explicit global capabilities so they
+    // can be granted independently of ordinary folder write/read access.
+    public bool CanCreateShortcuts { get; set; }
+    public bool CanShareDocumentLinks { get; set; }
     // Independent from CanManageAllTasks — lets a role see the "New PCAR"
     // button and assign a task to anyone, without also granting the ability
     // to edit/complete/delete tasks that already belong to other people.

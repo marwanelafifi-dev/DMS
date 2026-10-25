@@ -192,6 +192,10 @@ public static class AuditActions
     public const string DOCUMENT_SUBMITTED = "DOCUMENT_SUBMITTED";
     public const string DOCUMENT_APPROVED = "DOCUMENT_APPROVED";
     public const string DOCUMENT_REJECTED = "DOCUMENT_REJECTED";
+    public const string LIBRARY_SHORTCUT_CREATED = "LIBRARY_SHORTCUT_CREATED";
+    public const string LIBRARY_SHORTCUT_DELETED = "LIBRARY_SHORTCUT_DELETED";
+    public const string LIBRARY_LINK_COPIED = "LIBRARY_LINK_COPIED";
+    public const string LIBRARY_LINK_SHARED = "LIBRARY_LINK_SHARED";
 
     public const string TASK_COMPLETED = "TASK_COMPLETED";
     public const string TASK_DELETED = "TASK_DELETED";

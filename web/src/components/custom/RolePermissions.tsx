@@ -23,6 +23,7 @@ const PERMISSION_KEYS = [
   'canEditFiles', 'canManageFolderPermissions', 'canManageFilePermissions',
   'canCreateTasks', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks',
   'canViewAllHistoricalPcars', 'canImportHistoricalPcars',
+  'canCreateShortcuts', 'canShareDocumentLinks',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
@@ -44,6 +45,8 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canManageAllTasks: 'Manage All Tasks / PCARs',
   canViewAllHistoricalPcars: 'View All Historical PCARs',
   canImportHistoricalPcars: 'Import Historical PCARs',
+  canCreateShortcuts: 'Create Folder/File Shortcuts',
+  canShareDocumentLinks: 'Share Protected Folder/File Links',
   canCreateTasks: 'Create New PCAR',
   canReassignMyTasks: 'Reassign My Tasks Only',
   canReassignTasks: 'Reassign All Tasks',
@@ -326,8 +329,7 @@ export function RolePermissions() {
       <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
         <h4 className="font-semibold text-blue-900 dark:text-blue-300 mb-2">How roles work</h4>
         <p className="text-sm text-blue-800 dark:text-blue-400">
-          A role only controls which pages and features a user can see. It has no effect on what they can do to files or folders —
-          that's set per folder or per file, for individual users or groups, from the Document Library.
+          A role controls page visibility and sensitive global features such as protected-link sharing and creating shortcuts. Normal file and folder access is still set per folder or file for individual users or groups from the Document Library.
         </p>
       </div>
 

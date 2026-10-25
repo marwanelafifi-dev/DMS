@@ -1,5 +1,32 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 68 (2026-10-25) — Library Shortcuts and Protected Sharing
+
+**Status:** Complete in source. `npm.cmd run build` passed in `web/`. This checkout has no local .NET SDK; validate the API through the Ubuntu container build before deployment.
+
+### What changed
+
+- Added true DMS shortcuts for both folders and files. A shortcut row is an alias to one original item: it contains no MinIO object key, copied document version, or copied metadata. Opening it always opens the original item.
+- Document Library row menus now provide **Create shortcut**, **Get protected link**, and **Share by email** for both folders and files. Shortcuts appear with a linked-item marker and can be removed without touching the original item.
+- Protected links use the configured public DMS URL and deep-link to the real folder or file. They are never public: the recipient must authenticate and still have the ordinary file/folder permission when opening the link.
+- Email sharing sends the same protected link through the configured DMS notification email. The API only accepts active DMS-user email addresses that already have access to the original item; sending a link does not grant access. Copying a link remains available without sending email.
+- Added auditable actions for shortcut create/remove and protected-link copy/share.
+- Added two independent global role capabilities in Admin Panel → Roles: **Create Folder/File Shortcuts** and **Share Protected Folder/File Links**. Both are unchecked for every role by default and enabled only for `Full Access` by migration `096`.
+
+### Deployment and access model
+
+- Run `infra/db/init/096_library_shortcuts_and_protected_link_permissions.sql` once against the live PostgreSQL database before recreating the API. It creates `dms_library_shortcuts`, its integrity/duplicate-prevention indexes, and the two role columns; it does not alter documents, document versions, MinIO objects, or existing folder permissions.
+- A user must hold the relevant global role capability **and** normal access to the original item. Creating/removing a shortcut additionally requires permission to create a subfolder in its destination folder. This prevents aliases from becoming a way to bypass folder access.
+- The email option additionally requires the recipient to be an active DMS user who already has access to the target and requires the existing notification email configuration to be valid. If email is not configured, users can still copy the protected link.
+
+### Files added
+
+- `api/Models/DmsLibraryShortcut.cs`
+- `api/Controllers/LibraryShortcutsController.cs`
+- `api/Controllers/LibraryLinksController.cs`
+- `infra/db/init/096_library_shortcuts_and_protected_link_permissions.sql`
+- `web/src/components/custom/LibrarySharingDialogs.tsx`
+
 ## Session 67 (2026-10-25) — Complete Synology Recovery Archives
 
 **Status:** Complete in source; frontend production build passed. The API must be rebuilt on Ubuntu and its `dotnet publish` output must finish without `error CS...` before this feature is considered deployed. No database migration is required.

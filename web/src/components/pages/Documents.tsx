@@ -4,13 +4,14 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, ChevronRight, LoaderCircle, UploadCloud, X } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
-import { defaultVisibleDocumentColumns, DocumentList, type LibraryFolderRow, type OptionalDocumentColumn } from '../custom/DocumentList';
+import { defaultVisibleDocumentColumns, DocumentList, type LibraryFolderRow, type LibraryShortcutRow, type OptionalDocumentColumn } from '../custom/DocumentList';
+import { CreateShortcutDialog, ProtectedLinkDialog, type LibraryShareTarget } from '../custom/LibrarySharingDialogs';
 import { matchesDmsMetadata } from '../../utils/dmsMetadataSearch';
 import { ColumnVisibilityMenu, LibraryBulkActions, TagFilterMenu, type LibraryBulkAction } from '../custom/LibraryMenus';
 import { SkeletonTable } from '../ui/Skeleton';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
-import { apiClient, DEV_USER_ID, type RolePermissionFlags } from '../../utils/api';
+import { apiClient, DEV_USER_ID, type LibraryShortcut, type RolePermissionFlags } from '../../utils/api';
 import {
   createUnavailableLibraryDocument,
   mockLibraryDocuments,
@@ -269,6 +270,7 @@ export function Documents() {
   const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const directPreviewId = searchParams.get('preview');
+  const directFolderId = searchParams.get('folder');
   const storedLibraryFolderOnMountRef = useRef(
     directPreviewId ? null : readLibraryLocation(LAST_LIBRARY_FOLDER_STORAGE_KEY),
   );
@@ -304,6 +306,7 @@ export function Documents() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [allDocuments, setAllDocuments] = useState(() => mockLibraryDocuments.map((document) => ({ ...document, tags: [...document.tags] })));
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
+  const [libraryShortcuts, setLibraryShortcuts] = useState<LibraryShortcut[]>([]);
   const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -363,6 +366,9 @@ export function Documents() {
   const [requestedFolderAction, setRequestedFolderAction] = useState<LibraryBulkAction | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<OptionalDocumentColumn>>(() => new Set(defaultVisibleDocumentColumns));
   const [showBulkOperationsModal, setShowBulkOperationsModal] = useState(false);
+  const [shortcutTarget, setShortcutTarget] = useState<LibraryShareTarget | null>(null);
+  const [linkTarget, setLinkTarget] = useState<LibraryShareTarget | null>(null);
+  const [linkStartWithEmail, setLinkStartWithEmail] = useState(false);
   const [pendingApprovalFiles, setPendingApprovalFiles] = useState<
     Array<{ documentId: string; filename: string; filesize: number; uploadedAt: string }>
   >([]);
@@ -483,6 +489,13 @@ export function Documents() {
         };
       });
   }, [foldersInView, folders, allDocuments, searchQuery, statusFilter, tagFilters, departmentFilter, ownerFilter, allUsers]);
+  const shortcutRows = useMemo<LibraryShortcutRow[]>(() => libraryShortcuts.map((shortcut) => ({
+    shortcutId: shortcut.shortcutId,
+    targetType: shortcut.targetType,
+    targetId: shortcut.targetId,
+    name: shortcut.name,
+    description: shortcut.description,
+  })), [libraryShortcuts]);
   const selectedItemCount = selectedDocumentIds.size + selectedFolderIds.size;
   const selectedNames = [
     ...folders.filter((folder) => selectedFolderIds.has(folder.folderId)).map((folder) => folder.name),
@@ -616,6 +629,30 @@ export function Documents() {
     apiClient.getMyEffectivePermissions(selectedFolderId)
       .then((res) => setMyPermissions(res.data ?? null))
       .catch(() => setMyPermissions(null));
+  }, [selectedFolderId]);
+
+  // A protected folder link resolves into the normal library view after sign
+  // in. The folder list is already permission-filtered, so an inaccessible
+  // target is never selected or revealed by its UUID alone.
+  useEffect(() => {
+    if (!directFolderId || !folders.some((folder) => folder.folderId === directFolderId)) return;
+    if (selectedFolderId === directFolderId) return;
+    setSelectedFolderId(directFolderId);
+    writeLibraryLocation(LAST_LIBRARY_FOLDER_STORAGE_KEY, directFolderId);
+  }, [directFolderId, folders, selectedFolderId]);
+
+  useEffect(() => {
+    if (!selectedFolderId) {
+      setLibraryShortcuts([]);
+      return;
+    }
+    let cancelled = false;
+    apiClient.getLibraryShortcuts(selectedFolderId)
+      .then((response) => { if (!cancelled) setLibraryShortcuts(response.data || []); })
+      // A feature permission may be removed while the page is already open;
+      // treat that like an empty alias list rather than breaking the library.
+      .catch(() => { if (!cancelled) setLibraryShortcuts([]); });
+    return () => { cancelled = true; };
   }, [selectedFolderId]);
 
   useEffect(() => {
@@ -1178,6 +1215,11 @@ export function Documents() {
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set());
     setPreviewDocument(null);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('folder');
+      return next;
+    }, { replace: true });
     clearPreviewParam();
     if (showOnlyMySubmissions) clearMySubmissionsFilter();
   };
@@ -1464,6 +1506,21 @@ export function Documents() {
     }
 
     setRequestedFolderAction(action === 'cut' ? 'move' : action);
+  };
+
+  const openProtectedLink = (target: LibraryShareTarget, mode: 'copy' | 'email') => {
+    setLinkTarget(target);
+    setLinkStartWithEmail(mode === 'email');
+  };
+
+  const removeLibraryShortcut = async (shortcutId: string) => {
+    try {
+      await apiClient.deleteLibraryShortcut(shortcutId);
+      setLibraryShortcuts((current) => current.filter((shortcut) => shortcut.shortcutId !== shortcutId));
+      showSuccess('Shortcut removed');
+    } catch (error: any) {
+      showError(error?.response?.data?.error || 'Could not remove the shortcut.');
+    }
   };
 
   // Mirrors requestFolderAction so a single document can be copied, moved,
@@ -2064,17 +2121,21 @@ export function Documents() {
 
             {isLoadingDocs ? (
               <div className="p-4" role="status" aria-label="Loading documents"><SkeletonTable /></div>
-            ) : filteredDocuments.length === 0 && childFolderRows.length === 0 ? (
+            ) : filteredDocuments.length === 0 && childFolderRows.length === 0 && shortcutRows.length === 0 ? (
               <div className="p-12 text-center"><p className="text-sm text-[#718198]">{documents.length === 0 ? 'No documents in this folder' : 'No documents matching your filters'}</p></div>
             ) : (
               <DocumentList
                 documents={searchResultDocuments}
                 folders={childFolderRows}
+                shortcuts={shortcutRows}
                 selectedFolderIds={selectedFolderIds}
                 onSelectedFolderIdsChange={setSelectedFolderIds}
                 onFolderOpen={handleFolderSelect}
                 onFolderAction={requestFolderAction}
                 onCreateSubfolder={(parentFolderId) => setNewFolderRequest({ parentFolderId, name: '' })}
+                onCreateShortcut={setShortcutTarget}
+                onShareLink={openProtectedLink}
+                onDeleteShortcut={removeLibraryShortcut}
                 getFolderPermissions={getFolderPermissions}
                 onRequestFolderPermissions={ensureFolderPermissionsLoaded}
                 selectedDocumentIds={selectedDocumentIds}
@@ -2088,6 +2149,8 @@ export function Documents() {
                 onDocumentAction={requestDocumentAction}
                 canDownloadForEditing={Boolean(myPermissions?.downloadForEditing)}
                 permissions={myPermissions}
+                canCreateShortcuts={Boolean(myPermissions?.canCreateShortcuts)}
+                canShareDocumentLinks={Boolean(myPermissions?.canShareDocumentLinks)}
               />
             )}
           </Card>
@@ -2227,6 +2290,37 @@ export function Documents() {
         );
       })()}
       </Suspense>
+
+      {shortcutTarget && (
+        <CreateShortcutDialog
+          target={shortcutTarget}
+          folders={folders}
+          initialDestinationFolderId={selectedFolderId}
+          onClose={() => setShortcutTarget(null)}
+          onCreated={() => {
+            setShortcutTarget(null);
+            showSuccess('Shortcut created. It opens the original item and does not copy its data.');
+            if (selectedFolderId) {
+              apiClient.getLibraryShortcuts(selectedFolderId)
+                .then((response) => setLibraryShortcuts(response.data || []))
+                .catch(() => {});
+            }
+          }}
+        />
+      )}
+
+      {linkTarget && (
+        <ProtectedLinkDialog
+          target={linkTarget}
+          startWithEmail={linkStartWithEmail}
+          onClose={() => setLinkTarget(null)}
+          onCopied={() => showSuccess('Protected DMS link copied to the clipboard')}
+          onSent={(count) => {
+            setLinkTarget(null);
+            showSuccess(`Protected link sent to ${count} ${count === 1 ? 'recipient' : 'recipients'}`);
+          }}
+        />
+      )}
 
       {newFolderRequest && (
         <ModalOverlay onClose={() => setNewFolderRequest(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

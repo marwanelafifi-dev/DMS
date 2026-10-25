@@ -51,6 +51,8 @@ export interface RolePermissionFlags {
   canChangeFolderOwner?: boolean;
   canManageBulkActions?: boolean;
   canReindexDocuments?: boolean;
+  canCreateShortcuts?: boolean;
+  canShareDocumentLinks?: boolean;
 }
 
 // Flags for a user's global role — page/feature visibility only. File/folder
@@ -75,6 +77,8 @@ export interface PageAccessRoleFlags {
   canManageAllTasks: boolean;
   canViewAllHistoricalPcars: boolean;
   canImportHistoricalPcars: boolean;
+  canCreateShortcuts: boolean;
+  canShareDocumentLinks: boolean;
   canCreateTasks: boolean;
   canReassignTasks: boolean;
   canReassignMyTasks: boolean;
@@ -183,6 +187,15 @@ export interface PageAccessRole extends PageAccessRoleFlags {
   // and the "can't rename this one" UI (if any) should check.
   isBuiltIn: boolean;
   updatedAt: string;
+}
+
+export interface LibraryShortcut {
+  shortcutId: string;
+  targetType: 'folder' | 'document';
+  targetId: string;
+  name: string;
+  description?: string | null;
+  createdAt: string;
 }
 
 // The actions a File/Folder Permission override can grant or deny — each is
@@ -419,6 +432,31 @@ class APIClient {
   // (FolderEdit) permission.
   async updateFolderMetadata(folderId: string, metadata: { description?: string; classification?: string; department?: string; tags?: string[]; ownerId?: string; managerIds?: string[] }) {
     const { data } = await this.client.put<ApiResponse>(`/folders/${folderId}/metadata`, metadata);
+    return data;
+  }
+
+  async getLibraryShortcuts(parentFolderId: string) {
+    const { data } = await this.client.get<ApiResponse<LibraryShortcut[]>>('/library-shortcuts', { params: { parentFolderId } });
+    return data;
+  }
+
+  async createLibraryShortcut(payload: { parentFolderId: string; targetFolderId?: string; targetDocumentId?: string }) {
+    const { data } = await this.client.post<ApiResponse>('/library-shortcuts', payload);
+    return data;
+  }
+
+  async deleteLibraryShortcut(shortcutId: string) {
+    const { data } = await this.client.delete<ApiResponse>(`/library-shortcuts/${shortcutId}`);
+    return data;
+  }
+
+  async createProtectedLibraryLink(payload: { folderId?: string; documentId?: string }) {
+    const { data } = await this.client.post<ApiResponse<{ link: string }>>('/library-links', payload);
+    return data;
+  }
+
+  async shareProtectedLibraryLink(payload: { folderId?: string; documentId?: string; recipients: string[] }) {
+    const { data } = await this.client.post<ApiResponse<{ link: string; sent: number; failedRecipients: string[] }>>('/library-links/share', payload);
     return data;
   }
 

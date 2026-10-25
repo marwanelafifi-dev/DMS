@@ -21,6 +21,8 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canManageAllTasks: false,
   canViewAllHistoricalPcars: false,
   canImportHistoricalPcars: false,
+  canCreateShortcuts: false,
+  canShareDocumentLinks: false,
   canCreateTasks: false,
   canReassignTasks: false,
   canReassignMyTasks: false,

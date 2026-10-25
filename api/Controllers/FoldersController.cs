@@ -131,6 +131,8 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
                 // without making a second role-list request.
                 CanManageBulkActions = pageAccessRole?.CanManageBulkActions == true,
                 CanReindexDocuments = pageAccessRole?.CanReindexDocuments == true,
+                CanCreateShortcuts = pageAccessRole?.CanCreateShortcuts == true,
+                CanShareDocumentLinks = pageAccessRole?.CanShareDocumentLinks == true,
                 UpdatedAt = permission?.UpdatedAt,
             };
 

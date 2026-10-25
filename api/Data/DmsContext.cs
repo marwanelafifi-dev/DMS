@@ -13,6 +13,7 @@ public class DmsContext : DbContext
     public DbSet<DmsFolderPermission> FolderPermissions => Set<DmsFolderPermission>();
     public DbSet<DmsFolderManager> FolderManagers => Set<DmsFolderManager>();
     public DbSet<DmsDocument> Documents => Set<DmsDocument>();
+    public DbSet<DmsLibraryShortcut> LibraryShortcuts => Set<DmsLibraryShortcut>();
     public DbSet<DmsDocumentVersion> DocumentVersions => Set<DmsDocumentVersion>();
     public DbSet<DmsDocumentMetadata> DocumentMetadata => Set<DmsDocumentMetadata>();
     public DbSet<DmsAuditTrail> AuditTrails => Set<DmsAuditTrail>();
@@ -89,6 +90,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsFolderPermission>().ToTable("dms_folder_permissions").HasKey(fp => fp.PermissionId);
         modelBuilder.Entity<DmsFolderManager>().ToTable("dms_folder_managers").HasKey(fm => new { fm.FolderId, fm.UserId });
         modelBuilder.Entity<DmsDocument>().ToTable("dms_documents").HasKey(d => d.DocumentId);
+        modelBuilder.Entity<DmsLibraryShortcut>().ToTable("dms_library_shortcuts").HasKey(s => s.ShortcutId);
         modelBuilder.Entity<DmsFolder>().HasQueryFilter(f => f.DeletedAt == null);
         modelBuilder.Entity<DmsDocument>().HasQueryFilter(d => d.DeletedAt == null);
         modelBuilder.Entity<DmsDocumentVersion>().ToTable("dms_document_versions").HasKey(dv => dv.VersionId);
@@ -249,6 +251,33 @@ public class DmsContext : DbContext
             .WithMany()
             .HasForeignKey(d => d.CurrentVersionId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // A shortcut is an alias only. Removing either the destination folder
+        // or the original target removes the alias; it never touches the
+        // original document data, versions, or object-storage content.
+        modelBuilder.Entity<DmsLibraryShortcut>()
+            .HasOne<DmsFolder>()
+            .WithMany()
+            .HasForeignKey(s => s.ParentFolderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsLibraryShortcut>()
+            .HasOne<DmsFolder>()
+            .WithMany()
+            .HasForeignKey(s => s.TargetFolderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsLibraryShortcut>()
+            .HasOne<DmsDocument>()
+            .WithMany()
+            .HasForeignKey(s => s.TargetDocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsLibraryShortcut>()
+            .HasOne<DmsUser>()
+            .WithMany()
+            .HasForeignKey(s => s.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Document Versions: document (CASCADE) + checkout user (SET NULL) + submitted user (SET NULL) + approved user (SET NULL)
         modelBuilder.Entity<DmsDocumentVersion>()
