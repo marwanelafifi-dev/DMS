@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Button } from '../ui';
 import { preventModalOutsideDismiss } from '../ui/ModalOverlay';
 import type { GuideDefinition, GuideSection } from './guideRegistry';
@@ -12,7 +13,18 @@ interface PageGuideModalProps {
   onGotIt: () => void;
 }
 export function PageGuideModal({ open, guide, sections, onClose, onGotIt }: PageGuideModalProps) {
+  const [activeSectionId, setActiveSectionId] = useState<string>('');
+
+  useEffect(() => {
+    setActiveSectionId(sections[0]?.id ?? '');
+  }, [guide?.key, sections]);
+
   if (!guide) return null;
+
+  const goToSection = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    document.getElementById(`page-guide-section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
@@ -28,7 +40,7 @@ export function PageGuideModal({ open, guide, sections, onClose, onGotIt }: Page
             <div className="min-w-0">
               <Dialog.Title className="page-heading">{guide.title}</Dialog.Title>
               <Dialog.Description id="page-guide-description" className="page-subtitle">
-                A quick guide to the page you are viewing.
+                Clear, role-aware guidance for the page you are viewing.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -43,13 +55,37 @@ export function PageGuideModal({ open, guide, sections, onClose, onGotIt }: Page
             </Dialog.Close>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
-            <div className="space-y-7">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="grid gap-6 px-5 py-5 sm:px-7 sm:py-6 lg:grid-cols-[12.5rem_minmax(0,1fr)]">
+              <aside className="lg:sticky lg:top-0 lg:self-start" aria-label="Guide sections">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#52627a] dark:text-slate-400">On this page</p>
+                <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible" aria-label="Guide table of contents">
+                  {sections.map((section) => {
+                    const active = activeSectionId === section.id;
+                    return (
+                      <button
+                        key={section.id}
+                        type="button"
+                        onClick={() => goToSection(section.id)}
+                        className={`shrink-0 rounded-md px-3 py-2 text-left text-sm leading-5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#2f70c9] focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                          active
+                            ? 'bg-[#eaf2fd] font-semibold text-[#174f91] dark:bg-blue-950/50 dark:text-blue-200'
+                            : 'text-[#52627a] hover:bg-slate-100 hover:text-[#26334d] dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                        }`}
+                      >
+                        {section.title}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </aside>
+
+              <div className="min-w-0 space-y-8 pb-2">
               {sections.map((section) => (
-                <section key={section.id}>
+                <section id={`page-guide-section-${section.id}`} key={section.id} className="scroll-mt-6" onFocus={() => setActiveSectionId(section.id)}>
                   <h2 className="section-heading">{section.title}</h2>
                   {section.paragraphs?.map((paragraph) => (
-                    <p key={paragraph} className="mt-2 leading-6">{paragraph}</p>
+                    <p key={paragraph} className="mt-2 max-w-[72ch] leading-6 text-[#44546b] dark:text-slate-200">{paragraph}</p>
                   ))}
                   {section.bullets && (
                     <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-[#5f708b] dark:text-slate-300">
@@ -64,6 +100,7 @@ export function PageGuideModal({ open, guide, sections, onClose, onGotIt }: Page
                   ))}
                 </section>
               ))}
+              </div>
             </div>
           </div>
 
