@@ -72,6 +72,10 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
   const [records, setRecords] = useState<HistoricalPcar[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [owner, setOwner] = useState('');
+  const [sortBy, setSortBy] = useState('created');
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [ownerOptions, setOwnerOptions] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -82,8 +86,9 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
   const load = async (targetPage = page) => {
     setIsLoading(true);
     try {
-      const response = await apiClient.getHistoricalPcars({ search, page: targetPage, pageSize: 50 });
+      const response = await apiClient.getHistoricalPcars({ search, owner, sortBy, sortDirection, page: targetPage, pageSize: 50 });
       setRecords(response.data ?? []);
+      setOwnerOptions(response.ownerOptions ?? []);
       const count = response.totalCount ?? 0;
       setTotalCount(count);
       setTotalPages(response.totalPages ?? Math.max(1, Math.ceil(count / 50)));
@@ -91,8 +96,8 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
       showError(error.response?.data?.error ?? 'Could not load historical PCAR records.');
     } finally { setIsLoading(false); }
   };
-  useEffect(() => { setPage(1); }, [search]);
-  useEffect(() => { void load(page); }, [page, search]);
+  useEffect(() => { setPage(1); }, [search, owner, sortBy, sortDirection]);
+  useEffect(() => { void load(page); }, [page, search, owner, sortBy, sortDirection]);
 
   const chooseFile = async (file?: File) => {
     if (!file) return;
@@ -134,8 +139,9 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
         </div>
       )}
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="relative w-full sm:max-w-md"><Search className="absolute left-3 top-3 h-4 w-4 text-[#718198]" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="field-control h-10 w-full pl-9" placeholder="Search ID, subject, owner, requester, or category" aria-label="Search historical PCAR records" /></div>
+        <div className="flex flex-wrap items-center gap-2"><select value={owner} onChange={(event) => setOwner(event.target.value)} className="field-control h-10 min-w-[11rem] px-3" aria-label="Filter historical PCAR records by owner"><option value="">All visible owners</option>{ownerOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select><select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="field-control h-10 min-w-[9rem] px-3" aria-label="Sort historical PCAR records"><option value="created">Created date</option><option value="completed">Completed date</option><option value="status">Status</option><option value="priority">Priority</option></select><select value={sortDirection} onChange={(event) => setSortDirection(event.target.value)} className="field-control h-10 min-w-[7rem] px-3" aria-label="Sort direction"><option value="desc">Newest / Z–A</option><option value="asc">Oldest / A–Z</option></select></div>
         <p className="text-sm text-[#52627a] dark:text-slate-300">{totalCount} matching records · page {page} of {totalPages}</p>
       </div>
 

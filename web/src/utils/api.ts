@@ -873,7 +873,7 @@ class APIClient {
 
   // Historical PCAR archive — records imported from the previous service desk
   // are read-only and deliberately separate from live actionable tasks.
-  async getHistoricalPcars(params?: { search?: string; status?: string; page?: number; pageSize?: number }) {
+  async getHistoricalPcars(params?: { search?: string; status?: string; owner?: string; sortBy?: string; sortDirection?: string; page?: number; pageSize?: number }) {
     const { data } = await this.client.get<ApiResponse>('/historical-pcars', { params });
     return data;
   }

@@ -13,7 +13,7 @@ namespace DMS.Api.Controllers;
 public class HistoricalPcarsController(DmsContext context, AuditService auditService, ILogger<HistoricalPcarsController> logger) : BaseController
 {
     [HttpGet]
-    public async Task<ActionResult<object>> Get([FromQuery] string? search, [FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    public async Task<ActionResult<object>> Get([FromQuery] string? search, [FromQuery] string? status, [FromQuery] string? owner, [FromQuery] string? sortBy, [FromQuery] string? sortDirection, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var (access, forbidden) = await RequirePcarViewAccessAsync();
         if (forbidden != null) return forbidden;
@@ -21,6 +21,8 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
         var query = context.HistoricalPcars.AsNoTracking().AsQueryable();
         if (!access!.CanViewAllHistoricalPcars)
             query = query.Where(p => p.LinkedUserId == GetCurrentUserId());
+        var ownerOptions = await query.Where(p => p.HistoricalOwnerName != null)
+            .Select(p => p.HistoricalOwnerName!).Distinct().OrderBy(name => name).ToListAsync();
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
@@ -31,11 +33,25 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
         }
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(p => p.SourceStatus == status);
+        if (!string.IsNullOrWhiteSpace(owner))
+            query = query.Where(p => p.HistoricalOwnerName == owner);
 
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);
         var totalCount = await query.CountAsync();
-        var rows = await query.OrderByDescending(p => p.SourceCreatedAt).ThenBy(p => p.LegacyRequestId)
+        var descending = !string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase);
+        var orderedQuery = (sortBy?.ToLowerInvariant(), descending) switch
+        {
+            ("completed", true) => query.OrderByDescending(p => p.SourceCompletedAt),
+            ("completed", false) => query.OrderBy(p => p.SourceCompletedAt),
+            ("status", true) => query.OrderByDescending(p => p.SourceStatus),
+            ("status", false) => query.OrderBy(p => p.SourceStatus),
+            ("priority", true) => query.OrderByDescending(p => p.Priority),
+            ("priority", false) => query.OrderBy(p => p.Priority),
+            (_, false) => query.OrderBy(p => p.SourceCreatedAt),
+            _ => query.OrderByDescending(p => p.SourceCreatedAt),
+        };
+        var rows = await orderedQuery.ThenBy(p => p.LegacyRequestId)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(p => new
             {
@@ -47,7 +63,7 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
             })
             .ToListAsync();
 
-        return Ok(new { success = true, data = rows, totalCount, page, pageSize, totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize)) });
+        return Ok(new { success = true, data = rows, totalCount, ownerOptions, page, pageSize, totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize)) });
     }
 
     [HttpPost("import")]
