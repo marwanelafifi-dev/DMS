@@ -11,6 +11,7 @@ const Dashboard = lazy(() => import('./components/pages/Dashboard').then((module
 const Documents = lazy(() => import('./components/pages/Documents').then((module) => ({ default: module.Documents })));
 const Settings = lazy(() => import('./components/pages/Settings').then((module) => ({ default: module.Settings })));
 const Tasks = lazy(() => import('./components/pages/Tasks').then((module) => ({ default: module.Tasks })));
+const HistoricalPcarPage = lazy(() => import('./components/pages/HistoricalPcarPage').then((module) => ({ default: module.HistoricalPcarPage })));
 const Approvals = lazy(() => import('./components/pages/Approvals').then((module) => ({ default: module.Approvals })));
 const Reminders = lazy(() => import('./components/pages/Reminders').then((module) => ({ default: module.Reminders })));
 const SendAnnouncement = lazy(() => import('./components/pages/SendAnnouncement').then((module) => ({ default: module.SendAnnouncement })));
@@ -98,6 +99,7 @@ function App() {
               {/* Tasks (sidebar label: PCAR / Corrective Action) */}
               <Route element={<RequirePageAccess flag="canViewPcar" />}>
                 <Route path="/tasks" element={<Tasks />} />
+                <Route path="/tasks/history" element={<HistoricalPcarPage />} />
               </Route>
 
               {/* Documents */}

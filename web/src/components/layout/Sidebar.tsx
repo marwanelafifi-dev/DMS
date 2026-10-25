@@ -13,6 +13,7 @@ import {
   Folder,
   LayoutDashboard,
   KeyRound,
+  History,
   Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
@@ -75,7 +76,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
 
   const isActive = (item: (typeof navItems)[number]) => {
     if (item.exact) return location.pathname === '/';
-    if (item.path === '/documents') return location.pathname === '/documents';
+    if (item.path === '/documents' || item.path === '/tasks') return location.pathname === item.path;
     return location.pathname.startsWith(item.path);
   };
 
@@ -154,6 +155,18 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
               </button>
             );
           })}
+          {pageAccess?.canViewPcar && (
+            <button
+              onClick={() => goTo('/tasks/history')}
+              title={isCollapsed ? 'Historical PCAR Archive' : undefined}
+              className={`flex h-[38px] w-full items-center gap-3 border-l-[3px] pl-11 pr-5 text-left text-sm transition-colors ${
+                location.pathname === '/tasks/history' ? 'border-[#70a3e8] bg-white/[0.12] font-semibold text-[#7dd3fc]' : 'border-transparent text-white/80 hover:bg-white/[0.08] hover:text-white'
+              } ${isCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
+            >
+              <History className="h-4 w-4 flex-shrink-0 text-[#7dd3fc]" strokeWidth={1.9} />
+              <span className={isCollapsed ? 'lg:hidden' : ''}>Historical PCAR Archive</span>
+            </button>
+          )}
 
           {pageAccess?.canViewAdminPanel !== false && (
           <button

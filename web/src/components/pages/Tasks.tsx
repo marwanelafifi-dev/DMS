@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardBody, Button, Badge } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye, UserCog } from 'lucide-react';
+import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye, UserCog, History } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { usePageAccess } from '../../hooks/usePageAccess';
@@ -13,7 +13,6 @@ import { UploadNewVersionModal } from '../custom/UploadNewVersionModal';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { TagSelector } from '../custom/TagSelector';
 import { ModalOverlay } from '../ui/ModalOverlay';
-import { HistoricalPcarRegister } from './HistoricalPcarRegister';
 
 const PAGE_SIZE = 10;
 
@@ -1389,7 +1388,9 @@ export function Tasks() {
         </Card>
       )}
 
-      <HistoricalPcarRegister canImport={pageAccess?.canImportHistoricalPcars ?? false} />
+      <div className="mt-8 flex justify-end border-t border-[#e2e8f0] pt-5 dark:border-slate-800">
+        <Button variant="secondary" onClick={() => navigate('/tasks/history')} leftIcon={<History className="h-4 w-4" />}>Open Historical PCAR Archive</Button>
+      </div>
 
       {/* Add Task Modal */}
       {showAddForm && (
