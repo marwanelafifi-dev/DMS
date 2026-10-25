@@ -19,6 +19,7 @@ public class DmsContext : DbContext
     public DbSet<DmsOcrIndex> OcrIndexes => Set<DmsOcrIndex>();
     public DbSet<DmsEsignature> Esignatures => Set<DmsEsignature>();
     public DbSet<DmsTask> Tasks => Set<DmsTask>();
+    public DbSet<DmsHistoricalPcar> HistoricalPcars => Set<DmsHistoricalPcar>();
     public DbSet<DmsWorkflowTemplate> WorkflowTemplates => Set<DmsWorkflowTemplate>();
     public DbSet<DmsWorkflow> Workflows => Set<DmsWorkflow>();
     public DbSet<DmsWorkflowStep> WorkflowSteps => Set<DmsWorkflowStep>();
@@ -97,6 +98,8 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsWorkflow>().ToTable("dms_workflows").HasKey(w => w.WorkflowId);
         modelBuilder.Entity<DmsWorkflowStep>().ToTable("dms_workflow_steps").HasKey(ws => ws.StepId);
         modelBuilder.Entity<DmsTask>().ToTable("dms_tasks").HasKey(t => t.TaskId);
+        modelBuilder.Entity<DmsHistoricalPcar>().ToTable("dms_historical_pcars").HasKey(p => p.HistoricalPcarId);
+        modelBuilder.Entity<DmsHistoricalPcar>().HasIndex(p => new { p.SourceSystem, p.LegacyRequestId }).IsUnique();
         modelBuilder.Entity<DmsReminder>().ToTable("dms_reminders").HasKey(r => r.ReminderId);
         modelBuilder.Entity<DmsAuditCalendarEvent>().ToTable("dms_audit_calendar_events").HasKey(e => e.EventId);
         modelBuilder.Entity<DmsUserCalendarConnection>().ToTable("dms_user_calendar_connections").HasKey(c => c.ConnectionId);
@@ -363,6 +366,12 @@ public class DmsContext : DbContext
             .WithMany()
             .HasForeignKey(t => t.AssignedToId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DmsHistoricalPcar>()
+            .HasOne(p => p.LinkedUser)
+            .WithMany()
+            .HasForeignKey(p => p.LinkedUserId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<DmsTask>()
             .HasOne(t => t.AssignedToGroup)

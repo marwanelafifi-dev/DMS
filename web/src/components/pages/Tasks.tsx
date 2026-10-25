@@ -13,6 +13,7 @@ import { UploadNewVersionModal } from '../custom/UploadNewVersionModal';
 import { formatDateTime, formatFileSize } from '../../utils/formatters';
 import { TagSelector } from '../custom/TagSelector';
 import { ModalOverlay } from '../ui/ModalOverlay';
+import { HistoricalPcarRegister } from './HistoricalPcarRegister';
 
 const PAGE_SIZE = 10;
 
@@ -1387,6 +1388,8 @@ export function Tasks() {
           )}
         </Card>
       )}
+
+      <HistoricalPcarRegister canManage={canManageAllTasks} />
 
       {/* Add Task Modal */}
       {showAddForm && (

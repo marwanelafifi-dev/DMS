@@ -400,7 +400,7 @@ export const guideRegistry: GuideDefinition[] = [
   },
   {
     key: 'pcar',
-    version: 1,
+    version: 2,
     title: 'PCAR / Corrective Action Guide',
     matches: (pathname) => pathname === '/tasks',
     requiredAccess: 'canViewPcar',
@@ -496,6 +496,21 @@ export const guideRegistry: GuideDefinition[] = [
           'Available submission actions depend on the current PCAR state and assigned access.',
         ],
         when: () => true,
+      },
+      {
+        id: 'historical-pcar-register',
+        title: 'Historical PCAR Register',
+        paragraphs: [
+          'Users with Manage All Tasks / PCARs can access the read-only Historical PCAR Register below the live register. It preserves PCAR history imported from the previous service desk without placing closed legacy work into any current user’s action queue.',
+          'Historical owner names remain exactly as exported. Where the name uniquely matches an active DMS user, the record also shows that linked account; unmatched former employees remain historical owners and are never reassigned automatically.',
+        ],
+        bullets: [
+          'Import history accepts the approved .xls or .xlsx legacy export and first shows the number of records ready to import.',
+          'Confirm import creates only records whose legacy Request ID is not already archived; a repeat upload therefore skips duplicates safely.',
+          'Use the archive search to find a legacy ID, subject, historical owner, requester, or category.',
+          'The archive is for traceability. Use the live PCAR Register for current work, assignments, corrective actions, and approvals.',
+        ],
+        when: (access) => access.canManageAllTasks,
       },
     ],
     keywords: ['PCAR', 'corrective action', 'tasks', 'root cause analysis', 'preventive action'],

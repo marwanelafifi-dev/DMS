@@ -200,6 +200,7 @@ public static class AuditActions
     public const string PCAR_SUBMITTED = "PCAR_SUBMITTED";
     public const string PCAR_APPROVED = "PCAR_APPROVED";
     public const string PCAR_REJECTED = "PCAR_REJECTED";
+    public const string HISTORICAL_PCAR_IMPORTED = "HISTORICAL_PCAR_IMPORTED";
     public const string TASK_ATTACHMENT_UPLOADED = "TASK_ATTACHMENT_UPLOADED";
     public const string TASK_ATTACHMENT_DELETED = "TASK_ATTACHMENT_DELETED";
 

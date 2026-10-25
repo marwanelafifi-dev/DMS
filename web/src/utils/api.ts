@@ -869,6 +869,18 @@ class APIClient {
     };
   }
 
+  // Historical PCAR archive — records imported from the previous service desk
+  // are read-only and deliberately separate from live actionable tasks.
+  async getHistoricalPcars(params?: { search?: string; status?: string }) {
+    const { data } = await this.client.get<ApiResponse>('/historical-pcars', { params });
+    return data;
+  }
+
+  async importHistoricalPcars(records: Array<Record<string, string>>) {
+    const { data } = await this.client.post<ApiResponse>('/historical-pcars/import', { records });
+    return data;
+  }
+
   private normalizeTask(task: any) {
     return {
       ...task,
