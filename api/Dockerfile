@@ -10,24 +10,11 @@ RUN apt-get update \
 
 WORKDIR /src
 
-# Configure NuGet with multiple sources and longer timeout
-RUN mkdir -p /root/.nuget/NuGet && cat > /root/.nuget/NuGet/NuGet.Config << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-    <add key="microsoft" value="https://packages.microsoft.com/nuget/static/index.json" />
-  </packageSources>
-  <config>
-    <add key="repositoryPath" value="/root/.nuget/packages" />
-    <add key="http_timeout" value="300" />
-  </config>
-</configuration>
-EOF
-
 COPY *.csproj ./
-RUN dotnet restore --source https://api.nuget.org/v3/index.json --source https://packages.microsoft.com/nuget/static/index.json || \
-    dotnet restore --source https://packages.microsoft.com/nuget/static/index.json
+# All project dependencies, including Microsoft.EntityFrameworkCore, are
+# published on NuGet.org. The Microsoft static feed is not required and can
+# be unreachable from otherwise healthy Docker-build networks.
+RUN dotnet restore --source https://api.nuget.org/v3/index.json
 COPY . ./
 RUN dotnet publish -c Release -o /app --no-restore
 
