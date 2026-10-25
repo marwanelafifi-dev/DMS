@@ -90,8 +90,15 @@ public class RBACMiddleware
             "/api/test",
             "/api/miniotest",
             "/api/databasetest",
-            // All /api/auth/* endpoints are public (no session needed for login)
-            "/api/auth",
+            // Only sign-in endpoints are public. Session endpoints such as
+            // /api/auth/me and /api/auth/heartbeat must pass through this
+            // middleware so BaseController receives HttpContext.Items[UserId].
+            "/api/auth/login",
+            "/api/auth/set-initial-password",
+            // Google login and its top-level callback arrive before the
+            // browser has a DMS bearer token.
+            "/api/auth/google",
+            "/api/auth/google/callback",
             // Google redirects the user's browser here directly after OAuth
             // consent — there is no X-User-Id header on that request. The user
             // is instead identified via the `state` query parameter, which
@@ -102,7 +109,10 @@ public class RBACMiddleware
             "/api/branding",
         };
 
-        return skipEndpoints.Any(endpoint => path.StartsWith(endpoint, StringComparison.OrdinalIgnoreCase));
+        // Keep authentication exceptions narrowly scoped. In particular,
+        // /api/auth/me must reach this middleware so it can populate the
+        // authenticated user context consumed by BaseController.
+        return skipEndpoints.Any(endpoint => string.Equals(path, endpoint, StringComparison.OrdinalIgnoreCase));
     }
 
     private bool IsDocumentEndpoint(string path) => path.StartsWith("/api/documents", StringComparison.OrdinalIgnoreCase);
