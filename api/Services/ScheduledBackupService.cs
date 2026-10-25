@@ -43,7 +43,7 @@ public static class ScheduledBackupKeys
 
 public class ScheduledBackupService(
     DmsContext context,
-    DatabaseExportService exportService,
+    RecoveryArchiveService recoveryArchiveService,
     MinioService minioService,
     AuditService auditService,
     ILogger<ScheduledBackupService> logger)
@@ -192,38 +192,37 @@ public class ScheduledBackupService(
         }
     }
 
-    // Shared by the recurring job and "Run Backup Now" — runs pg_dump,
-    // uploads to MinIO under the scheduled-backups prefix, and enforces
-    // KeepLastN retention afterward.
+    // Shared by the recurring job and "Run Backup Now". Each saved item is a
+    // complete recovery archive: database data plus every DMS object/version.
     public async Task<(bool Success, string? Error, string? FileName)> RunAndSaveAsync(ScheduledBackupConfig config, string frequency)
     {
-        var (bytes, error) = await exportService.ExportSqlDumpAsync();
-        if (bytes == null)
+        var (archive, error) = await recoveryArchiveService.CreateAsync();
+        if (archive == null)
         {
             logger.LogError("Scheduled backup ({Frequency}) failed: {Error}", frequency, error);
             return (false, error, null);
         }
 
         var timestamp = DateTime.UtcNow;
-        var fileName = $"dms-backup-{frequency}-{timestamp:yyyyMMdd-HHmmss}.sql";
+        var fileName = $"dms-recovery-{frequency}-{timestamp:yyyyMMdd-HHmmss}.zip";
         var objectKey = $"{ScheduledBackupKeys.ObjectPrefix}{fileName}";
 
-        using (var stream = new MemoryStream(bytes))
-            await minioService.UploadAsync(objectKey, stream, "application/sql");
+        await using (var stream = File.OpenRead(archive.Path))
+            await minioService.UploadAsync(objectKey, stream, "application/zip");
 
-        await auditService.LogAsync(Guid.Empty, AuditActions.DATABASE_BACKUP_EXPORTED, new { Frequency = frequency, fileName, SizeBytes = bytes.Length, Scheduled = true });
-        logger.LogInformation("Scheduled backup ({Frequency}) saved as {FileName} ({SizeBytes} bytes)", frequency, fileName, bytes.Length);
+        await auditService.LogAsync(Guid.Empty, AuditActions.DATABASE_BACKUP_EXPORTED, new { Frequency = frequency, fileName, archive.SizeBytes, archive.ObjectCount, Scheduled = true });
+        logger.LogInformation("Recovery backup ({Frequency}) saved as {FileName} ({SizeBytes} bytes, {ObjectCount} objects)", frequency, fileName, archive.SizeBytes, archive.ObjectCount);
 
         // Best-effort second copies — the MinIO save above has already
         // succeeded by this point, so a bad/unmounted/unwritable destination
         // path or a bad/unreachable network share only loses that specific
         // extra copy, never the backup itself.
         if (!string.IsNullOrWhiteSpace(config.DestinationPath))
-            await TryWriteToDestinationPathAsync(config.DestinationPath, fileName, bytes);
+            await TryWriteToDestinationPathAsync(config.DestinationPath, fileName, archive.Path);
 
         if (config.NetworkShare?.Enabled == true)
         {
-            var (smbSuccess, smbError) = SmbBackupService.SaveBackup(config.NetworkShare, fileName, bytes);
+            var (smbSuccess, smbError) = SmbBackupService.SaveBackup(config.NetworkShare, fileName, await File.ReadAllBytesAsync(archive.Path));
             if (!smbSuccess)
                 logger.LogWarning("Failed to write backup {FileName} to network share {Host}\\{ShareName} — {Error}", fileName, config.NetworkShare.Host, config.NetworkShare.ShareName, smbError);
             else
@@ -239,15 +238,18 @@ public class ScheduledBackupService(
                 SmbBackupService.EnforceRetention(config.NetworkShare, config.KeepLastN);
         }
 
+        RecoveryArchiveService.TryDelete(archive.Path);
         return (true, null, fileName);
     }
 
-    private async Task TryWriteToDestinationPathAsync(string destinationPath, string fileName, byte[] bytes)
+    private async Task TryWriteToDestinationPathAsync(string destinationPath, string fileName, string archivePath)
     {
         try
         {
             Directory.CreateDirectory(destinationPath);
-            await File.WriteAllBytesAsync(Path.Combine(destinationPath, fileName), bytes);
+            await using var source = File.OpenRead(archivePath);
+            await using var destination = File.Create(Path.Combine(destinationPath, fileName));
+            await source.CopyToAsync(destination);
             logger.LogInformation("Backup {FileName} also written to destination path {DestinationPath}", fileName, destinationPath);
         }
         catch (Exception ex)
@@ -262,7 +264,7 @@ public class ScheduledBackupService(
         // File names embed a sortable timestamp (yyyyMMdd-HHmmss), so a plain
         // descending string sort is newest-first without needing a MinIO stat
         // call per file just to order them.
-        var toDelete = objectKeys.OrderByDescending(k => k).Skip(keepLastN);
+        var toDelete = objectKeys.Where(key => key.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).OrderByDescending(k => k).Skip(keepLastN);
         foreach (var key in toDelete)
         {
             try { await minioService.DeleteAsync(key); }
@@ -275,7 +277,7 @@ public class ScheduledBackupService(
         try
         {
             if (!Directory.Exists(destinationPath)) return;
-            var toDelete = Directory.GetFiles(destinationPath, "dms-backup-*.sql")
+            var toDelete = Directory.GetFiles(destinationPath, "dms-recovery-*.zip")
                 .OrderByDescending(Path.GetFileName)
                 .Skip(keepLastN);
             foreach (var path in toDelete)

@@ -166,16 +166,16 @@ export function ScheduledBackups() {
       <div className="flex items-start gap-3 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
         <div className="rounded bg-[#e8f0f8] p-2 text-[#2f5f96] dark:bg-blue-900/30 dark:text-blue-300"><Calendar className="h-4 w-4" /></div>
         <div>
-          <h3 className="font-semibold text-[#26334d] dark:text-white">Scheduled Backups</h3>
-          <p className="text-sm text-[#718198] dark:text-slate-400">Automatic backups saved to object storage under <code className="rounded bg-[#f8fafc] px-1 dark:bg-slate-800">backups/scheduled/</code></p>
+          <h3 className="font-semibold text-[#26334d] dark:text-white">Synology Recovery Backup</h3>
+          <p className="text-sm text-[#718198] dark:text-slate-400">Complete recovery archives include PostgreSQL data, documents, every document version, task files, and branding.</p>
         </div>
       </div>
 
       <CardBody className="space-y-5">
         <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-4 dark:border-white/10">
           <div>
-            <p className="font-medium text-[#26334d] dark:text-white">Enable Automatic Backups</p>
-            <p className="text-xs text-[#94a3b8]">The server runs a background check every 5 minutes and triggers a backup when due</p>
+            <p className="font-medium text-[#26334d] dark:text-white">Enable Synology Recovery Backup</p>
+            <p className="text-xs text-[#94a3b8]">The server checks every 5 minutes and creates a complete, version-preserving recovery archive when due.</p>
           </div>
           <Toggle checked={enabled} onChange={setEnabled} />
         </div>
@@ -223,7 +223,7 @@ export function ScheduledBackups() {
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Keep last N backups (0 = keep all)</label>
+          <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Retention (archives, 0 = keep all)</label>
           <input type="number" min={0} value={keepLastN} onChange={(e) => setKeepLastN(Math.max(0, Number(e.target.value)))} className="field-control h-10 w-full sm:w-48" />
         </div>
 
@@ -235,7 +235,7 @@ export function ScheduledBackups() {
             type="text"
             value={destinationPath}
             onChange={(e) => setDestinationPath(e.target.value)}
-            placeholder="e.g. /mnt/backup-share"
+            placeholder="e.g. /mnt/synology/dms-recovery"
             className="field-control h-10 w-full font-mono text-sm"
           />
           <p className="mt-1.5 text-xs text-[#94a3b8]">
@@ -249,7 +249,7 @@ export function ScheduledBackups() {
         <div className="border-t border-[#e2e8f0] pt-5 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium text-[#26334d] dark:text-white">Network Share (SMB)</p>
+              <p className="font-medium text-[#26334d] dark:text-white">Direct SMB fallback</p>
               <p className="text-xs text-[#94a3b8]">
                 A second copy, written directly to a Windows/AD network share (e.g. <code className="rounded bg-[#f8fafc] px-1 dark:bg-slate-800">\\FSS\IT</code>) using the
                 credentials below — no host-level mount needed. These credentials are stored the same way this app already stores the SMTP
@@ -309,11 +309,11 @@ export function ScheduledBackups() {
           </div>
 
           <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
-            <Folder className="h-3.5 w-3.5" /> Saved backup files ({files.length})
+            <Folder className="h-3.5 w-3.5" /> Verified recovery archives ({files.length})
           </div>
           <div className="mt-2 max-h-64 overflow-y-auto rounded border border-[#e2e8f0] dark:border-white/10">
             {files.length === 0 ? (
-              <p className="p-4 text-center text-sm text-[#94a3b8]">No saved backup files</p>
+              <p className="p-4 text-center text-sm text-[#94a3b8]">No recovery archives saved yet</p>
             ) : (
               <div className="divide-y divide-[#e2e8f0] dark:divide-white/10">
                 {files.map((file) => (

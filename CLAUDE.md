@@ -1,5 +1,40 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 67 (2026-10-25) — Complete Synology Recovery Archives
+
+**Status:** Complete in source; frontend production build passed. The API must be rebuilt on Ubuntu and its `dotnet publish` output must finish without `error CS...` before this feature is considered deployed. No database migration is required.
+
+### What changed
+
+- Replaced scheduled SQL-only backup output with a complete recovery ZIP. Each archive contains `database/dms-data.sql`, every current MinIO application object under `objects/`, and `manifest.json` with the archive format, timestamp, database size, and every object key/size.
+- The archive includes document binaries and their complete version history, task attachments, legacy archived content, and branding assets because it enumerates all application objects from the DMS MinIO bucket. Existing scheduled backup output is excluded from a new archive to prevent recursively backing up old backups.
+- Scheduled and manual runs save `dms-recovery-<frequency>-<timestamp>.zip` under the existing `backups/scheduled/` MinIO prefix, then copy the completed archive to the optional destination path. Retention now applies to recovery ZIPs in both locations.
+- The Admin Panel card is now labelled **Synology Recovery Backup** and describes the full archive contents, recovery-archive retention, and the intended mounted-path example `/mnt/synology/dms-recovery`.
+- Synology credentials should remain managed by Ubuntu via a mounted CIFS/SMB share. The existing direct-SMB GUI option remains available only as a fallback and is not the recommended deployment path.
+
+### Safe production deployment
+
+- Existing data is preserved by `dms_pgdata` (PostgreSQL metadata) and `dms_miniodata` (MinIO documents and all versions). Rebuilding or recreating `api`, `web`, and `ocr-rag` does not delete either named volume.
+- Before the first deployment, pause application writes and take an emergency PostgreSQL dump plus an archive of `dms_miniodata`. Keep the checksum-verified snapshot until the first Synology recovery ZIP is created and inspected.
+- Never run `docker compose down -v`, `docker volume rm dms_pgdata`, or `docker volume rm dms_miniodata` on the live host.
+- Mount the Synology share on Ubuntu, bind-mount it into the `api` service (for example `/mnt/synology/dms-recovery:/mnt/synology/dms-recovery:rw`), then set `/mnt/synology/dms-recovery` as the GUI destination path. The GUI validates that the path is writable when settings are saved.
+- After `docker compose up -d --build api web ocr-rag`, create one manual recovery backup, confirm the ZIP appears on Synology, and inspect it for `manifest.json`, `database/dms-data.sql`, and an `objects/` tree before enabling the schedule.
+
+### Files modified
+
+- `api/Services/RecoveryArchiveService.cs` (new)
+- `api/Services/ScheduledBackupService.cs`
+- `api/Controllers/DatabaseBackupController.cs`
+- `api/Program.cs`
+- `web/src/components/custom/ScheduledBackups.tsx`
+
+### Verification
+
+- `npm run build` in `web/`: passed.
+- Local API build was attempted via Docker, but package restore could not reach NuGet. Validate the real Ubuntu build before deployment.
+
+---
+
 ## Session 66 (2026-08-31) — Critical Fix: a Missing `using` Directive Silently Blocked Every AI Assistant Fix Since Session 65
 
 **Status:** Complete in code. Rebuild `api` (frontend unaffected). No database migration is required.

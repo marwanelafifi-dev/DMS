@@ -528,7 +528,7 @@ public class DatabaseBackupController(
         {
             var objectKey = $"{ScheduledBackupKeys.ObjectPrefix}{fileName}";
             var stream = await minioService.DownloadAsync(objectKey);
-            return File(stream, "application/sql", fileName);
+            return File(stream, "application/zip", fileName);
         }
         catch (Exception ex)
         {

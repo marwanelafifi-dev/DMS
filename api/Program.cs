@@ -67,6 +67,7 @@ builder.Services.AddSingleton<EmailService>();
 builder.Services.AddScoped<GoogleMeetingReminderService>();
 builder.Services.AddScoped<AnnouncementService>();
 builder.Services.AddScoped<DatabaseExportService>();
+builder.Services.AddScoped<RecoveryArchiveService>();
 builder.Services.AddScoped<ScheduledBackupService>();
 builder.Services.AddBackgroundJobs();
 
