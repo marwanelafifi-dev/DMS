@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePageAccess } from '../../hooks/usePageAccess';
 import { apiClient, type HeaderSettings, type PageAccessRoleFlags } from '../../utils/api';
@@ -140,33 +140,34 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
             const Icon = item.icon;
             const active = isActive(item);
             return (
-              <button
-                key={item.label}
-                onClick={() => goTo(item.path)}
-                title={isCollapsed ? item.label : undefined}
-                className={`flex h-[43px] w-full items-center gap-3 border-l-[3px] px-5 text-left text-[15px] transition-colors ${
-                  active
-                    ? 'border-[#70a3e8] bg-white/[0.12] font-semibold text-white'
-                    : 'border-transparent font-medium text-white/92 hover:bg-white/[0.08]'
-                } ${isCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
-              >
-                <Icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.9} />
-                <span className={isCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
-              </button>
+              <Fragment key={item.label}>
+                <button
+                  onClick={() => goTo(item.path)}
+                  title={isCollapsed ? item.label : undefined}
+                  className={`flex h-[43px] w-full items-center gap-3 border-l-[3px] px-5 text-left text-[15px] transition-colors ${
+                    active
+                      ? 'border-[#70a3e8] bg-white/[0.12] font-semibold text-white'
+                      : 'border-transparent font-medium text-white/92 hover:bg-white/[0.08]'
+                  } ${isCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
+                >
+                  <Icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.9} />
+                  <span className={isCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
+                </button>
+                {item.path === '/tasks' && pageAccess?.canViewPcar && (
+                  <button
+                    onClick={() => goTo('/tasks/history')}
+                    title={isCollapsed ? 'Historical PCAR Archive' : undefined}
+                    className={`flex h-[38px] w-full items-center gap-3 border-l-[3px] pl-11 pr-5 text-left text-sm transition-colors ${
+                      location.pathname === '/tasks/history' ? 'border-[#70a3e8] bg-white/[0.12] font-semibold text-[#7dd3fc]' : 'border-transparent text-white/80 hover:bg-white/[0.08] hover:text-white'
+                    } ${isCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
+                  >
+                    <History className="h-4 w-4 flex-shrink-0 text-[#7dd3fc]" strokeWidth={1.9} />
+                    <span className={isCollapsed ? 'lg:hidden' : ''}>Historical PCAR Archive</span>
+                  </button>
+                )}
+              </Fragment>
             );
           })}
-          {pageAccess?.canViewPcar && (
-            <button
-              onClick={() => goTo('/tasks/history')}
-              title={isCollapsed ? 'Historical PCAR Archive' : undefined}
-              className={`flex h-[38px] w-full items-center gap-3 border-l-[3px] pl-11 pr-5 text-left text-sm transition-colors ${
-                location.pathname === '/tasks/history' ? 'border-[#70a3e8] bg-white/[0.12] font-semibold text-[#7dd3fc]' : 'border-transparent text-white/80 hover:bg-white/[0.08] hover:text-white'
-              } ${isCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
-            >
-              <History className="h-4 w-4 flex-shrink-0 text-[#7dd3fc]" strokeWidth={1.9} />
-              <span className={isCollapsed ? 'lg:hidden' : ''}>Historical PCAR Archive</span>
-            </button>
-          )}
 
           {pageAccess?.canViewAdminPanel !== false && (
           <button
