@@ -111,8 +111,11 @@ public class RBACMiddleware
 
         // Keep authentication exceptions narrowly scoped. In particular,
         // /api/auth/me must reach this middleware so it can populate the
-        // authenticated user context consumed by BaseController.
-        return skipEndpoints.Any(endpoint => string.Equals(path, endpoint, StringComparison.OrdinalIgnoreCase));
+        // authenticated user context consumed by BaseController. Branding is
+        // the intentional exception: its read-only child routes are required
+        // before a user has a session (login copy, notices, and logo files).
+        return skipEndpoints.Any(endpoint => string.Equals(path, endpoint, StringComparison.OrdinalIgnoreCase))
+            || path.StartsWith("/api/branding/", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsDocumentEndpoint(string path) => path.StartsWith("/api/documents", StringComparison.OrdinalIgnoreCase);
