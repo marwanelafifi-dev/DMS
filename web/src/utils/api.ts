@@ -73,6 +73,8 @@ export interface PageAccessRoleFlags {
   canManageFolderPermissions: boolean;
   canManageFilePermissions: boolean;
   canManageAllTasks: boolean;
+  canViewAllHistoricalPcars: boolean;
+  canImportHistoricalPcars: boolean;
   canCreateTasks: boolean;
   canReassignTasks: boolean;
   canReassignMyTasks: boolean;
@@ -871,7 +873,7 @@ class APIClient {
 
   // Historical PCAR archive — records imported from the previous service desk
   // are read-only and deliberately separate from live actionable tasks.
-  async getHistoricalPcars(params?: { search?: string; status?: string }) {
+  async getHistoricalPcars(params?: { search?: string; status?: string; page?: number; pageSize?: number }) {
     const { data } = await this.client.get<ApiResponse>('/historical-pcars', { params });
     return data;
   }

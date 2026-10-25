@@ -22,6 +22,7 @@ const PERMISSION_KEYS = [
   'canReadAllFolders', 'canReadWriteAllFolders', 'bypassFolderPermissions',
   'canEditFiles', 'canManageFolderPermissions', 'canManageFilePermissions',
   'canCreateTasks', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks',
+  'canViewAllHistoricalPcars', 'canImportHistoricalPcars',
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
@@ -41,6 +42,8 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canManageFolderPermissions: 'Manage Folder Permissions',
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',
+  canViewAllHistoricalPcars: 'View All Historical PCARs',
+  canImportHistoricalPcars: 'Import Historical PCARs',
   canCreateTasks: 'Create New PCAR',
   canReassignMyTasks: 'Reassign My Tasks Only',
   canReassignTasks: 'Reassign All Tasks',

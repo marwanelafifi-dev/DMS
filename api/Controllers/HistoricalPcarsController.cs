@@ -13,12 +13,14 @@ namespace DMS.Api.Controllers;
 public class HistoricalPcarsController(DmsContext context, AuditService auditService, ILogger<HistoricalPcarsController> logger) : BaseController
 {
     [HttpGet]
-    public async Task<ActionResult<object>> Get([FromQuery] string? search, [FromQuery] string? status)
+    public async Task<ActionResult<object>> Get([FromQuery] string? search, [FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
-        var forbidden = await RequirePcarArchiveAccessAsync();
+        var (access, forbidden) = await RequirePcarViewAccessAsync();
         if (forbidden != null) return forbidden;
 
         var query = context.HistoricalPcars.AsNoTracking().AsQueryable();
+        if (!access!.CanViewAllHistoricalPcars)
+            query = query.Where(p => p.LinkedUserId == GetCurrentUserId());
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
@@ -30,7 +32,11 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(p => p.SourceStatus == status);
 
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        var totalCount = await query.CountAsync();
         var rows = await query.OrderByDescending(p => p.SourceCreatedAt).ThenBy(p => p.LegacyRequestId)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(p => new
             {
                 p.HistoricalPcarId, p.LegacyRequestId, p.GroupName, p.RequesterName, p.Department,
@@ -41,14 +47,16 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
             })
             .ToListAsync();
 
-        return Ok(new { success = true, data = rows, totalCount = rows.Count });
+        return Ok(new { success = true, data = rows, totalCount, page, pageSize, totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize)) });
     }
 
     [HttpPost("import")]
     public async Task<ActionResult<object>> Import([FromBody] HistoricalPcarImportRequest request)
     {
-        var forbidden = await RequirePcarArchiveAccessAsync();
+        var (access, forbidden) = await RequirePcarViewAccessAsync();
         if (forbidden != null) return forbidden;
+        if (access!.CanImportHistoricalPcars != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to import historical PCAR records" });
         if (request.Records is null || request.Records.Count == 0)
             return BadRequest(new { success = false, error = "The import has no PCAR records" });
         if (request.Records.Count > 2_000)
@@ -128,12 +136,12 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
         return Ok(new { success = true, data = new { imported, skipped, linkedOwners, unmatchedOwners = imported - linkedOwners } });
     }
 
-    private async Task<ActionResult<object>?> RequirePcarArchiveAccessAsync()
+    private async Task<(DmsPageAccessRole? Access, ActionResult<object>? Forbidden)> RequirePcarViewAccessAsync()
     {
         var access = await GetPageAccessRoleAsync(context, GetCurrentUserId());
-        if (access?.CanViewPcar != true || access.CanManageAllTasks != true)
-            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to manage the historical PCAR archive" });
-        return null;
+        if (access?.CanViewPcar != true)
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to view historical PCAR records" }));
+        return (access, null);
     }
 
     private static string? NullIfPlaceholder(string? value)

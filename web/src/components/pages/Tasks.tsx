@@ -1389,7 +1389,7 @@ export function Tasks() {
         </Card>
       )}
 
-      <HistoricalPcarRegister canManage={canManageAllTasks} />
+      <HistoricalPcarRegister canImport={pageAccess?.canImportHistoricalPcars ?? false} />
 
       {/* Add Task Modal */}
       {showAddForm && (

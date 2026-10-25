@@ -38,6 +38,11 @@ public class DmsPageAccessRole
     // management action icons (edit/complete/delete) on the register table
     // stay hidden and the API rejects the underlying requests.
     public bool CanManageAllTasks { get; set; }
+    // Historical PCAR archive permissions are deliberately separate from live
+    // task administration. Viewing all archive records and importing them are
+    // sensitive compliance capabilities, opt-in per role.
+    public bool CanViewAllHistoricalPcars { get; set; }
+    public bool CanImportHistoricalPcars { get; set; }
     // Independent from CanManageAllTasks — lets a role see the "New PCAR"
     // button and assign a task to anyone, without also granting the ability
     // to edit/complete/delete tasks that already belong to other people.

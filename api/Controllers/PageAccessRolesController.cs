@@ -65,6 +65,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageFolderPermissions = req.CanManageFolderPermissions,
                 CanManageFilePermissions = req.CanManageFilePermissions,
                 CanManageAllTasks = req.CanManageAllTasks,
+                CanViewAllHistoricalPcars = req.CanViewAllHistoricalPcars,
+                CanImportHistoricalPcars = req.CanImportHistoricalPcars,
                 CanCreateTasks = req.CanCreateTasks,
                 CanReassignTasks = req.CanReassignTasks,
                 CanReassignMyTasks = req.CanReassignMyTasks,
@@ -121,6 +123,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanManageFolderPermissions = req.CanManageFolderPermissions;
             entity.CanManageFilePermissions = req.CanManageFilePermissions;
             entity.CanManageAllTasks = req.CanManageAllTasks;
+            entity.CanViewAllHistoricalPcars = req.CanViewAllHistoricalPcars;
+            entity.CanImportHistoricalPcars = req.CanImportHistoricalPcars;
             entity.CanCreateTasks = req.CanCreateTasks;
             entity.CanReassignTasks = req.CanReassignTasks;
             entity.CanReassignMyTasks = req.CanReassignMyTasks;
@@ -197,6 +201,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageFolderPermissions = entity.CanManageFolderPermissions,
                 CanManageFilePermissions = entity.CanManageFilePermissions,
                 CanManageAllTasks = entity.CanManageAllTasks,
+                CanViewAllHistoricalPcars = entity.CanViewAllHistoricalPcars,
+                CanImportHistoricalPcars = entity.CanImportHistoricalPcars,
                 CanCreateTasks = entity.CanCreateTasks,
                 CanReassignTasks = entity.CanReassignTasks,
                 CanReassignMyTasks = entity.CanReassignMyTasks,
@@ -278,6 +284,7 @@ public record UpdatePageAccessRoleRequest(
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
+    bool CanViewAllHistoricalPcars = false, bool CanImportHistoricalPcars = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
@@ -292,6 +299,7 @@ public record CreatePageAccessRoleRequest(
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
+    bool CanViewAllHistoricalPcars = false, bool CanImportHistoricalPcars = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
