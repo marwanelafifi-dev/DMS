@@ -90,12 +90,8 @@ public class RBACMiddleware
             "/api/test",
             "/api/miniotest",
             "/api/databasetest",
-            // No session token exists yet at login time.
-            "/api/auth/login",
-            "/api/auth/set-initial-password",
-            // No session/X-User-Id exists yet at Google sign-in time either —
-            // AuthController verifies the Google ID token itself instead.
-            "/api/auth/google",
+            // All /api/auth/* endpoints are public (no session needed for login)
+            "/api/auth",
             // Google redirects the user's browser here directly after OAuth
             // consent — there is no X-User-Id header on that request. The user
             // is instead identified via the `state` query parameter, which
