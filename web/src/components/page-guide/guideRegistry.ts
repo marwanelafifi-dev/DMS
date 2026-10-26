@@ -1409,7 +1409,7 @@ export const guideRegistry: GuideDefinition[] = [
         title: 'Synology Recovery Backup',
         paragraphs: [
           'Synology Recovery Backup creates a complete recovery archive. Each archive contains the PostgreSQL database and the MinIO objects that hold documents, every document version, task attachments, and branding.',
-          'Configure the schedule, then use Run Backup Now to create and verify the first archive before relying on automatic backups. The first archive can take time when the document store is large.',
+          'Configure the schedule, then use Run Backup Now to queue the first archive. DMS keeps working if you leave the page; return to see whether it completed and whether the Synology copy succeeded.',
         ],
         bullets: [
           'Enable the service, choose one or more frequencies, and set the local Africa/Cairo schedule time.',

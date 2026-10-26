@@ -64,6 +64,8 @@ export function ScheduledBackups() {
   const [files, setFiles] = useState<BackupFile[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isRunningNow, setIsRunningNow] = useState(false);
+  const [manualJobId, setManualJobId] = useState<string | null>(() => localStorage.getItem('dms-manual-backup-job-id'));
+  const [manualJobState, setManualJobState] = useState('Enqueued');
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
   const [scheduleTimeZone, setScheduleTimeZone] = useState('UTC');
 
@@ -100,6 +102,49 @@ export function ScheduledBackups() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!manualJobId) return;
+
+    let stopped = false;
+    const check = async () => {
+      try {
+        const res = await apiClient.getScheduledBackupRunStatus(manualJobId);
+        if (stopped || !res.success || !res.data) return;
+        const { state, outcome } = res.data;
+        setManualJobState(state);
+        if (state !== 'Succeeded' && state !== 'Failed' && state !== 'Deleted') return;
+
+        stopped = true;
+        localStorage.removeItem('dms-manual-backup-job-id');
+        setManualJobId(null);
+        setIsRunningNow(false);
+        if (state === 'Succeeded' && outcome?.success) {
+          if (outcome.warning) showError(outcome.warning);
+          else showSuccess(`Backup saved as ${outcome.fileName}`);
+        } else if (state === 'Succeeded') {
+          showSuccess('Backup job finished. Check the Synology copy before relying on it.');
+        } else {
+          showError(outcome?.error || 'Backup failed. Check the API logs for details.');
+        }
+        load();
+      } catch (err: any) {
+        if (stopped || ![403, 404].includes(err.response?.status)) return;
+        stopped = true;
+        localStorage.removeItem('dms-manual-backup-job-id');
+        setManualJobId(null);
+        setIsRunningNow(false);
+        showError(err.response?.status === 403
+          ? 'You no longer have access to backup status.'
+          : 'Backup job status expired. Check the archive list and Synology path.');
+      }
+    };
+
+    void check();
+    const timer = window.setInterval(() => void check(), 5000);
+    return () => { stopped = true; window.clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualJobId]);
 
   const toggleFrequency = (key: string) => {
     setFrequencies((prev) => (prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]));
@@ -141,15 +186,13 @@ export function ScheduledBackups() {
     setIsRunningNow(true);
     try {
       const res = await apiClient.runScheduledBackupNow();
-      if (!res.success) { showError(res.error || 'Failed to run backup'); return; }
-      if (res.data?.warning)
-        showError(res.data.warning);
-      else
-        showSuccess(`Backup saved as ${res.data?.fileName}`);
-      load();
+      if (!res.success || !res.data?.jobId) { showError(res.error || 'Failed to queue backup'); setIsRunningNow(false); return; }
+      localStorage.setItem('dms-manual-backup-job-id', res.data.jobId);
+      setManualJobId(res.data.jobId);
+      setManualJobState('Enqueued');
+      showSuccess('Backup queued. DMS will keep working if you leave this page.');
     } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to run backup');
-    } finally {
+      showError(err.response?.data?.error || 'Failed to queue backup');
       setIsRunningNow(false);
     }
   };
@@ -322,10 +365,16 @@ export function ScheduledBackups() {
           <Button variant="primary" onClick={handleSave} disabled={isSaving} leftIcon={<Save className="h-4 w-4" />}>
             {isSaving ? 'Saving…' : 'Save Schedule'}
           </Button>
-          <Button variant="secondary" onClick={handleRunNow} disabled={isRunningNow} leftIcon={<Play className="h-4 w-4" />}>
-            {isRunningNow ? 'Running…' : 'Run Backup Now'}
+          <Button variant="secondary" onClick={handleRunNow} disabled={isRunningNow || manualJobId != null} leftIcon={<Play className="h-4 w-4" />}>
+            {manualJobId ? 'Backup in progress' : isRunningNow ? 'Queuing…' : 'Run Backup Now'}
           </Button>
         </div>
+
+        {manualJobId && (
+          <p role="status" className="text-sm text-[#2f5f96] dark:text-blue-300">
+            {manualJobState === 'Processing' ? 'Recovery backup is running.' : 'Recovery backup is queued.'} This may take several minutes. You can leave this page and return to see the result.
+          </p>
+        )}
 
         <div className="border-t border-[#e2e8f0] pt-4 dark:border-white/10">
           <div className="flex items-center gap-1.5 text-xs text-[#718198]">

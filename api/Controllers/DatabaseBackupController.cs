@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using System.Text;
+using System.Text.Json;
 using Hangfire;
 using static DMS.Api.Services.AuditActions;
 
@@ -29,6 +30,8 @@ public class DatabaseBackupController(
     ILogger<DatabaseBackupController> logger) : BaseController
 {
     private const string LastBackupSettingKey = "database_last_backup_at";
+    private static readonly object ManualBackupQueueLock = new();
+    private static string? activeManualBackupJobId;
     private sealed record ScheduledBackupFileResponse(string FileName, long SizeBytes, DateTime? LastModified);
 
     private async Task<bool> IsAdminAsync()
@@ -501,24 +504,59 @@ public class DatabaseBackupController(
         return Ok(new { success = true, data = req });
     }
 
-    // POST /api/database-backup/schedule/run-now — runs the same backup a
-    // scheduled trigger would, saved into the same MinIO-backed file list
-    // (distinct from GET .../export, which only downloads to the browser and
-    // isn't kept on the server).
+    // Queue the backup so a multi-gigabyte archive is not tied to the browser
+    // or reverse proxy's HTTP timeout. Hangfire persists the job in Postgres.
     [HttpPost("schedule/run-now")]
     public async Task<ActionResult<object>> RunNow()
     {
         if (!await IsAdminAsync())
             return StatusCode(403, new { success = false, error = "Only a Full Access role can run a backup" });
 
-        var config = await scheduledBackupService.LoadConfigAsync();
-        var (success, error, fileName) = await scheduledBackupService.RunAndSaveAsync(config, "manual");
-        if (!success)
-            return StatusCode(500, new { success = false, error = error ?? "Backup failed" });
+        string jobId;
+        lock (ManualBackupQueueLock)
+        {
+            if (activeManualBackupJobId != null)
+            {
+                using var existingConnection = JobStorage.Current.GetConnection();
+                var state = existingConnection.GetStateData(activeManualBackupJobId)?.Name;
+                if (state is "Enqueued" or "Processing" or "Scheduled" or "Awaiting")
+                    return Accepted(new { success = true, data = new { jobId = activeManualBackupJobId } });
+            }
 
-        await auditService.LogAsync(GetCurrentUserId(), DATABASE_BACKUP_EXPORTED, new { fileName, Manual = true });
+            var userId = GetCurrentUserId();
+            jobId = backgroundJobs.Enqueue<ScheduledBackupService>(service => service.RunManualBackupJobAsync(userId, null!));
+            activeManualBackupJobId = jobId;
+        }
 
-        return Ok(new { success = true, data = new { fileName, warning = error } });
+        return Accepted(new { success = true, data = new { jobId } });
+    }
+
+    [HttpGet("schedule/run-status/{jobId}")]
+    public async Task<ActionResult<object>> GetManualRunStatus(string jobId)
+    {
+        if (!await IsAdminAsync())
+            return StatusCode(403, new { success = false, error = "Only a Full Access role can view backup status" });
+
+        using var connection = JobStorage.Current.GetConnection();
+        var state = connection.GetStateData(jobId);
+        if (state == null)
+            return NotFound(new { success = false, error = "Backup job was not found" });
+
+        ManualBackupOutcome? outcome = null;
+        var rawOutcome = connection.GetJobParameter(jobId, "DmsBackupOutcome");
+        if (!string.IsNullOrEmpty(rawOutcome))
+        {
+            try
+            {
+                outcome = JsonSerializer.Deserialize<ManualBackupOutcome>(rawOutcome, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "Could not read the result of backup job {JobId}", jobId);
+            }
+        }
+
+        return Ok(new { success = true, data = new { jobId, state = state.Name, outcome } });
     }
 
     [HttpGet("schedule/files/{fileName}/download")]

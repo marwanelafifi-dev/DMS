@@ -1,6 +1,8 @@
 using System.Text.Json;
 using DMS.Api.Data;
 using DMS.Api.Models;
+using Hangfire;
+using Hangfire.Server;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Services;
@@ -43,6 +45,8 @@ public static class ScheduledBackupKeys
     public const string ObjectPrefix = "backups/scheduled/";
 }
 
+public record ManualBackupOutcome(bool Success, string? FileName, string? Warning, string? Error);
+
 public class ScheduledBackupService(
     DmsContext context,
     RecoveryArchiveService recoveryArchiveService,
@@ -72,6 +76,29 @@ public class ScheduledBackupService(
 
     public Task<ScheduledBackupConfig> LoadConfigAsync() => LoadAsync(context, ScheduledBackupKeys.Config, ScheduledBackupConfig.Default);
     public Task<ScheduledBackupLastRun> LoadLastRunAsync() => LoadAsync(context, ScheduledBackupKeys.LastRun, ScheduledBackupLastRun.Default);
+
+    // Hangfire executes this after the HTTP request returns. The result is
+    // stored with the job so the GUI can poll without a long-lived connection.
+    [AutomaticRetry(Attempts = 0)]
+    public async Task RunManualBackupJobAsync(Guid requestedByUserId, PerformContext performContext)
+    {
+        var config = await LoadConfigAsync();
+        var (success, message, fileName) = await RunAndSaveAsync(config, "manual");
+        var outcome = new ManualBackupOutcome(success, fileName, success ? message : null, success ? null : message);
+        performContext.SetJobParameter("DmsBackupOutcome", outcome);
+
+        if (!success)
+            throw new InvalidOperationException(message ?? "Manual recovery backup failed");
+
+        try
+        {
+            await auditService.LogAsync(requestedByUserId, AuditActions.DATABASE_BACKUP_EXPORTED, new { fileName, Manual = true });
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Recovery backup {FileName} completed, but the requester audit entry failed", fileName);
+        }
+    }
 
     public async Task SaveConfigAsync(ScheduledBackupConfig config, Guid userId)
     {

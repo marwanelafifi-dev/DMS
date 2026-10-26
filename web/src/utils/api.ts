@@ -1329,6 +1329,11 @@ class APIClient {
     return data;
   }
 
+  async getScheduledBackupRunStatus(jobId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/database-backup/schedule/run-status/${encodeURIComponent(jobId)}`);
+    return data;
+  }
+
   async downloadScheduledBackupFile(fileName: string) {
     const response = await this.client.get(`/database-backup/schedule/files/${encodeURIComponent(fileName)}/download`, { responseType: 'blob' });
     const url = URL.createObjectURL(new Blob([response.data]));
