@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, History, Search, Upload } from 'lucide-react';
-import { Button, Card, CardBody } from '../ui';
+import { Button, Card } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';

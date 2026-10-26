@@ -1,5 +1,13 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 70 (2026-10-26) — Deployment recovery and clean frontend checks
+
+- The Ubuntu migration `097_group_auto_membership.sql` applied successfully. A disposable PostgreSQL 16 test confirmed existing-user backfill, enrollment of a newly created user, and no enrollment after the checkbox is turned off. No production group has been enabled automatically.
+- The updated API passed `dotnet restore` and `dotnet publish -c Release --no-restore` in a temporary .NET 8 SDK container. The production Ubuntu Docker build was blocked before source compilation by `mcr.microsoft.com` metadata resolution and a BuildKit content-lease error; do not treat a previously tagged `dms-api` image as the new build.
+- A local, gitignored fallback image archive was prepared from the compiled API, .NET 8 runtime, PostgreSQL 16 `pg_dump`, and `curl`. Its SHA-256 file is beside it under `artifacts/group-membership-api/`. Transfer and load this archive on Ubuntu only after verifying its checksum. The archive does not contain the live database or MinIO volumes.
+- Cleared the existing frontend TypeScript errors: removed unused values/imports, typed notification and historical-PCAR response fields, corrected the Dashboard queue mapping type, and created a real `ArrayBuffer` in the Office parser test. `npm.cmd run type-check`, the production web build, and the focused Office parser tests now pass.
+- Recreate `api` and `web` only after the new API image is loaded and the web image is built. Keep `dms_pgdata` and `dms_miniodata` untouched.
+
 ## Session 69 (2026-10-26) — Group membership for current and future users
 
 **Status:** Source complete; `npm.cmd run build` passed. The local machine has no .NET SDK or accessible Docker daemon, so build the API and apply/test migration `097` on Ubuntu before enabling the checkbox. `npm.cmd run type-check` still reports existing errors in unrelated frontend files; none were reported in the changed Groups or Users controls.

@@ -45,7 +45,7 @@ function flattenQueueResult(
 ): PendingApprovalItem[] {
   if (result.status !== 'fulfilled') return [];
   return (result.value.data || [])
-    .map((item: any) => {
+    .map((item: any): PendingApprovalItem | null => {
       const doc = item.documents?.[0];
       if (!doc?.documentId) return null;
       return {

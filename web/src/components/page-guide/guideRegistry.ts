@@ -29,21 +29,6 @@ export interface GuideDefinition {
   enabled: boolean;
 }
 
-const futureGuide = (
-  key: string,
-  title: string,
-  matches: (pathname: string) => boolean,
-  requiredAccess?: keyof PageAccessRoleFlags,
-): GuideDefinition => ({
-  key,
-  version: 1,
-  title,
-  matches,
-  requiredAccess,
-  commonSections: [],
-  enabled: false,
-});
-
 export const guideRegistry: GuideDefinition[] = [
   {
     key: 'dashboard',

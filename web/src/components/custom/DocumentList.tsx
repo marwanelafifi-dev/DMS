@@ -348,7 +348,6 @@ export function DocumentList({
         <tbody>
           {currentPage === 1 && shortcuts.map((shortcut) => {
             const isFolder = shortcut.targetType === 'folder';
-            const target: LibraryLinkTarget = { type: shortcut.targetType, id: shortcut.targetId, name: shortcut.name };
             const openShortcut = () => isFolder
               ? onFolderOpen?.(shortcut.targetId)
               : onDocumentClick(shortcut.targetId);

@@ -9,9 +9,11 @@ describe('extractOfficeDocumentText', () => {
     zip.file('word/header1.xml', '<?xml version="1.0"?><w:hdr xmlns:w="urn:w"><w:p><w:r><w:t>DOC.NO:</w:t></w:r><w:r><w:t>SWS-25120002</w:t></w:r></w:p></w:hdr>');
     zip.file('word/footer1.xml', '<?xml version="1.0"?><w:ftr xmlns:w="urn:w"><w:p><w:r><w:t>Controlled copy</w:t></w:r></w:p></w:ftr>');
     const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const fileBuffer = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(fileBuffer).set(bytes);
 
     const text = await extractOfficeDocumentText(
-      new File([bytes], 'procedure.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+      new File([fileBuffer], 'procedure.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
       'procedure.docx',
     );
 
