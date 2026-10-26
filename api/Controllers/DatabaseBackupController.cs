@@ -478,6 +478,9 @@ public class DatabaseBackupController(
         if (!TimeSpan.TryParse(req.Time, out _))
             return BadRequest(new { success = false, error = "Time must be in HH:mm format" });
 
+        if (req.KeepLastN < 0 || req.LocalKeepLastN < 0)
+            return BadRequest(new { success = false, error = "Archive retention counts cannot be negative" });
+
         var pathError = ScheduledBackupService.ValidateDestinationPath(req.DestinationPath);
         if (pathError != null)
             return BadRequest(new { success = false, error = pathError });
@@ -515,7 +518,7 @@ public class DatabaseBackupController(
 
         await auditService.LogAsync(GetCurrentUserId(), DATABASE_BACKUP_EXPORTED, new { fileName, Manual = true });
 
-        return Ok(new { success = true, data = new { fileName } });
+        return Ok(new { success = true, data = new { fileName, warning = error } });
     }
 
     [HttpGet("schedule/files/{fileName}/download")]

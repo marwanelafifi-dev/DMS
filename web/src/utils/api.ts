@@ -1308,6 +1308,7 @@ class APIClient {
     dayOfWeek: string;
     dayOfMonth: number;
     keepLastN: number;
+    localKeepLastN: number;
     destinationPath?: string | null;
     networkShare?: {
       enabled: boolean;

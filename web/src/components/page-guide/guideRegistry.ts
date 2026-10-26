@@ -1409,14 +1409,14 @@ export const guideRegistry: GuideDefinition[] = [
         title: 'Synology Recovery Backup',
         paragraphs: [
           'Synology Recovery Backup creates a complete recovery archive. Each archive contains the PostgreSQL database and the MinIO objects that hold documents, every document version, task attachments, and branding.',
-          'Configure the schedule in the page, then use Queue backup now to create and verify the first archive before relying on the schedule. The first archive can take time when the document store is large.',
+          'Configure the schedule, then use Run Backup Now to create and verify the first archive before relying on automatic backups. The first archive can take time when the document store is large.',
         ],
         bullets: [
           'Enable the service, choose one or more frequencies, and set the local Africa/Cairo schedule time.',
-          'Retention is the number of recovery archives to keep; use 0 only when your approved storage plan permits keeping all archives.',
+          'Set Synology and Ubuntu retention separately. Ubuntu copies are stored in MinIO on this server and use local disk space. Enter 0 only when the storage plan permits keeping all copies.',
           'Destination path must be the path inside the API container: /mnt/synology/dms-recovery. It is mapped by Ubuntu to the approved Synology share.',
           'Leave Direct SMB fallback off when Ubuntu already mounts Synology with /etc/dms/synology-credentials. Do not enter or store NAS credentials in the portal.',
-          'After saving, confirm the archive appears in the verified backup list before treating the configuration as operational.',
+          'The archive list on this page shows local MinIO copies only. Confirm that the ZIP also appears on Synology before treating the schedule as operational.',
         ],
         when: () => true,
       },

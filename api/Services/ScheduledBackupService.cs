@@ -21,9 +21,11 @@ namespace DMS.Api.Services;
 //     needed, but the credentials are then stored in the database (same
 //     plain-JSON pattern already used for the SMTP password), not a
 //     locked-down host-only file. Both can be enabled at once if wanted.
-public record ScheduledBackupConfig(bool Enabled, string[] Frequencies, string Time, string DayOfWeek, int DayOfMonth, int KeepLastN, string? DestinationPath = null, NetworkShareConfig? NetworkShare = null)
+public record ScheduledBackupConfig(bool Enabled, string[] Frequencies, string Time, string DayOfWeek, int DayOfMonth, int KeepLastN, string? DestinationPath = null, NetworkShareConfig? NetworkShare = null, int? LocalKeepLastN = null)
 {
-    public static readonly ScheduledBackupConfig Default = new(false, [], "02:00", "Sunday", 1, 30, null, NetworkShareConfig.Default);
+    // Null keeps the previous behavior for saved settings created before the
+    // separate MinIO retention control existed.
+    public static readonly ScheduledBackupConfig Default = new(false, [], "02:00", "Sunday", 1, 30, null, NetworkShareConfig.Default, 2);
 }
 
 // Tracks the last period each frequency actually fired in (e.g. "2026-08-05"
@@ -241,28 +243,42 @@ public class ScheduledBackupService(
                 logger.LogInformation("Recovery backup ({Frequency}) saved as {FileName} ({SizeBytes} bytes, {ObjectCount} objects)", frequency, fileName, archive.SizeBytes, archive.ObjectCount);
 
                 // Optional second copies never invalidate the MinIO recovery point.
+                var copyWarnings = new List<string>();
+                var destinationCopied = false;
                 if (!string.IsNullOrWhiteSpace(config.DestinationPath))
-                    await TryWriteToDestinationPathAsync(config.DestinationPath, fileName, archive.Path);
+                {
+                    destinationCopied = await TryWriteToDestinationPathAsync(config.DestinationPath, fileName, archive.Path);
+                    if (!destinationCopied)
+                        copyWarnings.Add("the mounted Synology copy failed");
+                }
 
+                var smbCopied = false;
                 if (config.NetworkShare?.Enabled == true)
                 {
                     var (smbSuccess, smbError) = SmbBackupService.SaveBackup(config.NetworkShare, fileName, archive.Path);
+                    smbCopied = smbSuccess;
                     if (!smbSuccess)
+                    {
                         logger.LogWarning("Failed to write backup {FileName} to network share {Host}\\{ShareName} - {Error}", fileName, config.NetworkShare.Host, config.NetworkShare.ShareName, smbError);
+                        copyWarnings.Add("the direct SMB copy failed");
+                    }
                     else
                         logger.LogInformation("Backup {FileName} also written to network share {Host}\\{ShareName}", fileName, config.NetworkShare.Host, config.NetworkShare.ShareName);
                 }
 
+                var localKeepLastN = config.LocalKeepLastN ?? config.KeepLastN;
+                if (localKeepLastN > 0)
+                    await EnforceRetentionAsync(localKeepLastN);
+
                 if (config.KeepLastN > 0)
                 {
-                    await EnforceRetentionAsync(config.KeepLastN);
-                    if (!string.IsNullOrWhiteSpace(config.DestinationPath))
-                        EnforceDestinationPathRetention(config.DestinationPath, config.KeepLastN);
-                    if (config.NetworkShare?.Enabled == true)
-                        SmbBackupService.EnforceRetention(config.NetworkShare, config.KeepLastN);
+                    if (destinationCopied)
+                        EnforceDestinationPathRetention(config.DestinationPath!, config.KeepLastN);
+                    if (smbCopied)
+                        SmbBackupService.EnforceRetention(config.NetworkShare!, config.KeepLastN);
                 }
 
-                return (true, null, fileName);
+                return (true, copyWarnings.Count > 0 ? $"Local backup saved, but {string.Join(" and ", copyWarnings)}. Check the API logs and the Synology destination." : null, fileName);
             }
             finally
             {
@@ -280,7 +296,7 @@ public class ScheduledBackupService(
         }
     }
 
-    private async Task TryWriteToDestinationPathAsync(string destinationPath, string fileName, string archivePath)
+    private async Task<bool> TryWriteToDestinationPathAsync(string destinationPath, string fileName, string archivePath)
     {
         string? partialPath = null;
         try
@@ -292,10 +308,12 @@ public class ScheduledBackupService(
                 await source.CopyToAsync(destination);
             File.Move(partialPath, Path.Combine(destinationPath, fileName), overwrite: true);
             logger.LogInformation("Backup {FileName} also written to destination path {DestinationPath}", fileName, destinationPath);
+            return true;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to write backup {FileName} to destination path {DestinationPath} — the MinIO copy is unaffected", fileName, destinationPath);
+            return false;
         }
         finally
         {
@@ -306,13 +324,20 @@ public class ScheduledBackupService(
 
     private async Task EnforceRetentionAsync(int keepLastN)
     {
-        var objectKeys = await minioService.ListAsync(ScheduledBackupKeys.ObjectPrefix);
-        var toDelete = objectKeys.Where(key => key.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(BackupTimestamp, StringComparer.Ordinal).Skip(keepLastN);
-        foreach (var key in toDelete)
+        try
         {
-            try { await minioService.DeleteAsync(key); }
-            catch (Exception ex) { logger.LogWarning(ex, "Failed to delete old scheduled backup {ObjectKey} during retention cleanup", key); }
+            var objectKeys = await minioService.ListAsync(ScheduledBackupKeys.ObjectPrefix);
+            var toDelete = objectKeys.Where(key => key.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(BackupTimestamp, StringComparer.Ordinal).Skip(keepLastN);
+            foreach (var key in toDelete)
+            {
+                try { await minioService.DeleteAsync(key); }
+                catch (Exception ex) { logger.LogWarning(ex, "Failed to delete old scheduled backup {ObjectKey} during retention cleanup", key); }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to list local recovery archives for retention cleanup");
         }
     }
 

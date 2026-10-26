@@ -38,6 +38,7 @@ interface BackupFile {
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
@@ -50,6 +51,8 @@ export function ScheduledBackups() {
   const [dayOfWeek, setDayOfWeek] = useState('Sunday');
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [keepLastN, setKeepLastN] = useState(30);
+  const [localKeepLastN, setLocalKeepLastN] = useState(2);
+  const [hasSeparateLocalRetention, setHasSeparateLocalRetention] = useState(true);
   const [destinationPath, setDestinationPath] = useState('');
   const [smbEnabled, setSmbEnabled] = useState(false);
   const [smbHost, setSmbHost] = useState('');
@@ -76,6 +79,8 @@ export function ScheduledBackups() {
         setDayOfWeek(config.dayOfWeek);
         setDayOfMonth(config.dayOfMonth);
         setKeepLastN(config.keepLastN);
+        setLocalKeepLastN(config.localKeepLastN ?? 2);
+        setHasSeparateLocalRetention(config.localKeepLastN != null);
         setDestinationPath(config.destinationPath ?? '');
         setSmbEnabled(config.networkShare?.enabled ?? false);
         setSmbHost(config.networkShare?.host ?? '');
@@ -110,6 +115,7 @@ export function ScheduledBackups() {
         dayOfWeek,
         dayOfMonth,
         keepLastN,
+        localKeepLastN,
         destinationPath: destinationPath.trim() || null,
         networkShare: {
           enabled: smbEnabled,
@@ -122,6 +128,7 @@ export function ScheduledBackups() {
         },
       });
       if (!res.success) { showError(res.error || 'Failed to save schedule'); return; }
+      setHasSeparateLocalRetention(true);
       showSuccess('Backup schedule saved');
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to save schedule');
@@ -135,7 +142,10 @@ export function ScheduledBackups() {
     try {
       const res = await apiClient.runScheduledBackupNow();
       if (!res.success) { showError(res.error || 'Failed to run backup'); return; }
-      showSuccess(`Backup saved as ${res.data?.fileName}`);
+      if (res.data?.warning)
+        showError(res.data.warning);
+      else
+        showSuccess(`Backup saved as ${res.data?.fileName}`);
       load();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to run backup');
@@ -222,9 +232,26 @@ export function ScheduledBackups() {
           </div>
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Retention (archives, 0 = keep all)</label>
-          <input type="number" min={0} value={keepLastN} onChange={(e) => setKeepLastN(Math.max(0, Number(e.target.value)))} className="field-control h-10 w-full sm:w-48" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="synology-backup-retention" className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Synology copies to keep</label>
+            <input id="synology-backup-retention" type="number" min={0} value={keepLastN} onChange={(e) => setKeepLastN(Math.max(0, Number(e.target.value)))} className="field-control h-10 w-full sm:max-w-48" />
+            <p className="mt-1.5 text-xs text-[#718198] dark:text-slate-400">Applies to each configured external destination. Enter 0 to keep all copies.</p>
+          </div>
+          <div>
+            <label htmlFor="local-backup-retention" className="mb-1.5 block text-sm font-medium text-[#26334d] dark:text-white">Ubuntu copies to keep (MinIO)</label>
+            <input id="local-backup-retention" type="number" min={0} value={localKeepLastN} onChange={(e) => setLocalKeepLastN(Math.max(0, Number(e.target.value)))} className="field-control h-10 w-full sm:max-w-48" />
+            <p className="mt-1.5 text-xs text-[#718198] dark:text-slate-400">
+              Stored on this server. Enter 0 to keep all copies.
+              {lastBackup && localKeepLastN > 0 && ` At the latest archive size, ${localKeepLastN} copies need about ${formatSize(lastBackup.sizeBytes * localKeepLastN)}.`}
+            </p>
+          </div>
+          <p className="text-xs text-[#718198] dark:text-slate-400 sm:col-span-2">After the next successful backup, copies above either limit are removed from that location.</p>
+          {!hasSeparateLocalRetention && (
+            <p className="text-xs text-[#2f5f96] dark:text-blue-300 sm:col-span-2">
+              The saved schedule currently uses the Synology limit for local copies too. Save Schedule to apply the separate Ubuntu limit shown here.
+            </p>
+          )}
         </div>
 
         <div>
@@ -304,16 +331,16 @@ export function ScheduledBackups() {
           <div className="flex items-center gap-1.5 text-xs text-[#718198]">
             <Clock className="h-3.5 w-3.5" />
             {lastBackup
-              ? <>Last backup: <strong>{lastBackup.lastModified ? new Date(lastBackup.lastModified).toLocaleString() : ''}</strong> — {lastBackup.fileName}</>
-              : 'No backups saved yet'}
+              ? <>Latest local copy: <strong>{lastBackup.lastModified ? new Date(lastBackup.lastModified).toLocaleString() : ''}</strong> — {lastBackup.fileName}</>
+              : 'No local backups saved yet'}
           </div>
 
           <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
-            <Folder className="h-3.5 w-3.5" /> Verified recovery archives ({files.length})
+            <Folder className="h-3.5 w-3.5" /> Local MinIO archives ({files.length})
           </div>
           <div className="mt-2 max-h-64 overflow-y-auto rounded border border-[#e2e8f0] dark:border-white/10">
             {files.length === 0 ? (
-              <p className="p-4 text-center text-sm text-[#94a3b8]">No recovery archives saved yet</p>
+              <p className="p-4 text-center text-sm text-[#94a3b8]">No local archives saved yet</p>
             ) : (
               <div className="divide-y divide-[#e2e8f0] dark:divide-white/10">
                 {files.map((file) => (
