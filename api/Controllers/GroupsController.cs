@@ -24,6 +24,7 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
                     g.GroupId,
                     g.Name,
                     g.Description,
+                    g.AutoAddNewUsers,
                     g.CreatedAt,
                     g.UpdatedAt,
                     MemberCount = context.GroupMembers.Count(gm => gm.GroupId == g.GroupId),
@@ -80,7 +81,7 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
             return Ok(new
             {
                 success = true,
-                data = new { group.GroupId, group.Name, group.Description, group.CreatedAt, group.UpdatedAt, Members = members, Subgroups = subgroups },
+                data = new { group.GroupId, group.Name, group.Description, group.AutoAddNewUsers, group.CreatedAt, group.UpdatedAt, Members = members, Subgroups = subgroups },
             });
         }
         catch (Exception ex)
@@ -118,6 +119,9 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
     {
         try
         {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
             if (string.IsNullOrWhiteSpace(req.Name))
                 return BadRequest(new { success = false, error = "Group name is required" });
 
@@ -129,6 +133,7 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
                 GroupId = Guid.NewGuid(),
                 Name = req.Name.Trim(),
                 Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
+                AutoAddNewUsers = req.AutoAddNewUsers,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             };
@@ -136,12 +141,12 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
             context.Groups.Add(group);
             await context.SaveChangesAsync();
 
-            await auditService.LogAsync(GetCurrentUserId(), GROUP_CREATED, new { group.GroupId, group.Name });
+            await auditService.LogAsync(GetCurrentUserId(), GROUP_CREATED, new { group.GroupId, group.Name, group.AutoAddNewUsers });
 
             return CreatedAtAction(nameof(GetGroup), new { id = group.GroupId }, new
             {
                 success = true,
-                data = new { group.GroupId, group.Name, group.Description, group.CreatedAt },
+                data = new { group.GroupId, group.Name, group.Description, group.AutoAddNewUsers, group.CreatedAt },
             });
         }
         catch (Exception ex)
@@ -157,6 +162,9 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
     {
         try
         {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
             var group = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == id);
             if (group == null)
                 return NotFound(new { success = false, error = "Group not found" });
@@ -171,12 +179,15 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
             if (req.Description != null)
                 group.Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim();
 
+            if (req.AutoAddNewUsers.HasValue)
+                group.AutoAddNewUsers = req.AutoAddNewUsers.Value;
+
             group.UpdatedAt = DateTime.UtcNow;
             await context.SaveChangesAsync();
 
-            await auditService.LogAsync(GetCurrentUserId(), GROUP_UPDATED, new { group.GroupId, group.Name, group.Description });
+            await auditService.LogAsync(GetCurrentUserId(), GROUP_UPDATED, new { group.GroupId, group.Name, group.Description, group.AutoAddNewUsers });
 
-            return Ok(new { success = true, data = new { group.GroupId, group.Name, group.Description, group.UpdatedAt } });
+            return Ok(new { success = true, data = new { group.GroupId, group.Name, group.Description, group.AutoAddNewUsers, group.UpdatedAt } });
         }
         catch (Exception ex)
         {
@@ -191,6 +202,9 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
     {
         try
         {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
             var group = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == id);
             if (group == null)
                 return NotFound(new { success = false, error = "Group not found" });
@@ -215,6 +229,9 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
     {
         try
         {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
             var group = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == id);
             if (group == null)
                 return NotFound(new { success = false, error = "Group not found" });
@@ -252,12 +269,65 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
         }
     }
 
+    // Add selected existing users in one operation. The client uses this for
+    // both a hand-picked selection and the explicit "Select all users" action.
+    [HttpPost("{id}/members/bulk")]
+    public async Task<ActionResult<object>> AddMembers(Guid id, [FromBody] AddGroupMembersRequest req)
+    {
+        try
+        {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
+            var group = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == id);
+            if (group == null)
+                return NotFound(new { success = false, error = "Group not found" });
+
+            var requestedIds = req.UserIds?.Distinct().ToArray() ?? [];
+            if (requestedIds.Length == 0 || requestedIds.Length > 10000)
+                return BadRequest(new { success = false, error = "Select between 1 and 10000 users" });
+
+            var validIds = await context.Users.Where(u => requestedIds.Contains(u.UserId)).Select(u => u.UserId).ToListAsync();
+            if (validIds.Count != requestedIds.Length)
+                return BadRequest(new { success = false, error = "One or more selected users no longer exist. Refresh and try again." });
+
+            var existingIds = await context.GroupMembers.Where(gm => gm.GroupId == id && requestedIds.Contains(gm.UserId))
+                .Select(gm => gm.UserId).ToListAsync();
+            var existing = existingIds.ToHashSet();
+            var now = DateTime.UtcNow;
+            var additions = validIds.Where(userId => !existing.Contains(userId))
+                .Select(userId => new DmsGroupMember { GroupMemberId = Guid.NewGuid(), GroupId = id, UserId = userId, AddedAt = now })
+                .ToList();
+
+            context.GroupMembers.AddRange(additions);
+            await context.SaveChangesAsync();
+            await auditService.LogAsync(GetCurrentUserId(), GROUP_MEMBER_ADDED,
+                new { GroupId = id, group.Name, AddedCount = additions.Count, RequestedCount = requestedIds.Length, Bulk = true });
+
+            return Ok(new { success = true, data = new { addedCount = additions.Count, totalSelected = requestedIds.Length } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error adding members to group {GroupId}", id);
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     // DELETE /api/groups/{id}/members/{userId} — remove a user from the group
     [HttpDelete("{id}/members/{userId}")]
     public async Task<ActionResult<object>> RemoveMember(Guid id, Guid userId)
     {
         try
         {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
+            var group = await context.Groups.FirstOrDefaultAsync(g => g.GroupId == id);
+            if (group == null)
+                return NotFound(new { success = false, error = "Group not found" });
+            if (group.AutoAddNewUsers)
+                return Conflict(new { success = false, error = "Turn off automatic membership before removing a user" });
+
             var member = await context.GroupMembers.FirstOrDefaultAsync(gm => gm.GroupId == id && gm.UserId == userId);
             if (member == null)
                 return NotFound(new { success = false, error = "User is not a member of this group" });
@@ -282,6 +352,9 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
     {
         try
         {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
             if (id == req.ChildGroupId)
                 return BadRequest(new { success = false, error = "A group cannot contain itself" });
 
@@ -334,6 +407,9 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
     {
         try
         {
+            var forbidden = await RequireAdminPanelAccessAsync();
+            if (forbidden != null) return forbidden;
+
             var subgroup = await context.GroupSubgroups.FirstOrDefaultAsync(gs => gs.ParentGroupId == id && gs.ChildGroupId == childGroupId);
             if (subgroup == null)
                 return NotFound(new { success = false, error = "This group is not a subgroup" });
@@ -535,7 +611,8 @@ public class GroupsController(DmsContext context, AuditService auditService, ILo
     }
 }
 
-public record CreateGroupRequest(string Name, string? Description = null);
-public record UpdateGroupRequest(string? Name = null, string? Description = null);
+public record CreateGroupRequest(string Name, string? Description = null, bool AutoAddNewUsers = false);
+public record UpdateGroupRequest(string? Name = null, string? Description = null, bool? AutoAddNewUsers = null);
 public record AddGroupMemberRequest(Guid UserId);
+public record AddGroupMembersRequest(Guid[] UserIds);
 public record AddSubgroupRequest(Guid ChildGroupId);

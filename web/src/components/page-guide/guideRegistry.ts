@@ -808,7 +808,7 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'managing-user-groups',
         title: 'Managing user groups',
         paragraphs: [
-          "Manage Groups opens the user's group-membership controls. The administrator can review available groups and update the user's group membership.",
+          "Manage Groups opens the user's group-membership controls. The administrator can review available groups and update manual memberships. Groups marked automatic are checked and cannot be removed for one user until automatic membership is disabled in Admin Groups.",
           'Group membership is separate from the user\'s Page Access role and does not by itself grant every folder or document permission.',
         ],
         when: () => true,
@@ -978,7 +978,7 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'creating-group',
         title: 'Creating a group',
         paragraphs: [
-          'Select Add Group to open the group form. Review the group name and purpose before creating it.',
+          'Select Add Group to open the group form. Review the group name and purpose before creating it. Enable Automatically include all users when every existing and future account should belong to this group.',
         ],
         bullets: ['Name', 'Description'],
         when: () => true,
@@ -987,7 +987,7 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'editing-group',
         title: 'Editing a group',
         paragraphs: [
-          'Edit Group allows an administrator to update the Name and Description. Changing group information does not by itself change a user\'s Page Access role.',
+          'Edit Group allows an administrator to update the Name, Description, and automatic membership setting. Turning automatic membership on immediately adds all current users and enrolls new users as they are created. Turning it off retains existing members so you can manage them individually. Group membership does not change a user\'s Page Access role.',
         ],
         when: () => true,
       },
@@ -995,7 +995,8 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'managing-group-members',
         title: 'Managing group members',
         paragraphs: [
-          'Manage Users opens the membership controls for the selected group. The administrator can review current members, search users, select users to add, and remove existing members.',
+          'Manage Users opens the membership controls for the selected group. Search and select users, or choose Select all users to add everyone currently missing from a manual group in one action. Select all does not include users created later; use automatic membership for that.',
+          'While automatic membership is enabled, every user is a member and individual removal is unavailable. Turn off the setting in Edit Group before removing a member.',
           'Before removing a member, confirm that the correct user and group are selected.',
         ],
         bullets: ['Loading members', 'No members', 'No matching users'],

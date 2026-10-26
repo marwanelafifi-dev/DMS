@@ -10,6 +10,7 @@ interface Group {
   groupId: string;
   name: string;
   description: string | null;
+  autoAddNewUsers: boolean;
   memberCount: number;
   subgroupCount: number;
   createdAt: string;
@@ -45,11 +46,11 @@ export function GroupManagement() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newGroup, setNewGroup] = useState({ name: '', description: '' });
+  const [newGroup, setNewGroup] = useState({ name: '', description: '', autoAddNewUsers: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
-  const [editData, setEditData] = useState({ name: '', description: '' });
+  const [editData, setEditData] = useState({ name: '', description: '', autoAddNewUsers: false });
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ groupId?: string; name?: string }>({});
 
@@ -102,10 +103,10 @@ export function GroupManagement() {
     }
     setIsSubmitting(true);
     try {
-      await apiClient.createGroup({ name: newGroup.name.trim(), description: newGroup.description.trim() || undefined });
+      await apiClient.createGroup({ name: newGroup.name.trim(), description: newGroup.description.trim() || undefined, autoAddNewUsers: newGroup.autoAddNewUsers });
       showSuccess('Group created');
       setShowAddForm(false);
-      setNewGroup({ name: '', description: '' });
+      setNewGroup({ name: '', description: '', autoAddNewUsers: false });
       loadGroups();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create group');
@@ -129,7 +130,7 @@ export function GroupManagement() {
 
   const openEdit = (group: Group) => {
     setEditingGroup(group);
-    setEditData({ name: group.name, description: group.description || '' });
+    setEditData({ name: group.name, description: group.description || '', autoAddNewUsers: group.autoAddNewUsers });
   };
 
   const handleSaveEdit = async () => {
@@ -139,7 +140,7 @@ export function GroupManagement() {
       return;
     }
     try {
-      await apiClient.updateGroup(editingGroup.groupId, { name: editData.name.trim(), description: editData.description.trim() });
+      await apiClient.updateGroup(editingGroup.groupId, { name: editData.name.trim(), description: editData.description.trim(), autoAddNewUsers: editData.autoAddNewUsers });
       showSuccess('Group updated');
       setEditingGroup(null);
       loadGroups();
@@ -162,6 +163,7 @@ export function GroupManagement() {
 
   const openMembers = async (group: Group) => {
     setMembersFor(group);
+    setMembers([]);
     setAddMemberUserIds(new Set());
     setAddMemberSearch('');
     setIsLoadingMembers(true);
@@ -180,22 +182,16 @@ export function GroupManagement() {
     if (!membersFor || addMemberUserIds.size === 0) return;
     setIsAddingMembers(true);
     try {
-      const userIds = [...addMemberUserIds];
-      const results = await Promise.allSettled(userIds.map((userId) => apiClient.addGroupMember(membersFor.groupId, userId)));
-      const added = results
-        .map((r, i) => (r.status === 'fulfilled' ? { result: r.value.data, userId: userIds[i] } : null))
-        .filter((r): r is { result: any; userId: string } => r !== null);
-
-      if (added.length > 0) {
-        setMembers((prev) => [...prev, ...added.map((a) => a.result)]);
-        setGroups((prev) => prev.map((g) => g.groupId === membersFor.groupId ? { ...g, memberCount: g.memberCount + added.length } : g));
-      }
+      const result = await apiClient.addGroupMembers(membersFor.groupId, [...addMemberUserIds]);
+      const added = result.data?.addedCount ?? 0;
+      const refreshed = await apiClient.getGroup(membersFor.groupId);
+      setMembers(refreshed.data?.members || []);
+      setGroups((prev) => prev.map((g) => g.groupId === membersFor.groupId ? { ...g, memberCount: refreshed.data?.members?.length ?? g.memberCount } : g));
       setAddMemberUserIds(new Set());
       setAddMemberSearch('');
-
-      const failedCount = results.length - added.length;
-      if (failedCount === 0) showSuccess(`${added.length} ${added.length === 1 ? 'user' : 'users'} added to group`);
-      else showError(`${added.length} added, ${failedCount} failed`);
+      showSuccess(`${added} ${added === 1 ? 'user' : 'users'} added to group`);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to add users to group');
     } finally {
       setIsAddingMembers(false);
     }
@@ -211,7 +207,7 @@ export function GroupManagement() {
   };
 
   const handleRemoveMember = async (userId: string) => {
-    if (!membersFor) return;
+    if (!membersFor || membersFor.autoAddNewUsers) return;
     try {
       await apiClient.removeGroupMember(membersFor.groupId, userId);
       setMembers((prev) => prev.filter((m) => m.userId !== userId));
@@ -262,8 +258,8 @@ export function GroupManagement() {
     }
   };
 
-  const availableUsersToAdd = allUsers
-    .filter((u) => !members.some((m) => m.userId === u.userId))
+  const unassignedUsers = allUsers.filter((u) => !members.some((m) => m.userId === u.userId));
+  const availableUsersToAdd = unassignedUsers
     .filter((u) => {
       const query = addMemberSearch.trim().toLowerCase();
       return !query || u.fullName.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
@@ -360,7 +356,10 @@ export function GroupManagement() {
                   key={group.groupId}
                   className={`${idx % 2 === 0 ? 'bg-white dark:bg-navy-900' : 'bg-gray-50 dark:bg-navy-950/60'} hover:bg-gray-100 dark:hover:bg-navy-800 transition-colors`}
                 >
-                  <td className="px-6 py-4 font-semibold text-navy-900 dark:text-white">{group.name}</td>
+                  <td className="px-6 py-4 font-semibold text-navy-900 dark:text-white">
+                    <span>{group.name}</span>
+                    {group.autoAddNewUsers && <span className="ml-2 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">All users</span>}
+                  </td>
                   <td className="px-6 py-4 text-gray-600 dark:text-navy-300 max-w-xs truncate">{group.description || '—'}</td>
                   <td className="px-6 py-4">
                     <button onClick={() => openMembers(group)} className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
@@ -473,6 +472,10 @@ export function GroupManagement() {
                   placeholder="What is this group for?"
                 />
               </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-navy-700 dark:bg-navy-900">
+                <input type="checkbox" checked={newGroup.autoAddNewUsers} onChange={(e) => setNewGroup({ ...newGroup, autoAddNewUsers: e.target.checked })} className="mt-1 rounded" />
+                <span><span className="block text-sm font-semibold text-navy-900 dark:text-white">Automatically include all users</span><span className="block text-xs text-gray-600 dark:text-navy-300">Adds every current user now and each new user when their account is created. They can access files already shared with this group. Turn this off to manage members individually.</span></span>
+              </label>
             </div>
             <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
               <button
@@ -518,6 +521,10 @@ export function GroupManagement() {
                   rows={3}
                 />
               </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-navy-700 dark:bg-navy-900">
+                <input type="checkbox" checked={editData.autoAddNewUsers} onChange={(e) => setEditData({ ...editData, autoAddNewUsers: e.target.checked })} className="mt-1 rounded" />
+                <span><span className="block text-sm font-semibold text-navy-900 dark:text-white">Automatically include all users</span><span className="block text-xs text-gray-600 dark:text-navy-300">When enabled, adds every current and future user, including access to files already shared with this group. Turning it off keeps existing members; you can then remove them manually.</span></span>
+              </label>
             </div>
             <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
               <button
@@ -545,12 +552,24 @@ export function GroupManagement() {
               </button>
             </div>
             <div className="px-6 py-4 space-y-4">
-              <div className="space-y-2">
+              {membersFor.autoAddNewUsers && (
+                <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-200">Automatic membership is on. Current and new users join this group automatically. Turn it off in Edit Group to remove individual members.</p>
+              )}
+              {!membersFor.autoAddNewUsers && <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-navy-900 dark:text-white">Add existing users</span>
+                  {!isLoadingMembers && unassignedUsers.length > 0 && (
+                    <button type="button" onClick={() => setAddMemberUserIds(new Set(unassignedUsers.map((u) => u.userId)))} className="text-sm font-medium text-blue-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300">Select all users ({unassignedUsers.length})</button>
+                  )}
+                </div>
+                {addMemberUserIds.size > 0 && <button type="button" onClick={() => setAddMemberUserIds(new Set())} className="self-start text-xs text-gray-600 underline hover:text-navy-900 dark:text-navy-300">Clear selection</button>}
+                <p className="text-xs text-gray-500 dark:text-navy-400">Select all adds current users once. Use the automatic option in Edit Group for future users.</p>
                 <input
                   type="text"
                   value={addMemberSearch}
                   onChange={(e) => setAddMemberSearch(e.target.value)}
                   placeholder="Search users to add..."
+                  disabled={membersFor.autoAddNewUsers}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white text-sm"
                 />
                 <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-navy-700">
@@ -563,6 +582,7 @@ export function GroupManagement() {
                               type="checkbox"
                               checked={addMemberUserIds.has(u.userId)}
                               onChange={() => toggleAddMemberUser(u.userId)}
+                              disabled={membersFor.autoAddNewUsers}
                               className="rounded"
                             />
                             <span className="min-w-0 flex-1 truncate text-sm text-navy-900 dark:text-white">
@@ -581,12 +601,12 @@ export function GroupManagement() {
                   size="sm"
                   className="w-full"
                   onClick={handleAddMembers}
-                  disabled={addMemberUserIds.size === 0 || isAddingMembers}
+                  disabled={addMemberUserIds.size === 0 || isAddingMembers || membersFor.autoAddNewUsers}
                   isLoading={isAddingMembers}
                 >
                   Add Selected {addMemberUserIds.size > 0 ? `(${addMemberUserIds.size})` : ''}
                 </Button>
-              </div>
+              </div>}
 
               <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-navy-700">
                 {isLoadingMembers ? (
@@ -599,13 +619,13 @@ export function GroupManagement() {
                           <p className="font-medium text-navy-900 dark:text-white text-sm">{m.userName}</p>
                           <p className="text-xs text-gray-500 dark:text-navy-400">{m.userEmail}</p>
                         </div>
-                        <button
+                        {!membersFor.autoAddNewUsers && <button
                           onClick={() => handleRemoveMember(m.userId)}
                           className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600 dark:text-red-400"
                           title="Remove from group"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>}
                       </li>
                     ))}
                   </ul>

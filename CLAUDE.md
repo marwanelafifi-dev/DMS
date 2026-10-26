@@ -1,5 +1,17 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 69 (2026-10-26) — Group membership for current and future users
+
+**Status:** Source complete; `npm.cmd run build` passed. The local machine has no .NET SDK or accessible Docker daemon, so build the API and apply/test migration `097` on Ubuntu before enabling the checkbox. `npm.cmd run type-check` still reports existing errors in unrelated frontend files; none were reported in the changed Groups or Users controls.
+
+- Admin → Groups → Manage Users has **Select all users**, which selects every currently unassigned user for a single bulk add. This is a one-time action: future accounts are not included.
+- Add Group and Edit Group have **Automatically include all users** (off by default for every current and new group). Enabling it adds all existing DMS accounts immediately; a PostgreSQL trigger enrolls every account created later, including local, imported, and Google SSO users. The setting applies to any group; no group name is special.
+- Disabling automatic membership stops future enrollment and keeps current members. While it is enabled, individual member removal is blocked in the API and hidden in the UI. To remove an individual, disable it first.
+- Group members receive only the folder/document access explicitly granted to that group through access overrides. Enabling the setting can therefore expose items already shared with that group to all users. It does not change page-access roles or copy files.
+- Migration `infra/db/init/097_group_auto_membership.sql` adds the flag and triggers without changing existing memberships. **Apply it to the live PostgreSQL database before recreating the API**; Docker's `/docker-entrypoint-initdb.d` scripts run automatically only for a new data volume. The migration is safe to rerun and does not touch documents or MinIO objects.
+- On Ubuntu, from `/opt/dms`: `docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < infra/db/init/097_group_auto_membership.sql`, then build `api` and `web` and recreate only those services. Do not remove the `dms_pgdata` or `dms_miniodata` volumes.
+- Verify by enabling the checkbox for the existing **All Users** group and checking its member count against Admin → Users. A new test account should appear as a member immediately after creation. If the group is used for default files, verify one such account can see only the files granted to that group.
+
 ## Session 68 (2026-10-25) — Library Shortcuts and Protected Sharing
 
 **Status:** Complete in source. `npm.cmd run build` passed in `web/`. This checkout has no local .NET SDK; validate the API through the Ubuntu container build before deployment.

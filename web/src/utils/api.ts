@@ -996,7 +996,7 @@ class APIClient {
     return data;
   }
 
-  async createGroup(groupData: { name: string; description?: string }) {
+  async createGroup(groupData: { name: string; description?: string; autoAddNewUsers?: boolean }) {
     const { data } = await this.client.post<ApiResponse>('/groups', groupData);
     return data;
   }
@@ -1008,7 +1008,7 @@ class APIClient {
     return data;
   }
 
-  async updateGroup(groupId: string, groupData: { name?: string; description?: string }) {
+  async updateGroup(groupId: string, groupData: { name?: string; description?: string; autoAddNewUsers?: boolean }) {
     const { data } = await this.client.put<ApiResponse>(`/groups/${groupId}`, groupData);
     return data;
   }
@@ -1020,6 +1020,11 @@ class APIClient {
 
   async addGroupMember(groupId: string, userId: string) {
     const { data } = await this.client.post<ApiResponse>(`/groups/${groupId}/members`, { userId });
+    return data;
+  }
+
+  async addGroupMembers(groupId: string, userIds: string[]) {
+    const { data } = await this.client.post<ApiResponse>(`/groups/${groupId}/members/bulk`, { userIds });
     return data;
   }
 

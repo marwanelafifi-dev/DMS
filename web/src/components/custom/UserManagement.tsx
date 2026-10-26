@@ -26,6 +26,7 @@ interface Group {
   groupId: string;
   name: string;
   description: string | null;
+  autoAddNewUsers: boolean;
 }
 
 const accessBadgeStyles: Record<string, string> = {
@@ -237,6 +238,7 @@ export function UserManagement() {
 
   const toggleGroupMembership = async (groupId: string) => {
     if (!manageGroupsFor.userId) return;
+    if (groups.some((g) => g.groupId === groupId && g.autoAddNewUsers)) return;
     const userId = manageGroupsFor.userId;
     const isMember = manageGroupsIds.has(groupId);
     setManageGroupsBusyId(groupId);
@@ -880,7 +882,8 @@ export function UserManagement() {
                       <label key={g.groupId} className="flex items-center gap-2 text-sm text-navy-900 dark:text-white">
                         <input
                           type="checkbox"
-                          checked={newUser.groupIds.includes(g.groupId)}
+                          checked={g.autoAddNewUsers || newUser.groupIds.includes(g.groupId)}
+                          disabled={g.autoAddNewUsers}
                           onChange={(e) => setNewUser({
                             ...newUser,
                             groupIds: e.target.checked
@@ -889,7 +892,7 @@ export function UserManagement() {
                           })}
                           className="rounded border-gray-300 dark:border-navy-600"
                         />
-                        {g.name}
+                        {g.name}{g.autoAddNewUsers && <span className="text-xs text-blue-700 dark:text-blue-300">(automatic)</span>}
                       </label>
                     ))}
                   </div>
@@ -1072,12 +1075,12 @@ export function UserManagement() {
                     <label key={g.groupId} className="flex items-center gap-2 px-1 py-1 text-sm text-navy-900 dark:text-white">
                       <input
                         type="checkbox"
-                        checked={manageGroupsIds.has(g.groupId)}
-                        disabled={manageGroupsBusyId === g.groupId}
+                        checked={g.autoAddNewUsers || manageGroupsIds.has(g.groupId)}
+                        disabled={g.autoAddNewUsers || manageGroupsBusyId === g.groupId}
                         onChange={() => toggleGroupMembership(g.groupId)}
                         className="rounded border-gray-300 dark:border-navy-600"
                       />
-                      {g.name}
+                      {g.name}{g.autoAddNewUsers && <span className="text-xs text-blue-700 dark:text-blue-300">(automatic)</span>}
                     </label>
                   ))}
                 </div>
