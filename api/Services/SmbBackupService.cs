@@ -13,11 +13,8 @@ namespace DMS.Api.Services;
 // SMTP password) rather than a locked-down host-only file — a deliberate
 // tradeoff for simpler setup, made explicit rather than hidden.
 //
-// Built against SMBLibrary from memory in an offline environment with no
-// package-source access to double-check exact method signatures — this is
-// the single highest-compile-risk file from this session; if
-// `docker compose build api` reports a missing member/overload here, report
-// the exact error and it'll be corrected against the real package API.
+// Large backups are streamed in fixed-size chunks so an archive never needs
+// to fit in a single byte array or in API process memory.
 public record NetworkShareConfig(bool Enabled, string Host, string ShareName, string? Domain, string? Username, string? Password, string? SubPath)
 {
     public static readonly NetworkShareConfig Default = new(false, "", "", null, null, null, null);
@@ -88,7 +85,7 @@ public static class SmbBackupService
         try { client.Disconnect(); } catch { /* best-effort */ }
     }
 
-    private static (bool Success, string? Error) WriteFile(ISMBFileStore fileStore, string relativePath, byte[] bytes)
+    private static (bool Success, string? Error) WriteFile(ISMBFileStore fileStore, string relativePath, Stream source)
     {
         var createStatus = fileStore.CreateFile(
             out var handle, out _, relativePath,
@@ -105,11 +102,13 @@ public static class SmbBackupService
         try
         {
             long offset = 0;
-            while (offset < bytes.LongLength)
+            var buffer = new byte[WriteChunkSize];
+            int bytesRead;
+            while ((bytesRead = source.Read(buffer, 0, buffer.Length)) > 0)
             {
-                var chunkLength = (int)Math.Min(WriteChunkSize, bytes.LongLength - offset);
-                var chunk = new byte[chunkLength];
-                Buffer.BlockCopy(bytes, (int)offset, chunk, 0, chunkLength);
+                // SMBLibrary writes synchronously. Reuse the fixed buffer for
+                // full chunks and allocate only the final short chunk.
+                var chunk = bytesRead == buffer.Length ? buffer : buffer[..bytesRead];
 
                 var writeStatus = fileStore.WriteFile(out var numberOfBytesWritten, handle, offset, chunk);
                 if (writeStatus != NTStatus.STATUS_SUCCESS)
@@ -117,9 +116,9 @@ public static class SmbBackupService
                     writeError = $"Could not write '{relativePath}' at offset {offset} ({writeStatus})";
                     break;
                 }
-                if (numberOfBytesWritten != chunkLength)
+                if (numberOfBytesWritten != bytesRead)
                 {
-                    writeError = $"Incomplete write for '{relativePath}' at offset {offset}: expected {chunkLength} bytes, wrote {numberOfBytesWritten}";
+                    writeError = $"Incomplete write for '{relativePath}' at offset {offset}: expected {bytesRead} bytes, wrote {numberOfBytesWritten}";
                     break;
                 }
 
@@ -173,7 +172,8 @@ public static class SmbBackupService
         try
         {
             var probeName = BuildRelativePath(config, $".dms-write-test-{Guid.NewGuid():N}.tmp");
-            var (writeOk, writeError) = WriteFile(fileStore, probeName, "DMS SMB write test"u8.ToArray());
+            using var probe = new MemoryStream("DMS SMB write test"u8.ToArray());
+            var (writeOk, writeError) = WriteFile(fileStore, probeName, probe);
             if (!writeOk)
                 return (false, writeError);
 
@@ -190,7 +190,7 @@ public static class SmbBackupService
         }
     }
 
-    public static (bool Success, string? Error) SaveBackup(NetworkShareConfig config, string fileName, byte[] bytes)
+    public static (bool Success, string? Error) SaveBackup(NetworkShareConfig config, string fileName, string sourcePath)
     {
         var (connected, connectError, client, fileStore) = Connect(config);
         if (!connected || client == null || fileStore == null)
@@ -198,7 +198,12 @@ public static class SmbBackupService
 
         try
         {
-            return WriteFile(fileStore, BuildRelativePath(config, fileName), bytes);
+            using var source = File.OpenRead(sourcePath);
+            return WriteFile(fileStore, BuildRelativePath(config, fileName), source);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Could not copy the backup to the share: {ex.Message}");
         }
         finally
         {
@@ -206,10 +211,7 @@ public static class SmbBackupService
         }
     }
 
-    // Mirrors ScheduledBackupService's MinIO/local-path retention — lists
-    // every dms-backup-*.sql file directly under the configured sub-path and
-    // deletes everything past the newest keepLastN (file names embed a
-    // sortable timestamp, so a plain descending sort is newest-first).
+    // Mirrors ScheduledBackupService's MinIO/local-path retention for ZIPs.
     public static void EnforceRetention(NetworkShareConfig config, int keepLastN)
     {
         var (connected, _, client, fileStore) = Connect(config);
@@ -230,13 +232,17 @@ public static class SmbBackupService
             if (openStatus != NTStatus.STATUS_SUCCESS)
                 return;
 
-            fileStore.QueryDirectory(out var fileList, dirHandle, "dms-backup-*.sql", FileInformationClass.FileDirectoryInformation);
+            fileStore.QueryDirectory(out var fileList, dirHandle, "dms-recovery-*.zip", FileInformationClass.FileDirectoryInformation);
             fileStore.CloseFile(dirHandle);
 
             var fileNames = fileList
                 .OfType<FileDirectoryInformation>()
                 .Select(f => f.FileName)
-                .OrderByDescending(name => name)
+                .OrderByDescending(name =>
+                {
+                    var stem = Path.GetFileNameWithoutExtension(name);
+                    return stem.Length >= 15 ? stem[^15..] : stem;
+                }, StringComparer.Ordinal)
                 .Skip(keepLastN)
                 .ToList();
 

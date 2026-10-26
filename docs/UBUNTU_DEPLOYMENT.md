@@ -43,3 +43,37 @@ For the remotely managed Cloudflare Tunnel, keep `CLOUDFLARE_TUNNEL_TOKEN` only 
 ## Rollback
 
 Keep the source system and transfer artifacts intact until acceptance. Never allow users to write to both source and target. If target validation fails, stop the target stack and resume the source; if target use has already begun, take a fresh target snapshot before deciding which environment remains authoritative.
+
+## Recovery backup disk incident (2026-10-26)
+
+The live `/opt/dms` API container accumulated roughly 198 GB of `/tmp/dms-recovery-*.zip` files. PostgreSQL then reported `No space left on device` and entered a recovery loop. The source cause was the optional SMB copy reading a complete 6.8 GB ZIP into one byte array, followed by a cleanup path that only ran on success. Hangfire retried the failed backup every five minutes and could overlap earlier runs.
+
+To recover disk space without touching `dms_pgdata` or `dms_miniodata`, stop and remove **only** the API container. Do not use `docker compose down -v`, `docker volume prune`, or delete anything in the PostgreSQL or MinIO volumes.
+
+```bash
+cd /opt/dms
+docker compose stop -t 20 api
+docker compose rm -f api
+df -h /
+docker compose ps postgres minio
+```
+
+Wait for PostgreSQL to become healthy. Before starting the old API image, pause its backup scheduler in the settings table. This changes only `Enabled`; it preserves the destination, credentials, and other schedule fields and prints no credentials.
+
+```bash
+docker compose exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+UPDATE dms_app_settings
+SET value = jsonb_set(value::jsonb, '{Enabled}', 'false'::jsonb)::text,
+    updated_at = now()
+WHERE key = 'scheduled_backup_config';
+SELECT key, value::jsonb->>'Enabled' AS enabled
+FROM dms_app_settings
+WHERE key = 'scheduled_backup_config';
+SQL
+docker compose up -d --no-deps --no-build api
+docker compose ps api postgres minio
+```
+
+The corrected API streams the SMB copy in 64 KB chunks, removes temporary archives in `finally`, serializes backup runs, clears orphaned temporary archives before a new run, checks space for the upload staging file and MinIO object while leaving a 10 GB disk reserve, and retains ZIPs by their embedded timestamp across frequencies. A mounted destination is copied through a `.partial` file and renamed only after completion. The code fix needs an API rebuild and container recreation; no SQL migration is needed for this fix.
+
+Before enabling backups again, set `KeepLastN` to a number the Ubuntu disk can hold. At about 6.8 GB per backup, 30 MinIO copies alone need about 204 GB, in addition to the live documents and temporary archive. Verify the Synology mount is writable from the API container and run one manual backup; confirm the ZIP is present and readable on Synology, then check `df -h /` and `docker ps --size` before enabling the schedule.
