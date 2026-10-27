@@ -50,12 +50,21 @@ public class LibraryShortcutsController(
                 var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(item => item.DocumentId == shortcut.TargetDocumentId.Value);
                 if (document != null && await accessOverrideService.HasDocumentReadAccessAsync(userId, document.DocumentId, document.FolderId))
                 {
+                    // A document's displayed file name belongs to its current version.  Title is
+                    // document metadata and can remain from an earlier version, so using it here
+                    // made a shortcut look stale after an updated file was uploaded.
+                    var currentFileName = document.CurrentVersionId.HasValue
+                        ? await context.DocumentVersions.AsNoTracking()
+                            .Where(version => version.VersionId == document.CurrentVersionId.Value)
+                            .Select(version => version.FileName)
+                            .FirstOrDefaultAsync()
+                        : null;
                     visible.Add(new
                     {
                         shortcut.ShortcutId,
                         TargetType = "document",
                         TargetId = document.DocumentId,
-                        Name = document.Title,
+                        Name = string.IsNullOrWhiteSpace(currentFileName) ? document.Title : currentFileName,
                         Description = document.Description,
                         shortcut.CreatedAt,
                     });
@@ -108,7 +117,12 @@ public class LibraryShortcutsController(
                 return NotFound(new { success = false, error = "Target file not found" });
             if (!await accessOverrideService.HasDocumentReadAccessAsync(userId, target.DocumentId, target.FolderId))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have access to the target file" });
-            targetName = target.Title;
+            targetName = target.CurrentVersionId.HasValue
+                ? await context.DocumentVersions.AsNoTracking()
+                    .Where(version => version.VersionId == target.CurrentVersionId.Value)
+                    .Select(version => version.FileName)
+                    .FirstOrDefaultAsync() ?? target.Title
+                : target.Title;
         }
 
         var alreadyExists = await context.LibraryShortcuts.AnyAsync(shortcut =>
