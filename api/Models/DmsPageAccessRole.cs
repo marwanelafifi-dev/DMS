@@ -41,6 +41,7 @@ public class DmsPageAccessRole
     // Historical PCAR archive permissions are deliberately separate from live
     // task administration. Viewing all archive records and importing them are
     // sensitive compliance capabilities, opt-in per role.
+    public bool CanViewHistoricalPcars { get; set; }
     public bool CanViewAllHistoricalPcars { get; set; }
     public bool CanImportHistoricalPcars { get; set; }
     // Library shortcuts are aliases, while protected links may be copied or

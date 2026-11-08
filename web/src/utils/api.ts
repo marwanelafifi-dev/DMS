@@ -75,6 +75,7 @@ export interface PageAccessRoleFlags {
   canManageFolderPermissions: boolean;
   canManageFilePermissions: boolean;
   canManageAllTasks: boolean;
+  canViewHistoricalPcars: boolean;
   canViewAllHistoricalPcars: boolean;
   canImportHistoricalPcars: boolean;
   canCreateShortcuts: boolean;

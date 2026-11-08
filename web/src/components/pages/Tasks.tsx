@@ -1389,7 +1389,9 @@ export function Tasks() {
       )}
 
       <div className="mt-8 flex justify-end border-t border-[#e2e8f0] pt-5 dark:border-slate-800">
-        <Button variant="secondary" onClick={() => navigate('/tasks/history')} leftIcon={<History className="h-4 w-4" />}>Open Historical PCAR Archive</Button>
+        {pageAccess?.canViewHistoricalPcars && (
+          <Button variant="secondary" onClick={() => navigate('/tasks/history')} leftIcon={<History className="h-4 w-4" />}>Open Historical PCAR Archive</Button>
+        )}
       </div>
 
       {/* Add Task Modal */}

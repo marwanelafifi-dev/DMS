@@ -99,7 +99,9 @@ function App() {
               {/* Tasks (sidebar label: PCAR / Corrective Action) */}
               <Route element={<RequirePageAccess flag="canViewPcar" />}>
                 <Route path="/tasks" element={<Tasks />} />
-                <Route path="/tasks/history" element={<HistoricalPcarPage />} />
+                <Route element={<RequirePageAccess flag="canViewHistoricalPcars" />}>
+                  <Route path="/tasks/history" element={<HistoricalPcarPage />} />
+                </Route>
               </Route>
 
               {/* Documents */}

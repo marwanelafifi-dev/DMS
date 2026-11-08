@@ -15,7 +15,7 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
     [HttpGet]
     public async Task<ActionResult<object>> Get([FromQuery] string? search, [FromQuery] string? status, [FromQuery] string? owner, [FromQuery] string? sortBy, [FromQuery] string? sortDirection, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
-        var (access, forbidden) = await RequirePcarViewAccessAsync();
+        var (access, forbidden) = await RequireHistoricalPcarAccessAsync();
         if (forbidden != null) return forbidden;
 
         var query = context.HistoricalPcars.AsNoTracking().AsQueryable();
@@ -70,7 +70,7 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
     [HttpPost("import")]
     public async Task<ActionResult<object>> Import([FromBody] HistoricalPcarImportRequest request)
     {
-        var (access, forbidden) = await RequirePcarViewAccessAsync();
+        var (access, forbidden) = await RequireHistoricalPcarAccessAsync();
         if (forbidden != null) return forbidden;
         if (access!.CanImportHistoricalPcars != true)
             return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to import historical PCAR records" });
@@ -159,7 +159,7 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
     [HttpPost("promote-open")]
     public async Task<ActionResult<object>> PromoteOpen()
     {
-        var (access, forbidden) = await RequirePcarViewAccessAsync();
+        var (access, forbidden) = await RequireHistoricalPcarAccessAsync();
         if (forbidden != null) return forbidden;
         if (access!.CanManageAllTasks != true || access.CanImportHistoricalPcars != true)
             return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to move historical PCARs into the live register" });
@@ -226,10 +226,10 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
         return Ok(new { success = true, data = new { promoted = candidates.Count } });
     }
 
-    private async Task<(DmsPageAccessRole? Access, ActionResult<object>? Forbidden)> RequirePcarViewAccessAsync()
+    private async Task<(DmsPageAccessRole? Access, ActionResult<object>? Forbidden)> RequireHistoricalPcarAccessAsync()
     {
         var access = await GetPageAccessRoleAsync(context, GetCurrentUserId());
-        if (access?.CanViewPcar != true)
+        if (access?.CanViewPcar != true || access.CanViewHistoricalPcars != true)
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to view historical PCAR records" }));
         return (access, null);
     }

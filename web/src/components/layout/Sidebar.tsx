@@ -159,7 +159,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
                   <Icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.9} />
                   <span className={isCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
                 </button>
-                {item.path === '/tasks' && pageAccess?.canViewPcar && (
+                {item.path === '/tasks' && pageAccess?.canViewHistoricalPcars && (
                   <button
                     onClick={() => goTo('/tasks/history')}
                     title={isCollapsed ? 'Historical PCAR Archive' : undefined}
