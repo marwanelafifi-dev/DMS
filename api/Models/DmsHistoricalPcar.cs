@@ -16,6 +16,11 @@ public class DmsHistoricalPcar
     public string? Description { get; set; }
     public string? HistoricalOwnerName { get; set; }
     public Guid? LinkedUserId { get; set; }
+    // Set only after an eligible open legacy record has been deliberately
+    // promoted into the live PCAR register. Keeping this link makes the
+    // operation idempotent and preserves the archive as the source record.
+    public Guid? MigratedTaskId { get; set; }
+    public DateTime? MigratedAt { get; set; }
     public string? Priority { get; set; }
     public string? Severity { get; set; }
     public string? SourceStatus { get; set; }
@@ -30,4 +35,5 @@ public class DmsHistoricalPcar
     public DateTime ImportedAt { get; set; }
 
     public DmsUser? LinkedUser { get; set; }
+    public DmsTask? MigratedTask { get; set; }
 }

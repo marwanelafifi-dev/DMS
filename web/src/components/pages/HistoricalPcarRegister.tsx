@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, History, Search, Upload } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, FileSpreadsheet, History, Search, Upload, Workflow } from 'lucide-react';
 import { Button, Card } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
 import { apiClient } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { formatDateTime } from '../../utils/formatters';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface HistoricalPcar {
   historicalPcarId: string;
@@ -66,7 +67,7 @@ function HistoricalPcarDetails({ record, onClose }: { record: HistoricalPcar; on
   return <div><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-[#174f91] dark:text-blue-200">Legacy PCAR #{record.legacyRequestId}</p><h3 className="mt-1 text-lg font-semibold text-[#26334d] dark:text-white">{record.subject || 'Untitled record'}</h3></div><Button size="sm" variant="secondary" onClick={onClose}>Close details</Button></div><div className="mt-5 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4">{facts.map(([label, value]) => <div key={label}><p className="text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">{label}</p><p className="mt-1 text-[#26334d] dark:text-white">{value}</p></div>)}</div>{notes.map(([label, value]) => value && <div key={label} className="mt-5 border-t border-[#e2e8f0] pt-4 dark:border-slate-800"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">{label}</p><p className="mt-2 whitespace-pre-wrap leading-6 text-[#44546b] dark:text-slate-200">{value}</p></div>)}</div>;
 }
 
-export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
+export function HistoricalPcarRegister({ canImport, canPromote }: { canImport: boolean; canPromote: boolean }) {
   const { showError, showSuccess } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [records, setRecords] = useState<HistoricalPcar[]>([]);
@@ -81,6 +82,8 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
   const [totalPages, setTotalPages] = useState(1);
   const [pendingImport, setPendingImport] = useState<ImportRecord[] | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [showPromotionConfirm, setShowPromotionConfirm] = useState(false);
+  const [isPromoting, setIsPromoting] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<HistoricalPcar | null>(null);
 
   const load = async (targetPage = page) => {
@@ -122,6 +125,19 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
     finally { setIsImporting(false); }
   };
 
+  const promoteOpenRecords = async () => {
+    setIsPromoting(true);
+    try {
+      const response = await apiClient.promoteOpenHistoricalPcars();
+      const promoted = response.data?.promoted ?? 0;
+      showSuccess(promoted ? `${promoted} open historical PCAR${promoted === 1 ? '' : 's'} moved to the live PCAR Register and assigned to their linked owners.` : 'No eligible open historical PCARs were found.');
+      setShowPromotionConfirm(false);
+      await load(1);
+      setPage(1);
+    } catch (error: any) { showError(error.response?.data?.error ?? 'Could not move historical PCARs to the live register.'); }
+    finally { setIsPromoting(false); }
+  };
+
   return (
     <section className="mt-10" aria-labelledby="historical-pcar-heading">
       <div className="flex flex-col gap-3 border-b border-[#e2e8f0] pb-4 sm:flex-row sm:items-end sm:justify-between dark:border-slate-800">
@@ -129,7 +145,10 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
           <div className="flex items-center gap-2"><History className="h-5 w-5 text-[#3f8bca]" /><h2 id="historical-pcar-heading" className="section-heading">Historical PCAR Register</h2></div>
           <p className="mt-1 text-sm text-[#52627a] dark:text-slate-300">Read-only records from the previous system. Original owners are preserved even when they no longer have a DMS account.</p>
         </div>
-        {canImport && <><input ref={inputRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(event) => { void chooseFile(event.target.files?.[0]); event.target.value = ''; }} /><Button variant="secondary" onClick={() => inputRef.current?.click()} leftIcon={<Upload className="h-4 w-4" />}>Import history</Button></>}
+        <div className="flex flex-wrap gap-2">
+          {canPromote && <Button onClick={() => setShowPromotionConfirm(true)} leftIcon={<Workflow className="h-4 w-4" />}>Move eligible open PCARs</Button>}
+          {canImport && <><input ref={inputRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(event) => { void chooseFile(event.target.files?.[0]); event.target.value = ''; }} /><Button variant="secondary" onClick={() => inputRef.current?.click()} leftIcon={<Upload className="h-4 w-4" />}>Import history</Button></>}
+        </div>
       </div>
 
       {pendingImport && (
@@ -149,6 +168,15 @@ export function HistoricalPcarRegister({ canImport }: { canImport: boolean }) {
         {isLoading ? <SkeletonTable /> : <div className="overflow-x-auto"><table className="w-full min-w-[940px]"><thead className="border-b border-[#e2e8f0] bg-slate-50 dark:border-slate-800 dark:bg-slate-900"><tr>{['Legacy ID', 'Subject', 'Category', 'Historical owner', 'Status', 'Priority', 'Created', 'Completed'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#52627a] dark:text-slate-300">{heading}</th>)}</tr></thead><tbody>{records.length ? records.map((record) => <Fragment key={record.historicalPcarId}><tr onClick={() => setSelectedRecord(selectedRecord?.historicalPcarId === record.historicalPcarId ? null : record)} className={`cursor-pointer border-b border-[#eef2f7] hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/60 ${selectedRecord?.historicalPcarId === record.historicalPcarId ? 'bg-[#f4f8fd] dark:bg-blue-950/25' : ''}`}><td className="px-4 py-3 text-sm font-semibold text-[#174f91] dark:text-blue-200">#{record.legacyRequestId}</td><td className="max-w-[24rem] px-4 py-3 text-sm text-[#26334d] dark:text-white">{record.subject || '—'}</td><td className="px-4 py-3 text-sm text-[#52627a] dark:text-slate-300">{record.category || '—'}</td><td className="px-4 py-3 text-sm text-[#52627a] dark:text-slate-300">{record.historicalOwnerName || 'Unassigned'}{record.linkedUserName && <span className="block text-xs text-[#3f8bca]">Linked: {record.linkedUserName}</span>}</td><td className="px-4 py-3 text-sm text-[#52627a] dark:text-slate-300">{record.sourceStatus || '—'}</td><td className="px-4 py-3 text-sm text-[#52627a] dark:text-slate-300">{record.priority || '—'}</td><td className="px-4 py-3 text-sm text-[#52627a] dark:text-slate-300">{record.sourceCreatedAt ? formatDateTime(record.sourceCreatedAt) : '—'}</td><td className="px-4 py-3 text-sm text-[#52627a] dark:text-slate-300">{record.sourceCompletedAt ? formatDateTime(record.sourceCompletedAt) : '—'}</td></tr>{selectedRecord?.historicalPcarId === record.historicalPcarId && <tr className="border-b border-[#dbe8f6] bg-[#f8fbff] dark:border-blue-950 dark:bg-slate-950"><td colSpan={8} className="p-5"><HistoricalPcarDetails record={record} onClose={() => setSelectedRecord(null)} /></td></tr>}</Fragment>) : <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-[#52627a] dark:text-slate-300"><FileSpreadsheet className="mx-auto mb-2 h-6 w-6 text-[#94a3b8]" />No historical PCAR records match this view.</td></tr>}</tbody></table></div>}
       </Card>
       {totalPages > 1 && <div className="mt-4 flex justify-center"><div className="flex items-center gap-3 rounded-lg border border-[#dbe2ec] bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900"><Button size="sm" variant="secondary" disabled={page === 1} onClick={() => setPage(page - 1)} leftIcon={<ChevronLeft className="h-4 w-4" />}>Previous page</Button><span className="min-w-[7rem] text-center text-sm font-semibold text-[#26334d] dark:text-white">Page {page} of {totalPages}</span><Button size="sm" variant="primary" disabled={page === totalPages} onClick={() => setPage(page + 1)} rightIcon={<ChevronRight className="h-4 w-4" />}>Next page</Button></div></div>}
+      {showPromotionConfirm && (
+        <ModalOverlay onClose={() => !isPromoting && setShowPromotionConfirm(false)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="promote-pcars-title" className="w-full max-w-lg rounded-[5px] border border-[#dbe2ec] bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start gap-3"><div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"><AlertTriangle className="h-5 w-5" /></div><div><h2 id="promote-pcars-title" className="section-heading">Move eligible open PCARs?</h2><p className="mt-2 text-sm leading-6 text-[#52627a] dark:text-slate-300">This creates a live PCAR for every archived record whose status begins with “Open” and whose linked owner still has an active DMS account.</p></div></div>
+            <div className="mt-5 border-y border-[#e2e8f0] py-4 text-sm leading-6 text-[#52627a] dark:border-slate-700 dark:text-slate-300"><p>Each PCAR keeps its legacy ID in the task details and is assigned only to its linked owner. Closed records, unmatched owners, and records already moved remain in the archive.</p><p className="mt-2 font-medium text-[#26334d] dark:text-white">The linked owners will receive an assignment notification and can complete the PCAR from the current register.</p></div>
+            <div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => setShowPromotionConfirm(false)} disabled={isPromoting}>Cancel</Button><Button onClick={() => void promoteOpenRecords()} disabled={isPromoting}>{isPromoting ? 'Moving…' : 'Move to live PCAR Register'}</Button></div>
+          </div>
+        </ModalOverlay>
+      )}
     </section>
   );
 }

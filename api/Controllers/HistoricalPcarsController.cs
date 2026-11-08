@@ -10,7 +10,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/historical-pcars")]
-public class HistoricalPcarsController(DmsContext context, AuditService auditService, ILogger<HistoricalPcarsController> logger) : BaseController
+public class HistoricalPcarsController(DmsContext context, AuditService auditService, NotificationService notificationService, ILogger<HistoricalPcarsController> logger) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> Get([FromQuery] string? search, [FromQuery] string? status, [FromQuery] string? owner, [FromQuery] string? sortBy, [FromQuery] string? sortDirection, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
@@ -58,6 +58,7 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
                 p.HistoricalPcarId, p.LegacyRequestId, p.GroupName, p.RequesterName, p.Department,
                 p.Category, p.Subject, p.Description, p.HistoricalOwnerName,
                 LinkedUserName = p.LinkedUser == null ? null : p.LinkedUser.FullName,
+                p.MigratedTaskId, p.MigratedAt,
                 p.Priority, p.Severity, p.SourceStatus, p.Resolution, p.ClosureCode, p.ClosureComments,
                 p.SourceCreatedAt, p.SourceDueAt, p.SourceCompletedAt, p.SourceUpdatedAt, p.ImportedAt,
             })
@@ -152,6 +153,79 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
         return Ok(new { success = true, data = new { imported, skipped, linkedOwners, unmatchedOwners = imported - linkedOwners } });
     }
 
+    // Creates actionable PCARs only for legacy records still marked open and
+    // linked to an active DMS account. The archive row is never changed except
+    // for its live-task reference, making repeat requests safe.
+    [HttpPost("promote-open")]
+    public async Task<ActionResult<object>> PromoteOpen()
+    {
+        var (access, forbidden) = await RequirePcarViewAccessAsync();
+        if (forbidden != null) return forbidden;
+        if (access!.CanManageAllTasks != true || access.CanImportHistoricalPcars != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You do not have permission to move historical PCARs into the live register" });
+
+        var actorId = GetCurrentUserId();
+        var candidates = await context.HistoricalPcars
+            .Include(p => p.LinkedUser)
+            .Where(p => p.MigratedTaskId == null
+                && p.LinkedUserId != null
+                && p.LinkedUser != null
+                && p.LinkedUser.IsActive
+                && p.SourceStatus != null
+                && EF.Functions.ILike(p.SourceStatus, "open%"))
+            .OrderBy(p => p.SourceCreatedAt)
+            .ThenBy(p => p.LegacyRequestId)
+            .ToListAsync();
+
+        if (candidates.Count == 0)
+            return Ok(new { success = true, data = new { promoted = 0, message = "No eligible open historical PCARs were found." } });
+
+        var now = DateTime.UtcNow;
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        foreach (var record in candidates)
+        {
+            var task = new DmsTask
+            {
+                TaskId = Guid.NewGuid(),
+                Title = string.IsNullOrWhiteSpace(record.Subject) ? $"Legacy PCAR #{record.LegacyRequestId}" : record.Subject.Trim(),
+                Description = BuildLiveDescription(record),
+                Tags = BuildTags(record),
+                TaskType = "rca",
+                RiskSeverity = NormalizePriority(record.Priority),
+                AssignedToId = record.LinkedUserId,
+                ManagerId = actorId,
+                DueDate = record.SourceDueAt?.Date,
+                Status = "open",
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            context.Tasks.Add(task);
+            record.MigratedTaskId = task.TaskId;
+            record.MigratedAt = now;
+        }
+
+        await context.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        foreach (var record in candidates)
+        {
+            await notificationService.NotifyAsync(
+                record.LinkedUserId!.Value,
+                actorId,
+                "A historical PCAR was assigned to you",
+                $"Legacy PCAR #{record.LegacyRequestId}: {record.Subject ?? "Untitled PCAR"}",
+                taskId: record.MigratedTaskId);
+        }
+
+        await auditService.LogAsync(actorId, HISTORICAL_PCAR_MIGRATED, new
+        {
+            PromotedCount = candidates.Count,
+            LegacyRequestIds = candidates.Select(p => p.LegacyRequestId).ToArray(),
+        });
+        logger.LogInformation("Promoted {Count} open historical PCARs into live tasks by {UserId}", candidates.Count, actorId);
+        return Ok(new { success = true, data = new { promoted = candidates.Count } });
+    }
+
     private async Task<(DmsPageAccessRole? Access, ActionResult<object>? Forbidden)> RequirePcarViewAccessAsync()
     {
         var access = await GetPageAccessRoleAsync(context, GetCurrentUserId());
@@ -168,6 +242,31 @@ public class HistoricalPcarsController(DmsContext context, AuditService auditSer
 
     private static string NormalizeName(string? value) => string.Concat((value ?? string.Empty)
         .Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant));
+
+    private static string[] BuildTags(DmsHistoricalPcar record) => new[]
+        {
+            $"Legacy PCAR #{record.LegacyRequestId}",
+            record.Category,
+            record.GroupName,
+        }
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static string BuildLiveDescription(DmsHistoricalPcar record)
+    {
+        var provenance = $"Migrated from historical PCAR #{record.LegacyRequestId}. Original owner: {record.HistoricalOwnerName ?? "Unassigned"}.";
+        return string.IsNullOrWhiteSpace(record.Description) ? provenance : $"{provenance}\n\n{record.Description.Trim()}";
+    }
+
+    private static string NormalizePriority(string? priority) => priority?.Trim().ToLowerInvariant() switch
+    {
+        "critical" => "critical",
+        "high" => "high",
+        "low" => "low",
+        _ => "medium",
+    };
 
     private static DateTime? ParseSourceDate(string? value)
     {

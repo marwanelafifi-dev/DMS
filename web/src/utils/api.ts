@@ -921,6 +921,14 @@ class APIClient {
     return data;
   }
 
+  // Promotes only open archived PCARs whose linked owner still has an active
+  // DMS account. The server records the resulting live task, so retrying this
+  // request will not create duplicates.
+  async promoteOpenHistoricalPcars() {
+    const { data } = await this.client.post<ApiResponse>('/historical-pcars/promote-open');
+    return data;
+  }
+
   private normalizeTask(task: any) {
     return {
       ...task,

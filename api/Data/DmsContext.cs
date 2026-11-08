@@ -402,6 +402,12 @@ public class DmsContext : DbContext
             .HasForeignKey(p => p.LinkedUserId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<DmsHistoricalPcar>()
+            .HasOne(p => p.MigratedTask)
+            .WithMany()
+            .HasForeignKey(p => p.MigratedTaskId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         modelBuilder.Entity<DmsTask>()
             .HasOne(t => t.AssignedToGroup)
             .WithMany()
