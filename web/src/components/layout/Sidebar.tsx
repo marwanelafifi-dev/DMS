@@ -59,7 +59,13 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
   const navigate = useNavigate();
   const location = useLocation();
   const pageAccess = usePageAccess();
-  const visibleNavItems = navItems.filter((item) => pageAccess?.[item.visibleWhen] !== false);
+  // Never optimistically render navigation while permissions are loading.
+  // Besides creating a distracting flash, doing so reveals page names to an
+  // account that may not be authorized to know those areas exist.
+  const visibleNavItems = pageAccess
+    ? navItems.filter((item) => pageAccess[item.visibleWhen] === true)
+    : [];
+  const canViewAdminPanel = pageAccess?.canViewAdminPanel === true;
   const isAdminRoute = location.pathname.startsWith('/admin') || location.pathname.startsWith('/settings');
   const [adminOpen, setAdminOpen] = useState(isAdminRoute);
   const [headerConfig, setHeaderConfig] = useState<HeaderSettings>({ showLogoInHeader: true, logoAltText: 'Si-Ware' });
@@ -169,7 +175,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
             );
           })}
 
-          {pageAccess?.canViewAdminPanel !== false && (
+          {canViewAdminPanel && (
           <button
             onClick={() => {
               // The submenu has nowhere to render inside a 76px icon rail, so
@@ -194,7 +200,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
             <ChevronDown className={`h-4 w-4 flex-shrink-0 text-white/60 transition-transform ${adminOpen ? 'rotate-180' : ''} ${isCollapsed ? 'lg:hidden' : ''}`} />
           </button>
           )}
-          {pageAccess?.canViewAdminPanel !== false && adminOpen && (
+          {canViewAdminPanel && adminOpen && (
             <div className={`pb-1 pt-1 ${isCollapsed ? 'lg:hidden' : ''}`}>
               {adminItems.map((item) => {
                 const Icon = item.icon;
