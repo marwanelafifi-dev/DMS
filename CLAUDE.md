@@ -1,5 +1,36 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 71 (2026-11-08/09) — Historical PCAR workflow and access-control corrections
+
+**Status:** Source committed and pushed through `5a7881d`. Frontend checks passed (`Sidebar.test.tsx`, `npm.cmd run type-check`, and `npm.cmd run build`). This Windows checkout has the .NET runtime but no SDK, so validate API compilation through the Ubuntu Docker build. The live PostgreSQL database was confirmed to contain **336** rows in `dms_historical_pcars`.
+
+### Historical PCAR archive
+
+- Imported legacy PCARs remain immutable in `dms_historical_pcars`; only legacy statuses beginning with `Open` can be promoted into the live PCAR register. Promotion creates one live RCA task, assigns it to the uniquely linked active DMS user, preserves the legacy ID/category in the task, notifies the assignee, and records the task link on the archive row. Re-running promotion does not create duplicates.
+- Migration `098_historical_pcar_live_promotion.sql` adds `migrated_task_id` and `migrated_at`. Apply it to an existing database before running the new API; otherwise the Historical PCAR page returns “Could not load historical PCAR records.” It does not delete or alter archived records.
+- The archive is now a separate page capability: **Historical PCAR Archive** controls page/link/API access, **View All Historical PCARs** controls whether every archive record is returned rather than only records linked to the caller, and **Import Historical PCARs** permits import/promote actions. Promotion additionally requires **Manage All Tasks / PCARs**. Migration `099_historical_pcar_page_access.sql` adds the page-access column and preserves archive access for roles that already had view-all or import enabled.
+- Historical records are included in manual database exports and Scheduled Synology Recovery Backups because both use a complete PostgreSQL `pg_dump`. No special object-storage backup rule is needed for this table.
+- The Admin Panel → Database cleanup now has a separate **Historical PCAR Archive** action. **PCAR / Tasks** clears only current tasks and attachments; **Clear All** clears both. This is permanent and uses the existing typed confirmation.
+
+### Document and page-access security fixes
+
+- Fixed a data-disclosure bug where a direct file-level `Allow Read` made the containing folder browseable and the document list then returned every sibling file. `DocumentsController` now checks each returned row with the document-level access resolver; `AccessOverrideService` no longer treats a document-level FileRead allow as folder-read access. A user with no folder grant sees only the files explicitly allowed to them.
+- The sidebar previously optimistically rendered every navigation label before page-access permissions loaded. It now renders no page labels until the permission response arrives, then renders only explicit `true` capabilities. The regression test covers the loading state.
+
+### Ubuntu deployment
+
+From `/opt/dms`, pull the current source, apply both migrations once, then rebuild/recreate `api` and `web`:
+
+```bash
+git pull --ff-only
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < infra/db/init/098_historical_pcar_live_promotion.sql
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < infra/db/init/099_historical_pcar_page_access.sql
+docker compose build --no-cache api web
+docker compose up -d --force-recreate api web
+```
+
+Do not remove `dms_pgdata` or `dms_miniodata`. The Compose warnings that these volumes already exist are informational in this deployment.
+
 ## Session 70 (2026-10-26) — Deployment recovery and clean frontend checks
 
 - The Ubuntu migration `097_group_auto_membership.sql` applied successfully. A disposable PostgreSQL 16 test confirmed existing-user backfill, enrollment of a newly created user, and no enrollment after the checkbox is turned off. No production group has been enabled automatically.
