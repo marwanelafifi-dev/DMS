@@ -177,8 +177,15 @@ public class AccessOverrideService(DmsContext context)
             hasGrant = true;
         if (!hasGrant)
         {
-            var overrideVisibleFolderIds = await GetOverrideVisibleFolderIdsAsync(userId);
-            hasGrant = overrideVisibleFolderIds.Contains(folderId);
+            // A document-level FileRead allow makes a folder browseable, so
+            // the permitted file can be found. It is NOT a folder Read grant:
+            // treating it as one lets that single-file allow become the
+            // baseline for every sibling document in the folder. Only a
+            // folder-scoped Read allow (on this folder or an ancestor) may
+            // establish folder-read access here.
+            var (directOverrides, groupOverrides) = await GetApplicableOverridesAsync(userId, null, folderId);
+            hasGrant = directOverrides.Concat(groupOverrides)
+                .Any(o => o.FolderId.HasValue && o.Read == true);
         }
 
         return await ResolveAsync(userId, null, folderId, AccessOverrideActions.Read, hasGrant);

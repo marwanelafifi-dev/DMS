@@ -102,7 +102,8 @@ public class DocumentsController(
     {
         try
         {
-            var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, GetCurrentUserId(), accessOverrideService);
+            var userId = GetCurrentUserId();
+            var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, userId, accessOverrideService);
 
             var query = context.Documents.AsQueryable();
             if (accessibleFolderIds != null)
@@ -160,6 +161,28 @@ public class DocumentsController(
                 })
                 .ToListAsync();
 
+            // Folder visibility is deliberately broader than file visibility:
+            // a direct FileRead allow must make its parent folder reachable so
+            // the user can find that one file. It must NOT, however, expose
+            // every sibling document in that folder. Resolve every returned
+            // document independently before sending it to the browser. This
+            // also makes a document-level FileRead deny effective inside an
+            // otherwise readable folder.
+            //
+            // A null folder set means the user's global Full Access bypass is
+            // active; ResolveAsync intentionally grants that role every file,
+            // so no per-document filtering is needed in that case.
+            if (accessibleFolderIds != null)
+            {
+                var readableDocumentIds = new HashSet<Guid>();
+                foreach (var document in documents)
+                {
+                    if (await accessOverrideService.HasDocumentReadAccessAsync(userId, document.DocumentId, document.FolderId))
+                        readableDocumentIds.Add(document.DocumentId);
+                }
+                documents = documents.Where(document => readableDocumentIds.Contains(document.DocumentId)).ToList();
+            }
+
             // Each dms_approval_documents row now carries its own stage/status directly (see
             // 058_approval_document_stage_tracking.sql) — no join to dms_approvals needed.
             // document.Status only ever says the generic "pending_approval", it never advances
@@ -186,7 +209,7 @@ public class DocumentsController(
                 ApprovalStatus = d.CurrentVersionId.HasValue && latestApprovalByVersionId.TryGetValue(d.CurrentVersionId.Value, out var approval2) ? approval2.Status : null,
             }).ToList();
 
-            logger.LogInformation("Retrieved {Count} documents", documents.Count);
+            logger.LogInformation("Retrieved {Count} documents", documentsWithStage.Count);
             return Ok(new { success = true, data = documentsWithStage, count = documentsWithStage.Count });
         }
         catch (Exception ex)
