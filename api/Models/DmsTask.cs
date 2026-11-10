@@ -5,6 +5,9 @@ public class DmsTask
     public Guid TaskId { get; set; }
     public Guid? WorkflowStepId { get; set; }
     public Guid? DocumentId { get; set; }
+    // A normal task may be linked to one file, one folder, or neither (for
+    // example, "review your documents"). PCARs always require DocumentId.
+    public Guid? FolderId { get; set; }
     public Guid? ApprovalId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -34,4 +37,5 @@ public class DmsTask
     public DmsUser? AssignedTo { get; set; }
     public DmsGroup? AssignedToGroup { get; set; }
     public DmsDocument? Document { get; set; }
+    public DmsFolder? Folder { get; set; }
 }

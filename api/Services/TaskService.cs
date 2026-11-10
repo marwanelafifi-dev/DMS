@@ -21,16 +21,17 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         return false;
     }
 
-    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid documentId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null, string[]? tags = null)
+    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid? documentId, Guid? folderId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null, string[]? tags = null)
     {
         try
         {
             if (assignedToId.HasValue == assignedToGroupId.HasValue)
                 return TaskResult.Invalid("Exactly one of assignedToId or assignedToGroupId is required");
 
-            var document = await context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId);
-            if (document == null)
+            if (documentId.HasValue && !await context.Documents.AnyAsync(d => d.DocumentId == documentId.Value))
                 return TaskResult.NotFound("Document not found");
+            if (folderId.HasValue && !await context.Folders.AnyAsync(f => f.FolderId == folderId.Value))
+                return TaskResult.NotFound("Folder not found");
 
             string assigneeName;
             if (assignedToId.HasValue)
@@ -52,10 +53,13 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             {
                 TaskId = Guid.NewGuid(),
                 DocumentId = documentId,
+                FolderId = folderId,
                 Title = title.Trim(),
                 Description = description?.Trim(),
                 Tags = NormalizeTags(tags),
-                TaskType = taskType ?? "correction",
+                // Normal work is independent from document approval. "pcar"
+                // is reserved for the released-document audit finding endpoint.
+                TaskType = taskType ?? "task",
                 RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,
                 AssignedToGroupId = assignedToGroupId,
@@ -75,6 +79,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             {
                 task.TaskId,
                 task.DocumentId,
+                task.FolderId,
                 task.Title,
                 task.Tags,
                 task.AssignedToId,
@@ -127,6 +132,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 {
                     t.TaskId,
                     t.DocumentId,
+                    t.FolderId,
                     t.ApprovalId,
                     Document = t.Document == null ? null : new { t.Document.DocumentId, t.Document.Title },
                     t.Title,
@@ -264,8 +270,8 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (!string.IsNullOrWhiteSpace(taskType))
             {
                 var normalizedType = taskType.Trim().ToLowerInvariant();
-                if (normalizedType is not ("correction" or "rca" or "audit_action"))
-                    return TaskResult.Invalid("Type must be correction, rca, or audit_action");
+                if (normalizedType is not ("task" or "correction" or "rca" or "audit_action" or "pcar"))
+                    return TaskResult.Invalid("Type must be task, correction, rca, audit_action, or pcar");
                 task.TaskType = normalizedType;
             }
 
@@ -340,6 +346,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (task == null)
                 return TaskResult.NotFound("Task not found");
 
+            if (task.TaskType != "pcar")
+                return TaskResult.Invalid("Only audit PCAR findings use this endpoint; complete normal tasks directly");
+
             if (!await IsAssigneeAsync(task, userId))
                 return TaskResult.Forbidden("Only the assignee can submit this PCAR");
 
@@ -351,7 +360,10 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (string.IsNullOrWhiteSpace(correction) || string.IsNullOrWhiteSpace(preventiveActions))
                 return TaskResult.Invalid("Complete the corrective action and preventive action");
 
-            // Real gap found live: the frontend's "upload the corrected file
+            // PCAR findings are raised after final release and are not part of
+            // the document approval workflow. They never require a new file
+            // version before closure.
+            /* // Real gap found live: the frontend's "upload the corrected file
             // first" gate is pure local UI state, easily bypassed (a direct
             // API call, or just reloading the page, which resets it) — this
             // endpoint itself never checked anything. Per explicit request,
@@ -361,7 +373,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             // a real, persistent signal (unlike the frontend's local state)
             // that survives a reload and can't be spoofed by skipping the
             // upload step.
-            if (task.DocumentId.HasValue)
+            if (false && task.DocumentId.HasValue)
             {
                 var currentVersionId = await context.Documents
                     .Where(d => d.DocumentId == task.DocumentId)
@@ -377,7 +389,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
 
                 if (currentVersionUploadedAt == null || currentVersionUploadedAt <= task.CreatedAt)
                     return TaskResult.Invalid("Upload the corrected file for the linked document before submitting this PCAR");
-            }
+            } */
 
             task.RcaText = rca.Trim();
             task.CorrectionText = correction.Trim();
@@ -420,6 +432,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 {
                     t.TaskId,
                     t.DocumentId,
+                    t.FolderId,
                     t.Title,
                     AssignedTo = t.AssignedTo == null ? null : new { t.AssignedTo.UserId, t.AssignedTo.FullName, t.AssignedTo.Email },
                     AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
@@ -504,6 +517,22 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             logger.LogError(ex, "Error getting tasks for document {DocumentId}", documentId);
             return new List<object>();
         }
+    }
+
+    public async Task<List<object>> GetPcarsByDocumentAsync(Guid documentId)
+    {
+        var pcars = await context.Tasks
+            .Where(t => t.DocumentId == documentId && t.TaskType == "pcar")
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new
+            {
+                t.TaskId, t.Title, t.Description, t.RiskSeverity,
+                AssignedToName = t.AssignedTo == null ? null : t.AssignedTo.FullName,
+                AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
+                t.DueDate, t.Status, t.CreatedAt, t.CompletedAt,
+            })
+            .ToListAsync();
+        return pcars.Cast<object>().ToList();
     }
 }
 

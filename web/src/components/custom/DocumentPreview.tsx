@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  ClipboardCheck,
   Download,
   FilePen,
   FileText,
@@ -39,6 +40,7 @@ const EditDocumentModal = lazy(() => import('./EditDocumentModal').then((module)
 const UploadNewVersionModal = lazy(() => import('./UploadNewVersionModal').then((module) => ({ default: module.UploadNewVersionModal })));
 const VersionHistoryModal = lazy(() => import('./VersionHistoryModal').then((module) => ({ default: module.VersionHistoryModal })));
 const RelatedTasksModal = lazy(() => import('./RelatedTasksModal').then((module) => ({ default: module.RelatedTasksModal })));
+const RelatedPcarsModal = lazy(() => import('./RelatedPcarsModal').then((module) => ({ default: module.RelatedPcarsModal })));
 
 const ZOOM_STEP = 10;
 const MIN_ZOOM = 50;
@@ -188,6 +190,7 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
   const [showEditModal, setShowEditModal] = useState(() => hasActiveDocumentEditDraft(document.documentId));
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showRelatedTasks, setShowRelatedTasks] = useState(false);
+  const [showRelatedPcars, setShowRelatedPcars] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
   const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
   const [documentPermissions, setDocumentPermissions] = useState<RolePermissionFlags | null>(null);
@@ -1005,6 +1008,15 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
               <ClipboardList className="h-4 w-4" /> Related Tasks
             </button>
             <button
+              onClick={() => setShowRelatedPcars(true)}
+              disabled={!documentPermissions?.viewRelatedTasks}
+              title={!documentPermissions?.viewRelatedTasks ? 'Your role does not have View Related Tasks permission' : 'View audit PCAR findings raised for this document'}
+              className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              aria-label={`View related PCARs for ${document.fileName}`}
+            >
+              <ClipboardCheck className="h-4 w-4" /> Related PCARs
+            </button>
+            <button
               onClick={handlePrint}
               disabled={!documentPermissions?.viewOnly}
               title={!documentPermissions?.viewOnly ? 'Your role does not have permission to view this document' : 'Print'}
@@ -1162,6 +1174,13 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
           documentId={document.documentId}
           fileName={document.fileName}
           onClose={() => setShowRelatedTasks(false)}
+        />
+      )}
+      {showRelatedPcars && (
+        <RelatedPcarsModal
+          documentId={document.documentId}
+          fileName={document.fileName}
+          onClose={() => setShowRelatedPcars(false)}
         />
       )}
       </Suspense>

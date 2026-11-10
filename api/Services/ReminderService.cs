@@ -15,6 +15,27 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
     // when recipient == actor, so a real user ID never collides with this).
     private static readonly Guid SystemActorId = Guid.Empty;
 
+    private static readonly string[] Recurrences = ["once", "weekly", "monthly", "quarterly", "semiannual", "yearly"];
+
+    private static DateTime NextDueDate(DateTime dueDate, string recurrence)
+    {
+        var next = recurrence switch
+        {
+            "weekly" => dueDate.AddDays(7),
+            "monthly" => dueDate.AddMonths(1),
+            "quarterly" => dueDate.AddMonths(3),
+            "semiannual" => dueDate.AddMonths(6),
+            "yearly" => dueDate.AddYears(1),
+            _ => dueDate,
+        };
+        while (next <= DateTime.UtcNow) next = recurrence switch
+        {
+            "weekly" => next.AddDays(7), "monthly" => next.AddMonths(1),
+            "quarterly" => next.AddMonths(3), "semiannual" => next.AddMonths(6), "yearly" => next.AddYears(1), _ => next,
+        };
+        return next;
+    }
+
     private string BuildTaskLink(Guid taskId)
     {
         var frontendBaseUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
@@ -71,7 +92,7 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
         }
     }
 
-    public async Task<ReminderResult> CreateReminderAsync(Guid taskId, Guid recipientId, string reminderType, DateTime dueDate, Guid? actorUserId = null)
+    public async Task<ReminderResult> CreateReminderAsync(Guid taskId, Guid recipientId, string reminderType, DateTime dueDate, string recurrence = "once", Guid? actorUserId = null)
     {
         try
         {
@@ -85,6 +106,9 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
 
             if (!new[] { "APP", "EMAIL", "BOTH" }.Contains(reminderType.ToUpper()))
                 return ReminderResult.Invalid("Reminder type must be APP, EMAIL, or BOTH");
+            recurrence = recurrence.Trim().ToLowerInvariant();
+            if (!Recurrences.Contains(recurrence))
+                return ReminderResult.Invalid("Recurrence must be once, weekly, monthly, quarterly, semiannual, or yearly");
 
             var reminder = new DmsReminder
             {
@@ -92,6 +116,7 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
                 TaskId = taskId,
                 RecipientId = recipientId,
                 ReminderType = reminderType.ToUpper(),
+                Recurrence = recurrence,
                 DueDate = dueDate,
                 IsSent = false,
                 CreatedAt = DateTime.UtcNow
@@ -123,11 +148,12 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
             // steps the caller has to know about.
             if (dueDate <= DateTime.UtcNow)
             {
-                reminder.IsSent = true;
                 reminder.SentAt = DateTime.UtcNow;
                 reminder.Task = task;
                 reminder.Recipient = recipient;
                 await SendReminderNotificationAsync(reminder);
+                if (reminder.Recurrence == "once") reminder.IsSent = true;
+                else { reminder.DueDate = NextDueDate(reminder.DueDate, reminder.Recurrence); reminder.IsSent = false; }
                 await context.SaveChangesAsync();
 
                 await auditService.LogAsync(actorUserId ?? recipientId, AuditActions.REMINDER_SENT, new
@@ -219,11 +245,12 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
 
             foreach (var reminder in reminders)
             {
-                reminder.IsSent = true;
                 reminder.SentAt = DateTime.UtcNow;
                 context.Reminders.Update(reminder);
 
                 await SendReminderNotificationAsync(reminder);
+                if (reminder.Recurrence == "once") reminder.IsSent = true;
+                else { reminder.DueDate = NextDueDate(reminder.DueDate, reminder.Recurrence); reminder.IsSent = false; }
 
                 await auditService.LogAsync(reminder.RecipientId, AuditActions.REMINDER_SENT, new
                 {
@@ -296,10 +323,11 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
             if (reminder.IsSent)
                 return ReminderResult.Invalid("Reminder has already been sent");
 
-            reminder.IsSent = true;
             reminder.SentAt = DateTime.UtcNow;
 
             await SendReminderNotificationAsync(reminder);
+            if (reminder.Recurrence == "once") reminder.IsSent = true;
+            else { reminder.DueDate = NextDueDate(reminder.DueDate, reminder.Recurrence); reminder.IsSent = false; }
 
             await context.SaveChangesAsync();
 

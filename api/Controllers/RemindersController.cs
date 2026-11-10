@@ -141,6 +141,7 @@ public class RemindersController(ReminderService reminderService, DmsContext con
                 req.RecipientId,
                 req.ReminderType,
                 req.DueDate,
+                req.Recurrence,
                 GetCurrentUserId());
 
             if (!result.Success)
@@ -167,5 +168,6 @@ public record CreateReminderRequest(
     Guid TaskId,
     Guid RecipientId,
     string ReminderType, // APP, EMAIL, BOTH
-    DateTime DueDate
+    DateTime DueDate,
+    string Recurrence = "once"
 );

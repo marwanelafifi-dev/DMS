@@ -159,8 +159,11 @@ export interface Task {
   title: string;
   description?: string;
   tags: string[];
-  taskType: 'correction' | 'rca' | 'audit_action';
+  // General tasks are independent work items; pcar is reserved for an audit
+  // finding raised against an already-released document.
+  taskType: 'task' | 'correction' | 'rca' | 'audit_action' | 'pcar';
   documentId?: string;
+  folderId?: string;
   // Only set for a correction task spawned by a QA/Manager rejection in the
   // Document Workflow — those genuinely need the corrected file re-uploaded
   // before resubmission. A self-filed PCAR can reference a document (for
@@ -197,6 +200,7 @@ export interface Task {
 // Mirrors ReminderService.GetUserRemindersAsync — the API has no message/isRead
 // concept, only a delivery channel plus sent state.
 export type ReminderChannel = 'APP' | 'EMAIL' | 'BOTH';
+export type ReminderRecurrence = 'once' | 'weekly' | 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
 
 export interface Reminder {
   reminderId: string;
@@ -205,6 +209,7 @@ export interface Reminder {
   recipientId?: string;
   recipient?: Pick<User, 'userId' | 'fullName' | 'email'>;
   reminderType: ReminderChannel;
+  recurrence?: ReminderRecurrence;
   dueDate: string;
   isSent: boolean;
   sentAt?: string | null;

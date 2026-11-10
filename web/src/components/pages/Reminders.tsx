@@ -5,7 +5,7 @@ import { Bell, CheckCircle2, Clock, Trash2, Plus, X, Search } from 'lucide-react
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { usePageAccess } from '../../hooks/usePageAccess';
-import type { Reminder, ReminderChannel, Task } from '../../types';
+import type { Reminder, ReminderChannel, ReminderRecurrence, Task } from '../../types';
 import { ModalOverlay } from '../ui/ModalOverlay';
 
 const CHANNELS: ReminderChannel[] = ['APP', 'EMAIL', 'BOTH'];
@@ -25,10 +25,11 @@ export function Reminders() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'sent'>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [newReminder, setNewReminder] = useState<{ taskId: string; recipientId: string; reminderType: ReminderChannel; dueDate: string }>({
+  const [newReminder, setNewReminder] = useState<{ taskId: string; recipientId: string; reminderType: ReminderChannel; recurrence: ReminderRecurrence; dueDate: string }>({
     taskId: '',
     recipientId: DEV_USER_ID,
     reminderType: 'APP',
+    recurrence: 'once',
     dueDate: '',
   });
 
@@ -94,6 +95,7 @@ export function Reminders() {
         taskId: newReminder.taskId,
         recipientId: newReminder.recipientId,
         reminderType: newReminder.reminderType,
+        recurrence: newReminder.recurrence,
         dueDate: new Date(newReminder.dueDate).toISOString(),
       });
       // A due date already in the past/now sends immediately (see
@@ -102,7 +104,7 @@ export function Reminders() {
       // like it was just sent, and the actual delivery can be minutes away.
       showSuccess(res.data?.isSent ? 'Reminder created and sent now' : 'Reminder scheduled — it will be sent at the due date/time');
       setShowAddForm(false);
-      setNewReminder({ taskId: '', recipientId: DEV_USER_ID, reminderType: 'APP', dueDate: '' });
+      setNewReminder({ taskId: '', recipientId: DEV_USER_ID, reminderType: 'APP', recurrence: 'once', dueDate: '' });
       await loadReminders();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create reminder');
@@ -372,6 +374,18 @@ export function Reminders() {
                   onChange={(e) => setNewReminder({ ...newReminder, dueDate: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="reminder-recurrence" className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Repeat</label>
+                <select id="reminder-recurrence" value={newReminder.recurrence} onChange={(e) => setNewReminder({ ...newReminder, recurrence: e.target.value as ReminderRecurrence })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white">
+                  <option value="once">Once</option>
+                  <option value="weekly">Every week</option>
+                  <option value="monthly">Every month</option>
+                  <option value="quarterly">Every quarter</option>
+                  <option value="semiannual">Every 6 months</option>
+                  <option value="yearly">Every year</option>
+                </select>
               </div>
 
               <div className="flex gap-2 justify-end">

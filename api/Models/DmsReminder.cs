@@ -6,6 +6,7 @@ public class DmsReminder
     public Guid TaskId { get; set; }
     public Guid RecipientId { get; set; }
     public string ReminderType { get; set; } = string.Empty;
+    public string Recurrence { get; set; } = "once";
     public DateTime DueDate { get; set; }
     public bool IsSent { get; set; } = false;
     public DateTime? SentAt { get; set; }

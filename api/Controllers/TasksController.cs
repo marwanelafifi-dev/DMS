@@ -101,6 +101,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 {
                     task.TaskId,
                     task.DocumentId,
+                    task.FolderId,
                     task.ApprovalId,
                     Document = task.Document == null ? null : new { task.Document.DocumentId, task.Document.Title },
                     task.Title,
@@ -230,6 +231,13 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
 
             var managerId = GetCurrentUserId();
 
+            var pageAccessRole = await GetPageAccessRoleAsync(context, managerId);
+            if (pageAccessRole?.CanCreateTasks != true && pageAccessRole?.CanManageAllTasks != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to create and assign tasks" });
+
+            if (string.Equals(req.TaskType, "pcar", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { success = false, error = "Create audit PCAR findings through the PCAR endpoint" });
+
             // Tasks aren't folder-scoped, so there's no per-folder grant to
             // check here — anyone who can see the PCAR page can self-file a
             // PCAR (assign it to themselves). Assigning it to someone ELSE, or
@@ -239,14 +247,14 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             var assigningToSelf = req.AssignedToId == managerId && req.AssignedToGroupId == null;
             if (!assigningToSelf)
             {
-                var pageAccessRole = await GetPageAccessRoleAsync(context, managerId);
-                if (pageAccessRole?.CanCreateTasks != true && pageAccessRole?.CanManageAllTasks != true)
-                    return StatusCode(403, new { success = false, error = "You can only create a PCAR assigned to yourself" });
+                // The task creation capability above already covers assignment
+                // to a user or group. This is not an approval-workflow action.
             }
 
             var result = await taskService.CreateTaskAsync(
                 managerId,
                 req.DocumentId,
+                req.FolderId,
                 req.AssignedToId,
                 req.AssignedToGroupId,
                 req.Title,
@@ -279,6 +287,48 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         catch (Exception ex)
         {
             logger.LogError(ex, "Error creating task");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // POST /api/tasks/pcar — an audit finding, never an approval correction.
+    // Only Quality and Full Access may raise one, and only after Final Release.
+    [HttpPost("pcar")]
+    public async Task<ActionResult<object>> CreatePcar([FromBody] CreateTaskRequest req)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(req.Title))
+                return BadRequest(new { success = false, error = "PCAR title is required" });
+            if (req.AssignedToId.HasValue == req.AssignedToGroupId.HasValue)
+                return BadRequest(new { success = false, error = "Assign the PCAR to exactly one user or group" });
+
+            var userId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, userId);
+            if (role?.Role is not ("Full Access" or "Quality"))
+                return StatusCode(403, new { success = false, error = "Only Quality or Full Access users can raise audit PCAR findings" });
+
+            if (!req.DocumentId.HasValue)
+                return BadRequest(new { success = false, error = "A PCAR must be linked to a released file" });
+            var isReleased = await context.Documents.AnyAsync(d => d.DocumentId == req.DocumentId.Value && d.Status == "released");
+            if (!isReleased)
+                return BadRequest(new { success = false, error = "A PCAR can only be raised for a released file" });
+
+            var result = await taskService.CreateTaskAsync(userId, req.DocumentId, null, req.AssignedToId, req.AssignedToGroupId,
+                req.Title, req.Description, "pcar", req.RiskSeverity, req.DueDate, req.Tags);
+            if (!result.Success)
+                return result.Error == "NotFound"
+                    ? NotFound(new { success = false, error = result.Message })
+                    : BadRequest(new { success = false, error = result.Message });
+
+            var task = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == result.ResourceId!.Value);
+            await NotifyTaskAssignmentAsync(task, userId, "New audit PCAR assigned to you", "New audit PCAR assigned to your group");
+            await auditService.LogAsync(userId, "PCAR_RAISED", new { task.TaskId, task.DocumentId, task.Title });
+            return CreatedAtAction(nameof(GetTask), new { id = task.TaskId }, new { success = true, data = result.Data });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error creating audit PCAR");
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
@@ -503,6 +553,14 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
     // corrected file; send the approval batch that spawned this task back to
     // whichever stage (QA or Manager) requested the correction, so it
     // reappears in that reviewer's queue instead of staying stuck.
+    // GET /api/tasks/document/{documentId}/pcars — audit findings only.
+    [HttpGet("document/{documentId}/pcars")]
+    public async Task<ActionResult<object>> GetDocumentPcars(Guid documentId)
+    {
+        var pcars = await taskService.GetPcarsByDocumentAsync(documentId);
+        return Ok(new { success = true, data = pcars, count = pcars.Count });
+    }
+
     [HttpPost("{id}/resubmit-for-review")]
     public async Task<ActionResult<object>> ResubmitForReview(Guid id)
     {
@@ -737,7 +795,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
 }
 
 public record CreateTaskRequest(
-    Guid DocumentId,
+    Guid? DocumentId,
     string Title,
     Guid? AssignedToId = null,
     Guid? AssignedToGroupId = null,
@@ -745,7 +803,8 @@ public record CreateTaskRequest(
     string? TaskType = null,
     string? RiskSeverity = null,
     DateTime? DueDate = null,
-    string[]? Tags = null
+    string[]? Tags = null,
+    Guid? FolderId = null
 );
 
 public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate, string[]? Tags = null);

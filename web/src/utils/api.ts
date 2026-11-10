@@ -815,6 +815,11 @@ class APIClient {
     return data;
   }
 
+  async createPcar(taskData: any) {
+    const { data } = await this.client.post<ApiResponse>('/tasks/pcar', taskData);
+    return data;
+  }
+
   async updateTask(taskId: string, taskData: any) {
     const { data } = await this.client.put<ApiResponse>(`/tasks/${taskId}`, taskData);
     return data;
@@ -822,6 +827,11 @@ class APIClient {
 
   async completeTask(taskId: string) {
     const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`, {});
+    return data;
+  }
+
+  async getPcarsByDocument(documentId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/tasks/document/${documentId}/pcars`);
     return data;
   }
 

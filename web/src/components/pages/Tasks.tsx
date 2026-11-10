@@ -19,13 +19,14 @@ const PAGE_SIZE = 10;
 interface TaskForm {
   title: string;
   description: string;
-  taskType: 'correction' | 'rca' | 'audit_action';
+  taskType: 'task' | 'correction' | 'rca' | 'audit_action' | 'pcar';
   priority: 'low' | 'medium' | 'high' | 'critical';
   dueDate: string;
   // Exactly one of assignedTo / assignedToGroupId should be set.
   assignedTo: string;
   assignedToGroupId: string;
   documentId?: string;
+  folderId?: string;
   tags: string[];
 }
 
@@ -71,6 +72,7 @@ export function Tasks() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [groups, setGroups] = useState<Array<{ groupId: string; name: string }>>([]);
+  const canRaisePcar = canManageAllTasks || ['Quality', 'Full Access'].includes(users.find((user) => user.userId === DEV_USER_ID)?.role);
   const [myGroupIds, setMyGroupIds] = useState<Set<string>>(new Set());
   const [docSearchQuery, setDocSearchQuery] = useState('');
   const [showDocDropdown, setShowDocDropdown] = useState(false);
@@ -81,15 +83,18 @@ export function Tasks() {
   const [priorityFilter, setPriorityFilter] = useState<string>('');
 
   const [showAddForm, setShowAddForm] = useState(false);
+  const [isPcarForm, setIsPcarForm] = useState(false);
+  const [taskScope, setTaskScope] = useState<'none' | 'document' | 'folder'>('none');
   const [newTask, setNewTask] = useState<TaskForm>({
     title: '',
     description: '',
-    taskType: 'correction',
+    taskType: 'task',
     priority: 'medium',
     dueDate: '',
     assignedTo: DEV_USER_ID,
     assignedToGroupId: '',
     documentId: '',
+    folderId: '',
     tags: [],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -542,6 +547,19 @@ export function Tasks() {
 
   const handlePcarSubmit = async () => {
     if (!focusedPcar) return;
+    // General tasks have no PCAR approval/submission flow. The assignee simply
+    // completes them; PCARs remain distinct audit findings in the register.
+    if (focusedPcar.taskType !== 'pcar') {
+      try {
+        await apiClient.completeTask(focusedPcar.taskId);
+        showSuccess('Task completed');
+        setSelectedTaskId(null);
+        loadTasks();
+      } catch (err: any) {
+        showError(err.response?.data?.error || 'Failed to complete task');
+      }
+      return;
+    }
     if (focusedPcar.status !== 'open') {
       showError('This PCAR has already been submitted for approval');
       return;
@@ -609,8 +627,12 @@ export function Tasks() {
       showError('Due date is required');
       return;
     }
-    if (!newTask.documentId) {
-      showError('Document is required');
+    if (isPcarForm && !newTask.documentId) {
+      showError('A released document is required for a PCAR');
+      return;
+    }
+    if (!isPcarForm && taskScope === 'folder' && !newTask.folderId) {
+      showError('Select the folder this task applies to');
       return;
     }
     if (!newTask.assignedTo && !newTask.assignedToGroupId) {
@@ -620,17 +642,19 @@ export function Tasks() {
 
     setIsSubmitting(true);
     try {
-      const res = await apiClient.createTask({
+      const payload = {
         title: newTask.title,
         description: newTask.description,
         taskType: newTask.taskType,
         riskSeverity: newTask.priority,
-        documentId: newTask.documentId,
+        documentId: taskScope === 'document' || isPcarForm ? newTask.documentId : undefined,
+        folderId: taskScope === 'folder' ? newTask.folderId : undefined,
         assignedToId: newTask.assignedToGroupId ? undefined : newTask.assignedTo,
         assignedToGroupId: newTask.assignedToGroupId || undefined,
         dueDate: newTask.dueDate,
         tags: newTask.tags,
-      });
+      };
+      const res = isPcarForm ? await apiClient.createPcar(payload) : await apiClient.createTask(payload);
 
       const newTaskId = res.data?.taskId;
       if (newTaskId && newTaskAttachment) {
@@ -641,17 +665,19 @@ export function Tasks() {
         }
       }
 
-      showSuccess('Task created successfully');
+      showSuccess(isPcarForm ? 'Audit PCAR raised successfully' : 'Task created successfully');
       setShowAddForm(false);
+      setIsPcarForm(false);
       setNewTask({
         title: '',
         description: '',
-        taskType: 'correction',
+        taskType: 'task',
         priority: 'medium',
         dueDate: '',
         assignedTo: DEV_USER_ID,
         assignedToGroupId: '',
         documentId: '',
+        folderId: '',
         tags: [],
       });
       setNewTaskAttachment(null);
@@ -775,14 +801,18 @@ export function Tasks() {
     <div className="min-w-0 space-y-5 overflow-hidden">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="page-heading">PCAR / Corrective Action</h1>
+          <h1 className="page-heading">Tasks</h1>
           <p className="page-subtitle">Corrective &amp; preventive action register · {taskStats.total} records</p>
         </div>
         {canCreateTasks && (
-          <Button variant="primary" size="md" onClick={() => setShowAddForm(true)}>
-            <Plus className="w-4 h-4 mr-2 inline" />
-            New PCAR
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {canRaisePcar && <Button variant="secondary" size="md" onClick={() => { setIsPcarForm(true); setTaskScope('document'); setNewTask((task) => ({ ...task, taskType: 'pcar' })); setShowAddForm(true); }}>
+              <Plus className="w-4 h-4 mr-2 inline" /> Raise PCAR
+            </Button>}
+            <Button variant="primary" size="md" onClick={() => { setIsPcarForm(false); setTaskScope('none'); setNewTask((task) => ({ ...task, taskType: 'task' })); setShowAddForm(true); }}>
+              <Plus className="w-4 h-4 mr-2 inline" /> New Task
+            </Button>
+          </div>
         )}
       </div>
 
@@ -1054,7 +1084,9 @@ export function Tasks() {
                           : undefined
                   }
                 >
-                  {focusedPcar.status === 'done' ? 'Submitted' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Submit for approval'}
+                  {focusedPcar.taskType !== 'pcar'
+                    ? (pcarAlreadySubmitted ? 'Completed' : 'Complete task')
+                    : (focusedPcar.status === 'done' ? 'Submitted' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Close PCAR finding')}
                 </Button>
                 {pcarAlreadySubmitted ? (
                   <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">
@@ -1399,7 +1431,7 @@ export function Tasks() {
         <ModalOverlay onClose={() => setShowAddForm(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className="max-h-[90vh] w-full max-w-md overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-navy-700">
-              <h2 className="text-xl font-serif font-bold text-navy-900 dark:text-white">Create New Task</h2>
+              <h2 className="text-xl font-serif font-bold text-navy-900 dark:text-white">{isPcarForm ? 'Raise Audit PCAR' : 'Create New Task'}</h2>
               <button
                 onClick={() => setShowAddForm(false)}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -1434,8 +1466,33 @@ export function Tasks() {
                 <TagSelector value={newTask.tags} onChange={(tags) => setNewTask({ ...newTask, tags })} />
               </div>
 
-              <div ref={docPickerRef} className="relative">
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document *</label>
+              <div>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Task applies to</label>
+                <select
+                  value={isPcarForm ? 'document' : taskScope}
+                  disabled={isPcarForm}
+                  onChange={(event) => setTaskScope(event.target.value as 'none' | 'document' | 'folder')}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
+                >
+                  <option value="none">No file or folder — general task</option>
+                  <option value="document">One file</option>
+                  <option value="folder">One folder</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Use a general task for work such as “Review your documents.”</p>
+              </div>
+
+              {taskScope === 'folder' && !isPcarForm && (
+                <div>
+                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Folder *</label>
+                  <select value={newTask.folderId || ''} onChange={(event) => setNewTask({ ...newTask, folderId: event.target.value, documentId: '' })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white">
+                    <option value="">Select a folder…</option>
+                    {folders.map((folder) => <option key={folder.folderId} value={folder.folderId}>{getFolderPath(folder.folderId) || folder.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {(taskScope === 'document' || isPcarForm) && <div ref={docPickerRef} className="relative">
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document *{isPcarForm ? ' (released files only)' : ''}</label>
                 <input
                   type="text"
                   placeholder="Search by file name or folder path..."
@@ -1470,16 +1527,19 @@ export function Tasks() {
                     )}
                   </div>
                 )}
-              </div>
+              </div>}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Type</label>
                   <select
                     value={newTask.taskType}
+                    disabled={isPcarForm}
                     onChange={(e) => setNewTask({ ...newTask, taskType: e.target.value as any })}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
                   >
+                    {isPcarForm && <option value="pcar">Audit PCAR finding</option>}
+                    <option value="task">General task</option>
                     <option value="correction">Correction</option>
                     <option value="rca">RCA</option>
                     <option value="audit_action">Audit Action</option>
@@ -1555,7 +1615,7 @@ export function Tasks() {
               <div className="flex gap-2 justify-end pt-4">
                 <Button
                   variant="secondary"
-                  onClick={() => { setShowAddForm(false); setNewTaskAttachment(null); setDocSearchQuery(''); setShowDocDropdown(false); }}
+                  onClick={() => { setShowAddForm(false); setIsPcarForm(false); setNewTaskAttachment(null); setDocSearchQuery(''); setShowDocDropdown(false); }}
                 >
                   Cancel
                 </Button>
@@ -1564,7 +1624,7 @@ export function Tasks() {
                   onClick={handleCreateTask}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? 'Creating...' : 'Create Task'}
+                  {isSubmitting ? 'Creating...' : isPcarForm ? 'Raise PCAR' : 'Create Task'}
                 </Button>
               </div>
             </CardBody>

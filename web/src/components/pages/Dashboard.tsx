@@ -173,6 +173,8 @@ export function Dashboard() {
   };
 
   const myTasks = tasks.filter((t) => t.assignedTo === currentUserId);
+  const myNormalTasks = myTasks.filter((task) => task.taskType !== 'pcar');
+  const myPcars = myTasks.filter((task) => task.taskType === 'pcar');
   const taskStats = {
     open: myTasks.filter((t) => t.status === 'open').length,
     inProgress: myTasks.filter((t) => t.status === 'in_progress').length,
@@ -288,10 +290,10 @@ export function Dashboard() {
                 <button onClick={() => navigate('/tasks')} className="text-xs font-medium text-[#3f8bca] hover:underline">View all</button>
               </div>
               <div className="mt-3 space-y-2">
-                {myTasks.length === 0 && (
+                {myNormalTasks.length === 0 && (
                   <p className="px-1 py-4 text-sm text-[#718198]">You have no assigned tasks right now.</p>
                 )}
-                {myTasks.slice(0, 4).map((task, index) => {
+                {myNormalTasks.slice(0, 4).map((task, index) => {
                   const Icon = taskIcons[index % taskIcons.length];
                   return (
                     <button key={task.taskId} onClick={() => navigate(`/tasks?highlight=${encodeURIComponent(task.taskId)}`)} className={`flex w-full gap-3 rounded-[4px] border-l-2 px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5 ${taskColors[index % taskColors.length]}`}>
@@ -303,6 +305,24 @@ export function Dashboard() {
                     </button>
                   );
                 })}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody className="p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="section-heading">My PCAR Findings</h2>
+                <button onClick={() => navigate('/tasks')} className="text-xs font-medium text-[#3f8bca] hover:underline">View all</button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {myPcars.length === 0 && <p className="px-1 py-4 text-sm text-[#718198]">You have no assigned PCAR findings.</p>}
+                {myPcars.slice(0, 4).map((pcar) => (
+                  <button key={pcar.taskId} onClick={() => navigate(`/tasks?highlight=${encodeURIComponent(pcar.taskId)}`)} className="flex w-full gap-3 rounded-[4px] border-l-2 border-[#d27a08] px-3 py-2.5 text-left hover:bg-[#f8fafc] dark:hover:bg-white/5">
+                    <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#d27a08]" />
+                    <span className="min-w-0"><span className="block truncate text-sm font-medium text-[#26334d] dark:text-white">{pcar.title}</span><span className="mt-1 block text-xs text-[#718198]">Due {shortDate(pcar.dueDate)} · Audit finding</span></span>
+                  </button>
+                ))}
               </div>
             </CardBody>
           </Card>
