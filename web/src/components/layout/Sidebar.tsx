@@ -38,7 +38,8 @@ const navItems: Array<{ label: string; path: string; icon: typeof LayoutDashboar
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true, visibleWhen: 'canViewDashboard' },
   { label: 'Document Library', path: '/documents', icon: Folder, visibleWhen: 'canViewDocumentLibrary' },
   { label: 'Document Workflow', path: '/approvals', icon: ClipboardCheck, visibleWhen: 'canViewApprovals' },
-  { label: 'PCAR / Corrective Action', path: '/tasks', icon: FileWarning, visibleWhen: 'canViewPcar' },
+  { label: 'Tasks (Internal Use)', path: '/tasks', icon: ClipboardCheck, visibleWhen: 'canViewTasks' },
+  { label: 'PCAR (Auditor Findings)', path: '/pcars', icon: FileWarning, visibleWhen: 'canViewPcar' },
   { label: 'Reminders', path: '/reminders', icon: BellRing, visibleWhen: 'canViewReminders' },
   { label: 'Send Announcement', path: '/send-announcement', icon: Megaphone, visibleWhen: 'canSendAnnouncements' },
 ];
@@ -159,7 +160,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
                   <Icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.9} />
                   <span className={isCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
                 </button>
-                {item.path === '/tasks' && pageAccess?.canViewHistoricalPcars && (
+                {item.path === '/pcars' && pageAccess?.canViewHistoricalPcars && (
                   <button
                     onClick={() => goTo('/tasks/history')}
                     title={isCollapsed ? 'Historical PCAR Archive' : undefined}

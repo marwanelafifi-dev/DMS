@@ -305,8 +305,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
 
             var userId = GetCurrentUserId();
             var role = await GetPageAccessRoleAsync(context, userId);
-            if (role?.Role is not ("Full Access" or "Quality"))
-                return StatusCode(403, new { success = false, error = "Only Quality or Full Access users can raise audit PCAR findings" });
+            if (role?.CanCreatePcars != true)
+                return StatusCode(403, new { success = false, error = "Your role does not have permission to raise audit PCAR findings" });
 
             if (!req.DocumentId.HasValue)
                 return BadRequest(new { success = false, error = "A PCAR must be linked to a released file" });

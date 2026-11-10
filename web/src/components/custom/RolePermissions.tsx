@@ -13,7 +13,7 @@ import { ModalOverlay } from '../ui/ModalOverlay';
 // delete, rename, etc.) — those are governed entirely by per-folder grants
 // and File/Folder Permission overrides, set from the Document Library.
 const PERMISSION_KEYS = [
-  'canViewDashboard', 'canViewDocumentLibrary', 'canViewApprovals', 'canViewPcar', 'canViewReminders',
+  'canViewDashboard', 'canViewDocumentLibrary', 'canViewApprovals', 'canViewTasks', 'canViewPcar', 'canViewReminders',
   'canDeleteReminders',
   'canDeleteDocumentVersions',
   'canManageBulkActions',
@@ -21,7 +21,7 @@ const PERMISSION_KEYS = [
   'canSendAnnouncements', 'canViewAdminPanel',
   'canReadAllFolders', 'canReadWriteAllFolders', 'bypassFolderPermissions',
   'canEditFiles', 'canManageFolderPermissions', 'canManageFilePermissions',
-  'canCreateTasks', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks',
+  'canCreateTasks', 'canCreatePcars', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks',
   'canViewHistoricalPcars',
   'canViewAllHistoricalPcars', 'canImportHistoricalPcars',
   'canCreateShortcuts', 'canShareDocumentLinks',
@@ -36,6 +36,7 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canReindexDocuments: 'Re-index Document OCR',
   canViewApprovals: 'Approvals (Document Workflow)',
   canViewPcar: 'PCAR / Corrective Action',
+  canViewTasks: 'Tasks (Internal Use)',
   canViewAdminPanel: 'Admin Panel',
   bypassFolderPermissions: 'Full Access to All Folders',
   canReadAllFolders: 'Read Only to All Folders',
@@ -49,7 +50,8 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canImportHistoricalPcars: 'Import Historical PCARs',
   canCreateShortcuts: 'Create Folder/File Shortcuts',
   canShareDocumentLinks: 'Share Protected Folder/File Links',
-  canCreateTasks: 'Create New PCAR',
+  canCreateTasks: 'Create and Assign Tasks',
+  canCreatePcars: 'Create PCAR Findings',
   canReassignMyTasks: 'Reassign My Tasks Only',
   canReassignTasks: 'Reassign All Tasks',
   canSendAnnouncements: 'Send Announcements',

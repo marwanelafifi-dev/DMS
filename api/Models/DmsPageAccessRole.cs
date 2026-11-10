@@ -16,6 +16,9 @@ public class DmsPageAccessRole
     public bool CanViewReminders { get; set; }
     public bool CanViewApprovals { get; set; }
     public bool CanViewPcar { get; set; }
+    // Internal operational tasks are intentionally separate from auditor PCAR
+    // findings, so roles can be granted either register independently.
+    public bool CanViewTasks { get; set; }
     public bool CanViewAdminPanel { get; set; }
     public bool BypassFolderPermissions { get; set; }
     // Weaker, tiered versions of BypassFolderPermissions — automatic
@@ -53,6 +56,9 @@ public class DmsPageAccessRole
     // button and assign a task to anyone, without also granting the ability
     // to edit/complete/delete tasks that already belong to other people.
     public bool CanCreateTasks { get; set; }
+    // Separate from normal task creation: permits raising an auditor PCAR
+    // against a released file (the released-file rule is still enforced).
+    public bool CanCreatePcars { get; set; }
     // Independent from CanManageAllTasks — lets a role change an existing
     // task's Assignee (user or group) on ANY task, own or not, without also
     // granting edit/complete/delete over tasks that already belong to other

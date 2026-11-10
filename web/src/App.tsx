@@ -96,9 +96,12 @@ function App() {
             <Route element={<MainLayout />}>
               <Route path="/" element={<Dashboard />} />
 
-              {/* Tasks (sidebar label: PCAR / Corrective Action) */}
+              {/* Internal tasks and auditor PCAR findings have separate registers. */}
+              <Route element={<RequirePageAccess flag="canViewTasks" />}>
+                <Route path="/tasks" element={<Tasks mode="tasks" />} />
+              </Route>
               <Route element={<RequirePageAccess flag="canViewPcar" />}>
-                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/pcars" element={<Tasks mode="pcar" />} />
                 <Route element={<RequirePageAccess flag="canViewHistoricalPcars" />}>
                   <Route path="/tasks/history" element={<HistoricalPcarPage />} />
                 </Route>

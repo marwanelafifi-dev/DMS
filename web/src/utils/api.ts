@@ -64,6 +64,7 @@ export interface PageAccessRoleFlags {
   canViewReminders: boolean;
   canViewApprovals: boolean;
   canViewPcar: boolean;
+  canViewTasks: boolean;
   canViewAdminPanel: boolean;
   bypassFolderPermissions: boolean;
   // Weaker, tiered versions of bypassFolderPermissions — automatic
@@ -81,6 +82,7 @@ export interface PageAccessRoleFlags {
   canCreateShortcuts: boolean;
   canShareDocumentLinks: boolean;
   canCreateTasks: boolean;
+  canCreatePcars: boolean;
   canReassignTasks: boolean;
   canReassignMyTasks: boolean;
   // Scopes canViewApprovals down to specific C-Doc Workflow stage tabs.

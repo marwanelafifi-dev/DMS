@@ -57,6 +57,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewReminders = req.CanViewReminders,
                 CanViewApprovals = req.CanViewApprovals,
                 CanViewPcar = req.CanViewPcar,
+                CanViewTasks = req.CanViewTasks,
                 CanViewAdminPanel = req.CanViewAdminPanel,
                 BypassFolderPermissions = req.BypassFolderPermissions,
                 CanReadAllFolders = req.CanReadAllFolders,
@@ -71,6 +72,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanCreateShortcuts = req.CanCreateShortcuts,
                 CanShareDocumentLinks = req.CanShareDocumentLinks,
                 CanCreateTasks = req.CanCreateTasks,
+                CanCreatePcars = req.CanCreatePcars,
                 CanReassignTasks = req.CanReassignTasks,
                 CanReassignMyTasks = req.CanReassignMyTasks,
                 CanViewQaStage = req.CanViewQaStage,
@@ -118,6 +120,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanViewReminders = req.CanViewReminders;
             entity.CanViewApprovals = req.CanViewApprovals;
             entity.CanViewPcar = req.CanViewPcar;
+            entity.CanViewTasks = req.CanViewTasks;
             entity.CanViewAdminPanel = req.CanViewAdminPanel;
             entity.BypassFolderPermissions = req.BypassFolderPermissions;
             entity.CanReadAllFolders = req.CanReadAllFolders;
@@ -132,6 +135,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanCreateShortcuts = req.CanCreateShortcuts;
             entity.CanShareDocumentLinks = req.CanShareDocumentLinks;
             entity.CanCreateTasks = req.CanCreateTasks;
+            entity.CanCreatePcars = req.CanCreatePcars;
             entity.CanReassignTasks = req.CanReassignTasks;
             entity.CanReassignMyTasks = req.CanReassignMyTasks;
             entity.CanViewQaStage = req.CanViewQaStage;
@@ -199,6 +203,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewReminders = entity.CanViewReminders,
                 CanViewApprovals = entity.CanViewApprovals,
                 CanViewPcar = entity.CanViewPcar,
+                CanViewTasks = entity.CanViewTasks,
                 CanViewAdminPanel = entity.CanViewAdminPanel,
                 BypassFolderPermissions = entity.BypassFolderPermissions,
                 CanReadAllFolders = entity.CanReadAllFolders,
@@ -213,6 +218,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanCreateShortcuts = entity.CanCreateShortcuts,
                 CanShareDocumentLinks = entity.CanShareDocumentLinks,
                 CanCreateTasks = entity.CanCreateTasks,
+                CanCreatePcars = entity.CanCreatePcars,
                 CanReassignTasks = entity.CanReassignTasks,
                 CanReassignMyTasks = entity.CanReassignMyTasks,
                 CanViewQaStage = entity.CanViewQaStage,
@@ -298,7 +304,7 @@ public record UpdatePageAccessRoleRequest(
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
-    bool CanReindexDocuments = false);
+    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false);
 
 public record RenamePageAccessRoleRequest(string NewRole);
 
@@ -314,4 +320,4 @@ public record CreatePageAccessRoleRequest(
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
-    bool CanReindexDocuments = false);
+    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false);

@@ -46,7 +46,7 @@ const PRIORITY_COLORS = {
 } as const;
 
 
-export function Tasks() {
+export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
   const pageAccess = usePageAccess();
@@ -72,7 +72,7 @@ export function Tasks() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [groups, setGroups] = useState<Array<{ groupId: string; name: string }>>([]);
-  const canRaisePcar = canManageAllTasks || ['Quality', 'Full Access'].includes(users.find((user) => user.userId === DEV_USER_ID)?.role);
+  const canRaisePcar = pageAccess?.canCreatePcars ?? false;
   const [myGroupIds, setMyGroupIds] = useState<Set<string>>(new Set());
   const [docSearchQuery, setDocSearchQuery] = useState('');
   const [showDocDropdown, setShowDocDropdown] = useState(false);
@@ -118,8 +118,9 @@ export function Tasks() {
     try {
       const res = await apiClient.getTasks({ page: targetPage, pageSize: PAGE_SIZE });
       const allTasks = res.data || [];
-      setTasks(allTasks);
-      const count = res.totalCount ?? res.count ?? allTasks.length ?? 0;
+      const pageItems = allTasks.filter((task: Task) => mode === 'pcar' ? task.taskType === 'pcar' : task.taskType !== 'pcar');
+      setTasks(pageItems);
+      const count = pageItems.length;
       setTotalCount(count);
       setTotalPages(res.totalPages ?? (Math.ceil(count / PAGE_SIZE) || 1));
     } catch (err: any) {
@@ -203,7 +204,7 @@ export function Tasks() {
     loadDocuments();
     loadFolders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, mode]);
 
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -294,12 +295,12 @@ export function Tasks() {
     if (tasks.some((t) => t.taskId === highlightTaskId)) return;
     apiClient.getTasks({ limit: 500 })
       .then((res) => {
-        const found = (res.data || []).find((t: Task) => t.taskId === highlightTaskId);
+        const found = (res.data || []).find((t: Task) => t.taskId === highlightTaskId && (mode === 'pcar' ? t.taskType === 'pcar' : t.taskType !== 'pcar'));
         if (found) setFetchedHighlightTask(found);
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightTaskId]);
+  }, [highlightTaskId, mode]);
   // documents (getDocuments()) is scoped to folders the current user can
   // browse — a task's assignee may have zero folder access to the document
   // their own assigned task is about, in which case it's simply missing from
@@ -801,17 +802,17 @@ export function Tasks() {
     <div className="min-w-0 space-y-5 overflow-hidden">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="page-heading">Tasks</h1>
+          <h1 className="page-heading">{mode === 'pcar' ? 'PCAR (Auditor Findings)' : 'Tasks (Internal Use)'}</h1>
           <p className="page-subtitle">Corrective &amp; preventive action register · {taskStats.total} records</p>
         </div>
         {canCreateTasks && (
           <div className="flex flex-wrap gap-2">
-            {canRaisePcar && <Button variant="secondary" size="md" onClick={() => { setIsPcarForm(true); setTaskScope('document'); setNewTask((task) => ({ ...task, taskType: 'pcar' })); setShowAddForm(true); }}>
+            {mode === 'pcar' && canRaisePcar && <Button variant="primary" size="md" onClick={() => { setIsPcarForm(true); setTaskScope('document'); setNewTask((task) => ({ ...task, taskType: 'pcar' })); setShowAddForm(true); }}>
               <Plus className="w-4 h-4 mr-2 inline" /> Raise PCAR
             </Button>}
-            <Button variant="primary" size="md" onClick={() => { setIsPcarForm(false); setTaskScope('none'); setNewTask((task) => ({ ...task, taskType: 'task' })); setShowAddForm(true); }}>
+            {mode === 'tasks' && <Button variant="primary" size="md" onClick={() => { setIsPcarForm(false); setTaskScope('none'); setNewTask((task) => ({ ...task, taskType: 'task' })); setShowAddForm(true); }}>
               <Plus className="w-4 h-4 mr-2 inline" /> New Task
-            </Button>
+            </Button>}
           </div>
         )}
       </div>
@@ -1105,7 +1106,7 @@ export function Tasks() {
         </ModalOverlay>
       )}
 
-      <div className="flex items-center justify-between pt-1"><h2 className="section-heading">PCAR Register</h2></div>
+      <div className="flex items-center justify-between pt-1"><h2 className="section-heading">{mode === 'pcar' ? 'PCAR Register' : 'Task Register'}</h2></div>
 
       {/* Filters */}
       <div className="flex flex-col items-stretch gap-3 md:flex-row md:items-center">
