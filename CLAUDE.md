@@ -4589,3 +4589,19 @@ docker compose ps
 ```
 
 - After deployment, sign in as Quality to confirm `/reminders/policy` is visible and editable, then complete one linked Task and one PCAR evidence/verification flow. Do not commit `.claude/settings.local.json`; it is local tooling configuration only.
+
+## Session 74 (2026-11-11) — Normal Task completion boundaries and direct-manager escalation
+
+- The in-app Page Guide is in `web/src/components/page-guide/guideRegistry.ts`. It now has separate **Tasks (Internal Use)** (`/tasks`) and **PCAR (Auditor Findings)** (`/pcars`) guides. The task guide explains the action types, completion evidence rule, linked/unlinked scope, direct manager, and automatic reminders; the PCAR guide explains finding links, evidence, and verification.
+- A normal internal Task no longer renders PCAR-only controls. It has an optional completion comment and optional supporting attachments. **General Task** and **Review** can be completed without an attachment. **Correction**, **RCA**, **Audit Action**, and **Other** require at least one task attachment before completion. `TaskService.CompleteTaskAsync` enforces this server-side, so the rule cannot be bypassed through the API.
+- Migration `114_task_direct_manager.sql` adds `dms_tasks.direct_manager_id`. An unlinked normal Task can nominate an active Manager as its direct escalation contact. The selected manager is included in the policy-controlled 1-day, due-date, and overdue notifications; selecting any file or folder clears this contact and uses linked-folder ownership instead.
+
+### Migration 114 and Ubuntu deployment
+
+- Apply migration `114_task_direct_manager.sql` before rebuilding the API. Existing persisted notification policies are upgraded so Direct Manager is enabled for the default 1-day, due-date, and overdue stages.
+
+```bash
+docker compose exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < infra/db/init/114_task_direct_manager.sql
+docker compose up -d --build api web
+docker compose ps
+```

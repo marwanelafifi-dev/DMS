@@ -11,6 +11,7 @@ namespace DMS.Api.Services;
 public sealed record TaskReminderRecipients(
     bool Assignee = true,
     bool FolderOwner = false,
+    bool DirectManager = false,
     bool Quality = false,
     bool FullAccess = false);
 
@@ -36,9 +37,9 @@ public sealed record TaskNotificationPolicy(
         true,
         new TaskReminderStage(true, 0, new TaskReminderRecipients(Assignee: true)),
         new TaskReminderStage(true, 3, new TaskReminderRecipients(Assignee: true)),
-        new TaskReminderStage(true, 1, new TaskReminderRecipients(Assignee: true, FolderOwner: true)),
-        new TaskReminderStage(true, 0, new TaskReminderRecipients(Assignee: true, FolderOwner: true, Quality: true, FullAccess: true)),
-        new TaskReminderStage(true, 0, new TaskReminderRecipients(Assignee: true, FolderOwner: true, Quality: true, FullAccess: true)));
+        new TaskReminderStage(true, 1, new TaskReminderRecipients(Assignee: true, FolderOwner: true, DirectManager: true)),
+        new TaskReminderStage(true, 0, new TaskReminderRecipients(Assignee: true, FolderOwner: true, DirectManager: true, Quality: true, FullAccess: true)),
+        new TaskReminderStage(true, 0, new TaskReminderRecipients(Assignee: true, FolderOwner: true, DirectManager: true, Quality: true, FullAccess: true)));
 }
 
 public class TaskNotificationPolicyService(DmsContext context)
@@ -71,7 +72,7 @@ public class TaskNotificationPolicyService(DmsContext context)
     }
 
     private static bool HasRecipient(TaskReminderRecipients recipients) =>
-        recipients.Assignee || recipients.FolderOwner || recipients.Quality || recipients.FullAccess;
+        recipients.Assignee || recipients.FolderOwner || recipients.DirectManager || recipients.Quality || recipients.FullAccess;
 
     public async Task<HashSet<Guid>> GetRecipientIdsAsync(DmsTask task, TaskReminderStage stage)
     {
@@ -95,6 +96,12 @@ public class TaskNotificationPolicyService(DmsContext context)
                 .Select(folder => folder.OwnerId).ToListAsync())
                 recipientIds.Add(ownerId);
         }
+
+        // A direct manager is meaningful only when there is no document or
+        // folder scope from which a folder owner can be resolved.
+        if (recipients.DirectManager && task.DirectManagerId.HasValue
+            && !(await GetLinkedFolderIdsAsync(task)).Any())
+            recipientIds.Add(task.DirectManagerId.Value);
 
         if (recipients.Quality)
             foreach (var userId in await context.Users.AsNoTracking()

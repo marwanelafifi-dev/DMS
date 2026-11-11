@@ -12,7 +12,7 @@ const task = {
   title: 'PCAR modal behavior probe',
   description: 'Issue description',
   tags: ['Quality'],
-  taskType: 'correction',
+  taskType: 'pcar',
   approvalId: '30000000-0000-0000-0000-000000000001',
   documentId: '20000000-0000-0000-0000-000000000001',
   assignedToId: userId,
@@ -50,8 +50,8 @@ describe('PCAR true modal behavior', () => {
   });
 
   const renderHighlightedPcar = () => render(
-    <MemoryRouter initialEntries={[`/tasks?highlight=${task.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AuthContext.Provider value={auth}><Tasks /></AuthContext.Provider>
+    <MemoryRouter initialEntries={[`/pcars?highlight=${task.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <AuthContext.Provider value={auth}><Tasks mode="pcar" /></AuthContext.Provider>
     </MemoryRouter>,
   );
 
@@ -110,6 +110,38 @@ describe('PCAR true modal behavior', () => {
 
     expect(await screen.findByText(/No evidence attached yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Submit evidence for verification' })).toBeDisabled();
+  });
+
+  it('keeps normal task completion separate from PCAR fields and requires an attachment only for evidence actions', async () => {
+    const normalTask = { ...task, taskType: 'correction', approvalId: undefined, title: 'Correct a document title' };
+    vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [normalTask], totalCount: 1, totalPages: 1 } as any);
+    vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...normalTask, linkedDocuments: [], linkedFolders: [] } } as any);
+    render(
+      <MemoryRouter initialEntries={[`/tasks?highlight=${normalTask.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: normalTask.title })).toBeInTheDocument();
+    expect(screen.queryByText('Root Cause Analysis')).not.toBeInTheDocument();
+    expect(screen.queryByText('PCAR Status')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Completion comment/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add attachment' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Complete task' })).toBeDisabled();
+  });
+
+  it('allows a General task to complete without an attachment', async () => {
+    const normalTask = { ...task, taskType: 'task', approvalId: undefined, title: 'Review team documents' };
+    vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [normalTask], totalCount: 1, totalPages: 1 } as any);
+    vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...normalTask, linkedDocuments: [], linkedFolders: [] } } as any);
+    render(
+      <MemoryRouter initialEntries={[`/tasks?highlight=${normalTask.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: normalTask.title })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Complete task' })).toBeEnabled();
   });
 
   it('shows Quality/Auditor verification controls only when the dedicated permission is granted', async () => {

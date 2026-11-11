@@ -349,7 +349,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.RiskSeverity,
                 req.DueDate,
                 req.Tags,
-                req.AuditStage, req.DocumentIds, req.FolderIds);
+                req.AuditStage, req.DocumentIds, req.FolderIds, req.DirectManagerId);
 
             if (!result.Success)
             {
@@ -1223,7 +1223,7 @@ public record CreateTaskRequest(
     string? FindingSeverity = null,
     string? StandardClause = null,
     string? AuditorNotes = null
-    , Guid[]? DocumentIds = null, Guid[]? FolderIds = null
+    , Guid[]? DocumentIds = null, Guid[]? FolderIds = null, Guid? DirectManagerId = null
 );
 
 public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate, string[]? Tags = null);

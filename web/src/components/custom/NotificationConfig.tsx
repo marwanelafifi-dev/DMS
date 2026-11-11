@@ -63,11 +63,11 @@ const GUIDES: Record<EmailNotificationMethod, { title: string; steps: string[] }
 const EMPTY_CONFIG: EmailNotificationConfig = { method: 'gmail_app_password', email: '', appPassword: '', senderName: 'Si-Ware DMS' };
 const DEFAULT_TASK_POLICY: TaskNotificationPolicy = {
   enabled: true,
-  creation: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: false, quality: false, fullAccess: false } },
-  firstBeforeDue: { enabled: true, daysBeforeDue: 3, recipients: { assignee: true, folderOwner: false, quality: false, fullAccess: false } },
-  secondBeforeDue: { enabled: true, daysBeforeDue: 1, recipients: { assignee: true, folderOwner: true, quality: false, fullAccess: false } },
-  dueDate: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, quality: true, fullAccess: true } },
-  overdue: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, quality: true, fullAccess: true } },
+  creation: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: false, directManager: false, quality: false, fullAccess: false } },
+  firstBeforeDue: { enabled: true, daysBeforeDue: 3, recipients: { assignee: true, folderOwner: false, directManager: false, quality: false, fullAccess: false } },
+  secondBeforeDue: { enabled: true, daysBeforeDue: 1, recipients: { assignee: true, folderOwner: true, directManager: true, quality: false, fullAccess: false } },
+  dueDate: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, directManager: true, quality: true, fullAccess: true } },
+  overdue: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, directManager: true, quality: true, fullAccess: true } },
 };
 const POLICY_STAGES: Array<{ key: keyof Omit<TaskNotificationPolicy, 'enabled'>; label: string; editableDays?: boolean }> = [
   { key: 'creation', label: 'When created' },
@@ -272,7 +272,7 @@ export function NotificationConfig() {
                 {!editableDays && <span className="text-sm text-[#718198] dark:text-slate-400">{key === 'creation' ? 'Immediately' : key === 'dueDate' ? 'Due date' : 'After the due date'}</span>}
               </div>
               <fieldset disabled={!stage.enabled || !taskPolicy.enabled} className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-                {([['assignee', 'Assignee / group members'], ['folderOwner', 'Linked-folder owner'], ['quality', 'Quality users'], ['fullAccess', 'Full Access users']] as const).map(([recipient, recipientLabel]) => <label key={recipient} className="inline-flex items-center gap-2 text-xs text-[#52627a] dark:text-slate-300"><input type="checkbox" checked={stage.recipients[recipient]} onChange={(event) => updatePolicyRecipient(key, recipient, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />{recipientLabel}</label>)}
+                {([['assignee', 'Assignee / group members'], ['folderOwner', 'Linked-folder owner'], ['directManager', 'Direct Manager (no linked item)'], ['quality', 'Quality users'], ['fullAccess', 'Full Access users']] as const).map(([recipient, recipientLabel]) => <label key={recipient} className="inline-flex items-center gap-2 text-xs text-[#52627a] dark:text-slate-300"><input type="checkbox" checked={stage.recipients[recipient]} onChange={(event) => updatePolicyRecipient(key, recipient, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />{recipientLabel}</label>)}
               </fieldset>
             </div>;
           })}

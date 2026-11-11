@@ -23,6 +23,9 @@ public class DmsTask
     // whoever gets to it first, not a fan-out of duplicate per-member tasks.
     public Guid? AssignedToId { get; set; }
     public Guid? AssignedToGroupId { get; set; }
+    // Optional escalation contact for a normal task with no linked document
+    // or folder. ManagerId remains the task creator for audit history.
+    public Guid? DirectManagerId { get; set; }
     public Guid? ManagerId { get; set; }
     public string? RiskSeverity { get; set; }
     public DateTime? DueDate { get; set; }

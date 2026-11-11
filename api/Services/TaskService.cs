@@ -21,7 +21,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         return false;
     }
 
-    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid? documentId, Guid? folderId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null, string[]? tags = null, string? auditStage = null, Guid[]? documentIds = null, Guid[]? folderIds = null)
+    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid? documentId, Guid? folderId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null, string[]? tags = null, string? auditStage = null, Guid[]? documentIds = null, Guid[]? folderIds = null, Guid? directManagerId = null)
     {
         try
         {
@@ -32,6 +32,16 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 return TaskResult.NotFound("Document not found");
             if (folderId.HasValue && !await context.Folders.AnyAsync(f => f.FolderId == folderId.Value))
                 return TaskResult.NotFound("Folder not found");
+
+            var hasLinkedResources = documentId.HasValue || folderId.HasValue || (documentIds?.Length > 0) || (folderIds?.Length > 0);
+            if (directManagerId.HasValue)
+            {
+                if (hasLinkedResources)
+                    return TaskResult.Invalid("A direct manager is available only for a task without linked files or folders");
+                var directManagerExists = await context.Users.AnyAsync(user => user.UserId == directManagerId.Value && user.IsActive && user.Role == "Manager");
+                if (!directManagerExists)
+                    return TaskResult.Invalid("Direct manager must be an active Manager user");
+            }
 
             string assigneeName;
             if (assignedToId.HasValue)
@@ -64,6 +74,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,
                 AssignedToGroupId = assignedToGroupId,
+                DirectManagerId = directManagerId,
                 ManagerId = managerId,
                 DueDate = dueDate,
                 Status = "open",
@@ -87,6 +98,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 task.Tags,
                 task.AssignedToId,
                 task.AssignedToGroupId,
+                task.DirectManagerId,
                 task.ManagerId,
                 AssignedToName = assigneeName,
                 task.DueDate,
@@ -308,6 +320,10 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
 
             if (task.TaskType == "pcar")
                 return TaskResult.Invalid("Submit PCAR evidence for Quality/Auditor verification instead of completing the finding directly");
+
+            var requiresEvidence = task.TaskType is "correction" or "rca" or "audit_action" or "other";
+            if (requiresEvidence && !await context.TaskAttachments.AnyAsync(attachment => attachment.TaskId == taskId))
+                return TaskResult.Invalid("Attach at least one evidence item before completing a Correction, Root Cause Analysis, Audit Action, or Other task");
 
             task.Status = "completed";
             task.CompletedById = userId;

@@ -59,6 +59,11 @@ public class TaskNotificationPolicyController(DmsContext context, TaskNotificati
                 }
                 if (settings.FolderOwner)
                     foreach (var userId in await context.Folders.AsNoTracking().Where(folder => folderIds.Contains(folder.FolderId)).Select(folder => folder.OwnerId).ToListAsync()) recipients.Add(userId);
+                if (settings.DirectManager && folderIds.Count == 0 && req.DirectManagerId.HasValue)
+                {
+                    var directManagerIsActive = await context.Users.AsNoTracking().AnyAsync(user => user.UserId == req.DirectManagerId.Value && user.IsActive && user.Role == "Manager");
+                    if (directManagerIsActive) recipients.Add(req.DirectManagerId.Value);
+                }
                 if (settings.Quality)
                     foreach (var userId in await context.Users.AsNoTracking().Where(user => user.IsActive && user.Role == "Quality").Select(user => user.UserId).ToListAsync()) recipients.Add(userId);
                 if (settings.FullAccess)
@@ -119,4 +124,4 @@ public class TaskNotificationPolicyController(DmsContext context, TaskNotificati
     }
 }
 
-public record TaskNotificationPreviewRequest(Guid? AssignedToId, Guid? AssignedToGroupId, Guid[]? DocumentIds, Guid[]? FolderIds);
+public record TaskNotificationPreviewRequest(Guid? AssignedToId, Guid? AssignedToGroupId, Guid[]? DocumentIds, Guid[]? FolderIds, Guid? DirectManagerId = null);

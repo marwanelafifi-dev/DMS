@@ -124,6 +124,7 @@ export interface EmailNotificationConfig {
 export interface TaskReminderRecipients {
   assignee: boolean;
   folderOwner: boolean;
+  directManager: boolean;
   quality: boolean;
   fullAccess: boolean;
 }
@@ -886,8 +887,8 @@ class APIClient {
     return data;
   }
 
-  async completeTask(taskId: string) {
-    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`, {});
+  async completeTask(taskId: string, comment?: string) {
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/complete`, { comment });
     return data;
   }
 
@@ -1253,6 +1254,7 @@ class APIClient {
     assignedToGroupId?: string;
     documentIds?: string[];
     folderIds?: string[];
+    directManagerId?: string;
   }) {
     const { data } = await this.client.post<ApiResponse>('/task-notification-policy/preview', request);
     return data;

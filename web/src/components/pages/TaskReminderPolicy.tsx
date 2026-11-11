@@ -6,11 +6,11 @@ import { apiClient, type TaskNotificationPolicy, type TaskReminderStage } from '
 
 const DEFAULT_POLICY: TaskNotificationPolicy = {
   enabled: true,
-  creation: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: false, quality: false, fullAccess: false } },
-  firstBeforeDue: { enabled: true, daysBeforeDue: 3, recipients: { assignee: true, folderOwner: false, quality: false, fullAccess: false } },
-  secondBeforeDue: { enabled: true, daysBeforeDue: 1, recipients: { assignee: true, folderOwner: true, quality: false, fullAccess: false } },
-  dueDate: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, quality: true, fullAccess: true } },
-  overdue: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, quality: true, fullAccess: true } },
+  creation: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: false, directManager: false, quality: false, fullAccess: false } },
+  firstBeforeDue: { enabled: true, daysBeforeDue: 3, recipients: { assignee: true, folderOwner: false, directManager: false, quality: false, fullAccess: false } },
+  secondBeforeDue: { enabled: true, daysBeforeDue: 1, recipients: { assignee: true, folderOwner: true, directManager: true, quality: false, fullAccess: false } },
+  dueDate: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, directManager: true, quality: true, fullAccess: true } },
+  overdue: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, directManager: true, quality: true, fullAccess: true } },
 };
 
 const STAGES: Array<{ key: keyof Omit<TaskNotificationPolicy, 'enabled'>; label: string; editableDays?: boolean }> = [
@@ -94,7 +94,7 @@ export function TaskReminderPolicy() {
                   : <span className="text-sm text-[#718198] dark:text-slate-400">{key === 'creation' ? 'Immediately' : key === 'dueDate' ? 'Due date' : 'After the due date'}</span>}
               </div>
               <fieldset disabled={!policy.enabled || !stage.enabled} className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-                {([['assignee', 'Assignee / group members'], ['folderOwner', 'Linked-folder owner'], ['quality', 'Quality users'], ['fullAccess', 'Full Access users']] as const).map(([recipient, recipientLabel]) => (
+                {([['assignee', 'Assignee / group members'], ['folderOwner', 'Linked-folder owner'], ['directManager', 'Direct Manager (no linked item)'], ['quality', 'Quality users'], ['fullAccess', 'Full Access users']] as const).map(([recipient, recipientLabel]) => (
                   <label key={recipient} className="inline-flex items-center gap-2 text-xs text-[#52627a] dark:text-slate-300"><input type="checkbox" checked={stage.recipients[recipient]} onChange={(event) => updateRecipient(key, recipient, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />{recipientLabel}</label>
                 ))}
               </fieldset>

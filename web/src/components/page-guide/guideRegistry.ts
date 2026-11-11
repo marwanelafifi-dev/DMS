@@ -384,18 +384,59 @@ export const guideRegistry: GuideDefinition[] = [
     enabled: true,
   },
   {
-    key: 'pcar',
-    version: 2,
-    title: 'PCAR / Corrective Action Guide',
+    key: 'tasks',
+    version: 1,
+    title: 'Tasks (Internal Use) Guide',
     matches: (pathname) => pathname === '/tasks',
+    requiredAccess: 'canViewTasks',
+    commonSections: [
+      {
+        id: 'about-tasks',
+        title: 'About internal Tasks',
+        paragraphs: ['Tasks are internal work items. They are separate from audit PCAR findings and never enter the document-approval workflow. A Task may be linked to one or more files, folders, both, or neither.'],
+      },
+      {
+        id: 'creating-tasks',
+        title: 'Creating a Task',
+        bullets: [
+          'Choose an Action: General Task, Review, Correction, Root Cause Analysis (RCA), Audit Action, or Other.',
+          'Optionally link files and folders. A Task with no link is a general internal task.',
+          'For an unlinked Task, you can optionally choose a Direct Manager for the configured 1-day, due-date, and overdue reminders.',
+          'Choose the assignee or group, priority, due date, and Audit Stage when the Task belongs to audit preparation, an internal audit, or an external audit.',
+        ],
+      },
+      {
+        id: 'completing-tasks',
+        title: 'Completing a Task',
+        paragraphs: ['Normal Tasks have an optional completion comment and optional attachments. They do not show PCAR status, corrective/preventive-action fields, PCAR verification, or target-closure fields.'],
+        bullets: [
+          'General Task and Review can be completed without an attachment.',
+          'Correction, RCA, Audit Action, and Other require at least one attachment before completion.',
+          'The assignee, an authorized linked-folder owner, or linked-folder manager can complete a visible Task. Quality and Full Access have the additional authority granted by their role.',
+        ],
+      },
+      {
+        id: 'task-reminders',
+        title: 'Automatic reminders',
+        paragraphs: ['The creation dialog shows the active reminder schedule and the actual recipients. You do not need to create a duplicate reminder for the standard schedule. Use the Reminders page only for an additional, separate periodic reminder.'],
+      },
+    ],
+    keywords: ['tasks', 'internal task', 'review', 'correction', 'RCA', 'audit action', 'attachments', 'completion'],
+    enabled: true,
+  },
+  {
+    key: 'pcar',
+    version: 3,
+    title: 'PCAR (Auditor Findings) Guide',
+    matches: (pathname) => pathname === '/pcars',
     requiredAccess: 'canViewPcar',
     commonSections: [
       {
         id: 'about-pcar',
-        title: 'About PCAR / Corrective Action',
+        title: 'About PCAR findings',
         paragraphs: [
-          'The PCAR / Corrective Action page provides access to the PCAR task summary, search and filters, PCAR Register, PCAR task details, and New PCAR when available to your signed-in account.',
-          'The page can display summary cards for Total Tasks, Open, In Progress, Completed, and Overdue. Task creation and task-management controls depend on assigned permissions.',
+          'PCAR is the audit finding register for internal and external audits. It is separate from normal Tasks and from document approval workflows.',
+          'The page provides the PCAR register, audit filters, finding details, evidence, verification, and Raise PCAR when your role permits it.',
         ],
       },
     ],
@@ -404,7 +445,7 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'pcar-register',
         title: 'Working with the PCAR Register',
         paragraphs: [
-          'The register includes Search tasks, Status filter, and Priority filter. Actions can differ depending on your permissions and the individual task.',
+          'The register includes text search, status, priority, severity, clause/standard, owner, and audit-stage filters. Actions depend on your permissions and the individual finding.',
         ],
         bullets: [
           'Status options: Open, In Progress, Submitted for approval, and Completed.',
@@ -418,23 +459,21 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'creating-new-pcar',
         title: 'Creating a new PCAR',
         paragraphs: [
-          'When New PCAR is available, it opens the Create New Task dialog. Assignment options and the ability to create a PCAR depend on assigned access.',
+          'Raise PCAR opens the audit-finding form. The ability to create a PCAR depends on assigned access.',
         ],
         bullets: [
-          'The form can include Task Title, Description, Tags, Document, Type, Priority, Due Date, Assigned To, and Attachment.',
-          'Required fields include Task Title, Document, and Due Date.',
-          'Type options include Correction, RCA, and Audit Action.',
-          'Priority options include Low, Medium, High, and Critical.',
-          'Available actions include Cancel and Create Task.',
+          'Enter finding number, severity, clause or standard reference, auditor notes, priority, due date, and assignee.',
+          'Link at least one released file, one folder, or both. Every selected file must be released; a folder-only PCAR is allowed.',
+          'A PCAR can link multiple files and folders and appears under Related PCARs for every linked item.',
         ],
-        when: (access) => access.canCreateTasks,
+        when: (access) => access.canCreatePcars,
       },
       {
         id: 'viewing-pcar-details',
         title: 'Viewing PCAR details',
         paragraphs: [
-          'Opening a task available to you can display its task title, issue description, assignee, tags, linked document, attachments, PCAR status, and submission control where applicable.',
-          'Access to an individual task depends on assigned permissions; not every task is visible to every user.',
+          'Opening a PCAR displays its finding information, all linked files/folders, evidence attachments, status, and the permitted next action.',
+          'Access to an individual finding depends on assigned permissions; not every finding is visible to every user.',
         ],
         when: () => true,
       },
@@ -476,9 +515,9 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'submitting-following-up',
         title: 'Submitting and following up',
         paragraphs: [
-          'Before a required corrected file is uploaded, Submit for approval may be disabled. The interface may instruct you to upload the corrected file before submitting.',
-          'After the corrected file is uploaded, PCAR status may remain Not yet submitted until submission. Submit for approval becomes available when the documented requirements are satisfied.',
-          'Available submission actions depend on the current PCAR state and assigned access.',
+          'The assignee must attach at least one evidence item before Submit evidence for verification is available.',
+          'Quality, Auditor, and Full Access users with PCAR verification permission review the evidence. Effective permits approval and closure; Ineffective returns the finding with required notes.',
+          'The creation dialog displays the active automatic reminder schedule and its actual recipients. Use the Reminders page only for an additional periodic reminder.',
         ],
         when: () => true,
       },
