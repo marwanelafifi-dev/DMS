@@ -210,9 +210,21 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     return `${path ? `${path} / ` : ''}${name}${documentId}`;
   };
 
-  const filteredDocumentOptions = documents.filter((doc) =>
-    getDocumentLabel(doc).toLowerCase().includes(docSearchQuery.toLowerCase())
+  const getDocumentSearchText = (doc: Document) =>
+    `${getDocumentLabel(doc)} ${doc.documentId} ${doc.originalDocumentId ?? ''} ${doc.trackingCode ?? ''}`.toLowerCase();
+
+  const selectedPcarFolderIds = new Set(
+    [...newTask.folderIds, newTask.folderId].filter((folderId): folderId is string => Boolean(folderId)),
   );
+  const filteredDocumentOptions = documents.filter((doc) => {
+    // A PCAR may be raised against released files alone, a folder alone, or
+    // both. Once a folder is selected, constrain the file picker to released
+    // files in that exact selected folder instead of offering unrelated DMS
+    // files. Multiple selected folders are treated as one allowed scope.
+    if (isPcarForm && doc.status !== 'released') return false;
+    if (isPcarForm && selectedPcarFolderIds.size > 0 && !selectedPcarFolderIds.has(doc.folderId)) return false;
+    return getDocumentSearchText(doc).includes(docSearchQuery.toLowerCase());
+  });
   const filteredFolderOptions = folders.filter((folder) =>
     (getFolderPath(folder.folderId) || folder.name).toLowerCase().includes(folderSearchQuery.toLowerCase())
   );
@@ -1754,7 +1766,13 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 {showDocDropdown && (
                   <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-navy-700 dark:bg-navy-900">
                     {filteredDocumentOptions.length === 0 ? (
-                      <p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No matching documents</p>
+                      <p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                        {isPcarForm
+                          ? selectedPcarFolderIds.size > 0
+                            ? 'No released files in the selected folder(s)'
+                            : 'No released files match this search'
+                          : 'No matching documents'}
+                      </p>
                     ) : (
                       filteredDocumentOptions.map((doc) => (
                         <button

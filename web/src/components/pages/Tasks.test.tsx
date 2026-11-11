@@ -162,4 +162,68 @@ describe('PCAR true modal behavior', () => {
     fireEvent.keyDown(folderSearch, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Quality Management System' })).not.toBeInTheDocument());
   });
+
+  it('limits PCAR files to released documents in the selected folder', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [
+        { folderId: 'quality-folder', name: 'Quality' },
+        { folderId: 'engineering-folder', name: 'Engineering' },
+      ],
+    } as any);
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [
+        { documentId: 'released-quality', folderId: 'quality-folder', name: 'released-procedure.pdf', title: 'Released procedure', fileName: 'released-procedure.pdf', status: 'released' },
+        { documentId: 'draft-quality', folderId: 'quality-folder', name: 'draft-procedure.pdf', title: 'Draft procedure', fileName: 'draft-procedure.pdf', status: 'draft' },
+        { documentId: 'released-engineering', folderId: 'engineering-folder', name: 'released-design.pdf', title: 'Released design', fileName: 'released-design.pdf', status: 'released' },
+      ],
+    } as any);
+    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({
+      success: true,
+      data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true }],
+    } as any);
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks mode="pcar" /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /Raise PCAR/i }));
+    await user.click(screen.getByPlaceholderText('Search folder name or full path...'));
+    await user.click(await screen.findByRole('button', { name: 'Quality' }));
+
+    await user.click(screen.getByPlaceholderText('Search file name, folder path, or Document ID...'));
+    expect(await screen.findByRole('button', { name: /Quality \/ Released procedure/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Draft procedure/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Engineering \/ Released design/i })).not.toBeInTheDocument();
+  });
+
+  it('shows only released files and supports document-ID search when no folder is selected', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [
+        { documentId: 'released-file', folderId: 'folder', name: 'released.pdf', title: 'Released file', fileName: 'released.pdf', originalDocumentId: 'SWS-25120007', status: 'released' },
+        { documentId: 'draft-file', folderId: 'folder', name: 'draft.pdf', title: 'Draft file', fileName: 'draft.pdf', originalDocumentId: 'SWS-25120008', status: 'draft' },
+      ],
+    } as any);
+    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({
+      success: true,
+      data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true }],
+    } as any);
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks mode="pcar" /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /Raise PCAR/i }));
+    const documentSearch = screen.getByPlaceholderText('Search file name, folder path, or Document ID...');
+    await user.type(documentSearch, 'SWS-25120007');
+
+    expect(await screen.findByRole('button', { name: /Released file.*SWS-25120007/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Draft file/i })).not.toBeInTheDocument();
+  });
 });

@@ -438,6 +438,33 @@ public class DmsContext : DbContext
             .HasForeignKey(t => t.DocumentId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // A task's extra file/folder links have database foreign keys. Map the
+        // same relationships in EF so SaveChanges inserts the parent task
+        // before its link rows (important when a new PCAR has several links).
+        modelBuilder.Entity<DmsTaskDocumentLink>()
+            .HasOne<DmsTask>()
+            .WithMany()
+            .HasForeignKey(link => link.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsTaskDocumentLink>()
+            .HasOne<DmsDocument>()
+            .WithMany()
+            .HasForeignKey(link => link.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsTaskFolderLink>()
+            .HasOne<DmsTask>()
+            .WithMany()
+            .HasForeignKey(link => link.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DmsTaskFolderLink>()
+            .HasOne<DmsFolder>()
+            .WithMany()
+            .HasForeignKey(link => link.FolderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // Reminders: task (CASCADE) + recipient (RESTRICT)
         modelBuilder.Entity<DmsReminder>()
             .HasOne(r => r.Task)
