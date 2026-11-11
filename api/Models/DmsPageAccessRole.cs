@@ -19,6 +19,11 @@ public class DmsPageAccessRole
     // Internal operational tasks are intentionally separate from auditor PCAR
     // findings, so roles can be granted either register independently.
     public bool CanViewTasks { get; set; }
+    // View-only access to the complete Tasks and PCAR registers. This is kept
+    // independent from CanManageAllTasks so Quality and Auditor can oversee
+    // all work without gaining edit, delete, completion, or reassignment
+    // authority over other people's tasks.
+    public bool CanViewAllTasks { get; set; }
     public bool CanViewAdminPanel { get; set; }
     public bool BypassFolderPermissions { get; set; }
     // Weaker, tiered versions of BypassFolderPermissions — automatic
@@ -41,6 +46,12 @@ public class DmsPageAccessRole
     // management action icons (edit/complete/delete) on the register table
     // stay hidden and the API rejects the underlying requests.
     public bool CanManageAllTasks { get; set; }
+    // Destructive removal is intentionally narrower than task management:
+    // only specifically authorized Quality / Full Access roles receive it.
+    public bool CanDeleteTasks { get; set; }
+    // Governs only the automatic Task/PCAR reminder schedule. It deliberately
+    // does not grant broader Admin Panel or email-delivery administration.
+    public bool CanManageTaskReminderPolicy { get; set; }
     // Historical PCAR archive permissions are deliberately separate from live
     // task administration. Viewing all archive records and importing them are
     // sensitive compliance capabilities, opt-in per role.

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, Bell, BellOff, Eye, EyeOff, Mail, Globe, Save, Send, Settings as SettingsIcon } from 'lucide-react';
 import { Card, CardBody, Button } from '../ui';
 import { ModalOverlay } from '../ui/ModalOverlay';
-import { apiClient, type EmailNotificationConfig, type EmailNotificationMethod } from '../../utils/api';
+import { apiClient, type EmailNotificationConfig, type EmailNotificationMethod, type TaskNotificationPolicy, type TaskReminderStage } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 
 const METHODS: {
@@ -61,6 +61,21 @@ const GUIDES: Record<EmailNotificationMethod, { title: string; steps: string[] }
 };
 
 const EMPTY_CONFIG: EmailNotificationConfig = { method: 'gmail_app_password', email: '', appPassword: '', senderName: 'Si-Ware DMS' };
+const DEFAULT_TASK_POLICY: TaskNotificationPolicy = {
+  enabled: true,
+  creation: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: false, quality: false, fullAccess: false } },
+  firstBeforeDue: { enabled: true, daysBeforeDue: 3, recipients: { assignee: true, folderOwner: false, quality: false, fullAccess: false } },
+  secondBeforeDue: { enabled: true, daysBeforeDue: 1, recipients: { assignee: true, folderOwner: true, quality: false, fullAccess: false } },
+  dueDate: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, quality: true, fullAccess: true } },
+  overdue: { enabled: true, daysBeforeDue: 0, recipients: { assignee: true, folderOwner: true, quality: true, fullAccess: true } },
+};
+const POLICY_STAGES: Array<{ key: keyof Omit<TaskNotificationPolicy, 'enabled'>; label: string; editableDays?: boolean }> = [
+  { key: 'creation', label: 'When created' },
+  { key: 'firstBeforeDue', label: 'Before due date', editableDays: true },
+  { key: 'secondBeforeDue', label: 'Before due date', editableDays: true },
+  { key: 'dueDate', label: 'On due date' },
+  { key: 'overdue', label: 'When overdue' },
+];
 
 export function NotificationConfig() {
   const { showSuccess, showError } = useToast();
@@ -73,12 +88,15 @@ export function NotificationConfig() {
   const [isUpdatingToggle, setIsUpdatingToggle] = useState(false);
   const [showDisableConfirmation, setShowDisableConfirmation] = useState(false);
   const [disableConfirmationText, setDisableConfirmationText] = useState('');
+  const [taskPolicy, setTaskPolicy] = useState<TaskNotificationPolicy>(DEFAULT_TASK_POLICY);
+  const [isSavingTaskPolicy, setIsSavingTaskPolicy] = useState(false);
 
   useEffect(() => {
-    Promise.all([apiClient.getEmailConfig(), apiClient.getNotificationsEnabled()])
-      .then(([configRes, enabledRes]) => {
+    Promise.all([apiClient.getEmailConfig(), apiClient.getNotificationsEnabled(), apiClient.getTaskNotificationPolicy()])
+      .then(([configRes, enabledRes, policyRes]) => {
         if (configRes.success && configRes.data) setConfig({ ...EMPTY_CONFIG, ...configRes.data });
         if (enabledRes.success) setNotificationsEnabled(enabledRes.data?.enabled !== false);
+        if (policyRes.success && policyRes.data) setTaskPolicy(policyRes.data as TaskNotificationPolicy);
       })
       .catch(() => showError('Failed to load notification configuration'))
       .finally(() => setIsLoading(false));
@@ -138,6 +156,28 @@ export function NotificationConfig() {
       return;
     }
     void updateNotificationState(true);
+  };
+
+  const updatePolicyStage = (key: keyof Omit<TaskNotificationPolicy, 'enabled'>, update: Partial<TaskReminderStage>) => {
+    setTaskPolicy((current) => ({ ...current, [key]: { ...current[key], ...update } }));
+  };
+
+  const updatePolicyRecipient = (key: keyof Omit<TaskNotificationPolicy, 'enabled'>, recipient: keyof TaskReminderStage['recipients'], checked: boolean) => {
+    setTaskPolicy((current) => ({ ...current, [key]: { ...current[key], recipients: { ...current[key].recipients, [recipient]: checked } } }));
+  };
+
+  const saveTaskPolicy = async () => {
+    setIsSavingTaskPolicy(true);
+    try {
+      const result = await apiClient.updateTaskNotificationPolicy(taskPolicy);
+      if (!result.success) throw new Error(result.error || 'Unable to save the task reminder policy');
+      setTaskPolicy(result.data);
+      showSuccess('Task and PCAR reminder policy saved');
+    } catch (err: any) {
+      showError(err.response?.data?.error || err.message || 'Unable to save the task reminder policy');
+    } finally {
+      setIsSavingTaskPolicy(false);
+    }
   };
 
   if (isLoading) {
@@ -205,6 +245,38 @@ export function NotificationConfig() {
               </button>
             </div>
           </div>
+        </CardBody>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10">
+          <div>
+            <h3 className="section-heading flex items-center gap-2"><Bell className="h-4 w-4" />Task &amp; PCAR automatic reminders</h3>
+            <p className="mt-1 text-sm text-[#718198] dark:text-slate-400">Choose which schedule points send and who receives each in-app and email notification.</p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-[#26334d] dark:text-white">
+            <input type="checkbox" checked={taskPolicy.enabled} onChange={(event) => setTaskPolicy({ ...taskPolicy, enabled: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />
+            Enable automatic reminders
+          </label>
+        </div>
+        <CardBody className="space-y-3">
+          {POLICY_STAGES.map(({ key, label, editableDays }) => {
+            const stage = taskPolicy[key];
+            return <div key={key} className="rounded-[6px] border border-[#e2e8f0] p-4 dark:border-white/10">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+                <label className="inline-flex min-w-36 items-center gap-2 text-sm font-semibold text-[#26334d] dark:text-white">
+                  <input type="checkbox" checked={stage.enabled} onChange={(event) => updatePolicyStage(key, { enabled: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />
+                  {label}
+                </label>
+                {editableDays && <label className="flex items-center gap-2 text-sm text-[#52627a] dark:text-slate-300">Days <input type="number" min="1" max="365" value={stage.daysBeforeDue} onChange={(event) => updatePolicyStage(key, { daysBeforeDue: Number(event.target.value) || 1 })} className="field-control h-9 w-20 px-2" /> before due</label>}
+                {!editableDays && <span className="text-sm text-[#718198] dark:text-slate-400">{key === 'creation' ? 'Immediately' : key === 'dueDate' ? 'Due date' : 'After the due date'}</span>}
+              </div>
+              <fieldset disabled={!stage.enabled || !taskPolicy.enabled} className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+                {([['assignee', 'Assignee / group members'], ['folderOwner', 'Linked-folder owner'], ['quality', 'Quality users'], ['fullAccess', 'Full Access users']] as const).map(([recipient, recipientLabel]) => <label key={recipient} className="inline-flex items-center gap-2 text-xs text-[#52627a] dark:text-slate-300"><input type="checkbox" checked={stage.recipients[recipient]} onChange={(event) => updatePolicyRecipient(key, recipient, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />{recipientLabel}</label>)}
+              </fieldset>
+            </div>;
+          })}
+          <div className="flex justify-end pt-1"><Button variant="primary" onClick={saveTaskPolicy} disabled={isSavingTaskPolicy} leftIcon={<Save className="h-4 w-4" />}>{isSavingTaskPolicy ? 'Saving…' : 'Save reminder policy'}</Button></div>
         </CardBody>
       </Card>
 

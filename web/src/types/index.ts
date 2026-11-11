@@ -161,7 +161,7 @@ export interface Task {
   tags: string[];
   // General tasks are independent work items; pcar is reserved for an audit
   // finding raised against an already-released document.
-  taskType: 'task' | 'correction' | 'rca' | 'audit_action' | 'pcar';
+  taskType: 'task' | 'review' | 'correction' | 'rca' | 'audit_action' | 'other' | 'pcar';
   auditStage?: 'preparation' | 'internal_audit' | 'external_audit';
   findingNumber?: string;
   findingSeverity?: 'observation' | 'minor_ncr' | 'major_ncr';
@@ -184,7 +184,10 @@ export interface Task {
   assignedToGroupName?: string;
   assignedBy: string;
   assignedByUser?: User;
-  status: 'open' | 'in_progress' | 'submitted' | 'done';
+  status: 'open' | 'in_progress' | 'submitted' | 'done' | 'completed';
+  // Resource-scoped task authority supplied by the API for the signed-in
+  // user. True for the assignee or a linked-folder owner/manager.
+  canManage?: boolean;
   rcaText?: string;
   correctionText?: string;
   preventiveActions?: string;

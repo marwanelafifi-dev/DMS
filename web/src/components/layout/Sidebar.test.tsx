@@ -39,7 +39,7 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('button', { name: /preview canvas/i })).not.toBeInTheDocument();
     expect(await screen.findByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Document Library')).toBeInTheDocument();
-    expect(screen.getByText('PCAR / Corrective Action')).toBeInTheDocument();
+    expect(screen.getByText('PCAR (Auditor Findings)')).toBeInTheDocument();
     expect(screen.queryByText('Compliance')).not.toBeInTheDocument();
     expect(screen.queryByText('ISO 9001:2015')).not.toBeInTheDocument();
     expect(screen.queryByText('ISO 27001:2022')).not.toBeInTheDocument();

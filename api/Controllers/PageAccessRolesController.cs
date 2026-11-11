@@ -58,6 +58,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewApprovals = req.CanViewApprovals,
                 CanViewPcar = req.CanViewPcar,
                 CanViewTasks = req.CanViewTasks,
+                CanViewAllTasks = req.CanViewAllTasks,
                 CanViewAdminPanel = req.CanViewAdminPanel,
                 BypassFolderPermissions = req.BypassFolderPermissions,
                 CanReadAllFolders = req.CanReadAllFolders,
@@ -66,6 +67,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageFolderPermissions = req.CanManageFolderPermissions,
                 CanManageFilePermissions = req.CanManageFilePermissions,
                 CanManageAllTasks = req.CanManageAllTasks,
+                CanDeleteTasks = req.CanDeleteTasks,
+                CanManageTaskReminderPolicy = req.CanManageTaskReminderPolicy,
                 CanViewHistoricalPcars = req.CanViewHistoricalPcars,
                 CanViewAllHistoricalPcars = req.CanViewAllHistoricalPcars,
                 CanImportHistoricalPcars = req.CanImportHistoricalPcars,
@@ -122,6 +125,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanViewApprovals = req.CanViewApprovals;
             entity.CanViewPcar = req.CanViewPcar;
             entity.CanViewTasks = req.CanViewTasks;
+            entity.CanViewAllTasks = req.CanViewAllTasks;
             entity.CanViewAdminPanel = req.CanViewAdminPanel;
             entity.BypassFolderPermissions = req.BypassFolderPermissions;
             entity.CanReadAllFolders = req.CanReadAllFolders;
@@ -130,6 +134,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanManageFolderPermissions = req.CanManageFolderPermissions;
             entity.CanManageFilePermissions = req.CanManageFilePermissions;
             entity.CanManageAllTasks = req.CanManageAllTasks;
+            entity.CanDeleteTasks = req.CanDeleteTasks;
+            entity.CanManageTaskReminderPolicy = req.CanManageTaskReminderPolicy;
             entity.CanViewHistoricalPcars = req.CanViewHistoricalPcars;
             entity.CanViewAllHistoricalPcars = req.CanViewAllHistoricalPcars;
             entity.CanImportHistoricalPcars = req.CanImportHistoricalPcars;
@@ -206,6 +212,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewApprovals = entity.CanViewApprovals,
                 CanViewPcar = entity.CanViewPcar,
                 CanViewTasks = entity.CanViewTasks,
+                CanViewAllTasks = entity.CanViewAllTasks,
                 CanViewAdminPanel = entity.CanViewAdminPanel,
                 BypassFolderPermissions = entity.BypassFolderPermissions,
                 CanReadAllFolders = entity.CanReadAllFolders,
@@ -214,6 +221,8 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanManageFolderPermissions = entity.CanManageFolderPermissions,
                 CanManageFilePermissions = entity.CanManageFilePermissions,
                 CanManageAllTasks = entity.CanManageAllTasks,
+                CanDeleteTasks = entity.CanDeleteTasks,
+                CanManageTaskReminderPolicy = entity.CanManageTaskReminderPolicy,
                 CanViewHistoricalPcars = entity.CanViewHistoricalPcars,
                 CanViewAllHistoricalPcars = entity.CanViewAllHistoricalPcars,
                 CanImportHistoricalPcars = entity.CanImportHistoricalPcars,
@@ -301,13 +310,13 @@ public record UpdatePageAccessRoleRequest(
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
+    bool CanManageAllTasks = false, bool CanDeleteTasks = false, bool CanManageTaskReminderPolicy = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewHistoricalPcars = false, bool CanViewAllHistoricalPcars = false, bool CanImportHistoricalPcars = false,
     bool CanCreateShortcuts = false, bool CanShareDocumentLinks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
-    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false, bool CanVerifyPcars = false);
+    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanViewAllTasks = false, bool CanCreatePcars = false, bool CanVerifyPcars = false);
 
 public record RenamePageAccessRoleRequest(string NewRole);
 
@@ -317,10 +326,10 @@ public record CreatePageAccessRoleRequest(
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
-    bool CanManageAllTasks = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
+    bool CanManageAllTasks = false, bool CanDeleteTasks = false, bool CanManageTaskReminderPolicy = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
     bool CanViewHistoricalPcars = false, bool CanViewAllHistoricalPcars = false, bool CanImportHistoricalPcars = false,
     bool CanCreateShortcuts = false, bool CanShareDocumentLinks = false,
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
-    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false, bool CanVerifyPcars = false);
+    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanViewAllTasks = false, bool CanCreatePcars = false, bool CanVerifyPcars = false);

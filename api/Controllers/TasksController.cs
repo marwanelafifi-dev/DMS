@@ -3,42 +3,30 @@ using DMS.Api.Models;
 using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Text;
 using static DMS.Api.Services.AuditActions;
 
 namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class TasksController(DmsContext context, TaskService taskService, MinioService minioService, AuditService auditService, NotificationService notificationService, AccessOverrideService accessOverrideService, ILogger<TasksController> logger) : BaseController
+public class TasksController(DmsContext context, TaskService taskService, MinioService minioService, AuditService auditService, NotificationService notificationService, AccessOverrideService accessOverrideService, TaskNotificationPolicyService taskNotificationPolicyService, ILogger<TasksController> logger) : BaseController
 {
+    private static bool CanViewAllTasks(DmsPageAccessRole? role) =>
+        role?.CanViewAllTasks == true || role?.CanManageAllTasks == true;
+
     private async Task NotifyTaskAssignmentAsync(DmsTask task, Guid actorUserId, string userTitle, string groupTitle)
     {
-        var assigneeIds = new HashSet<Guid>();
-        if (task.AssignedToId.HasValue)
-            assigneeIds.Add(task.AssignedToId.Value);
-        else if (task.AssignedToGroupId.HasValue)
-            assigneeIds.UnionWith(await taskService.GetGroupMemberIdsAsync(task.AssignedToGroupId.Value));
-
-        foreach (var recipientId in assigneeIds)
+        var policy = await taskNotificationPolicyService.LoadAsync();
+        if (!policy.Enabled || !policy.Creation.Enabled) return;
+        var recipientIds = await taskNotificationPolicyService.GetRecipientIdsAsync(task, policy.Creation);
+        foreach (var recipientId in recipientIds)
             await notificationService.NotifyAsync(
                 recipientId,
                 actorUserId,
                 task.AssignedToId.HasValue ? userTitle : groupTitle,
                 task.Title,
-                taskId: task.TaskId);
-
-        if (!task.DocumentId.HasValue) return;
-        var ownerId = await context.Documents.AsNoTracking()
-            .Where(d => d.DocumentId == task.DocumentId.Value)
-            .Select(d => (Guid?)d.OwnerId)
-            .FirstOrDefaultAsync();
-        if (ownerId.HasValue && !assigneeIds.Contains(ownerId.Value))
-            await notificationService.NotifyAsync(
-                ownerId.Value,
-                actorUserId,
-                "A task was assigned for your document",
-                task.Title,
-                documentId: task.DocumentId,
                 taskId: task.TaskId);
     }
 
@@ -55,7 +43,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             var userId = GetCurrentUserId();
             page = Math.Max(1, page);
             pageSize = Math.Clamp(limit ?? pageSize, 1, 200);
-            var result = await taskService.GetMyTasksAsync(userId, status, page, pageSize);
+            var role = await GetPageAccessRoleAsync(context, userId);
+            var result = await taskService.GetMyTasksAsync(userId, CanViewAllTasks(role), role?.CanManageAllTasks == true, status, page, pageSize);
 
             logger.LogInformation("Retrieved {Count} tasks for user {UserId}", result.Items.Count, userId);
 
@@ -91,6 +80,12 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
 
             if (task == null)
                 return NotFound(new { success = false, error = "Task not found" });
+
+            var userId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, userId);
+            if (!await taskService.CanViewTaskAsync(task, userId, CanViewAllTasks(role)))
+                return StatusCode(403, new { success = false, error = "You do not have permission to view this task" });
+            var canManageTask = await taskService.CanManageTaskAsync(task, userId, role?.CanManageAllTasks == true);
 
             var linkedDocuments = await (
                 from link in context.TaskDocumentLinks.AsNoTracking()
@@ -156,6 +151,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.QaReviewNotes,
                     task.EffectivenessResult,
                     task.QaReviewedAt,
+                    CanManage = canManageTask,
                     task.CreatedAt,
                     task.CompletedAt
                 }
@@ -187,9 +183,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (task.DocumentId == null)
                 return NotFound(new { success = false, error = "This task has no linked document" });
 
-            var isOwnTask = await taskService.IsAssigneeAsync(task, userId) || task.ManagerId == userId;
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-            if (!isOwnTask && pageAccessRole?.CanManageAllTasks != true)
+            if (!await taskService.CanViewTaskAsync(task, userId, CanViewAllTasks(pageAccessRole)))
                 return StatusCode(403, new { success = false, error = "You do not have permission to view this task's document" });
 
             var document = await context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.DocumentId == task.DocumentId);
@@ -223,6 +218,58 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         }
     }
 
+    // GET /api/tasks/{id}/assignees — the reassignment picker. A folder
+    // owner/manager sees only people who already have read access to every
+    // resource linked to this task; global task managers keep the full list.
+    [HttpGet("{id}/assignees")]
+    public async Task<ActionResult<object>> GetEligibleAssignees(Guid id)
+    {
+        var userId = GetCurrentUserId();
+        var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(item => item.TaskId == id);
+        if (task == null) return NotFound(new { success = false, error = "Task not found" });
+
+        var role = await GetPageAccessRoleAsync(context, userId);
+        var canManageTask = await taskService.CanManageTaskAsync(task, userId, role?.CanManageAllTasks == true);
+        var canReassignAny = role?.CanManageAllTasks == true || role?.CanReassignTasks == true;
+        if (!canManageTask && !canReassignAny)
+            return StatusCode(403, new { success = false, error = "You do not have permission to reassign this task" });
+
+        var canUseFullDirectory = role?.CanManageAllTasks == true || role?.CanViewAllTasks == true;
+        var users = canUseFullDirectory
+            ? await context.Users.AsNoTracking().Where(user => user.IsActive).ToListAsync()
+            : await taskService.GetEligibleAssigneesAsync(task, userId);
+        var eligibleUserIds = users.Select(user => user.UserId).ToHashSet();
+        var departmentGroupIds = await taskService.GetDepartmentGroupIdsAsync(userId);
+        var groups = await context.Groups.AsNoTracking()
+            .Where(group => !group.AutoAddNewUsers && !EF.Functions.ILike(group.Name, "all users"))
+            .ToListAsync();
+        var membersByGroup = (await context.GroupMembers.AsNoTracking()
+            .Where(member => groups.Select(group => group.GroupId).Contains(member.GroupId))
+            .Select(member => new { member.GroupId, member.UserId })
+            .ToListAsync())
+            .GroupBy(member => member.GroupId)
+            .ToDictionary(group => group.Key, group => group.Select(member => member.UserId).ToList());
+        var linkedResources = task.DocumentId.HasValue || task.FolderId.HasValue
+            || await context.TaskDocumentLinks.AnyAsync(link => link.TaskId == task.TaskId)
+            || await context.TaskFolderLinks.AnyAsync(link => link.TaskId == task.TaskId);
+        var eligibleGroups = canUseFullDirectory
+            ? groups
+            : linkedResources
+                ? groups.Where(group => membersByGroup.TryGetValue(group.GroupId, out var memberIds)
+                    && memberIds.Count > 0 && memberIds.All(eligibleUserIds.Contains)).ToList()
+                : groups.Where(group => departmentGroupIds.Contains(group.GroupId)).ToList();
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                users = users.Select(user => new { user.UserId, user.FullName, user.Email }),
+                groups = eligibleGroups.Select(group => new { group.GroupId, group.Name }),
+            },
+        });
+    }
+
     // POST /api/tasks/{id}/submit-pcar — the RCA/correction/preventive-action
     // form on the PCAR page. Moves the task into the real 'submitted' state
     // (see the QA review queue endpoints below) instead of the previous
@@ -234,7 +281,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         try
         {
             var userId = GetCurrentUserId();
-            var result = await taskService.SubmitPcarAsync(id, userId, req.Rca ?? "", req.Correction ?? "", req.PreventiveActions ?? "", req.TargetDate, req.Tags);
+            var role = await GetPageAccessRoleAsync(context, userId);
+            var result = await taskService.SubmitPcarAsync(id, userId, req.Rca ?? "", req.Correction ?? "", req.PreventiveActions ?? "", req.TargetDate, req.Tags, role?.CanManageAllTasks == true);
 
             if (!result.Success)
             {
@@ -329,6 +377,231 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
+
+    // GET /api/tasks/import-template — a deliberately small, documented CSV
+    // template for normal internal tasks. PCARs are excluded because their
+    // finding/closure requirements need their own controlled import flow.
+    [HttpGet("import-template")]
+    public async Task<IActionResult> DownloadTaskImportTemplate()
+    {
+        var userId = GetCurrentUserId();
+        var role = await GetPageAccessRoleAsync(context, userId);
+        if (role?.CanCreateTasks != true && role?.CanManageAllTasks != true)
+            return StatusCode(403, new { success = false, error = "You do not have permission to import tasks" });
+
+        const string csv = """
+Title,Description,Action,Priority,Due Date,Assignee Email,Assignee Group,Folder Path(s),Document ID(s),Audit Stage,Tags
+Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12-31,user@si-ware.com,,Corporate / QMS / Procedures,SWS-25120007;SWS-25120008,internal_audit,QMS;quarterly review
+""";
+        return File(new UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetBytes(csv), "text/csv", "dms-task-import-template.csv");
+    }
+
+    // POST /api/tasks/import — creates normal Tasks (never PCAR findings)
+    // from the template above. Rows are validated independently so one bad
+    // record never prevents valid work from being imported.
+    [HttpPost("import")]
+    public async Task<ActionResult<object>> ImportTasks(IFormFile file)
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, currentUserId);
+            if (role?.CanCreateTasks != true && role?.CanManageAllTasks != true)
+                return StatusCode(403, new { success = false, error = "You do not have permission to import tasks" });
+            if (file == null || file.Length == 0)
+                return BadRequest(new { success = false, error = "A CSV file is required" });
+
+            string csv;
+            using (var reader = new StreamReader(file.OpenReadStream()))
+                csv = await reader.ReadToEndAsync();
+            var rows = CsvParser.ParseWithHeader(csv);
+            if (rows.Count == 0)
+                return BadRequest(new { success = false, error = "The CSV file has no task rows" });
+
+            var usersByEmail = await context.Users.AsNoTracking()
+                .Where(user => user.IsActive)
+                .ToDictionaryAsync(user => user.Email, user => user, StringComparer.OrdinalIgnoreCase);
+            var groupsByName = await context.Groups.AsNoTracking()
+                .ToDictionaryAsync(group => group.Name, group => group, StringComparer.OrdinalIgnoreCase);
+            var folders = await context.Folders.AsNoTracking().ToListAsync();
+            var foldersById = folders.ToDictionary(folder => folder.FolderId);
+            var foldersByPath = folders
+                .GroupBy(folder => BuildFolderPath(folder, foldersById), StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() == 1)
+                .ToDictionary(group => group.Key, group => group.Single(), StringComparer.OrdinalIgnoreCase);
+            var documents = await context.Documents.AsNoTracking().ToListAsync();
+
+            var created = new List<object>();
+            var skipped = new List<object>();
+            for (var index = 0; index < rows.Count; index++)
+            {
+                var row = rows[index];
+                var title = row.GetValue("Title").Trim();
+                if (string.IsNullOrWhiteSpace(title))
+                {
+                    skipped.Add(new { row = index + 2, reason = "Title is required" });
+                    continue;
+                }
+
+                if (!TryParseImportedDate(row.GetValue("Due Date"), out var dueDate))
+                {
+                    skipped.Add(new { row = index + 2, title, reason = "Due Date must use YYYY-MM-DD" });
+                    continue;
+                }
+
+                var action = NormalizeImportedAction(row.GetValue("Action"));
+                if (action == null)
+                {
+                    skipped.Add(new { row = index + 2, title, reason = "Action must be General task, Review, Correction, RCA, Audit Action, or Other" });
+                    continue;
+                }
+
+                var priority = row.GetValue("Priority").Trim().ToLowerInvariant();
+                if (string.IsNullOrWhiteSpace(priority)) priority = "medium";
+                if (priority is not ("low" or "medium" or "high" or "critical"))
+                {
+                    skipped.Add(new { row = index + 2, title, reason = "Priority must be Low, Medium, High, or Critical" });
+                    continue;
+                }
+
+                var assigneeEmail = row.GetValue("Assignee Email").Trim();
+                var assigneeGroup = row.GetValue("Assignee Group").Trim();
+                if (string.IsNullOrWhiteSpace(assigneeEmail) == string.IsNullOrWhiteSpace(assigneeGroup))
+                {
+                    skipped.Add(new { row = index + 2, title, reason = "Provide exactly one of Assignee Email or Assignee Group" });
+                    continue;
+                }
+                Guid? assigneeId = null;
+                Guid? groupId = null;
+                if (!string.IsNullOrWhiteSpace(assigneeEmail))
+                {
+                    if (!usersByEmail.TryGetValue(assigneeEmail, out var assignee))
+                    {
+                        skipped.Add(new { row = index + 2, title, reason = $"No active user found for '{assigneeEmail}'" });
+                        continue;
+                    }
+                    assigneeId = assignee.UserId;
+                }
+                else if (!groupsByName.TryGetValue(assigneeGroup, out var assigneeGroupEntity))
+                {
+                    skipped.Add(new { row = index + 2, title, reason = $"No group found named '{assigneeGroup}'" });
+                    continue;
+                }
+                else groupId = assigneeGroupEntity.GroupId;
+
+                var folderIds = new List<Guid>();
+                var folderError = false;
+                foreach (var path in SplitImportedList(row.GetValue("Folder Path(s)")))
+                {
+                    if (!foldersByPath.TryGetValue(path, out var folder))
+                    {
+                        skipped.Add(new { row = index + 2, title, reason = $"No folder found for path '{path}'" });
+                        folderError = true;
+                        break;
+                    }
+                    folderIds.Add(folder.FolderId);
+                }
+                if (folderError) continue;
+
+                var documentIds = new List<Guid>();
+                var documentError = false;
+                foreach (var documentKey in SplitImportedList(row.GetValue("Document ID(s)")))
+                {
+                    var document = documents.FirstOrDefault(item =>
+                        item.DocumentId.ToString().Equals(documentKey, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(item.OriginalDocumentId, documentKey, StringComparison.OrdinalIgnoreCase));
+                    if (document == null)
+                    {
+                        skipped.Add(new { row = index + 2, title, reason = $"No file found for Document ID '{documentKey}'" });
+                        documentError = true;
+                        break;
+                    }
+                    documentIds.Add(document.DocumentId);
+                }
+                if (documentError) continue;
+
+                var auditStage = NormalizeImportedAuditStage(row.GetValue("Audit Stage"));
+                if (auditStage == "invalid")
+                {
+                    skipped.Add(new { row = index + 2, title, reason = "Audit Stage must be Preparation, Internal Audit, External Audit, or blank" });
+                    continue;
+                }
+
+                var result = await taskService.CreateTaskAsync(
+                    currentUserId,
+                    documentIds.Count > 0 ? documentIds[0] : null,
+                    folderIds.Count > 0 ? folderIds[0] : null,
+                    assigneeId,
+                    groupId,
+                    title,
+                    row.GetValue("Description"),
+                    action,
+                    priority,
+                    dueDate,
+                    SplitImportedList(row.GetValue("Tags")).ToArray(),
+                    auditStage,
+                    documentIds.Distinct().ToArray(),
+                    folderIds.Distinct().ToArray());
+                if (!result.Success || !result.ResourceId.HasValue)
+                {
+                    skipped.Add(new { row = index + 2, title, reason = result.Message ?? "Unable to create task" });
+                    continue;
+                }
+
+                var createdTask = await context.Tasks.AsNoTracking().FirstAsync(task => task.TaskId == result.ResourceId.Value);
+                await NotifyTaskAssignmentAsync(createdTask, currentUserId, "New task assigned to you", "New task assigned to your group");
+                created.Add(new { row = index + 2, title, taskId = result.ResourceId.Value });
+            }
+
+            await auditService.LogAsync(currentUserId, "TASKS_IMPORTED", new { CreatedCount = created.Count, SkippedCount = skipped.Count });
+            return Ok(new { success = true, data = new { created, skipped } });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error importing tasks from CSV");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    private static IEnumerable<string> SplitImportedList(string value) =>
+        value.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private static string BuildFolderPath(DmsFolder folder, IReadOnlyDictionary<Guid, DmsFolder> foldersById)
+    {
+        var parts = new List<string>();
+        var current = folder;
+        var guard = 0;
+        while (guard++ < 50)
+        {
+            parts.Insert(0, current.Name);
+            if (!current.ParentFolderId.HasValue || !foldersById.TryGetValue(current.ParentFolderId.Value, out var parent)) break;
+            current = parent;
+        }
+        return string.Join(" / ", parts);
+    }
+
+    private static bool TryParseImportedDate(string value, out DateTime dueDate) =>
+        DateTime.TryParseExact(value.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out dueDate);
+
+    private static string? NormalizeImportedAction(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "" or "task" or "general task" => "task",
+        "review" => "review",
+        "correction" => "correction",
+        "rca" or "root cause analysis" => "rca",
+        "audit action" or "audit_action" => "audit_action",
+        "other" => "other",
+        _ => null,
+    };
+
+    private static string? NormalizeImportedAuditStage(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "" => null,
+        "preparation" => "preparation",
+        "internal audit" or "internal_audit" => "internal_audit",
+        "external audit" or "external_audit" => "external_audit",
+        _ => "invalid",
+    };
 
     // POST /api/tasks/pcar — an audit finding, never an approval correction.
     // Only Quality and Full Access may raise one, and only after Final Release.
@@ -470,14 +743,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (task == null)
                 return NotFound(new { success = false, error = "Task not found" });
 
-            // The assignee can work their own PCAR (fill in RCA, submit for
-            // approval) and the manager/QA who created it can track/adjust it,
-            // same as GetMyTasksAsync's visibility rule — anyone else needs
-            // the blanket CanManageAllTasks flag (Admin-equivalent), OR
-            // CanReassignTasks on its own, but only to touch the assignment
-            // fields on someone else's task, nothing more.
-            var isOwnTask = await taskService.IsAssigneeAsync(task, userId) || task.ManagerId == userId;
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
+            var canManageTask = await taskService.CanManageTaskAsync(task, userId, pageAccessRole?.CanManageAllTasks == true);
             var isReassigning = req.AssignedToId.HasValue || req.AssignedToGroupId.HasValue;
             // CanReassignTasks: any task, own or not. CanReassignMyTasks: only
             // a task this caller is already the assignee/manager of — two
@@ -485,7 +752,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             var canReassignAny = pageAccessRole?.CanManageAllTasks == true || pageAccessRole?.CanReassignTasks == true;
             var canReassignMyTasksOnly = pageAccessRole?.CanReassignMyTasks == true;
 
-            if (!isOwnTask && pageAccessRole?.CanManageAllTasks != true)
+            if (!canManageTask)
             {
                 if (!isReassigning || !canReassignAny)
                     return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
@@ -508,9 +775,13 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             {
                 if (req.AssignedToId.HasValue == req.AssignedToGroupId.HasValue)
                     return BadRequest(new { success = false, error = "Exactly one of assignedToId or assignedToGroupId is required to reassign" });
-                var allowedToReassign = canReassignAny || (isOwnTask && canReassignMyTasksOnly);
+                var allowedToReassign = canManageTask || canReassignAny || (await taskService.IsAssigneeAsync(task, userId) && canReassignMyTasksOnly);
                 if (!allowedToReassign)
                     return StatusCode(403, new { success = false, error = "You do not have permission to reassign tasks" });
+                var canUseFullDirectory = pageAccessRole?.CanManageAllTasks == true || pageAccessRole?.CanViewAllTasks == true;
+                if (canManageTask && !canUseFullDirectory
+                    && !await taskService.CanAssignToTaskScopeAsync(task, userId, req.AssignedToId, req.AssignedToGroupId))
+                    return BadRequest(new { success = false, error = "The new assignee must already have access to every file and folder linked to this task" });
             }
 
             var result = await taskService.UpdateTaskAsync(
@@ -569,7 +840,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
         {
             var userId = GetCurrentUserId();
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
-            if (pageAccessRole?.CanManageAllTasks != true)
+            if (pageAccessRole?.CanDeleteTasks != true)
                 return StatusCode(403, new { success = false, error = "You do not have permission to delete tasks" });
 
             var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == id);
@@ -633,7 +904,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
     {
         try
         {
-            var tasks = await taskService.GetTasksByDocumentAsync(documentId);
+            var userId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, userId);
+            var tasks = await taskService.GetTasksByDocumentAsync(documentId, userId, CanViewAllTasks(role));
 
             logger.LogInformation("Retrieved {Count} tasks for document {DocumentId}", tasks.Count, documentId);
 
@@ -654,7 +927,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
     [HttpGet("document/{documentId}/pcars")]
     public async Task<ActionResult<object>> GetDocumentPcars(Guid documentId)
     {
-        var pcars = await taskService.GetPcarsByDocumentAsync(documentId);
+        var userId = GetCurrentUserId();
+        var role = await GetPageAccessRoleAsync(context, userId);
+        var pcars = await taskService.GetPcarsByDocumentAsync(documentId, userId, CanViewAllTasks(role));
         return Ok(new { success = true, data = pcars, count = pcars.Count });
     }
 
@@ -663,14 +938,18 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
     [HttpGet("folder/{folderId}")]
     public async Task<ActionResult<object>> GetFolderTasks(Guid folderId)
     {
-        var tasks = await taskService.GetTasksByFolderAsync(folderId);
+        var userId = GetCurrentUserId();
+        var role = await GetPageAccessRoleAsync(context, userId);
+        var tasks = await taskService.GetTasksByFolderAsync(folderId, userId, CanViewAllTasks(role));
         return Ok(new { success = true, data = tasks, count = tasks.Count });
     }
 
     [HttpGet("folder/{folderId}/pcars")]
     public async Task<ActionResult<object>> GetFolderPcars(Guid folderId)
     {
-        var pcars = await taskService.GetTasksByFolderAsync(folderId, pcarsOnly: true);
+        var userId = GetCurrentUserId();
+        var role = await GetPageAccessRoleAsync(context, userId);
+        var pcars = await taskService.GetTasksByFolderAsync(folderId, userId, CanViewAllTasks(role), pcarsOnly: true);
         return Ok(new { success = true, data = pcars, count = pcars.Count });
     }
 
@@ -684,8 +963,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (task == null)
                 return NotFound(new { success = false, error = "Task not found" });
 
-            if (!await taskService.IsAssigneeAsync(task, userId))
-                return StatusCode(403, new { success = false, error = "Only the assignee can resubmit this task" });
+            var role = await GetPageAccessRoleAsync(context, userId);
+            if (!await taskService.CanManageTaskAsync(task, userId, role?.CanManageAllTasks == true))
+                return StatusCode(403, new { success = false, error = "Only the assignee, linked-folder owner, or linked-folder manager can resubmit this task" });
 
             if (task.ApprovalId == null || task.DocumentId == null)
                 return BadRequest(new { success = false, error = "This task is not linked to an approval workflow" });
@@ -790,6 +1070,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 return NotFound(new { success = false, error = "Task not found" });
 
             var userId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, userId);
+            if (!await taskService.CanManageTaskAsync(task, userId, role?.CanManageAllTasks == true))
+                return StatusCode(403, new { success = false, error = "You do not have permission to add evidence to this task" });
             var attachment = new DmsTaskAttachment
             {
                 AttachmentId = Guid.NewGuid(),
@@ -829,6 +1112,12 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
     {
         try
         {
+            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(item => item.TaskId == id);
+            if (task == null) return NotFound(new { success = false, error = "Task not found" });
+            var userId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, userId);
+            if (!await taskService.CanViewTaskAsync(task, userId, CanViewAllTasks(role)))
+                return StatusCode(403, new { success = false, error = "You do not have permission to view this task" });
             var attachments = await context.TaskAttachments
                 .Where(a => a.TaskId == id)
                 .Include(a => a.UploadedByUser)
@@ -862,6 +1151,12 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             var attachment = await context.TaskAttachments.FirstOrDefaultAsync(a => a.AttachmentId == attachmentId && a.TaskId == id);
             if (attachment == null)
                 return NotFound(new { success = false, error = "Attachment not found" });
+            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(item => item.TaskId == id);
+            if (task == null) return NotFound(new { success = false, error = "Task not found" });
+            var userId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, userId);
+            if (!await taskService.CanViewTaskAsync(task, userId, CanViewAllTasks(role)))
+                return StatusCode(403, new { success = false, error = "You do not have permission to view this task" });
 
             var stream = await minioService.DownloadAsync(attachment.S3ObjectKey);
             return File(stream, attachment.MimeType ?? "application/octet-stream", attachment.FileName);
@@ -882,6 +1177,12 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             var attachment = await context.TaskAttachments.FirstOrDefaultAsync(a => a.AttachmentId == attachmentId && a.TaskId == id);
             if (attachment == null)
                 return NotFound(new { success = false, error = "Attachment not found" });
+            var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(item => item.TaskId == id);
+            if (task == null) return NotFound(new { success = false, error = "Task not found" });
+            var userId = GetCurrentUserId();
+            var role = await GetPageAccessRoleAsync(context, userId);
+            if (!await taskService.CanManageTaskAsync(task, userId, role?.CanManageAllTasks == true))
+                return StatusCode(403, new { success = false, error = "You do not have permission to remove evidence from this task" });
 
             try
             {
@@ -895,7 +1196,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             context.TaskAttachments.Remove(attachment);
             await context.SaveChangesAsync();
 
-            await auditService.LogAsync(GetCurrentUserId(), TASK_ATTACHMENT_DELETED, new { TaskId = id, AttachmentId = attachmentId, attachment.FileName });
+            await auditService.LogAsync(userId, TASK_ATTACHMENT_DELETED, new { TaskId = id, AttachmentId = attachmentId, attachment.FileName });
 
             return Ok(new { success = true, message = "Attachment deleted" });
         }

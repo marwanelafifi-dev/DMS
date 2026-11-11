@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Services;
 
-public class TaskService(DmsContext context, AuditService auditService, NotificationService notificationService, ILogger<TaskService> logger)
+public class TaskService(DmsContext context, AuditService auditService, NotificationService notificationService, AccessOverrideService accessOverrideService, ILogger<TaskService> logger)
 {
     // A task assigned to a Group is one shared item visible to every member —
     // whoever gets to it first can act on it, not a fan-out of per-member
@@ -105,25 +105,139 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
     public async Task<List<Guid>> GetGroupMemberIdsAsync(Guid groupId) =>
         await context.GroupMembers.Where(gm => gm.GroupId == groupId).Select(gm => gm.UserId).ToListAsync();
 
-    public async Task<(List<object> Items, int TotalCount)> GetMyTasksAsync(Guid userId, string? status = null, int page = 1, int pageSize = 100)
+    // Resource-scoped authority: a task's direct/group assignee or the owner
+    // / designated manager of a folder directly linked to it, including the
+    // folder of each linked document. It deliberately never uses ManagerId:
+    // creating a task cannot expose unrelated work to its creator.
+    private IQueryable<DmsTask> GetScopedTaskAuthorityQuery(Guid userId)
+    {
+        var myGroupIds = context.GroupMembers
+            .Where(member => member.UserId == userId)
+            .Select(member => member.GroupId);
+        var managedFolderIds = context.Folders
+            .Where(folder => folder.OwnerId == userId || context.FolderManagers
+                .Any(manager => manager.FolderId == folder.FolderId && manager.UserId == userId))
+            .Select(folder => folder.FolderId);
+
+        return context.Tasks.Where(task =>
+            task.AssignedToId == userId
+            || (task.AssignedToGroupId.HasValue && myGroupIds.Contains(task.AssignedToGroupId.Value))
+            || (task.FolderId.HasValue && managedFolderIds.Contains(task.FolderId.Value))
+            || context.TaskFolderLinks.Any(link => link.TaskId == task.TaskId && managedFolderIds.Contains(link.FolderId))
+            || (task.DocumentId.HasValue && context.Documents.Any(document =>
+                document.DocumentId == task.DocumentId.Value && managedFolderIds.Contains(document.FolderId)))
+            || context.TaskDocumentLinks.Any(link => link.TaskId == task.TaskId && context.Documents.Any(document =>
+                document.DocumentId == link.DocumentId && managedFolderIds.Contains(document.FolderId))));
+    }
+
+    // Quality, Auditor, and Full Access can receive view-all separately. That
+    // permission never turns into edit/reassign/complete authority by itself.
+    private IQueryable<DmsTask> GetVisibleTasksQuery(Guid userId, bool canViewAllTasks) =>
+        canViewAllTasks ? context.Tasks : GetScopedTaskAuthorityQuery(userId);
+
+    public Task<bool> CanViewTaskAsync(DmsTask task, Guid userId, bool canViewAllTasks) =>
+        GetVisibleTasksQuery(userId, canViewAllTasks).AnyAsync(candidate => candidate.TaskId == task.TaskId);
+
+    public Task<bool> CanManageTaskAsync(DmsTask task, Guid userId, bool canManageAllTasks) =>
+        (canManageAllTasks ? context.Tasks : GetScopedTaskAuthorityQuery(userId))
+            .AnyAsync(candidate => candidate.TaskId == task.TaskId);
+
+    // Reassignment from a folder-scoped task must not expose the complete
+    // DMS directory. An eligible person can read every file/folder linked to
+    // the task, using the same final access-override rules as the Library.
+    public async Task<List<Guid>> GetDepartmentGroupIdsAsync(Guid userId) =>
+        await context.GroupMembers.AsNoTracking()
+            .Where(member => member.UserId == userId)
+            .Join(context.Groups.AsNoTracking().Where(group => !group.AutoAddNewUsers
+                    && !EF.Functions.ILike(group.Name, "all users")),
+                member => member.GroupId,
+                group => group.GroupId,
+                (member, _) => member.GroupId)
+            .Distinct()
+            .ToListAsync();
+
+    public async Task<List<DmsUser>> GetEligibleAssigneesAsync(DmsTask task, Guid scopeUserId)
+    {
+        var folderIds = await context.TaskFolderLinks.AsNoTracking()
+            .Where(link => link.TaskId == task.TaskId)
+            .Select(link => link.FolderId)
+            .ToListAsync();
+        if (task.FolderId.HasValue) folderIds.Add(task.FolderId.Value);
+
+        var documentIds = await context.TaskDocumentLinks.AsNoTracking()
+            .Where(link => link.TaskId == task.TaskId)
+            .Select(link => link.DocumentId)
+            .ToListAsync();
+        if (task.DocumentId.HasValue) documentIds.Add(task.DocumentId.Value);
+
+        folderIds = folderIds.Distinct().ToList();
+        var documents = await context.Documents.AsNoTracking()
+            .Where(document => documentIds.Contains(document.DocumentId))
+            .Select(document => new { document.DocumentId, document.FolderId })
+            .ToListAsync();
+
+        var activeUsers = await context.Users.AsNoTracking().Where(user => user.IsActive).ToListAsync();
+        // A general task has no document/folder scope. Its owner/manager is
+        // limited to members of their own non-global department groups.
+        if (folderIds.Count == 0 && documents.Count == 0)
+        {
+            var departmentGroupIds = await GetDepartmentGroupIdsAsync(scopeUserId);
+            var departmentMemberIds = await context.GroupMembers.AsNoTracking()
+                .Where(member => departmentGroupIds.Contains(member.GroupId))
+                .Select(member => member.UserId)
+                .Distinct()
+                .ToListAsync();
+            return activeUsers.Where(user => departmentMemberIds.Contains(user.UserId)).ToList();
+        }
+
+        var eligible = new List<DmsUser>();
+        foreach (var user in activeUsers)
+        {
+            var allowed = true;
+            foreach (var folderId in folderIds)
+            {
+                if (await accessOverrideService.HasFolderReadAccessAsync(user.UserId, folderId)) continue;
+                allowed = false;
+                break;
+            }
+            if (!allowed) continue;
+            foreach (var document in documents)
+            {
+                if (await accessOverrideService.HasDocumentReadAccessAsync(user.UserId, document.DocumentId, document.FolderId)) continue;
+                allowed = false;
+                break;
+            }
+            if (allowed) eligible.Add(user);
+        }
+        return eligible;
+    }
+
+    public async Task<bool> CanAssignToTaskScopeAsync(DmsTask task, Guid scopeUserId, Guid? assignedToId, Guid? assignedToGroupId)
+    {
+        var eligibleUserIds = (await GetEligibleAssigneesAsync(task, scopeUserId)).Select(user => user.UserId).ToHashSet();
+        if (assignedToId.HasValue) return eligibleUserIds.Contains(assignedToId.Value);
+        if (!assignedToGroupId.HasValue) return false;
+
+        var memberIds = await context.GroupMembers.AsNoTracking()
+            .Where(member => member.GroupId == assignedToGroupId.Value)
+            .Select(member => member.UserId)
+            .ToListAsync();
+        return memberIds.Count > 0 && memberIds.All(eligibleUserIds.Contains);
+    }
+
+    public async Task<(List<object> Items, int TotalCount)> GetMyTasksAsync(Guid userId, bool canViewAllTasks, bool canManageAllTasks, string? status = null, int page = 1, int pageSize = 100)
     {
         try
         {
-            var myGroupIds = await context.GroupMembers.Where(gm => gm.UserId == userId).Select(gm => gm.GroupId).ToListAsync();
-
-            // A manager must be able to track work they delegated, while the
-            // assignee (directly, or via a group they belong to) still sees the
-            // same task in their personal queue.
-            var query = context.Tasks.Where(t =>
-                t.AssignedToId == userId ||
-                t.ManagerId == userId ||
-                (t.AssignedToGroupId.HasValue && myGroupIds.Contains(t.AssignedToGroupId.Value)));
+            var query = GetVisibleTasksQuery(userId, canViewAllTasks);
 
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(t => t.Status == status);
 
             var today = DateTime.UtcNow.Date;
             var totalCount = await query.CountAsync();
+            var manageableTaskIds = (canManageAllTasks ? context.Tasks : GetScopedTaskAuthorityQuery(userId))
+                .Select(task => task.TaskId);
 
             var tasks = await query
                 .OrderBy(t => !t.DueDate.HasValue)
@@ -161,6 +275,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.QaReviewNotes,
                     t.EffectivenessResult,
                     t.QaReviewedAt,
+                    CanManage = manageableTaskIds.Contains(t.TaskId),
                     IsOverdue = t.DueDate.HasValue && t.DueDate < today && t.Status != "completed",
                     t.CreatedAt,
                     t.UpdatedAt
@@ -185,8 +300,8 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (task == null)
                 return TaskResult.NotFound("Task not found");
 
-            if (!await IsAssigneeAsync(task, userId) && !canManageAllTasks)
-                return TaskResult.Forbidden("Only the assignee can complete this task");
+            if (!await CanManageTaskAsync(task, userId, canManageAllTasks))
+                return TaskResult.Forbidden("Only the assignee, linked-folder owner, or linked-folder manager can complete this task");
 
             if (task.Status == "completed")
                 return TaskResult.Invalid("Task is already completed");
@@ -282,8 +397,8 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (!string.IsNullOrWhiteSpace(taskType))
             {
                 var normalizedType = taskType.Trim().ToLowerInvariant();
-                if (normalizedType is not ("task" or "correction" or "rca" or "audit_action" or "pcar"))
-                    return TaskResult.Invalid("Type must be task, correction, rca, audit_action, or pcar");
+                if (normalizedType is not ("task" or "review" or "correction" or "rca" or "audit_action" or "other" or "pcar"))
+                    return TaskResult.Invalid("Action must be task, review, correction, rca, audit_action, other, or pcar");
                 task.TaskType = normalizedType;
             }
 
@@ -362,7 +477,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
     // all three fields into Description as plain text — harmless on a first
     // submit, but re-running it on every click (nothing stopped resubmission)
     // kept prepending onto the same string forever.
-    public async Task<TaskResult> SubmitPcarAsync(Guid taskId, Guid userId, string rca, string correction, string preventiveActions, DateTime targetDate, string[]? tags = null)
+    public async Task<TaskResult> SubmitPcarAsync(Guid taskId, Guid userId, string rca, string correction, string preventiveActions, DateTime targetDate, string[]? tags = null, bool canManageAllTasks = false)
     {
         try
         {
@@ -373,8 +488,8 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (task.TaskType != "pcar")
                 return TaskResult.Invalid("Only audit PCAR findings use this endpoint; complete normal tasks directly");
 
-            if (!await IsAssigneeAsync(task, userId))
-                return TaskResult.Forbidden("Only the assignee can submit this PCAR");
+            if (!await CanManageTaskAsync(task, userId, canManageAllTasks))
+                return TaskResult.Forbidden("Only the assignee, linked-folder owner, or linked-folder manager can submit this PCAR");
 
             if (task.Status != "open")
                 return TaskResult.Invalid("This PCAR has already been submitted for approval");
@@ -489,7 +604,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         }
     }
 
-    public async Task<List<object>> GetTasksByDocumentAsync(Guid documentId)
+    public async Task<List<object>> GetTasksByDocumentAsync(Guid documentId, Guid userId, bool canViewAllTasks)
     {
         try
         {
@@ -497,7 +612,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             // against it across every approval cycle, not just the currently open
             // one. Used by the Document Preview's "View Related Tasks" button so a
             // reviewer can see every edit/correction round from creation onward.
-            var tasks = await context.Tasks
+            var tasks = await GetVisibleTasksQuery(userId, canViewAllTasks)
                 // Keep the legacy primary-document column in the predicate so
                 // existing installations work before the link-table backfill
                 // has run. New tasks can be linked to several documents.
@@ -560,9 +675,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         }
     }
 
-    public async Task<List<object>> GetPcarsByDocumentAsync(Guid documentId)
+    public async Task<List<object>> GetPcarsByDocumentAsync(Guid documentId, Guid userId, bool canViewAllTasks)
     {
-        var pcars = await context.Tasks
+        var pcars = await GetVisibleTasksQuery(userId, canViewAllTasks)
             .Where(t => t.TaskType == "pcar" && (t.DocumentId == documentId || context.TaskDocumentLinks
                 .Any(link => link.TaskId == t.TaskId && link.DocumentId == documentId)))
             .OrderByDescending(t => t.CreatedAt)
@@ -577,9 +692,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         return pcars.Cast<object>().ToList();
     }
 
-    public async Task<List<object>> GetTasksByFolderAsync(Guid folderId, bool pcarsOnly = false)
+    public async Task<List<object>> GetTasksByFolderAsync(Guid folderId, Guid userId, bool canViewAllTasks, bool pcarsOnly = false)
     {
-        var tasks = await context.Tasks
+        var tasks = await GetVisibleTasksQuery(userId, canViewAllTasks)
             .Where(t => (t.FolderId == folderId || context.TaskFolderLinks
                     .Any(link => link.TaskId == t.TaskId && link.FolderId == folderId))
                 && (!pcarsOnly || t.TaskType == "pcar"))

@@ -107,7 +107,7 @@ export function RelatedTasksModal({ documentId, folderId, fileName, onClose }: R
                     <Badge status={STATUS_BADGE[task.status] ?? 'default'} variant="outline">{task.status.replace('_', ' ')}</Badge>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-slate-400">
-                    <span>Type: {task.taskType}</span>
+                    <span>Action: {task.taskType.replace('_', ' ')}</span>
                     {task.riskSeverity && <span>Priority: {task.riskSeverity}</span>}
                     <span>Submitted by: {task.submittedByName ?? 'Unknown'}</span>
                     <span>Assigned to: {task.assignedToUser?.fullName ?? 'Unassigned'}</span>

@@ -4556,3 +4556,36 @@ Manual backups are queued as Hangfire jobs because the old synchronous `POST /sc
 
 - PCAR filters include text/finding number, severity, clause/standard, owner, priority, and status. Internal-task filters include audit stage (Preparation, Internal Audit, External Audit).
 - Added `api.Tests` with `PcarComplianceRulesTests`: empty-scope rejection, multi-file released validation, evidence requirement, return-note requirement, dedicated verifier permission, and effectiveness/decision consistency. Latest verification: `dotnet test api.Tests/DMS.Api.Tests.csproj --no-restore` passed 8 tests; `npm.cmd test -- Tasks.test.tsx --reporter=verbose` passed 5 tests; `npm.cmd run type-check` passed.
+
+## Session 73 (2026-11-11) — Audit register authority and automatic reminder policy
+
+### Role matrix
+
+- **Quality** and **Full Access** have complete live Task/PCAR authority: view all, create, manage, reassign, verify PCAR closure, and delete open records. Both can manage the Task/PCAR automatic-reminder policy.
+- **Auditor** can view all Task/PCAR records and create or verify PCAR findings, but has no normal-task administration, deletion, or reminder-policy authority.
+- **Manager** can create normal internal tasks. **Manager**, **User**, folder owner, and designated folder manager visibility remains resource-scoped: they can only see/manage their assignment or a Task/PCAR linked to a folder they own/manage. Folder-scoped reassignment remains restricted to people who have access to every linked file/folder; the All Users group is excluded.
+- `CanManageTaskReminderPolicy` is a separate page-access capability. It does not grant the wider Admin Panel, email SMTP credentials, user administration, or database administration. Quality and Full Access see **Task / PCAR Reminder Policy** at `/reminders/policy`; role administrators can edit this capability in Admin Panel → Roles.
+
+### Automatic reminder policy
+
+- The policy controls creation, two configurable pre-due stages (defaults: 3 and 1 days), due-date, and overdue delivery. Each stage independently selects assignee/group members, linked-folder owners, Quality users, and Full Access users; global enable/disable and all changes are audit logged.
+- The Task/PCAR creation form resolves the selected assignee/group and linked files/folders into the actual active recipient names for every enabled stage. Changing the selection updates the preview. Inactive users are excluded from both the preview and notification delivery.
+- The default schedule is: creation → assignee/group; 3 days before → assignee/group; 1 day before → assignee/group plus linked-folder owner; due date and overdue → assignee/group, linked-folder owner, Quality, and Full Access. Persistent escalation rows prevent duplicate scheduled notifications.
+
+### Database migrations and Ubuntu deployment
+
+- Existing installations must apply `111_task_register_visibility.sql`, `112_task_delete_permission.sql`, and `113_audit_task_role_defaults.sql` in that order. Postgres runs `infra/db/init` only for a new empty volume, so Docker Compose does **not** apply these to the existing `/opt/dms` database automatically.
+- On Ubuntu, after `git pull --ff-only` and before rebuilding the stack, run each migration through the running PostgreSQL service from `/opt/dms`:
+
+```bash
+for migration in \
+  infra/db/init/111_task_register_visibility.sql \
+  infra/db/init/112_task_delete_permission.sql \
+  infra/db/init/113_audit_task_role_defaults.sql; do
+  docker compose exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$migration"
+done
+docker compose up -d --build api web
+docker compose ps
+```
+
+- After deployment, sign in as Quality to confirm `/reminders/policy` is visible and editable, then complete one linked Task and one PCAR evidence/verification flow. Do not commit `.claude/settings.local.json`; it is local tooling configuration only.

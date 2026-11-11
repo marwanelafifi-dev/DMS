@@ -4,38 +4,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Services;
 
-public class TaskEscalationService(DmsContext context, NotificationService notifications, ILogger<TaskEscalationService> logger)
+public class TaskEscalationService(DmsContext context, NotificationService notifications, TaskNotificationPolicyService policyService, ILogger<TaskEscalationService> logger)
 {
     public async Task ScanAndSendAsync()
     {
+        var policy = await policyService.LoadAsync();
+        if (!policy.Enabled)
+        {
+            logger.LogInformation("Task escalation scan skipped because the policy is disabled");
+            return;
+        }
         var now = DateTime.UtcNow;
         var tasks = await context.Tasks.Where(t => t.Status != "completed" && t.DueDate != null).ToListAsync();
         foreach (var task in tasks)
         {
             var due = task.DueDate!.Value;
-            var stage = now.Date > due.Date ? "overdue" : now.Date == due.Date ? "due" : due <= now.AddDays(1) ? "day_1" : due <= now.AddDays(3) ? "day_3" : null;
-            if (stage == null || await context.Set<DmsTaskEscalation>().AnyAsync(e => e.TaskId == task.TaskId && e.Stage == stage)) continue;
+            var (stage, stagePolicy, label) = ResolveStage(now, due, policy);
+            if (stage == null || stagePolicy == null || await context.Set<DmsTaskEscalation>().AnyAsync(e => e.TaskId == task.TaskId && e.Stage == stage)) continue;
 
-            var recipients = new HashSet<Guid>();
-            if (task.AssignedToId.HasValue) recipients.Add(task.AssignedToId.Value);
-            if (task.AssignedToGroupId.HasValue)
-                foreach (var id in await context.GroupMembers.Where(m => m.GroupId == task.AssignedToGroupId).Select(m => m.UserId).ToListAsync()) recipients.Add(id);
-            // Escalate to the owner of the linked folder, not the person who
-            // happened to assign the work. A file task inherits its folder;
-            // a folder task uses its direct folder link. General tasks have no
-            // folder owner to add.
-            var folderId = task.FolderId ?? (task.DocumentId.HasValue
-                ? await context.Documents.Where(d => d.DocumentId == task.DocumentId.Value).Select(d => (Guid?)d.FolderId).FirstOrDefaultAsync()
-                : null);
-            if ((stage is "day_1" or "due" or "overdue") && folderId.HasValue)
-            {
-                var folderOwnerId = await context.Folders.Where(f => f.FolderId == folderId.Value).Select(f => (Guid?)f.OwnerId).FirstOrDefaultAsync();
-                if (folderOwnerId.HasValue) recipients.Add(folderOwnerId.Value);
-            }
-            if (stage is "due" or "overdue")
-                foreach (var id in await context.Users.Where(u => u.IsActive && (u.Role == "Quality" || u.Role == "Full Access")).Select(u => u.UserId).ToListAsync()) recipients.Add(id);
-
-            var label = stage switch { "day_3" => "Due in 3 days", "day_1" => "Due tomorrow", "due" => "Due today", _ => "Overdue" };
+            var recipients = await policyService.GetRecipientIdsAsync(task, stagePolicy);
             foreach (var recipient in recipients)
                 await notifications.NotifyAsync(recipient, Guid.Empty, $"{label}: {task.Title}", $"Task due {due:dd MMM yyyy}", taskId: task.TaskId);
 
@@ -43,5 +30,18 @@ public class TaskEscalationService(DmsContext context, NotificationService notif
             await context.SaveChangesAsync();
         }
         logger.LogInformation("Task escalation scan completed");
+    }
+
+    private static (string? Stage, TaskReminderStage? Policy, string? Label) ResolveStage(DateTime now, DateTime due, TaskNotificationPolicy policy)
+    {
+        if (now.Date > due.Date && policy.Overdue.Enabled) return ("overdue", policy.Overdue, "Overdue");
+        if (now.Date == due.Date && policy.DueDate.Enabled) return ("due", policy.DueDate, "Due today");
+        var beforeDue = new[] { policy.FirstBeforeDue, policy.SecondBeforeDue }
+            .Where(stage => stage.Enabled && due.Date > now.Date && due <= now.AddDays(stage.DaysBeforeDue))
+            .OrderBy(stage => stage.DaysBeforeDue)
+            .FirstOrDefault();
+        return beforeDue == null
+            ? (null, null, null)
+            : ($"before_due_{beforeDue.DaysBeforeDue}", beforeDue, $"Due in {beforeDue.DaysBeforeDue} day{(beforeDue.DaysBeforeDue == 1 ? string.Empty : "s")}");
     }
 }

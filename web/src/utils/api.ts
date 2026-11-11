@@ -65,6 +65,8 @@ export interface PageAccessRoleFlags {
   canViewApprovals: boolean;
   canViewPcar: boolean;
   canViewTasks: boolean;
+  // View the complete task/PCAR register without granting management actions.
+  canViewAllTasks: boolean;
   canViewAdminPanel: boolean;
   bypassFolderPermissions: boolean;
   // Weaker, tiered versions of bypassFolderPermissions — automatic
@@ -76,6 +78,8 @@ export interface PageAccessRoleFlags {
   canManageFolderPermissions: boolean;
   canManageFilePermissions: boolean;
   canManageAllTasks: boolean;
+  canDeleteTasks: boolean;
+  canManageTaskReminderPolicy: boolean;
   canViewHistoricalPcars: boolean;
   canViewAllHistoricalPcars: boolean;
   canImportHistoricalPcars: boolean;
@@ -115,6 +119,43 @@ export interface EmailNotificationConfig {
   email?: string | null;
   appPassword?: string | null;
   senderName?: string | null;
+}
+
+export interface TaskReminderRecipients {
+  assignee: boolean;
+  folderOwner: boolean;
+  quality: boolean;
+  fullAccess: boolean;
+}
+
+export interface TaskReminderStage {
+  enabled: boolean;
+  daysBeforeDue: number;
+  recipients: TaskReminderRecipients;
+}
+
+export interface TaskNotificationPolicy {
+  enabled: boolean;
+  creation: TaskReminderStage;
+  firstBeforeDue: TaskReminderStage;
+  secondBeforeDue: TaskReminderStage;
+  dueDate: TaskReminderStage;
+  overdue: TaskReminderStage;
+}
+
+// The reminder preview resolves policy roles (such as Folder owner or Quality)
+// into the actual active people who will receive each message for the task
+// currently being created.
+export interface TaskNotificationPreviewStage {
+  key: string;
+  label: string;
+  enabled: boolean;
+  recipients: string[];
+}
+
+export interface TaskNotificationPreview {
+  enabled: boolean;
+  stages: TaskNotificationPreviewStage[];
 }
 
 // Backs the Admin Panel's Settings page — mirrors the API's
@@ -813,9 +854,26 @@ class APIClient {
     return { ...data, data: data.data ? this.normalizeTask(data.data) : data.data };
   }
 
+  async getTaskEligibleAssignees(taskId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/tasks/${taskId}/assignees`);
+    return data;
+  }
+
   async createTask(taskData: any) {
     const { data } = await this.client.post<ApiResponse>('/tasks', taskData);
     return data;
+  }
+
+  async importTasks(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post<ApiResponse>('/tasks/import', formData);
+    return data;
+  }
+
+  async getTaskImportTemplate() {
+    const response = await this.client.get('/tasks/import-template', { responseType: 'blob' });
+    return response.data as Blob;
   }
 
   async createPcar(taskData: any) {
@@ -1177,6 +1235,31 @@ class APIClient {
 
   async getNotificationsEnabled() {
     const { data } = await this.client.get<ApiResponse>('/email-config/notifications-enabled');
+    return data;
+  }
+
+  async getTaskNotificationPolicy() {
+    const { data } = await this.client.get<ApiResponse>('/task-notification-policy');
+    return data;
+  }
+
+  async getTaskNotificationPolicySummary() {
+    const { data } = await this.client.get<ApiResponse>('/task-notification-policy/summary');
+    return data;
+  }
+
+  async getTaskNotificationPreview(request: {
+    assignedToId?: string;
+    assignedToGroupId?: string;
+    documentIds?: string[];
+    folderIds?: string[];
+  }) {
+    const { data } = await this.client.post<ApiResponse>('/task-notification-policy/preview', request);
+    return data;
+  }
+
+  async updateTaskNotificationPolicy(policy: TaskNotificationPolicy) {
+    const { data } = await this.client.put<ApiResponse>('/task-notification-policy', policy);
     return data;
   }
 

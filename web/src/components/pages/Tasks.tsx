@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardBody, Button, Badge } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye, UserCog, History, Folder as FolderIcon } from 'lucide-react';
-import { apiClient, DEV_USER_ID } from '../../utils/api';
+import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye, UserCog, History, Folder as FolderIcon, Bell } from 'lucide-react';
+import { apiClient, DEV_USER_ID, type TaskNotificationPreview } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { usePageAccess } from '../../hooks/usePageAccess';
 import type { Document, Folder, Task } from '../../types';
@@ -19,7 +19,7 @@ const PAGE_SIZE = 10;
 interface TaskForm {
   title: string;
   description: string;
-  taskType: 'task' | 'correction' | 'rca' | 'audit_action' | 'pcar';
+  taskType: 'task' | 'review' | 'correction' | 'rca' | 'audit_action' | 'other' | 'pcar';
   priority: 'low' | 'medium' | 'high' | 'critical';
   dueDate: string;
   // Exactly one of assignedTo / assignedToGroupId should be set.
@@ -51,12 +51,23 @@ const PRIORITY_COLORS = {
   critical: 'error',
 } as const;
 
+const TASK_ACTION_LABELS: Record<string, string> = {
+  task: 'General task',
+  review: 'Review',
+  correction: 'Correction',
+  rca: 'Root Cause Analysis (RCA)',
+  audit_action: 'Audit action',
+  other: 'Other',
+  pcar: 'Audit PCAR finding',
+};
+
 
 export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
   const pageAccess = usePageAccess();
   const canManageAllTasks = pageAccess?.canManageAllTasks ?? false;
+  const canDeleteTasks = pageAccess?.canDeleteTasks ?? false;
   const canCreateTasks = (pageAccess?.canCreateTasks || pageAccess?.canManageAllTasks) ?? false;
   // canReassignTasks: reassign ANY task, own or not. canReassignMyTasksOnly:
   // reassign only a task this user is already the assignee/manager of — two
@@ -66,6 +77,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const canReassignTasks = (pageAccess?.canReassignTasks || pageAccess?.canManageAllTasks) ?? false;
   const canReassignMyTasksOnly = pageAccess?.canReassignMyTasks ?? false;
   const linkedDocFileInputRef = useRef<HTMLInputElement>(null);
+  const taskImportInputRef = useRef<HTMLInputElement>(null);
   const [searchParams] = useSearchParams();
   const highlightTaskId = searchParams.get('highlight');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -98,7 +110,6 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [isPcarForm, setIsPcarForm] = useState(false);
-  const [taskScope, setTaskScope] = useState<'none' | 'document' | 'folder'>('none');
   const [newTask, setNewTask] = useState<TaskForm>({
     title: '',
     description: '',
@@ -114,12 +125,19 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     findingSeverity: '', standardClause: '', auditorNotes: '',
     tags: [],
   });
+  const [taskReminderPreview, setTaskReminderPreview] = useState<TaskNotificationPreview | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newTaskAttachment, setNewTaskAttachment] = useState<File | null>(null);
+  const [isImportingTasks, setIsImportingTasks] = useState(false);
+  const [taskImportResult, setTaskImportResult] = useState<{
+    created: Array<{ row: number; title: string; taskId: string }>;
+    skipped: Array<{ row: number; title?: string; reason: string }>;
+  } | null>(null);
   const [attachmentsFor, setAttachmentsFor] = useState<{ taskId: string; title: string } | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<TaskForm>>({});
+  const [eligibleAssignees, setEligibleAssignees] = useState<{ users: any[]; groups: Array<{ groupId: string; name: string }> } | null>(null);
 
   const [statusChangeConfirm, setStatusChangeConfirm] = useState<{ taskId?: string; newStatus?: Task['status']; taskTitle?: string }>({});
   const [deleteConfirm, setDeleteConfirm] = useState<{ taskId?: string; taskTitle?: string }>({});
@@ -213,7 +231,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const getDocumentSearchText = (doc: Document) =>
     `${getDocumentLabel(doc)} ${doc.documentId} ${doc.originalDocumentId ?? ''} ${doc.trackingCode ?? ''}`.toLowerCase();
 
-  const selectedPcarFolderIds = new Set(
+  const selectedLinkedFolderIds = new Set(
     [...newTask.folderIds, newTask.folderId].filter((folderId): folderId is string => Boolean(folderId)),
   );
   const filteredDocumentOptions = documents.filter((doc) => {
@@ -222,7 +240,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     // files in that exact selected folder instead of offering unrelated DMS
     // files. Multiple selected folders are treated as one allowed scope.
     if (isPcarForm && doc.status !== 'released') return false;
-    if (isPcarForm && selectedPcarFolderIds.size > 0 && !selectedPcarFolderIds.has(doc.folderId)) return false;
+    if (selectedLinkedFolderIds.size > 0 && !selectedLinkedFolderIds.has(doc.folderId)) return false;
     return getDocumentSearchText(doc).includes(docSearchQuery.toLowerCase());
   });
   const filteredFolderOptions = folders.filter((folder) =>
@@ -243,6 +261,26 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     loadFolders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, mode]);
+
+  useEffect(() => {
+    if (!showAddForm || (!newTask.assignedTo && !newTask.assignedToGroupId)) {
+      setTaskReminderPreview(null);
+      return;
+    }
+
+    let cancelled = false;
+    apiClient.getTaskNotificationPreview({
+      assignedToId: newTask.assignedToGroupId ? undefined : newTask.assignedTo || undefined,
+      assignedToGroupId: newTask.assignedToGroupId || undefined,
+      documentIds: newTask.documentIds,
+      folderIds: newTask.folderIds,
+    }).then((res) => {
+      if (!cancelled && res.success && res.data) setTaskReminderPreview(res.data as TaskNotificationPreview);
+    }).catch(() => {
+      if (!cancelled) setTaskReminderPreview(null);
+    });
+    return () => { cancelled = true; };
+  }, [showAddForm, newTask.assignedTo, newTask.assignedToGroupId, newTask.documentIds, newTask.folderIds]);
 
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -310,6 +348,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   // so the register table is always what's visible first on this page.
   const focusedPcar = highlightedTask || selectedTask;
   const focusedPcarIsMine = focusedPcar ? isTaskMine(focusedPcar) : true;
+  const focusedTaskCanManage = focusedPcar
+    ? (focusedPcar.canManage ?? (focusedPcarIsMine || canManageAllTasks))
+    : false;
   // Only 'submitted' (awaiting a QA decision) and 'completed' (already
   // approved) actually mean "this PCAR is locked" — 'in_progress' is a
   // separate, ordinary manual work-status a task can carry independent of
@@ -745,6 +786,34 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     }
   };
 
+  const downloadTaskImportTemplate = async () => {
+    try {
+      const blob = await apiClient.getTaskImportTemplate();
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = 'dms-task-import-template.csv';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to download the task CSV template');
+    }
+  };
+
+  const handleTaskImportFile = async (file: File) => {
+    setIsImportingTasks(true);
+    try {
+      const response = await apiClient.importTasks(file);
+      const result = response.data ?? { created: [], skipped: [] };
+      setTaskImportResult(result);
+      await loadTasks(1);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to import tasks');
+    } finally {
+      setIsImportingTasks(false);
+    }
+  };
+
   const handleCreateTask = async () => {
     if (!newTask.title.trim()) {
       showError('Task title is required');
@@ -760,10 +829,6 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     }
     if (isPcarForm && !newTask.findingSeverity) {
       showError('Select the audit finding severity');
-      return;
-    }
-    if (!isPcarForm && taskScope === 'folder' && !newTask.folderId) {
-      showError('Select the folder this task applies to');
       return;
     }
     if (!newTask.assignedTo && !newTask.assignedToGroupId) {
@@ -849,8 +914,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     }
   };
 
-  const handleEditTask = (task: Task) => {
+  const handleEditTask = async (task: Task) => {
     setEditingId(task.taskId);
+    setEligibleAssignees(task.canManage && !canManageAllTasks ? { users: [], groups: [] } : null);
     setEditData({
       title: task.title,
       description: task.description,
@@ -861,6 +927,15 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       assignedToGroupId: getAssignedToGroupId(task) ?? '',
       tags: task.tags || [],
     });
+    if (task.canManage && !canManageAllTasks) {
+      try {
+        const response = await apiClient.getTaskEligibleAssignees(task.taskId);
+        setEligibleAssignees(response.data ?? { users: [], groups: [] });
+      } catch (err: any) {
+        showError(err.response?.data?.error || 'Unable to load eligible assignees');
+        setEligibleAssignees({ users: [], groups: [] });
+      }
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -872,7 +947,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       // someone else's task — the backend rejects the request outright if any
       // other field comes through, so only include them when the caller can
       // actually edit them.
-      if (canManageAllTasks) {
+      const editingTask = tasks.find((t) => t.taskId === editingId);
+      const canManageThisTask = canManageAllTasks || !!editingTask?.canManage;
+      if (canManageThisTask) {
         payload.title = editData.title;
         payload.description = editData.description;
         payload.dueDate = editData.dueDate;
@@ -883,8 +960,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       // Reassignment is its own permission, gated separately server-side too —
       // only send it when the field was actually editable, so a save with no
       // reassignment intent never triggers the reassign-specific 403.
-      const editingTask = tasks.find((t) => t.taskId === editingId);
-      const canReassignThisTask = canReassignTasks || (canReassignMyTasksOnly && !!editingTask && isTaskMine(editingTask));
+      const canReassignThisTask = canManageThisTask || canReassignTasks || (canReassignMyTasksOnly && !!editingTask && isTaskMine(editingTask));
       if (canReassignThisTask) {
         if (editData.assignedToGroupId) payload.assignedToGroupId = editData.assignedToGroupId;
         else if (editData.assignedTo) payload.assignedToId = editData.assignedTo;
@@ -946,12 +1022,32 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
         </div>
         {canCreateTasks && (
           <div className="flex flex-wrap gap-2">
-            {mode === 'pcar' && canRaisePcar && <Button variant="primary" size="md" onClick={() => { setIsPcarForm(true); setTaskScope('document'); setNewTask((task) => ({ ...task, taskType: 'pcar' })); setShowAddForm(true); }}>
+            {mode === 'pcar' && canRaisePcar && <Button variant="primary" size="md" onClick={() => { setIsPcarForm(true); setNewTask((task) => ({ ...task, taskType: 'pcar' })); setShowAddForm(true); }}>
               <Plus className="w-4 h-4 mr-2 inline" /> Raise PCAR
             </Button>}
-            {mode === 'tasks' && <Button variant="primary" size="md" onClick={() => { setIsPcarForm(false); setTaskScope('none'); setNewTask((task) => ({ ...task, taskType: 'task' })); setShowAddForm(true); }}>
-              <Plus className="w-4 h-4 mr-2 inline" /> New Task
-            </Button>}
+            {mode === 'tasks' && <>
+              <input
+                ref={taskImportInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                aria-label="Import tasks from CSV"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleTaskImportFile(file);
+                  event.target.value = '';
+                }}
+              />
+              <Button variant="secondary" size="md" onClick={downloadTaskImportTemplate} title="Download the CSV template for normal internal tasks">
+                <Download className="w-4 h-4 mr-2 inline" /> CSV Template
+              </Button>
+              <Button variant="secondary" size="md" disabled={isImportingTasks} onClick={() => taskImportInputRef.current?.click()} title="Import normal internal tasks from a CSV template">
+                <Upload className="w-4 h-4 mr-2 inline" /> {isImportingTasks ? 'Importing…' : 'Import CSV'}
+              </Button>
+              <Button variant="primary" size="md" onClick={() => { setIsPcarForm(false); setNewTask((task) => ({ ...task, taskType: 'task' })); setShowAddForm(true); }}>
+                <Plus className="w-4 h-4 mr-2 inline" /> New Task
+              </Button>
+            </>}
           </div>
         )}
       </div>
@@ -1048,7 +1144,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
                 <div className="mt-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">Tags</p>
-                  <TagSelector value={pcarDraft.tags} onChange={(tags) => setPcarDraft({ ...pcarDraft, tags })} disabled={!focusedPcarIsMine || pcarAlreadySubmitted} />
+                  <TagSelector value={pcarDraft.tags} onChange={(tags) => setPcarDraft({ ...pcarDraft, tags })} disabled={!focusedTaskCanManage || pcarAlreadySubmitted} />
                 </div>
                 {focusedPcar.status === 'open' && focusedPcar.qaReviewNotes && (
                   <p className="mt-3 rounded-[4px] bg-[#fde1e2] px-3 py-2 text-xs text-[#c73c44] dark:bg-red-500/10 dark:text-red-300">
@@ -1142,7 +1238,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         className="hidden"
                         onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadFocusedAttachment(file); e.target.value = ''; }}
                       />
-                      <Button variant="secondary" size="sm" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingAttachment} leftIcon={<Paperclip className="h-3.5 w-3.5" />}>
+                      <Button variant="secondary" size="sm" onClick={() => attachmentInputRef.current?.click()} disabled={!focusedTaskCanManage || isUploadingAttachment} leftIcon={<Paperclip className="h-3.5 w-3.5" />}>
                         {isUploadingAttachment ? 'Uploading…' : 'Add Evidence'}
                       </Button>
                     </div>
@@ -1172,16 +1268,16 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
               <CardBody className="p-5">
                 <h2 className="section-heading">Root Cause Analysis <span className="text-[#e24c53]">*</span></h2>
                 <p className="mt-2 text-xs text-[#718198] dark:text-slate-400">Mandatory. Minimum 20 characters. Use the 5-Whys method.</p>
-                <textarea disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-3 min-h-[116px] w-full py-3 disabled:cursor-not-allowed disabled:opacity-60" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
+                <textarea disabled={!focusedTaskCanManage || pcarAlreadySubmitted} className="field-control mt-3 min-h-[116px] w-full py-3 disabled:cursor-not-allowed disabled:opacity-60" placeholder="Why did the deviation occur? Trace back through causes..." value={pcarDraft.rootCause} onChange={(event) => setPcarDraft({ ...pcarDraft, rootCause: event.target.value })} />
                 <div className="mt-2 text-xs text-[#94a3b8] dark:text-slate-400">{pcarDraft.rootCause.trim().length} / 20 min</div>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="space-y-4 p-5">
                 <h2 className="section-heading">Corrective &amp; Preventive Action</h2>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction <span className="text-[#e24c53]">*</span><input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action <span className="text-[#e24c53]">*</span><input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
-                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date <span className="text-[#e24c53]">*</span><input disabled={!focusedPcarIsMine || pcarAlreadySubmitted} type="date" className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Immediate correction <span className="text-[#e24c53]">*</span><input disabled={!focusedTaskCanManage || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Quarantine affected item, reassign tasks..." value={pcarDraft.correction} onChange={(event) => setPcarDraft({ ...pcarDraft, correction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Preventive action <span className="text-[#e24c53]">*</span><input disabled={!focusedTaskCanManage || pcarAlreadySubmitted} className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" placeholder="Update procedure, add secondary verification..." value={pcarDraft.preventiveAction} onChange={(event) => setPcarDraft({ ...pcarDraft, preventiveAction: event.target.value })} /></label>
+                <label className="block text-sm text-[#52627a] dark:text-slate-300">Target closure date <span className="text-[#e24c53]">*</span><input disabled={!focusedTaskCanManage || pcarAlreadySubmitted} type="date" className="field-control mt-2 h-10 w-full disabled:cursor-not-allowed disabled:opacity-60" value={pcarDraft.targetDate} onChange={(event) => setPcarDraft({ ...pcarDraft, targetDate: event.target.value })} /></label>
               </CardBody>
             </Card>
           </div>
@@ -1202,7 +1298,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                     </p>
                   </CardBody>
                 </Card>
-                <Button className="w-full" variant="secondary" onClick={handleSaveDocumentation} disabled={!focusedPcarIsMine || pcarAlreadySubmitted}>
+                <Button className="w-full" variant="secondary" onClick={handleSaveDocumentation} disabled={!focusedTaskCanManage || pcarAlreadySubmitted}>
                   Save Documentation
                 </Button>
                 {pcarAlreadySubmitted && (
@@ -1243,10 +1339,12 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 <Button
                   className="w-full"
                   onClick={handlePcarSubmit}
-                  disabled={!focusedPcarIsMine || !hasPcarEvidence || pcarAlreadySubmitted}
+                  disabled={focusedPcar.taskType !== 'pcar'
+                    ? (!focusedTaskCanManage || pcarAlreadySubmitted)
+                    : (!focusedTaskCanManage || !hasPcarEvidence || pcarAlreadySubmitted)}
                   title={
-                    !focusedPcarIsMine
-                      ? `Only ${getAssignedToName(focusedPcar) ?? 'the assignee'} can submit this PCAR`
+                    !focusedTaskCanManage
+                      ? 'Only the assignee, linked-folder owner, or linked-folder manager can complete this item'
                       : pcarAlreadySubmitted
                         ? (focusedPcar.status === 'done' ? 'Already submitted and closed' : 'Already submitted for approval')
                         : !hasPcarEvidence
@@ -1264,7 +1362,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                       ? 'This PCAR has been approved and closed.'
                       : 'This PCAR has been submitted and is awaiting Quality/Auditor verification.'}
                   </p>
-                ) : !hasPcarEvidence && focusedPcarIsMine && (
+                ) : !hasPcarEvidence && focusedTaskCanManage && (
                   <p className="text-center text-xs text-[#b96a08] dark:text-amber-300">Add at least one attachment in Evidence before submitting.</p>
                 )}
                 {focusedPcar.status === 'submitted' && canVerifyPcar && (
@@ -1388,8 +1486,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Status</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Priority</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Due Date</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Type</th>
-                  {(canManageAllTasks || canReassignTasks) && (
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Action</th>
+                  {(canManageAllTasks || canDeleteTasks || canReassignTasks || filteredTasks.some((task) => task.canManage)) && (
                     <th className="px-6 py-3 text-center text-sm font-semibold text-navy-900 dark:text-white">Actions</th>
                   )}
                 </tr>
@@ -1397,7 +1495,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
               <tbody>
                 {filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={(canManageAllTasks || canReassignTasks) ? 8 : 7} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={(canManageAllTasks || canDeleteTasks || canReassignTasks || filteredTasks.some((task) => task.canManage)) ? 8 : 7} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                       No tasks found
                     </td>
                   </tr>
@@ -1411,7 +1509,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                       } hover:bg-gray-100 dark:hover:bg-slate-800/60 transition-colors ${focusedPcar?.taskId === task.taskId ? 'ring-1 ring-inset ring-[#3f8bca]' : ''}`}
                     >
                       <td className="px-6 py-4">
-                        {editingId === task.taskId && canManageAllTasks ? (
+                        {editingId === task.taskId && (canManageAllTasks || task.canManage) ? (
                           <input
                             type="text"
                             value={editData.title || ''}
@@ -1427,7 +1525,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                             {(task.tags?.length ?? 0) > 0 && (
                               <div className="mt-1 flex flex-wrap gap-1">{(task.tags || []).map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-[#52627a] dark:bg-slate-800 dark:text-slate-300">{tag}</span>)}</div>
                             )}
-                            {canManageAllTasks && (
+                            {task.canManage && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setAttachmentsFor({ taskId: task.taskId, title: task.title }); }}
                                 className="mt-1 flex items-center gap-1 text-xs font-medium text-[#3f8bca] hover:text-[#2f6f9f]"
@@ -1444,7 +1542,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === task.taskId && (canReassignTasks || (canReassignMyTasksOnly && isTaskMine(task))) ? (
+                        {editingId === task.taskId && (task.canManage || canReassignTasks || (canReassignMyTasksOnly && isTaskMine(task))) ? (
                           <select
                             value={editData.assignedToGroupId ? `group:${editData.assignedToGroupId}` : `user:${editData.assignedTo}`}
                             onChange={(e) => {
@@ -1454,13 +1552,13 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                             className="px-3 py-2 border border-gray-200 dark:border-navy-700 rounded bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
                           >
                             <optgroup label="Users">
-                              {users.map((user) => (
+                              {(eligibleAssignees?.users ?? users).map((user) => (
                                 <option key={user.userId} value={`user:${user.userId}`}>{user.fullName}</option>
                               ))}
                             </optgroup>
                             {groups.length > 0 && (
                               <optgroup label="Groups">
-                                {groups.map((group) => (
+                              {(eligibleAssignees?.groups ?? groups).map((group) => (
                                   <option key={group.groupId} value={`group:${group.groupId}`}>{group.name}</option>
                                 ))}
                               </optgroup>
@@ -1478,7 +1576,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         </Badge>
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === task.taskId && canManageAllTasks ? (
+                        {editingId === task.taskId && (canManageAllTasks || task.canManage) ? (
                           <select
                             value={editData.priority || 'medium'}
                             onChange={(e) => setEditData({ ...editData, priority: e.target.value as any })}
@@ -1496,7 +1594,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === task.taskId && canManageAllTasks ? (
+                        {editingId === task.taskId && (canManageAllTasks || task.canManage) ? (
                           <input
                             type="date"
                             value={editData.dueDate || task.dueDate?.split('T')[0]}
@@ -1515,21 +1613,24 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === task.taskId && canManageAllTasks ? (
+                        {editingId === task.taskId && (canManageAllTasks || task.canManage) ? (
                           <select
                             value={editData.taskType || task.taskType}
                             onChange={(e) => setEditData({ ...editData, taskType: e.target.value as any })}
                             className="px-3 py-2 border border-gray-200 dark:border-navy-700 rounded bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
                           >
+                            <option value="task">General task</option>
+                            <option value="review">Review</option>
                             <option value="correction">Correction</option>
                             <option value="rca">RCA</option>
                             <option value="audit_action">Audit Action</option>
+                            <option value="other">Other</option>
                           </select>
                         ) : (
-                          <span className="text-sm text-gray-600 dark:text-gray-400">{task.taskType.replace('_', ' ')}</span>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">{TASK_ACTION_LABELS[task.taskType] ?? task.taskType.replace('_', ' ')}</span>
                         )}
                       </td>
-                      {(canManageAllTasks || canReassignTasks || canReassignMyTasksOnly) && (
+                      {(canManageAllTasks || canDeleteTasks || canReassignTasks || canReassignMyTasksOnly || task.canManage) && (
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
                           {editingId === task.taskId ? (
@@ -1551,9 +1652,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                                 Cancel
                               </Button>
                             </>
-                          ) : canManageAllTasks ? (
+                          ) : canManageAllTasks || task.canManage ? (
                             <>
-                              {task.status !== 'done' && (
+                              {task.taskType !== 'pcar' && task.status !== 'done' && task.status !== 'completed' && (
                                 <button
                                   onClick={() => setStatusChangeConfirm({ taskId: task.taskId, newStatus: 'done', taskTitle: task.title })}
                                   className="p-2 hover:bg-gray-200 dark:hover:bg-navy-700 rounded transition-colors text-gray-600 dark:text-gray-300"
@@ -1569,7 +1670,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
-                              {task.status === 'open' ? (
+                              {canDeleteTasks && task.status === 'open' ? (
                                 <button
                                   onClick={() => setDeleteConfirm({ taskId: task.taskId, taskTitle: task.title })}
                                   className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors text-red-600"
@@ -1577,14 +1678,14 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
-                              ) : (
+                              ) : canDeleteTasks ? (
                                 <span
                                   className="p-2 text-gray-300 dark:text-gray-600 cursor-not-allowed"
                                   title="Only open tasks can be deleted — this one has already been submitted, is in progress, or is completed"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </span>
-                              )}
+                              ) : null}
                             </>
                           ) : canReassignTasks || (canReassignMyTasksOnly && isTaskMine(task)) ? (
                             <button
@@ -1693,26 +1794,11 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Auditor Notes</label><textarea value={newTask.auditorNotes} onChange={(event) => setNewTask({ ...newTask, auditorNotes: event.target.value })} rows={3} placeholder="Objective evidence and audit observations…" className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" /></div>
               </>}
 
-              {!isPcarForm && <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Task applies to</label>
-                <select
-                  value={isPcarForm ? 'document' : taskScope}
-                  disabled={isPcarForm}
-                  onChange={(event) => setTaskScope(event.target.value as 'none' | 'document' | 'folder')}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"
-                >
-                  <option value="none">No file or folder — general task</option>
-                  <option value="document">One file</option>
-                  <option value="folder">One folder</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Use a general task for work such as “Review your documents.”</p>
-              </div>}
-
               {isPcarForm && <p className="rounded-[4px] bg-[#eef4fb] px-3 py-2 text-xs text-[#2f6f9f] dark:bg-blue-500/10 dark:text-blue-200">Link this finding to one or more released files, folders, or both. At least one item is required.</p>}
+              {!isPcarForm && <p className="rounded-[4px] bg-[#eef4fb] px-3 py-2 text-xs text-[#2f6f9f] dark:bg-blue-500/10 dark:text-blue-200">Link this task to one or more files, folders, or both. Leave both blank for a general task.</p>}
 
-              {(taskScope === 'folder' || isPcarForm) && (
-                <div ref={folderPickerRef} className="relative">
-                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Folder{isPcarForm ? ' (optional if files are linked)' : ' *'}</label>
+              <div ref={folderPickerRef} className="relative">
+                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Folder{isPcarForm ? ' (optional if files are linked)' : ' (optional)'}</label>
                   <input
                     type="text"
                     placeholder="Search folder name or full path..."
@@ -1744,22 +1830,29 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                     <option value="">Select a folder…</option>
                     {folders.map((folder) => <option key={folder.folderId} value={folder.folderId}>{getFolderPath(folder.folderId) || folder.name}</option>)}
                   </select>
-                </div>
-              )}
+              </div>
 
               {newTask.folderIds.length > 0 && <div className="flex flex-wrap gap-2">{newTask.folderIds.map((id) => { const folder = folders.find((item) => item.folderId === id); return <button type="button" key={id} onClick={() => setNewTask({ ...newTask, folderIds: newTask.folderIds.filter((item) => item !== id), folderId: newTask.folderIds.find((item) => item !== id) || '' })} className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800 dark:bg-blue-500/15 dark:text-blue-200">{folder ? getFolderPath(folder.folderId) : id} ×</button>; })}</div>}
 
-              {(taskScope === 'document' || isPcarForm) && <div ref={docPickerRef} className="relative">
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document{isPcarForm ? ' (released files only; optional if folders are linked)' : ' *'}</label>
+              <div ref={docPickerRef} className="relative">
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document{isPcarForm ? ' (released files only; optional if folders are linked)' : ' (optional)'}</label>
                 <input
                   type="text"
                   placeholder="Search file name, folder path, or Document ID..."
                   value={docSearchQuery}
                   onFocus={() => setShowDocDropdown(true)}
+                  onClick={() => setShowDocDropdown(true)}
                   onChange={(e) => {
                     setDocSearchQuery(e.target.value);
                     setShowDocDropdown(true);
                     if (newTask.documentId) setNewTask({ ...newTask, documentId: '' });
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setShowDocDropdown(false);
+                    }
                   }}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -1768,10 +1861,12 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                     {filteredDocumentOptions.length === 0 ? (
                       <p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
                         {isPcarForm
-                          ? selectedPcarFolderIds.size > 0
+                          ? selectedLinkedFolderIds.size > 0
                             ? 'No released files in the selected folder(s)'
                             : 'No released files match this search'
-                          : 'No matching documents'}
+                          : selectedLinkedFolderIds.size > 0
+                            ? 'No files in the selected folder(s) match this search'
+                            : 'No matching documents'}
                       </p>
                     ) : (
                       filteredDocumentOptions.map((doc) => (
@@ -1792,7 +1887,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                     )}
                   </div>
                 )}
-              </div>}
+              </div>
 
               {newTask.documentIds.length > 0 && <div className="flex flex-wrap gap-2">{newTask.documentIds.map((id) => { const doc = documents.find((item) => item.documentId === id); return <button type="button" key={id} onClick={() => setNewTask({ ...newTask, documentIds: newTask.documentIds.filter((item) => item !== id), documentId: newTask.documentIds.find((item) => item !== id) || '' })} className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800 dark:bg-blue-500/15 dark:text-blue-200">{doc ? getDocumentLabel(doc) : id} ×</button>; })}</div>}
 
@@ -1808,7 +1903,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Type</label>
+                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Action</label>
                   <select
                     value={newTask.taskType}
                     disabled={isPcarForm}
@@ -1817,9 +1912,11 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   >
                     {isPcarForm && <option value="pcar">Audit PCAR finding</option>}
                     <option value="task">General task</option>
+                    <option value="review">Review</option>
                     <option value="correction">Correction</option>
                     <option value="rca">RCA</option>
                     <option value="audit_action">Audit Action</option>
+                    <option value="other">Other</option>
                   </select>
                 </div>
 
@@ -1846,6 +1943,27 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+
+              <div className="rounded-[6px] border border-[#d8e5f0] bg-[#f8fbfe] p-4 dark:border-slate-700 dark:bg-slate-900/50">
+                <div className="flex items-start gap-2.5">
+                  <Bell className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#3f8bca]" />
+                  <div>
+                    <p className="text-sm font-semibold text-[#26334d] dark:text-white">Automatic reminders</p>
+                    <p className="mt-0.5 text-xs leading-5 text-[#64748b] dark:text-slate-400">You do not need to create a reminder. This {isPcarForm ? 'PCAR' : 'task'} will automatically use the current Admin Panel schedule.</p>
+                    <p className="mt-1 text-xs leading-5 text-[#64748b] dark:text-slate-400">If you need a periodic reminder for a separate purpose, go to the <button type="button" onClick={() => navigate('/reminders')} className="font-semibold text-[#2f6f9f] underline underline-offset-2 hover:text-[#1f5680] dark:text-blue-300">Reminders page</button>.</p>
+                  </div>
+                </div>
+                {!taskReminderPreview ? <p className="mt-3 text-xs text-[#64748b] dark:text-slate-400">Loading the active reminder recipients…</p>
+                  : !taskReminderPreview.enabled ? <p className="mt-3 text-xs font-medium text-[#b96a08] dark:text-amber-300">Automatic Task and PCAR reminders are currently disabled by Admin Panel.</p>
+                    : <div className="mt-3 space-y-1.5 border-t border-[#d8e5f0] pt-3 text-xs text-[#52627a] dark:border-slate-700 dark:text-slate-300">
+                      {taskReminderPreview.stages.filter((stage) => stage.enabled).map((stage) => (
+                        <p key={stage.key}>
+                          <span className="font-semibold text-[#26334d] dark:text-white">{stage.label}:</span>{' '}
+                          {stage.recipients.length > 0 ? stage.recipients.join(', ') : 'No recipients configured'}
+                        </p>
+                      ))}
+                    </div>}
               </div>
 
               {canCreateTasks ? (
@@ -1905,6 +2023,34 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 </Button>
               </div>
             </CardBody>
+          </Card>
+        </ModalOverlay>
+      )}
+
+      {taskImportResult && (
+        <ModalOverlay onClose={() => setTaskImportResult(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-navy-700">
+              <div>
+                <h2 className="text-xl font-serif font-bold text-navy-900 dark:text-white">Task Import Results</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Review skipped rows before importing a corrected file again.</p>
+              </div>
+              <button type="button" onClick={() => setTaskImportResult(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" aria-label="Close task import results"><X className="h-5 w-5" /></button>
+            </div>
+            <CardBody className="space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-200"><strong>{taskImportResult.created.length}</strong> created</div>
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"><strong>{taskImportResult.skipped.length}</strong> skipped</div>
+              </div>
+              {taskImportResult.skipped.length > 0 && <div>
+                <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Skipped rows</h3>
+                <ul className="mt-2 space-y-2 text-sm text-gray-600 dark:text-slate-300">
+                  {taskImportResult.skipped.map((item) => <li key={`${item.row}-${item.reason}`} className="rounded border border-gray-200 px-3 py-2 dark:border-navy-700"><strong>Row {item.row}</strong>{item.title ? ` — ${item.title}` : ''}: {item.reason}</li>)}
+                </ul>
+              </div>}
+              {taskImportResult.skipped.length === 0 && <p className="text-sm text-gray-600 dark:text-slate-300">Every row was imported successfully.</p>}
+            </CardBody>
+            <div className="flex justify-end border-t border-gray-200 p-4 dark:border-navy-700"><Button variant="primary" onClick={() => setTaskImportResult(null)}>Close</Button></div>
           </Card>
         </ModalOverlay>
       )}

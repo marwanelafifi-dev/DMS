@@ -40,6 +40,7 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<ApprovalService>();
 builder.Services.AddScoped<TaskService>();
+builder.Services.AddScoped<TaskNotificationPolicyService>();
 builder.Services.AddScoped<ReminderService>();
 builder.Services.AddScoped<AuditCalendarService>();
 builder.Services.AddScoped<UserGoogleCalendarService>();

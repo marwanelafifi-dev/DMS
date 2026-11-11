@@ -41,6 +41,7 @@ const navItems: Array<{ label: string; path: string; icon: typeof LayoutDashboar
   { label: 'Tasks (Internal Use)', path: '/tasks', icon: ClipboardCheck, visibleWhen: 'canViewTasks' },
   { label: 'PCAR (Auditor Findings)', path: '/pcars', icon: FileWarning, visibleWhen: 'canViewPcar' },
   { label: 'Reminders', path: '/reminders', icon: BellRing, visibleWhen: 'canViewReminders' },
+  { label: 'Task / PCAR Reminder Policy', path: '/reminders/policy', icon: Bell, visibleWhen: 'canManageTaskReminderPolicy' },
   { label: 'Send Announcement', path: '/send-announcement', icon: Megaphone, visibleWhen: 'canSendAnnouncements' },
 ];
 
@@ -83,7 +84,7 @@ export function Sidebar({ isExpanded = false, onToggleExpand, isCollapsed = fals
 
   const isActive = (item: (typeof navItems)[number]) => {
     if (item.exact) return location.pathname === '/';
-    if (item.path === '/documents' || item.path === '/tasks') return location.pathname === item.path;
+    if (item.path === '/documents' || item.path === '/tasks' || item.path === '/reminders') return location.pathname === item.path;
     return location.pathname.startsWith(item.path);
   };
 

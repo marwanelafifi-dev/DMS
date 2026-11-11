@@ -226,4 +226,60 @@ describe('PCAR true modal behavior', () => {
     expect(await screen.findByRole('button', { name: /Released file.*SWS-25120007/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Draft file/i })).not.toBeInTheDocument();
   });
+
+  it('lets a normal task link any file from the selected folder and dismisses the file picker', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [
+        { folderId: 'quality-folder', name: 'Quality' },
+        { folderId: 'engineering-folder', name: 'Engineering' },
+      ],
+    } as any);
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [
+        { documentId: 'draft-quality', folderId: 'quality-folder', name: 'draft-procedure.pdf', title: 'Draft procedure', fileName: 'draft-procedure.pdf', status: 'draft' },
+        { documentId: 'released-engineering', folderId: 'engineering-folder', name: 'released-design.pdf', title: 'Released design', fileName: 'released-design.pdf', status: 'released' },
+      ],
+    } as any);
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks mode="tasks" /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /New Task/i }));
+    await user.click(screen.getByPlaceholderText('Search folder name or full path...'));
+    await user.click(await screen.findByRole('button', { name: 'Quality' }));
+
+    const documentSearch = screen.getByPlaceholderText('Search file name, folder path, or Document ID...');
+    await user.click(documentSearch);
+    expect(await screen.findByRole('button', { name: /Quality \/ Draft procedure/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Engineering \/ Released design/i })).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Quality \/ Draft procedure/i })).not.toBeInTheDocument());
+    await user.click(documentSearch);
+    fireEvent.keyDown(documentSearch, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Quality \/ Draft procedure/i })).not.toBeInTheDocument());
+  });
+
+  it('lets a normal task search every file by document ID when no folder is selected', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getDocuments).mockResolvedValue({
+      success: true,
+      data: [{ documentId: 'draft-file', folderId: 'folder', name: 'draft.pdf', title: 'Draft file', fileName: 'draft.pdf', originalDocumentId: 'SWS-25120008', status: 'draft' }],
+    } as any);
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks mode="tasks" /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /New Task/i }));
+    const documentSearch = screen.getByPlaceholderText('Search file name, folder path, or Document ID...');
+    await user.type(documentSearch, 'SWS-25120008');
+    expect(await screen.findByRole('button', { name: /Draft file.*SWS-25120008/i })).toBeInTheDocument();
+  });
 });

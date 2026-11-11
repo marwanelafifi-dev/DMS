@@ -14,6 +14,7 @@ const Tasks = lazy(() => import('./components/pages/Tasks').then((module) => ({ 
 const HistoricalPcarPage = lazy(() => import('./components/pages/HistoricalPcarPage').then((module) => ({ default: module.HistoricalPcarPage })));
 const Approvals = lazy(() => import('./components/pages/Approvals').then((module) => ({ default: module.Approvals })));
 const Reminders = lazy(() => import('./components/pages/Reminders').then((module) => ({ default: module.Reminders })));
+const TaskReminderPolicy = lazy(() => import('./components/pages/TaskReminderPolicy').then((module) => ({ default: module.TaskReminderPolicy })));
 const SendAnnouncement = lazy(() => import('./components/pages/SendAnnouncement').then((module) => ({ default: module.SendAnnouncement })));
 const Search = lazy(() => import('./components/pages/Search').then((module) => ({ default: module.Search })));
 const Login = lazy(() => import('./components/pages/Login').then((module) => ({ default: module.Login })));
@@ -120,6 +121,9 @@ function App() {
               {/* Reminders */}
               <Route element={<RequirePageAccess flag="canViewReminders" />}>
                 <Route path="/reminders" element={<Reminders />} />
+              </Route>
+              <Route element={<RequirePageAccess flag="canManageTaskReminderPolicy" />}>
+                <Route path="/reminders/policy" element={<TaskReminderPolicy />} />
               </Route>
 
               {/* Send Announcement — posting is Full Access/Quality by default,

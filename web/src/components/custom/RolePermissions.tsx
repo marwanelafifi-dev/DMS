@@ -21,7 +21,7 @@ const PERMISSION_KEYS = [
   'canSendAnnouncements', 'canViewAdminPanel',
   'canReadAllFolders', 'canReadWriteAllFolders', 'bypassFolderPermissions',
   'canEditFiles', 'canManageFolderPermissions', 'canManageFilePermissions',
-  'canCreateTasks', 'canCreatePcars', 'canVerifyPcars', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks',
+  'canCreateTasks', 'canCreatePcars', 'canVerifyPcars', 'canViewAllTasks', 'canReassignMyTasks', 'canReassignTasks', 'canManageAllTasks', 'canDeleteTasks', 'canManageTaskReminderPolicy',
   'canViewHistoricalPcars',
   'canViewAllHistoricalPcars', 'canImportHistoricalPcars',
   'canCreateShortcuts', 'canShareDocumentLinks',
@@ -37,6 +37,7 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewApprovals: 'Approvals (Document Workflow)',
   canViewPcar: 'PCAR / Corrective Action',
   canViewTasks: 'Tasks (Internal Use)',
+  canViewAllTasks: 'View All Tasks / PCARs',
   canViewAdminPanel: 'Admin Panel',
   bypassFolderPermissions: 'Full Access to All Folders',
   canReadAllFolders: 'Read Only to All Folders',
@@ -45,6 +46,8 @@ const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canManageFolderPermissions: 'Manage Folder Permissions',
   canManageFilePermissions: 'Manage File Permissions',
   canManageAllTasks: 'Manage All Tasks / PCARs',
+  canDeleteTasks: 'Delete Tasks / PCARs',
+  canManageTaskReminderPolicy: 'Manage Task / PCAR Reminder Policy',
   canViewHistoricalPcars: 'Historical PCAR Archive',
   canViewAllHistoricalPcars: 'View All Historical PCARs',
   canImportHistoricalPcars: 'Import Historical PCARs',
@@ -79,8 +82,8 @@ const STAGE_LABELS: Record<typeof STAGE_KEYS[number], string> = {
 const ROLE_CARD_DESCRIPTIONS: Record<string, string> = {
   User: 'Everyday access to the Dashboard, Document Library, and Reminders',
   Manager: 'Everything a User sees, plus the Approvals (Document Workflow) page',
-  Quality: 'Everything a User sees, plus the PCAR / Corrective Action page',
-  Auditor: 'Everything a User sees, plus the PCAR / Corrective Action page',
+  Quality: 'Oversees and manages all Tasks and PCAR findings, including the reminder policy',
+  Auditor: 'Views the registers and raises or verifies PCAR audit findings',
   'Full Access': 'Sees every page, including the Admin Panel, and bypasses folder permissions entirely',
 };
 const ROLE_CARD_ORDER = ['Full Access', 'Manager', 'Quality', 'Auditor', 'User'];
