@@ -320,6 +320,20 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDocDropdown]);
 
+  // Keep the folder picker consistent with the document picker. Without this
+  // outside-click listener, its results stayed over the form until a folder
+  // was selected, which could leave the user unable to reach the form actions.
+  useEffect(() => {
+    if (!showFolderDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node)) {
+        setShowFolderDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFolderDropdown]);
+
   // A notification's linked task may be on a different page of the paginated
   // "My Tasks" list — fetch a wide, unpaginated slice just this once instead
   // of forcing the whole page to load unpaginated by default.
@@ -1692,7 +1706,18 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                     placeholder="Search folder name or full path..."
                     value={folderSearchQuery}
                     onFocus={() => setShowFolderDropdown(true)}
+                    // An outside mouse-down can dismiss the results without
+                    // moving focus away from this input. Reopen on click too,
+                    // so the user can continue searching immediately.
+                    onClick={() => setShowFolderDropdown(true)}
                     onChange={(event) => { setFolderSearchQuery(event.target.value); setShowFolderDropdown(true); if (newTask.folderId) setNewTask({ ...newTask, folderId: '' }); }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setShowFolderDropdown(false);
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   {showFolderDropdown && (

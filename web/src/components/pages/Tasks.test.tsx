@@ -131,4 +131,35 @@ describe('PCAR true modal behavior', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Return with notes' }));
     expect(apiClient.verifyPcar).not.toHaveBeenCalled();
   });
+
+  it('closes the folder search results when the user clicks elsewhere or presses Escape', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getFolders).mockResolvedValue({
+      success: true,
+      data: [{ folderId: 'folder-1', name: 'Quality Management System' }],
+    } as any);
+    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({
+      success: true,
+      data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true }],
+    } as any);
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks mode="pcar" /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    const raisePcar = await screen.findByRole('button', { name: /Raise PCAR/i });
+    await user.click(raisePcar);
+    const folderSearch = screen.getByPlaceholderText('Search folder name or full path...');
+    await user.click(folderSearch);
+    expect(await screen.findByRole('button', { name: 'Quality Management System' })).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Quality Management System' })).not.toBeInTheDocument());
+
+    await user.click(folderSearch);
+    expect(await screen.findByRole('button', { name: 'Quality Management System' })).toBeInTheDocument();
+    fireEvent.keyDown(folderSearch, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Quality Management System' })).not.toBeInTheDocument());
+  });
 });
