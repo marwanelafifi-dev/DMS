@@ -22,7 +22,8 @@ interface RelatedTaskRow {
 }
 
 interface RelatedTasksModalProps {
-  documentId: string;
+  documentId?: string;
+  folderId?: string;
   fileName: string;
   onClose: () => void;
 }
@@ -36,7 +37,7 @@ const STATUS_BADGE: Record<string, 'default' | 'warning' | 'success'> = {
 // Every correction task raised against this document across every C-Doc
 // Workflow cycle, oldest edits included — the point is to see the full
 // history, not just whatever's currently open.
-export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTasksModalProps) {
+export function RelatedTasksModal({ documentId, folderId, fileName, onClose }: RelatedTasksModalProps) {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<RelatedTaskRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,7 +51,7 @@ export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTask
   const load = () => {
     setIsLoading(true);
     setError(null);
-    apiClient.getTasksByDocument(documentId)
+    (folderId ? apiClient.getTasksByFolder(folderId) : apiClient.getTasksByDocument(documentId!))
       .then((res) => {
         if (!res.success) throw new Error(res.error);
         setTasks(res.data || []);
@@ -62,7 +63,7 @@ export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTask
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId]);
+  }, [documentId, folderId]);
 
   return (
     <ModalOverlay onClose={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
@@ -86,7 +87,7 @@ export function RelatedTasksModal({ documentId, fileName, onClose }: RelatedTask
           {isLoading ? (
             <p className="text-sm text-gray-500 dark:text-slate-400">Loading…</p>
           ) : tasks.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-slate-400">No tasks have ever been raised against this document.</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">No tasks have been linked to this {folderId ? 'folder' : 'file'}.</p>
           ) : (
             <div className="space-y-3">
               {tasks.map((task) => (

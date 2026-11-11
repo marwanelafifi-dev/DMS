@@ -73,6 +73,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanShareDocumentLinks = req.CanShareDocumentLinks,
                 CanCreateTasks = req.CanCreateTasks,
                 CanCreatePcars = req.CanCreatePcars,
+                CanVerifyPcars = req.CanVerifyPcars,
                 CanReassignTasks = req.CanReassignTasks,
                 CanReassignMyTasks = req.CanReassignMyTasks,
                 CanViewQaStage = req.CanViewQaStage,
@@ -136,6 +137,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanShareDocumentLinks = req.CanShareDocumentLinks;
             entity.CanCreateTasks = req.CanCreateTasks;
             entity.CanCreatePcars = req.CanCreatePcars;
+            entity.CanVerifyPcars = req.CanVerifyPcars;
             entity.CanReassignTasks = req.CanReassignTasks;
             entity.CanReassignMyTasks = req.CanReassignMyTasks;
             entity.CanViewQaStage = req.CanViewQaStage;
@@ -219,6 +221,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanShareDocumentLinks = entity.CanShareDocumentLinks,
                 CanCreateTasks = entity.CanCreateTasks,
                 CanCreatePcars = entity.CanCreatePcars,
+                CanVerifyPcars = entity.CanVerifyPcars,
                 CanReassignTasks = entity.CanReassignTasks,
                 CanReassignMyTasks = entity.CanReassignMyTasks,
                 CanViewQaStage = entity.CanViewQaStage,
@@ -304,7 +307,7 @@ public record UpdatePageAccessRoleRequest(
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
-    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false);
+    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false, bool CanVerifyPcars = false);
 
 public record RenamePageAccessRoleRequest(string NewRole);
 
@@ -320,4 +323,4 @@ public record CreatePageAccessRoleRequest(
     bool CanViewQaStage = true, bool CanViewManagerStage = true, bool CanViewFinalReleaseStage = true,
     bool CanApprove = false, bool CanReject = false, bool CanResolveDocumentId = false, bool CanSendAnnouncements = false,
     bool CanDeleteReminders = false, bool CanDeleteDocumentVersions = false, bool CanManageBulkActions = false,
-    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false);
+    bool CanReindexDocuments = false, bool CanViewTasks = false, bool CanCreatePcars = false, bool CanVerifyPcars = false);

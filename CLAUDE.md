@@ -4536,3 +4536,23 @@ The backup GUI now exposes separate **Synology copies to keep** and **Ubuntu cop
 The backup page's archive list is local MinIO data only and is labelled accordingly. A manual run now returns a warning if the local archive saved but a configured Synology/SMB copy failed. Retention never removes older archives from an external destination after its new copy failed; a MinIO listing failure during retention cleanup is logged without turning an otherwise completed backup into another five-minute retry.
 
 Manual backups are queued as Hangfire jobs because the old synchronous `POST /schedule/run-now` exceeded the API client's 30-second timeout for a 6.8 GB archive. The endpoint returns a job ID immediately, `GET /schedule/run-status/{jobId}` reads Hangfire state and the stored `DmsBackupOutcome` parameter, and the frontend polls every five seconds while remembering the job ID in local storage. Full Access is required for both endpoints. A process-wide queue guard returns the existing active job ID for duplicate clicks, while the shared backup gate still prevents concurrent archive creation. No schema migration is required.
+
+## Session 72 (2026-11-10/11) — Separate audit PCARs, internal tasks, and compliance closure
+
+### PCAR and task boundaries
+
+- **Tasks (Internal Use)** and **PCAR (Auditor Findings)** are separate pages, dashboard boxes, role capabilities, and registers. Normal tasks may link multiple files, folders, both, or neither. PCARs are independent audit findings; they are not part of the document-approval workflow.
+- PCAR creation supports multiple document/folder links. A PCAR must contain at least one link: one or more released files, one or more folders, or both. Every selected document is validated as `released`; folder-only PCARs are valid. Migrations `106`–`110` introduce audit stage, finding-register fields, multi-link tables, due-date escalation records, and the dedicated PCAR-verification permission/effectiveness result.
+- `GET /api/tasks/{id}` returns all `linkedDocuments` and `linkedFolders`. Related Tasks/PCARs resolve through the multi-link tables for every linked file and folder. Folder breadcrumbs expose Related Tasks and PCARs too.
+
+### PCAR closure controls
+
+- PCAR assignees must attach at least one evidence item before they can submit for verification. Submission changes status to `submitted`; it never closes the finding.
+- `CanVerifyPcars` is independent of `CanCreatePcars`. Migration `110` enables verification for Quality, Auditor, and Full Access by default; administrators can manage it from Role Permissions.
+- Verification requires an explicit effectiveness decision. **Effective** permits approval/closure; **Ineffective** permits return with mandatory notes. The outcome, notes, verifier, and timestamps are stored on the task and recorded in the immutable audit trail.
+- Submission notifies every active PCAR verifier; approval/return notifies the direct assignee or all members of the assigned group. `NotificationService` sends both in-app notifications and email when notifications/email are configured, with PCAR links routing to `/pcars?highlight=<taskId>`.
+
+### Audit support and verification
+
+- PCAR filters include text/finding number, severity, clause/standard, owner, priority, and status. Internal-task filters include audit stage (Preparation, Internal Audit, External Audit).
+- Added `api.Tests` with `PcarComplianceRulesTests`: empty-scope rejection, multi-file released validation, evidence requirement, return-note requirement, dedicated verifier permission, and effectiveness/decision consistency. Latest verification: `dotnet test api.Tests/DMS.Api.Tests.csproj --no-restore` passed 8 tests; `npm.cmd test -- Tasks.test.tsx --reporter=verbose` passed 5 tests; `npm.cmd run type-check` passed.

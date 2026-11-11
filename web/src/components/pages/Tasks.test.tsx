@@ -42,7 +42,9 @@ describe('PCAR true modal behavior', () => {
     vi.spyOn(apiClient, 'getDocuments').mockResolvedValue({ success: true, data: [{ documentId: task.documentId, folderId: 'folder', name: 'document.pdf', title: 'document.pdf', fileName: 'document.pdf', currentVersionId: 'version' }] } as any);
     vi.spyOn(apiClient, 'getFolders').mockResolvedValue({ success: true, data: [] } as any);
     vi.spyOn(apiClient, 'getTaskAttachments').mockResolvedValue({ success: true, data: [] } as any);
+    vi.spyOn(apiClient, 'getTask').mockResolvedValue({ success: true, data: { ...task, linkedDocuments: [], linkedFolders: [] } } as any);
     vi.spyOn(apiClient, 'updateTask').mockResolvedValue({ success: true, data: {} } as any);
+    vi.spyOn(apiClient, 'verifyPcar').mockResolvedValue({ success: true, data: {} } as any);
     vi.spyOn(apiClient, 'getDropdownList').mockResolvedValue({ success: true, data: [{ label: 'Quality' }, { label: 'Review' }] } as any);
     vi.spyOn(apiClient, 'getPageAccessRoles').mockResolvedValue({ success: true, data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true }] } as any);
   });
@@ -94,5 +96,39 @@ describe('PCAR true modal behavior', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }));
     await user.click(await screen.findByText(task.title));
     expect(await screen.findByRole('button', { name: 'Remove tag Review' })).toBeInTheDocument();
+  });
+
+  it('requires evidence before a PCAR can be submitted for verification', async () => {
+    const pcar = { ...task, taskType: 'pcar', approvalId: undefined, status: 'open' };
+    vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [pcar], totalCount: 1, totalPages: 1 } as any);
+    vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...pcar, linkedDocuments: [], linkedFolders: [] } } as any);
+    render(
+      <MemoryRouter initialEntries={[`/pcars?highlight=${pcar.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks mode="pcar" /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/No evidence attached yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit evidence for verification' })).toBeDisabled();
+  });
+
+  it('shows Quality/Auditor verification controls only when the dedicated permission is granted', async () => {
+    const pcar = { ...task, taskType: 'pcar', approvalId: undefined, status: 'submitted' };
+    vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [pcar], totalCount: 1, totalPages: 1 } as any);
+    vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...pcar, linkedDocuments: [], linkedFolders: [] } } as any);
+    vi.mocked(apiClient.getTaskAttachments).mockResolvedValue({ success: true, data: [{ attachmentId: 'evidence', fileName: 'evidence.pdf', createdAt: '2026-01-01' }] } as any);
+    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({ success: true, data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canVerifyPcars: true }] } as any);
+    render(
+      <MemoryRouter initialEntries={[`/pcars?highlight=${pcar.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks mode="pcar" /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Approve and close' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Return with notes' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Corrective-action effectiveness/i)).toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Return with notes' }));
+    expect(apiClient.verifyPcar).not.toHaveBeenCalled();
   });
 });

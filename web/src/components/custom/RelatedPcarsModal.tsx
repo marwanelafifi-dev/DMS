@@ -6,22 +6,23 @@ import { formatDateTime } from '../../utils/formatters';
 import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface RelatedPcarsModalProps {
-  documentId: string;
+  documentId?: string;
+  folderId?: string;
   fileName: string;
   onClose: () => void;
 }
 
-export function RelatedPcarsModal({ documentId, fileName, onClose }: RelatedPcarsModalProps) {
+export function RelatedPcarsModal({ documentId, folderId, fileName, onClose }: RelatedPcarsModalProps) {
   const [pcars, setPcars] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.getPcarsByDocument(documentId)
+    (folderId ? apiClient.getPcarsByFolder(folderId) : apiClient.getPcarsByDocument(documentId!))
       .then((res) => setPcars(res.data || []))
       .catch((err: any) => setError(err?.response?.data?.error || 'Failed to load related PCAR findings.'))
       .finally(() => setLoading(false));
-  }, [documentId]);
+  }, [documentId, folderId]);
 
   return (
     <ModalOverlay onClose={onClose} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">

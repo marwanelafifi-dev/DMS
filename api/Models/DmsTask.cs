@@ -13,6 +13,11 @@ public class DmsTask
     public string? Description { get; set; }
     public string[] Tags { get; set; } = Array.Empty<string>();
     public string TaskType { get; set; } = string.Empty;
+    public string? AuditStage { get; set; }
+    public string? FindingNumber { get; set; }
+    public string? FindingSeverity { get; set; }
+    public string? StandardClause { get; set; }
+    public string? AuditorNotes { get; set; }
     // Exactly one of AssignedToId / AssignedToGroupId is set — a group
     // assignment is one shared task visible to every member, completable by
     // whoever gets to it first, not a fan-out of duplicate per-member tasks.
@@ -29,6 +34,8 @@ public class DmsTask
     public Guid? CompletedById { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string? QaReviewNotes { get; set; }
+    // Explicit effectiveness decision made during PCAR closure verification.
+    public string? EffectivenessResult { get; set; }
     public Guid? QaReviewedById { get; set; }
     public DateTime? QaReviewedAt { get; set; }
     public DateTime CreatedAt { get; set; }

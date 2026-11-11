@@ -27,6 +27,7 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canShareDocumentLinks: false,
   canCreateTasks: false,
   canCreatePcars: false,
+  canVerifyPcars: false,
   canReassignTasks: false,
   canReassignMyTasks: false,
   canViewQaStage: false,

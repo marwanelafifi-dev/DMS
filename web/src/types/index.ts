@@ -162,6 +162,11 @@ export interface Task {
   // General tasks are independent work items; pcar is reserved for an audit
   // finding raised against an already-released document.
   taskType: 'task' | 'correction' | 'rca' | 'audit_action' | 'pcar';
+  auditStage?: 'preparation' | 'internal_audit' | 'external_audit';
+  findingNumber?: string;
+  findingSeverity?: 'observation' | 'minor_ncr' | 'major_ncr';
+  standardClause?: string;
+  auditorNotes?: string;
   documentId?: string;
   folderId?: string;
   // Only set for a correction task spawned by a QA/Manager rejection in the
@@ -184,6 +189,7 @@ export interface Task {
   correctionText?: string;
   preventiveActions?: string;
   qaReviewNotes?: string;
+  effectivenessResult?: 'effective' | 'ineffective';
   qaReviewedAt?: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   dueDate: string;

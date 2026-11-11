@@ -83,6 +83,7 @@ export interface PageAccessRoleFlags {
   canShareDocumentLinks: boolean;
   canCreateTasks: boolean;
   canCreatePcars: boolean;
+  canVerifyPcars: boolean;
   canReassignTasks: boolean;
   canReassignMyTasks: boolean;
   // Scopes canViewApprovals down to specific C-Doc Workflow stage tabs.
@@ -837,6 +838,16 @@ class APIClient {
     return data;
   }
 
+  async getTasksByFolder(folderId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/tasks/folder/${folderId}`);
+    return { ...data, data: Array.isArray(data.data) ? data.data.map(task => this.normalizeTask(task)) : data.data };
+  }
+
+  async getPcarsByFolder(folderId: string) {
+    const { data } = await this.client.get<ApiResponse>(`/tasks/folder/${folderId}/pcars`);
+    return { ...data, data: Array.isArray(data.data) ? data.data.map(task => this.normalizeTask(task)) : data.data };
+  }
+
   async deleteTask(taskId: string) {
     const { data } = await this.client.delete<ApiResponse>(`/tasks/${taskId}`);
     return data;
@@ -867,6 +878,11 @@ class APIClient {
       targetDate: payload.targetDate,
       tags: payload.tags,
     });
+    return data;
+  }
+
+  async verifyPcar(taskId: string, payload: { approve: boolean; notes?: string; effectiveness: 'effective' | 'ineffective' }) {
+    const { data } = await this.client.post<ApiResponse>(`/tasks/${taskId}/verify-pcar`, payload);
     return data;
   }
 

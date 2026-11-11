@@ -21,7 +21,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         return false;
     }
 
-    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid? documentId, Guid? folderId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null, string[]? tags = null)
+    public async Task<TaskResult> CreateTaskAsync(Guid managerId, Guid? documentId, Guid? folderId, Guid? assignedToId, Guid? assignedToGroupId, string title, string? description = null, string? taskType = null, string? riskSeverity = null, DateTime? dueDate = null, string[]? tags = null, string? auditStage = null, Guid[]? documentIds = null, Guid[]? folderIds = null)
     {
         try
         {
@@ -60,6 +60,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 // Normal work is independent from document approval. "pcar"
                 // is reserved for the released-document audit finding endpoint.
                 TaskType = taskType ?? "task",
+                AuditStage = NormalizeAuditStage(auditStage),
                 RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,
                 AssignedToGroupId = assignedToGroupId,
@@ -71,6 +72,8 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             };
 
             context.Tasks.Add(task);
+            foreach (var id in (documentIds ?? (documentId.HasValue ? [documentId.Value] : [])).Distinct()) context.TaskDocumentLinks.Add(new DmsTaskDocumentLink { TaskId = task.TaskId, DocumentId = id, LinkedAt = DateTime.UtcNow });
+            foreach (var id in (folderIds ?? (folderId.HasValue ? [folderId.Value] : [])).Distinct()) context.TaskFolderLinks.Add(new DmsTaskFolderLink { TaskId = task.TaskId, FolderId = id, LinkedAt = DateTime.UtcNow });
             await context.SaveChangesAsync();
 
             logger.LogInformation("Created task {TaskId} for document {DocumentId}", task.TaskId, documentId);
@@ -139,6 +142,11 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.Description,
                     t.Tags,
                     t.TaskType,
+                    t.AuditStage,
+                    t.FindingNumber,
+                    t.FindingSeverity,
+                    t.StandardClause,
+                    t.AuditorNotes,
                     t.RiskSeverity,
                     Priority = t.RiskSeverity ?? "medium",
                     t.AssignedToId,
@@ -151,6 +159,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.CorrectionText,
                     t.PreventiveActions,
                     t.QaReviewNotes,
+                    t.EffectivenessResult,
                     t.QaReviewedAt,
                     IsOverdue = t.DueDate.HasValue && t.DueDate < today && t.Status != "completed",
                     t.CreatedAt,
@@ -181,6 +190,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
 
             if (task.Status == "completed")
                 return TaskResult.Invalid("Task is already completed");
+
+            if (task.TaskType == "pcar")
+                return TaskResult.Invalid("Submit PCAR evidence for Quality/Auditor verification instead of completing the finding directly");
 
             task.Status = "completed";
             task.CompletedById = userId;
@@ -218,7 +230,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         }
     }
 
-    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? correction = null, string? preventiveActions = null, Guid? assignedToId = null, Guid? assignedToGroupId = null, string? taskType = null, string[]? tags = null)
+    public async Task<TaskResult> UpdateTaskAsync(Guid taskId, string? title = null, string? description = null, DateTime? dueDate = null, string? riskSeverity = null, string? status = null, string? rca = null, string? correction = null, string? preventiveActions = null, Guid? assignedToId = null, Guid? assignedToGroupId = null, string? taskType = null, string[]? tags = null, string? auditStage = null)
     {
         try
         {
@@ -275,6 +287,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 task.TaskType = normalizedType;
             }
 
+            if (auditStage != null)
+                task.AuditStage = NormalizeAuditStage(auditStage);
+
             if (!string.IsNullOrWhiteSpace(status))
             {
                 var normalizedStatus = status == "done" ? "completed" : status.Trim().ToLowerInvariant();
@@ -328,6 +343,15 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray() ?? Array.Empty<string>();
 
+    private static string? NormalizeAuditStage(string? auditStage)
+    {
+        if (string.IsNullOrWhiteSpace(auditStage)) return null;
+        var normalized = auditStage.Trim().ToLowerInvariant();
+        if (normalized is not ("preparation" or "internal_audit" or "external_audit"))
+            throw new ArgumentException("Audit stage must be preparation, internal_audit, or external_audit");
+        return normalized;
+    }
+
     // The Root Cause Analysis / Immediate Correction / Preventive Action form
     // on the PCAR page. A self-filed PCAR has no separate reviewer on the
     // other end — Document Workflow already governs the real document
@@ -359,6 +383,12 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 return TaskResult.Invalid("Root cause analysis must contain at least 20 characters");
             if (string.IsNullOrWhiteSpace(correction) || string.IsNullOrWhiteSpace(preventiveActions))
                 return TaskResult.Invalid("Complete the corrective action and preventive action");
+
+            // Evidence is a compliance record, not merely a client-side UI
+            // hint. Checking it here makes the rule apply to direct API calls
+            // as well as the PCAR page.
+            if (!PcarComplianceRules.HasRequiredEvidence(await context.TaskAttachments.CountAsync(attachment => attachment.TaskId == taskId)))
+                return TaskResult.Invalid("Attach at least one evidence item before submitting this PCAR for verification");
 
             // PCAR findings are raised after final release and are not part of
             // the document approval workflow. They never require a new file
@@ -397,17 +427,24 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (tags != null)
                 task.Tags = NormalizeTags(tags);
             task.DueDate = targetDate;
-            task.Status = "completed";
-            task.CompletedById = userId;
-            task.CompletedAt = DateTime.UtcNow;
+            task.Status = "submitted";
+            task.CompletedById = null;
+            task.CompletedAt = null;
             task.UpdatedAt = DateTime.UtcNow;
 
             context.Tasks.Update(task);
             await context.SaveChangesAsync();
 
-            await auditService.LogAsync(userId, AuditActions.PCAR_SUBMITTED, new { task.TaskId, task.Title, task.DocumentId });
+            await auditService.LogAsync(userId, AuditActions.PCAR_SUBMITTED, new
+            {
+                task.TaskId, task.Title, task.DocumentId, task.FindingNumber,
+                EvidenceCount = await context.TaskAttachments.CountAsync(attachment => attachment.TaskId == taskId),
+                SubmittedAt = task.UpdatedAt,
+            });
+            await notificationService.NotifyPcarVerifiersAsync(userId, task.TaskId,
+                "PCAR evidence submitted for verification", task.Title);
 
-            logger.LogInformation("PCAR {TaskId} submitted and closed out by {UserId}", taskId, userId);
+            logger.LogInformation("PCAR {TaskId} submitted for verification by {UserId}", taskId, userId);
 
             return TaskResult.Ok(new { task.TaskId, task.Status, task.UpdatedAt });
         }
@@ -461,7 +498,11 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             // one. Used by the Document Preview's "View Related Tasks" button so a
             // reviewer can see every edit/correction round from creation onward.
             var tasks = await context.Tasks
-                .Where(t => t.DocumentId == documentId)
+                // Keep the legacy primary-document column in the predicate so
+                // existing installations work before the link-table backfill
+                // has run. New tasks can be linked to several documents.
+                .Where(t => t.DocumentId == documentId || context.TaskDocumentLinks
+                    .Any(link => link.TaskId == t.TaskId && link.DocumentId == documentId))
                 .OrderByDescending(t => t.CreatedAt)
                 .Select(t => new
                 {
@@ -522,7 +563,8 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
     public async Task<List<object>> GetPcarsByDocumentAsync(Guid documentId)
     {
         var pcars = await context.Tasks
-            .Where(t => t.DocumentId == documentId && t.TaskType == "pcar")
+            .Where(t => t.TaskType == "pcar" && (t.DocumentId == documentId || context.TaskDocumentLinks
+                .Any(link => link.TaskId == t.TaskId && link.DocumentId == documentId)))
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => new
             {
@@ -533,6 +575,24 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             })
             .ToListAsync();
         return pcars.Cast<object>().ToList();
+    }
+
+    public async Task<List<object>> GetTasksByFolderAsync(Guid folderId, bool pcarsOnly = false)
+    {
+        var tasks = await context.Tasks
+            .Where(t => (t.FolderId == folderId || context.TaskFolderLinks
+                    .Any(link => link.TaskId == t.TaskId && link.FolderId == folderId))
+                && (!pcarsOnly || t.TaskType == "pcar"))
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new
+            {
+                t.TaskId, t.Title, t.Description, t.TaskType, t.RiskSeverity,
+                AssignedToName = t.AssignedTo == null ? null : t.AssignedTo.FullName,
+                AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
+                t.DueDate, t.Status, t.CreatedAt, t.CompletedAt,
+            })
+            .ToListAsync();
+        return tasks.Cast<object>().ToList();
     }
 }
 

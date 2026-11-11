@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardBody, Button, Badge } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye, UserCog, History } from 'lucide-react';
+import { Plus, Search, CheckCircle2, Clock, AlertCircle, X, Edit2, Trash2, ChevronLeft, ChevronRight, Paperclip, Download, PencilLine, Upload, FileText, Eye, UserCog, History, Folder as FolderIcon } from 'lucide-react';
 import { apiClient, DEV_USER_ID } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { usePageAccess } from '../../hooks/usePageAccess';
@@ -27,6 +27,12 @@ interface TaskForm {
   assignedToGroupId: string;
   documentId?: string;
   folderId?: string;
+  documentIds: string[];
+  folderIds: string[];
+  auditStage: '' | 'preparation' | 'internal_audit' | 'external_audit';
+  findingSeverity: '' | 'observation' | 'minor_ncr' | 'major_ncr';
+  standardClause: string;
+  auditorNotes: string;
   tags: string[];
 }
 
@@ -73,14 +79,22 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const [users, setUsers] = useState<any[]>([]);
   const [groups, setGroups] = useState<Array<{ groupId: string; name: string }>>([]);
   const canRaisePcar = pageAccess?.canCreatePcars ?? false;
+  const canVerifyPcar = pageAccess?.canVerifyPcars ?? false;
   const [myGroupIds, setMyGroupIds] = useState<Set<string>>(new Set());
   const [docSearchQuery, setDocSearchQuery] = useState('');
   const [showDocDropdown, setShowDocDropdown] = useState(false);
   const docPickerRef = useRef<HTMLDivElement>(null);
+  const [folderSearchQuery, setFolderSearchQuery] = useState('');
+  const [showFolderDropdown, setShowFolderDropdown] = useState(false);
+  const folderPickerRef = useRef<HTMLDivElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [priorityFilter, setPriorityFilter] = useState<string>('');
+  const [findingSeverityFilter, setFindingSeverityFilter] = useState('');
+  const [clauseFilter, setClauseFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [auditStageFilter, setAuditStageFilter] = useState('');
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [isPcarForm, setIsPcarForm] = useState(false);
@@ -95,6 +109,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     assignedToGroupId: '',
     documentId: '',
     folderId: '',
+    documentIds: [], folderIds: [],
+    auditStage: '',
+    findingSeverity: '', standardClause: '', auditorNotes: '',
     tags: [],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -107,6 +124,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const [statusChangeConfirm, setStatusChangeConfirm] = useState<{ taskId?: string; newStatus?: Task['status']; taskTitle?: string }>({});
   const [deleteConfirm, setDeleteConfirm] = useState<{ taskId?: string; taskTitle?: string }>({});
   const [pcarDraft, setPcarDraft] = useState<PcarDraft>({ rootCause: '', correction: '', preventiveAction: '', targetDate: '', tags: [] });
+  const [verificationNotes, setVerificationNotes] = useState('');
+  const [effectivenessResult, setEffectivenessResult] = useState<'' | 'effective' | 'ineffective'>('');
+  const [isVerifyingPcar, setIsVerifyingPcar] = useState(false);
 
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -116,7 +136,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const res = await apiClient.getTasks({ page: targetPage, pageSize: PAGE_SIZE });
+      // PCAR compliance filters must search the complete accessible register,
+      // not only the current ten-row page.
+      const res = await apiClient.getTasks(mode === 'pcar' ? { limit: 500 } : { page: targetPage, pageSize: PAGE_SIZE });
       const allTasks = res.data || [];
       const pageItems = allTasks.filter((task: Task) => mode === 'pcar' ? task.taskType === 'pcar' : task.taskType !== 'pcar');
       setTasks(pageItems);
@@ -184,11 +206,15 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const getDocumentLabel = (doc: Document) => {
     const path = getFolderPath(doc.folderId);
     const name = doc.title || doc.name;
-    return path ? `${path} / ${name}` : name;
+    const documentId = doc.originalDocumentId ? ` [${doc.originalDocumentId}]` : '';
+    return `${path ? `${path} / ` : ''}${name}${documentId}`;
   };
 
   const filteredDocumentOptions = documents.filter((doc) =>
     getDocumentLabel(doc).toLowerCase().includes(docSearchQuery.toLowerCase())
+  );
+  const filteredFolderOptions = folders.filter((folder) =>
+    (getFolderPath(folder.folderId) || folder.name).toLowerCase().includes(folderSearchQuery.toLowerCase())
   );
 
   useEffect(() => {
@@ -208,10 +234,17 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
 
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+      (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+      (task.findingNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+      (task.standardClause?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+      (task.auditorNotes?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
     const matchesStatus = !statusFilter || task.status === statusFilter;
     const matchesPriority = !priorityFilter || task.priority === priorityFilter;
-    return matchesSearch && matchesStatus && matchesPriority;
+    const matchesSeverity = !findingSeverityFilter || task.findingSeverity === findingSeverityFilter;
+    const matchesClause = !clauseFilter || (task.standardClause?.toLowerCase().includes(clauseFilter.toLowerCase()) ?? false);
+    const matchesOwner = !ownerFilter || task.assignedTo === ownerFilter || task.assignedToGroupId === ownerFilter || task.assignedBy === ownerFilter;
+    const matchesAuditStage = !auditStageFilter || task.auditStage === auditStageFilter;
+    return matchesSearch && matchesStatus && matchesPriority && matchesSeverity && matchesClause && matchesOwner && matchesAuditStage;
   });
 
   const taskStats = {
@@ -307,6 +340,10 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   // that list. Fall back to the dedicated per-task endpoint, which resolves
   // access via "is this task mine" instead of folder-browsing rights.
   const [linkedDocumentFallback, setLinkedDocumentFallback] = useState<{ documentId: string; fileName: string; currentVersionId?: string } | null>(null);
+  const [allLinkedItems, setAllLinkedItems] = useState<{
+    documents: Array<{ documentId: string; title: string; originalDocumentId?: string | null; status?: string }>;
+    folders: Array<{ folderId: string; name: string }>;
+  }>({ documents: [], folders: [] });
   // Per explicit request, a task no longer grants its assignee any implicit
   // access to the document it's about — real folder access (a grant, a
   // role-wide bypass, or an Allow override) is required, same bar as browsing
@@ -337,6 +374,27 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       .catch(() => setLinkedDocumentAccessDenied(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedPcar?.taskId, focusedPcar?.documentId, documents]);
+
+  // A task/PCAR can now have more than one document and folder link. Fetch the
+  // canonical detail record so this panel never hides the additional links just
+  // because the list row still exposes the legacy primary documentId.
+  useEffect(() => {
+    if (!focusedPcar) {
+      setAllLinkedItems({ documents: [], folders: [] });
+      return;
+    }
+    let cancelled = false;
+    apiClient.getTask(focusedPcar.taskId)
+      .then((res) => {
+        if (cancelled || !res.success || !res.data) return;
+        setAllLinkedItems({
+          documents: Array.isArray(res.data.linkedDocuments) ? res.data.linkedDocuments : [],
+          folders: Array.isArray(res.data.linkedFolders) ? res.data.linkedFolders : [],
+        });
+      })
+      .catch(() => { if (!cancelled) setAllLinkedItems({ documents: [], folders: [] }); });
+    return () => { cancelled = true; };
+  }, [focusedPcar?.taskId]);
 
   // Shown inline next to Linked Document instead of only being reachable
   // through the separate Attachments modal — no delete here, per explicit
@@ -436,7 +494,6 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   // A PCAR can't be submitted for approval until the actual corrected file
   // has been re-uploaded — tracks which task that's already happened for
   // (keyed by taskId since only one PCAR is focused/worked on at a time).
-  const [correctionUploadedTaskId, setCorrectionUploadedTaskId] = useState<string | null>(null);
 
   // File the user picked for the linked document's updated version — set once
   // they've cleared the gate below, opens the same metadata-collecting Upload
@@ -473,7 +530,6 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   // upload itself succeeded.
   const handleLinkedDocumentVersionUploaded = async () => {
     if (!linkedDocument || !focusedPcar) return;
-    setCorrectionUploadedTaskId(focusedPcar.taskId);
     loadDocuments();
 
     // If this task came from a QA/Manager correction request, persist the
@@ -520,7 +576,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       targetDate: focusedPcar.dueDate.slice(0, 10),
       tags: focusedPcar.tags || [],
     });
-    setCorrectionUploadedTaskId(null);
+    setVerificationNotes('');
+    setEffectivenessResult((focusedPcar.effectivenessResult as '' | 'effective' | 'ineffective' | undefined) ?? '');
   }, [focusedPcar?.taskId]);
 
   // A task spawned by a real QA/Manager rejection (approvalId set) is
@@ -544,7 +601,15 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   // reload); TaskService.SubmitPcarAsync enforces the real, persistent
   // version of this rule server-side by comparing the document's current
   // version's upload time against the task's own creation time.
-  const needsCorrectionUpload = !!focusedPcar?.documentId && correctionUploadedTaskId !== focusedPcar?.taskId;
+  const hasPcarEvidence = focusedAttachments.length > 0;
+
+  const updateFocusedPcar = (status: Task['status'], qaReviewNotes?: string) => {
+    const update = (task: Task): Task => task.taskId === focusedPcar?.taskId
+      ? { ...task, status, qaReviewNotes: qaReviewNotes ?? task.qaReviewNotes }
+      : task;
+    setTasks((current) => current.map(update));
+    setFetchedHighlightTask((current) => current ? update(current) : null);
+  };
 
   const handlePcarSubmit = async () => {
     if (!focusedPcar) return;
@@ -573,6 +638,10 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       showError('Complete the corrective action, preventive action, and target date');
       return;
     }
+    if (!hasPcarEvidence) {
+      showError('Attach at least one evidence item before submitting this PCAR for verification');
+      return;
+    }
 
     try {
       const res = await apiClient.submitPcar(focusedPcar.taskId, {
@@ -586,10 +655,41 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
         showError(res.error || 'Failed to submit PCAR');
         return;
       }
-      showSuccess('PCAR submitted and closed out');
+      updateFocusedPcar('submitted');
+      showSuccess('PCAR submitted for Quality/Auditor verification');
       loadTasks();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to submit PCAR');
+    }
+  };
+
+  const handleVerifyPcar = async (approve: boolean) => {
+    if (!focusedPcar) return;
+    if (!approve && !verificationNotes.trim()) {
+      showError('Add return notes so the assignee knows what to revise');
+      return;
+    }
+    if (!effectivenessResult) {
+      showError('Select whether the corrective action is effective or ineffective');
+      return;
+    }
+
+    setIsVerifyingPcar(true);
+    try {
+      const res = await apiClient.verifyPcar(focusedPcar.taskId, { approve, notes: verificationNotes.trim() || undefined, effectiveness: effectivenessResult });
+      if (!res.success) {
+        showError(res.error || 'Failed to verify PCAR');
+        return;
+      }
+      updateFocusedPcar(approve ? 'done' : 'open', verificationNotes.trim() || undefined);
+      setVerificationNotes('');
+      setEffectivenessResult('');
+      showSuccess(approve ? 'PCAR approved and closed' : 'PCAR returned to the assignee for revision');
+      loadTasks();
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to verify PCAR');
+    } finally {
+      setIsVerifyingPcar(false);
     }
   };
 
@@ -628,8 +728,12 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       showError('Due date is required');
       return;
     }
-    if (isPcarForm && !newTask.documentId) {
-      showError('A released document is required for a PCAR');
+    if (isPcarForm && newTask.documentIds.length === 0 && newTask.folderIds.length === 0) {
+      showError('Link the PCAR to at least one released file or folder');
+      return;
+    }
+    if (isPcarForm && !newTask.findingSeverity) {
+      showError('Select the audit finding severity');
       return;
     }
     if (!isPcarForm && taskScope === 'folder' && !newTask.folderId) {
@@ -648,12 +752,18 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
         description: newTask.description,
         taskType: newTask.taskType,
         riskSeverity: newTask.priority,
-        documentId: taskScope === 'document' || isPcarForm ? newTask.documentId : undefined,
-        folderId: taskScope === 'folder' ? newTask.folderId : undefined,
+        documentId: (newTask.documentIds[0] || newTask.documentId) || undefined,
+        folderId: (newTask.folderIds[0] || newTask.folderId) || undefined,
+        documentIds: newTask.documentIds,
+        folderIds: newTask.folderIds,
         assignedToId: newTask.assignedToGroupId ? undefined : newTask.assignedTo,
         assignedToGroupId: newTask.assignedToGroupId || undefined,
         dueDate: newTask.dueDate,
         tags: newTask.tags,
+        auditStage: isPcarForm ? undefined : newTask.auditStage || undefined,
+        findingSeverity: isPcarForm ? newTask.findingSeverity || undefined : undefined,
+        standardClause: isPcarForm ? newTask.standardClause || undefined : undefined,
+        auditorNotes: isPcarForm ? newTask.auditorNotes || undefined : undefined,
       };
       const res = isPcarForm ? await apiClient.createPcar(payload) : await apiClient.createTask(payload);
 
@@ -679,6 +789,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
         assignedToGroupId: '',
         documentId: '',
         folderId: '',
+        documentIds: [], folderIds: [],
+        auditStage: '',
+        findingSeverity: '', standardClause: '', auditorNotes: '',
         tags: [],
       });
       setNewTaskAttachment(null);
@@ -923,6 +1036,31 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 )}
               </CardBody>
             </Card>
+            {(allLinkedItems.documents.length > 0 || allLinkedItems.folders.length > 0) && (
+              <Card>
+                <CardBody className="p-5">
+                  <h2 className="section-heading">Linked Files &amp; Folders</h2>
+                  <p className="mt-1 text-xs text-[#718198] dark:text-slate-400">This {mode === 'pcar' ? 'finding' : 'task'} is shown in Related Tasks or Related PCARs for every item below.</p>
+                  <div className="mt-3 space-y-2">
+                    {allLinkedItems.documents.map((document) => (
+                      <div key={document.documentId} className="flex items-center gap-2 rounded-[4px] border border-[#e2e8f0] px-3 py-2 dark:border-slate-800">
+                        <FileText className="h-4 w-4 shrink-0 text-[#3f8bca]" />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#26334d] dark:text-white">{document.title}</span>
+                        {document.originalDocumentId && <span className="shrink-0 font-mono text-xs text-[#718198] dark:text-slate-400">{document.originalDocumentId}</span>}
+                        {document.status && <span className="shrink-0 text-xs capitalize text-[#718198] dark:text-slate-400">{document.status}</span>}
+                      </div>
+                    ))}
+                    {allLinkedItems.folders.map((folder) => (
+                      <div key={folder.folderId} className="flex items-center gap-2 rounded-[4px] border border-[#e2e8f0] px-3 py-2 dark:border-slate-800">
+                        <FolderIcon className="h-4 w-4 shrink-0 text-amber-500" />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#26334d] dark:text-white">{folder.name}</span>
+                        <span className="text-xs text-[#718198] dark:text-slate-400">Folder</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardBody>
+              </Card>
+            )}
             {focusedPcar.documentId && (
               <Card>
                 <CardBody className="p-5">
@@ -971,7 +1109,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   )}
                   <div className="mt-4 border-t border-[#e2e8f0] pt-4 dark:border-slate-800">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8] dark:text-slate-500">Attachments</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8] dark:text-slate-500">Evidence &amp; Attachments</h3>
                       <input
                         ref={attachmentInputRef}
                         type="file"
@@ -979,11 +1117,11 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadFocusedAttachment(file); e.target.value = ''; }}
                       />
                       <Button variant="secondary" size="sm" onClick={() => attachmentInputRef.current?.click()} disabled={isUploadingAttachment} leftIcon={<Paperclip className="h-3.5 w-3.5" />}>
-                        {isUploadingAttachment ? 'Uploading…' : 'Add Attachment'}
+                        {isUploadingAttachment ? 'Uploading…' : 'Add Evidence'}
                       </Button>
                     </div>
                     {focusedAttachments.length === 0 ? (
-                      <p className="mt-2 text-sm text-[#94a3b8] dark:text-slate-400">No attachments yet.</p>
+                      <p className="mt-2 text-sm text-[#94a3b8] dark:text-slate-400">No evidence attached yet. At least one item is required before verification.</p>
                     ) : (
                       <div className="mt-2 space-y-2">
                         {focusedAttachments.map((a) => (
@@ -1057,9 +1195,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                           : 'bg-[#cbd5e3]'
                       }`} />
                       {focusedPcar.status === 'done'
-                        ? 'Submitted and closed'
+                        ? 'Approved and closed'
                         : focusedPcar.status === 'submitted'
-                          ? 'Submitted — awaiting QA decision'
+                          ? 'Submitted — awaiting Quality/Auditor verification'
                           : focusedPcar.qaReviewNotes
                             ? 'Sent back for revision'
                             : 'Not yet submitted'}
@@ -1069,34 +1207,65 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         Submitted on {new Date(focusedPcar.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </p>
                     )}
+                    {focusedPcar.effectivenessResult && (
+                      <p className={`mt-3 text-xs font-medium ${focusedPcar.effectivenessResult === 'effective' ? 'text-[#278b57] dark:text-emerald-300' : 'text-[#b96a08] dark:text-amber-300'}`}>
+                        Effectiveness assessment: {focusedPcar.effectivenessResult === 'effective' ? 'Effective' : 'Ineffective'}
+                      </p>
+                    )}
                   </CardBody>
                 </Card>
                 <Button
                   className="w-full"
                   onClick={handlePcarSubmit}
-                  disabled={!focusedPcarIsMine || needsCorrectionUpload || pcarAlreadySubmitted}
+                  disabled={!focusedPcarIsMine || !hasPcarEvidence || pcarAlreadySubmitted}
                   title={
                     !focusedPcarIsMine
                       ? `Only ${getAssignedToName(focusedPcar) ?? 'the assignee'} can submit this PCAR`
                       : pcarAlreadySubmitted
                         ? (focusedPcar.status === 'done' ? 'Already submitted and closed' : 'Already submitted for approval')
-                        : needsCorrectionUpload
-                          ? 'Upload the corrected file first — see Linked Document above'
+                        : !hasPcarEvidence
+                          ? 'Attach at least one evidence item before submitting'
                           : undefined
                   }
                 >
                   {focusedPcar.taskType !== 'pcar'
                     ? (pcarAlreadySubmitted ? 'Completed' : 'Complete task')
-                    : (focusedPcar.status === 'done' ? 'Submitted' : pcarAlreadySubmitted ? 'Submitted for approval' : 'Close PCAR finding')}
+                    : (focusedPcar.status === 'done' ? 'Closed' : pcarAlreadySubmitted ? 'Submitted for verification' : 'Submit evidence for verification')}
                 </Button>
                 {pcarAlreadySubmitted ? (
                   <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">
                     {focusedPcar.status === 'done'
-                      ? 'This PCAR has been submitted and closed.'
-                      : 'This PCAR has already been submitted and is awaiting a QA decision.'}
+                      ? 'This PCAR has been approved and closed.'
+                      : 'This PCAR has been submitted and is awaiting Quality/Auditor verification.'}
                   </p>
-                ) : needsCorrectionUpload && focusedPcarIsMine && (
-                  <p className="text-center text-xs text-[#b96a08] dark:text-amber-300">Upload the corrected file above before submitting.</p>
+                ) : !hasPcarEvidence && focusedPcarIsMine && (
+                  <p className="text-center text-xs text-[#b96a08] dark:text-amber-300">Add at least one attachment in Evidence before submitting.</p>
+                )}
+                {focusedPcar.status === 'submitted' && canVerifyPcar && (
+                  <Card>
+                    <CardBody className="space-y-3 p-5">
+                      <div>
+                        <h2 className="section-heading">Quality / Auditor Verification</h2>
+                        <p className="mt-1 text-xs text-[#718198] dark:text-slate-400">Review the evidence and corrective actions, then close the finding or return it with revision notes.</p>
+                      </div>
+                      <label className="block text-sm text-[#52627a] dark:text-slate-300">
+                        Review notes <span className="text-xs text-[#718198] dark:text-slate-400">(required when returning)</span>
+                        <textarea className="field-control mt-2 min-h-[92px] w-full py-2" value={verificationNotes} onChange={(event) => setVerificationNotes(event.target.value)} placeholder="Verification outcome, effectiveness review, or required changes..." disabled={isVerifyingPcar} />
+                      </label>
+                      <label className="block text-sm text-[#52627a] dark:text-slate-300">
+                        Corrective-action effectiveness <span className="text-[#e24c53]">*</span>
+                        <select className="field-control mt-2 h-10 w-full" value={effectivenessResult} onChange={(event) => setEffectivenessResult(event.target.value as '' | 'effective' | 'ineffective')} disabled={isVerifyingPcar}>
+                          <option value="">Select result...</option>
+                          <option value="effective">Effective</option>
+                          <option value="ineffective">Ineffective</option>
+                        </select>
+                      </label>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button className="flex-1" onClick={() => handleVerifyPcar(true)} disabled={isVerifyingPcar || effectivenessResult !== 'effective'} title={effectivenessResult !== 'effective' ? 'Select Effective to approve and close' : undefined} leftIcon={<CheckCircle2 className="h-4 w-4" />}>Approve and close</Button>
+                        <Button className="flex-1" variant="secondary" onClick={() => handleVerifyPcar(false)} disabled={isVerifyingPcar || effectivenessResult !== 'ineffective'} title={effectivenessResult !== 'ineffective' ? 'Select Ineffective to return the PCAR' : undefined} leftIcon={<AlertCircle className="h-4 w-4" />}>Return with notes</Button>
+                      </div>
+                    </CardBody>
+                  </Card>
                 )}
               </>
             )}
@@ -1147,6 +1316,26 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
           <option value="high">High</option>
           <option value="critical">Critical</option>
         </select>
+        {mode === 'pcar' && <>
+          <select className="field-control h-10 w-full px-4 md:w-auto" aria-label="Filter PCAR records by finding severity" value={findingSeverityFilter} onChange={(event) => setFindingSeverityFilter(event.target.value)}>
+            <option value="">All severities</option>
+            <option value="observation">Observation</option>
+            <option value="minor_ncr">Minor NCR</option>
+            <option value="major_ncr">Major NCR</option>
+          </select>
+          <input className="field-control h-10 w-full px-4 md:w-52" aria-label="Filter PCAR records by clause" placeholder="Clause / standard" value={clauseFilter} onChange={(event) => setClauseFilter(event.target.value)} />
+          <select className="field-control h-10 w-full px-4 md:w-auto" aria-label="Filter PCAR records by owner" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}>
+            <option value="">All owners</option>
+            {users.map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
+            {groups.map((group) => <option key={`group-${group.groupId}`} value={group.groupId}>{group.name} (group)</option>)}
+          </select>
+        </>}
+        {mode === 'tasks' && <select className="field-control h-10 w-full px-4 md:w-auto" aria-label="Filter tasks by audit stage" value={auditStageFilter} onChange={(event) => setAuditStageFilter(event.target.value)}>
+          <option value="">All audit stages</option>
+          <option value="preparation">Preparation</option>
+          <option value="internal_audit">Internal Audit</option>
+          <option value="external_audit">External Audit</option>
+        </select>}
       </div>
 
       {/* Tasks Table */}
@@ -1467,7 +1656,18 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 <TagSelector value={newTask.tags} onChange={(tags) => setNewTask({ ...newTask, tags })} />
               </div>
 
-              <div>
+              {isPcarForm && <>
+                <div>
+                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Finding Severity *</label>
+                  <select value={newTask.findingSeverity} onChange={(event) => setNewTask({ ...newTask, findingSeverity: event.target.value as TaskForm['findingSeverity'] })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white">
+                    <option value="">Select severity…</option><option value="observation">Observation</option><option value="minor_ncr">Minor NCR</option><option value="major_ncr">Major NCR</option>
+                  </select>
+                </div>
+                <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Clause / Standard Reference</label><input value={newTask.standardClause} onChange={(event) => setNewTask({ ...newTask, standardClause: event.target.value })} placeholder="e.g., ISO 9001:2015 — 7.5.3" className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" /></div>
+                <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Auditor Notes</label><textarea value={newTask.auditorNotes} onChange={(event) => setNewTask({ ...newTask, auditorNotes: event.target.value })} rows={3} placeholder="Objective evidence and audit observations…" className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" /></div>
+              </>}
+
+              {!isPcarForm && <div>
                 <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Task applies to</label>
                 <select
                   value={isPcarForm ? 'document' : taskScope}
@@ -1480,23 +1680,43 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   <option value="folder">One folder</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Use a general task for work such as “Review your documents.”</p>
-              </div>
+              </div>}
 
-              {taskScope === 'folder' && !isPcarForm && (
-                <div>
-                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Folder *</label>
-                  <select value={newTask.folderId || ''} onChange={(event) => setNewTask({ ...newTask, folderId: event.target.value, documentId: '' })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white">
+              {isPcarForm && <p className="rounded-[4px] bg-[#eef4fb] px-3 py-2 text-xs text-[#2f6f9f] dark:bg-blue-500/10 dark:text-blue-200">Link this finding to one or more released files, folders, or both. At least one item is required.</p>}
+
+              {(taskScope === 'folder' || isPcarForm) && (
+                <div ref={folderPickerRef} className="relative">
+                  <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Folder{isPcarForm ? ' (optional if files are linked)' : ' *'}</label>
+                  <input
+                    type="text"
+                    placeholder="Search folder name or full path..."
+                    value={folderSearchQuery}
+                    onFocus={() => setShowFolderDropdown(true)}
+                    onChange={(event) => { setFolderSearchQuery(event.target.value); setShowFolderDropdown(true); if (newTask.folderId) setNewTask({ ...newTask, folderId: '' }); }}
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  {showFolderDropdown && (
+                    <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-navy-700 dark:bg-navy-900">
+                      {filteredFolderOptions.length === 0 ? <p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No matching folders</p> : filteredFolderOptions.map((folder) => {
+                        const path = getFolderPath(folder.folderId) || folder.name;
+                        return <button type="button" key={folder.folderId} onClick={() => { const folderIds = newTask.folderIds.includes(folder.folderId) ? newTask.folderIds : [...newTask.folderIds, folder.folderId]; setNewTask({ ...newTask, folderId: folderIds[0], folderIds, documentId: '' }); setFolderSearchQuery(''); setShowFolderDropdown(false); }} className="block w-full truncate px-3 py-2 text-left text-sm text-navy-900 hover:bg-gray-100 dark:text-white dark:hover:bg-navy-800" title={path}>{path}</button>;
+                      })}
+                    </div>
+                  )}
+                  <select value={newTask.folderId || ''} onChange={(event) => setNewTask({ ...newTask, folderId: event.target.value, documentId: '' })} className="hidden">
                     <option value="">Select a folder…</option>
                     {folders.map((folder) => <option key={folder.folderId} value={folder.folderId}>{getFolderPath(folder.folderId) || folder.name}</option>)}
                   </select>
                 </div>
               )}
 
+              {newTask.folderIds.length > 0 && <div className="flex flex-wrap gap-2">{newTask.folderIds.map((id) => { const folder = folders.find((item) => item.folderId === id); return <button type="button" key={id} onClick={() => setNewTask({ ...newTask, folderIds: newTask.folderIds.filter((item) => item !== id), folderId: newTask.folderIds.find((item) => item !== id) || '' })} className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800 dark:bg-blue-500/15 dark:text-blue-200">{folder ? getFolderPath(folder.folderId) : id} ×</button>; })}</div>}
+
               {(taskScope === 'document' || isPcarForm) && <div ref={docPickerRef} className="relative">
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document *{isPcarForm ? ' (released files only)' : ''}</label>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Document{isPcarForm ? ' (released files only; optional if folders are linked)' : ' *'}</label>
                 <input
                   type="text"
-                  placeholder="Search by file name or folder path..."
+                  placeholder="Search file name, folder path, or Document ID..."
                   value={docSearchQuery}
                   onFocus={() => setShowDocDropdown(true)}
                   onChange={(e) => {
@@ -1516,8 +1736,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                           type="button"
                           key={doc.documentId}
                           onClick={() => {
-                            setNewTask({ ...newTask, documentId: doc.documentId });
-                            setDocSearchQuery(getDocumentLabel(doc));
+                            const documentIds = newTask.documentIds.includes(doc.documentId) ? newTask.documentIds : [...newTask.documentIds, doc.documentId];
+                            setNewTask({ ...newTask, documentId: documentIds[0], documentIds });
+                            setDocSearchQuery('');
                             setShowDocDropdown(false);
                           }}
                           className="block w-full truncate px-3 py-2 text-left text-sm text-navy-900 hover:bg-gray-100 dark:text-white dark:hover:bg-navy-800"
@@ -1528,6 +1749,18 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                     )}
                   </div>
                 )}
+              </div>}
+
+              {newTask.documentIds.length > 0 && <div className="flex flex-wrap gap-2">{newTask.documentIds.map((id) => { const doc = documents.find((item) => item.documentId === id); return <button type="button" key={id} onClick={() => setNewTask({ ...newTask, documentIds: newTask.documentIds.filter((item) => item !== id), documentId: newTask.documentIds.find((item) => item !== id) || '' })} className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800 dark:bg-blue-500/15 dark:text-blue-200">{doc ? getDocumentLabel(doc) : id} ×</button>; })}</div>}
+
+              {!isPcarForm && <div>
+                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Audit Stage</label>
+                <select value={newTask.auditStage} onChange={(event) => setNewTask({ ...newTask, auditStage: event.target.value as TaskForm['auditStage'] })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white">
+                  <option value="">Not part of an audit</option>
+                  <option value="preparation">Preparation</option>
+                  <option value="internal_audit">Internal Audit</option>
+                  <option value="external_audit">External Audit</option>
+                </select>
               </div>}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

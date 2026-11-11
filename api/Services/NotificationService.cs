@@ -115,12 +115,12 @@ public class NotificationService(DmsContext context, EmailService emailService, 
 
             var task = await context.Tasks.AsNoTracking()
                 .Where(t => t.TaskId == taskId)
-                .Select(t => new { t.Title, t.DueDate })
+                .Select(t => new { t.Title, t.DueDate, t.TaskType })
                 .FirstOrDefaultAsync();
             if (task == null) return;
 
             var portalUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
-            var taskUrl = $"{portalUrl}/tasks?highlight={taskId}";
+            var taskUrl = $"{portalUrl}/{(task.TaskType == "pcar" ? "pcars" : "tasks")}?highlight={taskId}";
             var bodyHtml = $"""
                 <p style="margin:0 0 16px;font-size:14px;color:#26334d;">Hello <strong>{System.Net.WebUtility.HtmlEncode(recipient.FullName)}</strong>,</p>
                 <p style="margin:0 0 8px;font-size:14px;color:#26334d;">{System.Net.WebUtility.HtmlEncode(title)}</p>
@@ -138,6 +138,46 @@ public class NotificationService(DmsContext context, EmailService emailService, 
         {
             logger.LogError(ex, "Error sending task notification email for task {TaskId} to user {UserId}", taskId, recipientUserId);
         }
+    }
+
+    // PCAR verification is a distinct review queue. Every active user holding
+    // the dedicated verification flag receives both the in-app notification
+    // and the normal task email (when email is configured).
+    public async Task NotifyPcarVerifiersAsync(Guid actorUserId, Guid taskId, string title, string? body = null)
+    {
+        var verifierRoles = await context.PageAccessRoles.AsNoTracking()
+            .Where(role => role.CanVerifyPcars)
+            .Select(role => role.Role)
+            .ToListAsync();
+        if (verifierRoles.Count == 0) return;
+
+        var verifierIds = await context.Users.AsNoTracking()
+            .Where(user => user.IsActive && user.Role != null && verifierRoles.Contains(user.Role))
+            .Select(user => user.UserId)
+            .ToListAsync();
+        foreach (var verifierId in verifierIds)
+            await NotifyAsync(verifierId, actorUserId, title, body, taskId: taskId);
+    }
+
+    public async Task NotifyTaskAssigneesAsync(Guid actorUserId, Guid taskId, string title, string? body = null)
+    {
+        var task = await context.Tasks.AsNoTracking().FirstOrDefaultAsync(item => item.TaskId == taskId);
+        if (task == null) return;
+
+        var recipients = new HashSet<Guid>();
+        if (task.AssignedToId.HasValue)
+            recipients.Add(task.AssignedToId.Value);
+        else if (task.AssignedToGroupId.HasValue)
+        {
+            foreach (var memberId in await context.GroupMembers.AsNoTracking()
+                .Where(member => member.GroupId == task.AssignedToGroupId.Value)
+                .Select(member => member.UserId)
+                .ToListAsync())
+                recipients.Add(memberId);
+        }
+
+        foreach (var recipientId in recipients)
+            await NotifyAsync(recipientId, actorUserId, title, body, taskId: taskId);
     }
 
     private async Task SendDocumentEmailAsync(Guid recipientUserId, Guid documentId, string title, string? body)

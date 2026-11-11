@@ -59,6 +59,9 @@ public class DmsPageAccessRole
     // Separate from normal task creation: permits raising an auditor PCAR
     // against a released file (the released-file rule is still enforced).
     public bool CanCreatePcars { get; set; }
+    // Independent compliance decision: a role may raise a finding without
+    // being able to verify/close it.
+    public bool CanVerifyPcars { get; set; }
     // Independent from CanManageAllTasks — lets a role change an existing
     // task's Assignee (user or group) on ANY task, own or not, without also
     // granting edit/complete/delete over tasks that already belong to other

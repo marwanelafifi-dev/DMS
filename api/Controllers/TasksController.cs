@@ -92,6 +92,36 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (task == null)
                 return NotFound(new { success = false, error = "Task not found" });
 
+            var linkedDocuments = await (
+                from link in context.TaskDocumentLinks.AsNoTracking()
+                join document in context.Documents.AsNoTracking() on link.DocumentId equals document.DocumentId
+                where link.TaskId == id
+                select new { document.DocumentId, document.Title, document.OriginalDocumentId, document.Status }
+            ).ToListAsync();
+            if (task.DocumentId.HasValue && linkedDocuments.All(document => document.DocumentId != task.DocumentId.Value))
+            {
+                var primaryDocument = await context.Documents.AsNoTracking()
+                    .Where(document => document.DocumentId == task.DocumentId.Value)
+                    .Select(document => new { document.DocumentId, document.Title, document.OriginalDocumentId, document.Status })
+                    .FirstOrDefaultAsync();
+                if (primaryDocument != null) linkedDocuments.Add(primaryDocument);
+            }
+
+            var linkedFolders = await (
+                from link in context.TaskFolderLinks.AsNoTracking()
+                join folder in context.Folders.AsNoTracking() on link.FolderId equals folder.FolderId
+                where link.TaskId == id
+                select new { folder.FolderId, folder.Name }
+            ).ToListAsync();
+            if (task.FolderId.HasValue && linkedFolders.All(folder => folder.FolderId != task.FolderId.Value))
+            {
+                var primaryFolder = await context.Folders.AsNoTracking()
+                    .Where(folder => folder.FolderId == task.FolderId.Value)
+                    .Select(folder => new { folder.FolderId, folder.Name })
+                    .FirstOrDefaultAsync();
+                if (primaryFolder != null) linkedFolders.Add(primaryFolder);
+            }
+
             logger.LogInformation("Retrieved task {TaskId}", id);
 
             return Ok(new
@@ -102,12 +132,19 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.TaskId,
                     task.DocumentId,
                     task.FolderId,
+                    LinkedDocuments = linkedDocuments,
+                    LinkedFolders = linkedFolders,
                     task.ApprovalId,
                     Document = task.Document == null ? null : new { task.Document.DocumentId, task.Document.Title },
                     task.Title,
                     task.Description,
                     task.Tags,
                     task.TaskType,
+                    task.AuditStage,
+                    task.FindingNumber,
+                    task.FindingSeverity,
+                    task.StandardClause,
+                    task.AuditorNotes,
                     task.RiskSeverity,
                     AssignedTo = task.AssignedTo == null ? null : new { task.AssignedTo.UserId, task.AssignedTo.FullName, task.AssignedTo.Email },
                     AssignedToGroup = task.AssignedToGroup == null ? null : new { task.AssignedToGroup.GroupId, task.AssignedToGroup.Name },
@@ -117,6 +154,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.CorrectionText,
                     task.PreventiveActions,
                     task.QaReviewNotes,
+                    task.EffectivenessResult,
                     task.QaReviewedAt,
                     task.CreatedAt,
                     task.CompletedAt
@@ -262,7 +300,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.TaskType,
                 req.RiskSeverity,
                 req.DueDate,
-                req.Tags);
+                req.Tags,
+                req.AuditStage, req.DocumentIds, req.FolderIds);
 
             if (!result.Success)
             {
@@ -308,20 +347,50 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             if (role?.CanCreatePcars != true)
                 return StatusCode(403, new { success = false, error = "Your role does not have permission to raise audit PCAR findings" });
 
-            if (!req.DocumentId.HasValue)
-                return BadRequest(new { success = false, error = "A PCAR must be linked to a released file" });
-            var isReleased = await context.Documents.AnyAsync(d => d.DocumentId == req.DocumentId.Value && d.Status == "released");
-            if (!isReleased)
-                return BadRequest(new { success = false, error = "A PCAR can only be raised for a released file" });
+            // A finding may now link to several files. Validate the complete
+            // link set, rather than only the legacy primary DocumentId, so a
+            // draft/pending file cannot be slipped into a PCAR as a secondary
+            // link.
+            var documentIds = (req.DocumentIds ?? []).ToList();
+            if (req.DocumentId.HasValue)
+                documentIds.Add(req.DocumentId.Value);
+            documentIds = documentIds.Distinct().ToList();
 
-            var result = await taskService.CreateTaskAsync(userId, req.DocumentId, null, req.AssignedToId, req.AssignedToGroupId,
-                req.Title, req.Description, "pcar", req.RiskSeverity, req.DueDate, req.Tags);
+            var folderIds = (req.FolderIds ?? []).ToList();
+            if (req.FolderId.HasValue)
+                folderIds.Add(req.FolderId.Value);
+            folderIds = folderIds.Distinct().ToList();
+            if (!PcarComplianceRules.HasRequiredScope(documentIds, folderIds))
+                return BadRequest(new { success = false, error = "A PCAR must be linked to at least one released file or folder" });
+
+            var releasedDocumentIds = await context.Documents
+                .Where(document => documentIds.Contains(document.DocumentId) && document.Status == "released")
+                .Select(document => document.DocumentId)
+                .ToListAsync();
+            if (documentIds.Count > 0 && !PcarComplianceRules.EveryLinkedFileIsReleased(documentIds, releasedDocumentIds))
+                return BadRequest(new { success = false, error = "Every file linked to a PCAR must be in Released status" });
+
+            var existingFolderCount = folderIds.Count == 0 ? 0 : await context.Folders.CountAsync(folder => folderIds.Contains(folder.FolderId));
+            if (existingFolderCount != folderIds.Count)
+                return BadRequest(new { success = false, error = "One or more linked folders could not be found" });
+
+            Guid? primaryDocumentId = req.DocumentId ?? documentIds.Select(id => (Guid?)id).FirstOrDefault();
+            Guid? primaryFolderId = req.FolderId ?? folderIds.Select(id => (Guid?)id).FirstOrDefault();
+
+            var result = await taskService.CreateTaskAsync(userId, primaryDocumentId, primaryFolderId, req.AssignedToId, req.AssignedToGroupId,
+                req.Title, req.Description, "pcar", req.RiskSeverity, req.DueDate, req.Tags, null, documentIds.ToArray(), folderIds.ToArray());
             if (!result.Success)
                 return result.Error == "NotFound"
                     ? NotFound(new { success = false, error = result.Message })
                     : BadRequest(new { success = false, error = result.Message });
 
             var task = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == result.ResourceId!.Value);
+            var finding = await context.Tasks.FirstAsync(t => t.TaskId == result.ResourceId!.Value);
+            finding.FindingNumber = $"PCAR-{DateTime.UtcNow:yyyy}-{await context.Tasks.CountAsync(t => t.TaskType == "pcar"):D4}";
+            finding.FindingSeverity = req.FindingSeverity?.Trim().ToLowerInvariant();
+            finding.StandardClause = req.StandardClause?.Trim();
+            finding.AuditorNotes = req.AuditorNotes?.Trim();
+            await context.SaveChangesAsync();
             await NotifyTaskAssignmentAsync(task, userId, "New audit PCAR assigned to you", "New audit PCAR assigned to your group");
             await auditService.LogAsync(userId, "PCAR_RAISED", new { task.TaskId, task.DocumentId, task.Title });
             return CreatedAtAction(nameof(GetTask), new { id = task.TaskId }, new { success = true, data = result.Data });
@@ -334,6 +403,33 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
     }
 
     // POST /api/tasks/{id}/complete — close the task
+    [HttpPost("{id}/verify-pcar")]
+    public async Task<ActionResult<object>> VerifyPcar(Guid id, [FromBody] VerifyPcarRequest req)
+    {
+        var userId = GetCurrentUserId(); var role = await GetPageAccessRoleAsync(context, userId);
+        if (!PcarComplianceRules.CanVerify(role?.CanVerifyPcars == true)) return StatusCode(403, new { success = false, error = "Your role cannot verify PCAR findings" });
+        var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == id && t.TaskType == "pcar");
+        if (task == null) return NotFound(new { success = false, error = "PCAR not found" });
+        if (task.Status != "submitted") return BadRequest(new { success = false, error = "This PCAR is not awaiting verification" });
+        if (!PcarComplianceRules.HasRequiredReturnNotes(req.Approve, req.Notes)) return BadRequest(new { success = false, error = "Return notes are required so the assignee knows what to revise" });
+        var effectiveness = req.Effectiveness?.Trim().ToLowerInvariant();
+        if (effectiveness is not ("effective" or "ineffective")) return BadRequest(new { success = false, error = "Select whether the corrective action is effective or ineffective" });
+        if (!PcarComplianceRules.IsEffectivenessDecisionConsistent(req.Approve, effectiveness))
+            return BadRequest(new { success = false, error = req.Approve ? "Only an effective corrective action can be approved and closed" : "A returned PCAR must be marked ineffective" });
+        task.QaReviewNotes = req.Notes?.Trim(); task.EffectivenessResult = effectiveness; task.QaReviewedById = userId; task.QaReviewedAt = DateTime.UtcNow; task.UpdatedAt = DateTime.UtcNow;
+        if (req.Approve) { task.Status = "completed"; task.CompletedById = userId; task.CompletedAt = DateTime.UtcNow; } else task.Status = "open";
+        await context.SaveChangesAsync();
+        await auditService.LogAsync(userId, req.Approve ? PCAR_APPROVED : PCAR_REJECTED, new
+        {
+            task.TaskId, task.FindingNumber, task.Title, Decision = req.Approve ? "approved" : "returned",
+            task.EffectivenessResult, task.QaReviewNotes, VerifiedAt = task.QaReviewedAt,
+        });
+        await notificationService.NotifyTaskAssigneesAsync(userId, task.TaskId,
+            req.Approve ? "PCAR approved and closed" : "PCAR returned for revision",
+            req.Approve ? $"Effectiveness: {effectiveness}" : task.QaReviewNotes);
+        return Ok(new { success = true, data = new { task.TaskId, task.Status, task.EffectivenessResult } });
+    }
+
     [HttpPost("{id}/complete")]
     public async Task<ActionResult<object>> CompleteTask(Guid id, [FromBody] CompleteTaskRequest req)
     {
@@ -430,7 +526,8 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 req.AssignedToId,
                 req.AssignedToGroupId,
                 req.TaskType,
-                req.Tags);
+                req.Tags,
+                req.AuditStage);
 
             if (!result.Success)
             {
@@ -558,6 +655,22 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
     public async Task<ActionResult<object>> GetDocumentPcars(Guid documentId)
     {
         var pcars = await taskService.GetPcarsByDocumentAsync(documentId);
+        return Ok(new { success = true, data = pcars, count = pcars.Count });
+    }
+
+    // Folder links are first-class links too: these endpoints let a folder's
+    // Related Tasks/PCARs view show the same item for every linked folder.
+    [HttpGet("folder/{folderId}")]
+    public async Task<ActionResult<object>> GetFolderTasks(Guid folderId)
+    {
+        var tasks = await taskService.GetTasksByFolderAsync(folderId);
+        return Ok(new { success = true, data = tasks, count = tasks.Count });
+    }
+
+    [HttpGet("folder/{folderId}/pcars")]
+    public async Task<ActionResult<object>> GetFolderPcars(Guid folderId)
+    {
+        var pcars = await taskService.GetTasksByFolderAsync(folderId, pcarsOnly: true);
         return Ok(new { success = true, data = pcars, count = pcars.Count });
     }
 
@@ -804,10 +917,16 @@ public record CreateTaskRequest(
     string? RiskSeverity = null,
     DateTime? DueDate = null,
     string[]? Tags = null,
-    Guid? FolderId = null
+    Guid? FolderId = null,
+    string? AuditStage = null,
+    string? FindingSeverity = null,
+    string? StandardClause = null,
+    string? AuditorNotes = null
+    , Guid[]? DocumentIds = null, Guid[]? FolderIds = null
 );
 
 public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate, string[]? Tags = null);
+public record VerifyPcarRequest(bool Approve, string? Notes = null, string? Effectiveness = null);
 
 public record UpdateTaskRequest(
     string? Title = null,
@@ -821,7 +940,8 @@ public record UpdateTaskRequest(
     Guid? AssignedToId = null,
     Guid? AssignedToGroupId = null,
     string? TaskType = null,
-    string[]? Tags = null
+    string[]? Tags = null,
+    string? AuditStage = null
 );
 
 public record CompleteTaskRequest(

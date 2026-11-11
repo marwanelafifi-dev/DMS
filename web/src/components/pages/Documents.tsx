@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { ArrowLeft, ChevronRight, LoaderCircle, UploadCloud, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, LoaderCircle, UploadCloud, X, ClipboardCheck, ClipboardList } from 'lucide-react';
 import { Button, Card, CardBody } from '../ui';
 import { FolderTree } from '../custom/FolderTree';
 import { defaultVisibleDocumentColumns, DocumentList, type LibraryFolderRow, type LibraryShortcutRow, type OptionalDocumentColumn } from '../custom/DocumentList';
@@ -38,6 +38,8 @@ const BulkOperationsModal = lazy(() => import('../custom/BulkOperationsModal').t
 const UploadApprovalModal = lazy(() => import('../custom/UploadApprovalModal').then((module) => ({ default: module.UploadApprovalModal })));
 const EditDocumentModal = lazy(() => import('../custom/EditDocumentModal').then((module) => ({ default: module.EditDocumentModal })));
 const EditFolderModal = lazy(() => import('../custom/EditFolderModal').then((module) => ({ default: module.EditFolderModal })));
+const RelatedTasksModal = lazy(() => import('../custom/RelatedTasksModal').then((module) => ({ default: module.RelatedTasksModal })));
+const RelatedPcarsModal = lazy(() => import('../custom/RelatedPcarsModal').then((module) => ({ default: module.RelatedPcarsModal })));
 
 function readBlobAsText(blob: Blob): Promise<string> {
   if (typeof blob.text === 'function') return blob.text();
@@ -358,6 +360,7 @@ export function Documents() {
   const [isResizingFolderPane, setIsResizingFolderPane] = useState(false);
   const folderPaneResizeOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
   const [previewDocument, setPreviewDocument] = useState<MockLibraryDocument | null>(null);
+  const [relatedFolderView, setRelatedFolderView] = useState<'tasks' | 'pcars' | null>(null);
   const previewDocumentRef = useRef<MockLibraryDocument | null>(null);
   previewDocumentRef.current = previewDocument;
   const [previewReloadToken, setPreviewReloadToken] = useState(0);
@@ -2057,6 +2060,12 @@ export function Documents() {
                 );
               })}
             </nav>
+            {selectedFolder && (
+              <div className="ml-auto flex shrink-0 gap-1">
+                <button type="button" onClick={() => setRelatedFolderView('tasks')} title="Related Tasks" className="inline-flex h-7 items-center gap-1 rounded-[4px] px-2 text-xs font-medium text-[#3f8bca] hover:bg-[#e2e8f0] dark:hover:bg-white/10"><ClipboardList className="h-3.5 w-3.5" /> Tasks</button>
+                <button type="button" onClick={() => setRelatedFolderView('pcars')} title="Related PCARs" className="inline-flex h-7 items-center gap-1 rounded-[4px] px-2 text-xs font-medium text-[#3f8bca] hover:bg-[#e2e8f0] dark:hover:bg-white/10"><ClipboardCheck className="h-3.5 w-3.5" /> PCARs</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -2202,6 +2211,12 @@ export function Documents() {
             setShowApprovalPrompt(true);
           }}
         />
+      )}
+      {relatedFolderView === 'tasks' && selectedFolder && (
+        <RelatedTasksModal folderId={selectedFolder.folderId} fileName={selectedFolder.name} onClose={() => setRelatedFolderView(null)} />
+      )}
+      {relatedFolderView === 'pcars' && selectedFolder && (
+        <RelatedPcarsModal folderId={selectedFolder.folderId} fileName={selectedFolder.name} onClose={() => setRelatedFolderView(null)} />
       )}
 
       {showBulkOperationsModal && (

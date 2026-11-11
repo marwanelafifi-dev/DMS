@@ -36,6 +36,7 @@ public static class BackgroundJobExtensions
     public static void AddBackgroundJobs(this IServiceCollection services)
     {
         services.AddScoped<BackgroundJobService>();
+        services.AddScoped<TaskEscalationService>();
     }
 
     public static void ConfigureBackgroundJobs(this IApplicationBuilder app, IRecurringJobManager recurringJobManager)
@@ -57,6 +58,7 @@ public static class BackgroundJobExtensions
             "send-due-reminders",
             service => service.SendPendingRemindersAsync(),
             Cron.MinuteInterval(5));
+        recurringJobManager.AddOrUpdate<TaskEscalationService>("task-due-escalations", service => service.ScanAndSendAsync(), Cron.Hourly());
 
         // Push upcoming audit calendar events to every connected user's personal
         // Google Calendar once a day. Runs at 6 AM UTC — adjust the TimeZoneInfo

@@ -20,6 +20,9 @@ public class DmsContext : DbContext
     public DbSet<DmsOcrIndex> OcrIndexes => Set<DmsOcrIndex>();
     public DbSet<DmsEsignature> Esignatures => Set<DmsEsignature>();
     public DbSet<DmsTask> Tasks => Set<DmsTask>();
+    public DbSet<DmsTaskEscalation> TaskEscalations => Set<DmsTaskEscalation>();
+    public DbSet<DmsTaskDocumentLink> TaskDocumentLinks => Set<DmsTaskDocumentLink>();
+    public DbSet<DmsTaskFolderLink> TaskFolderLinks => Set<DmsTaskFolderLink>();
     public DbSet<DmsHistoricalPcar> HistoricalPcars => Set<DmsHistoricalPcar>();
     public DbSet<DmsWorkflowTemplate> WorkflowTemplates => Set<DmsWorkflowTemplate>();
     public DbSet<DmsWorkflow> Workflows => Set<DmsWorkflow>();
@@ -100,6 +103,9 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsWorkflow>().ToTable("dms_workflows").HasKey(w => w.WorkflowId);
         modelBuilder.Entity<DmsWorkflowStep>().ToTable("dms_workflow_steps").HasKey(ws => ws.StepId);
         modelBuilder.Entity<DmsTask>().ToTable("dms_tasks").HasKey(t => t.TaskId);
+        modelBuilder.Entity<DmsTaskEscalation>().ToTable("dms_task_escalations").HasKey(e => new { e.TaskId, e.Stage });
+        modelBuilder.Entity<DmsTaskDocumentLink>().ToTable("dms_task_document_links").HasKey(l => new { l.TaskId, l.DocumentId });
+        modelBuilder.Entity<DmsTaskFolderLink>().ToTable("dms_task_folder_links").HasKey(l => new { l.TaskId, l.FolderId });
         modelBuilder.Entity<DmsHistoricalPcar>().ToTable("dms_historical_pcars").HasKey(p => p.HistoricalPcarId);
         modelBuilder.Entity<DmsHistoricalPcar>().HasIndex(p => new { p.SourceSystem, p.LegacyRequestId }).IsUnique();
         modelBuilder.Entity<DmsReminder>().ToTable("dms_reminders").HasKey(r => r.ReminderId);
