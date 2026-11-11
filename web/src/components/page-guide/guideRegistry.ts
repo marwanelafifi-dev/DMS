@@ -385,7 +385,7 @@ export const guideRegistry: GuideDefinition[] = [
   },
   {
     key: 'tasks',
-    version: 1,
+    version: 2,
     title: 'Tasks (Internal Use) Guide',
     matches: (pathname) => pathname === '/tasks',
     requiredAccess: 'canViewTasks',
@@ -401,7 +401,7 @@ export const guideRegistry: GuideDefinition[] = [
         bullets: [
           'Choose an Action: General Task, Review, Correction, Root Cause Analysis (RCA), Audit Action, or Other.',
           'Optionally link files and folders. A Task with no link is a general internal task.',
-          'For an unlinked Task, you can optionally choose a Direct Manager for the configured 1-day, due-date, and overdue reminders.',
+          'For an unlinked Task, you can optionally choose a Direct Manager for the configured 1-day, due-date, and overdue reminders. When no manager is selected, only the assignee receives those reminders.',
           'Choose the assignee or group, priority, due date, and Audit Stage when the Task belongs to audit preparation, an internal audit, or an external audit.',
         ],
       },
@@ -418,7 +418,7 @@ export const guideRegistry: GuideDefinition[] = [
       {
         id: 'task-reminders',
         title: 'Automatic reminders',
-        paragraphs: ['The creation dialog shows the active reminder schedule and the actual recipients. You do not need to create a duplicate reminder for the standard schedule. Use the Reminders page only for an additional, separate periodic reminder.'],
+        paragraphs: ['The creation dialog shows the active reminder schedule and the actual recipients. Quality and Full Access escalation recipients are selected individually in the reminder policy; no role-wide notification is sent. You do not need to create a duplicate reminder for the standard schedule. Use the Reminders page only for an additional, separate periodic reminder.'],
       },
     ],
     keywords: ['tasks', 'internal task', 'review', 'correction', 'RCA', 'audit action', 'attachments', 'completion'],
@@ -1223,7 +1223,7 @@ export const guideRegistry: GuideDefinition[] = [
   },
   {
     key: 'admin-notifications',
-    version: 1,
+    version: 2,
     title: 'Admin Notifications Guide',
     matches: (pathname) => pathname === '/admin/notifications',
     requiredAccess: 'canViewAdminPanel',
@@ -1257,6 +1257,17 @@ export const guideRegistry: GuideDefinition[] = [
           'Choose the sending method that matches the organization\'s approved email configuration.',
         ],
         bullets: ['Gmail App Password', 'Google Workspace SMTP Relay'],
+        when: () => true,
+      },
+      {
+        id: 'task-pcar-reminder-recipients',
+        title: 'Task and PCAR reminder recipients',
+        paragraphs: [
+          'The Task / PCAR Reminder Policy controls automatic in-app and email reminders at creation, before the due date, on the due date, and when overdue.',
+          'Quality and Full Access are selected individually for each reminder stage. Selecting the role checkbox only displays its active users; choose the specific people who should receive that stage. The DMS never sends a role-wide Task or PCAR notification.',
+          'For an unlinked normal Task, the optional Direct Manager receives the configured escalation stages. If no Direct Manager is selected, only the assignee receives those reminders.',
+        ],
+        bullets: ['Assignee / group members', 'Linked-folder owner', 'Direct Manager for an unlinked Task', 'Selected Quality recipients', 'Selected Full Access recipients'],
         when: () => true,
       },
       {

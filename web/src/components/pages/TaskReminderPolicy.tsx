@@ -24,14 +24,16 @@ const STAGES: Array<{ key: keyof Omit<TaskNotificationPolicy, 'enabled'>; label:
 export function TaskReminderPolicy() {
   const { showError, showSuccess } = useToast();
   const [policy, setPolicy] = useState<TaskNotificationPolicy>(DEFAULT_POLICY);
+  const [users, setUsers] = useState<Array<{ userId: string; fullName: string; role: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    apiClient.getTaskNotificationPolicy()
-      .then((result) => {
+    Promise.all([apiClient.getTaskNotificationPolicy(), apiClient.getUsers({ activeOnly: true })])
+      .then(([result, usersResult]) => {
         if (result.success && result.data) setPolicy(result.data as TaskNotificationPolicy);
         else showError(result.error || 'Unable to load the reminder policy');
+        if (usersResult.success) setUsers(usersResult.data || []);
       })
       .catch((error: any) => showError(error.response?.data?.error || 'Unable to load the reminder policy'))
       .finally(() => setIsLoading(false));
@@ -43,6 +45,13 @@ export function TaskReminderPolicy() {
 
   const updateRecipient = (key: keyof Omit<TaskNotificationPolicy, 'enabled'>, recipient: keyof TaskReminderStage['recipients'], checked: boolean) =>
     setPolicy((current) => ({ ...current, [key]: { ...current[key], recipients: { ...current[key].recipients, [recipient]: checked } } }));
+
+  const updateRoleRecipient = (key: keyof Omit<TaskNotificationPolicy, 'enabled'>, recipient: 'qualityUserIds' | 'fullAccessUserIds', userId: string, checked: boolean) =>
+    setPolicy((current) => {
+      const selected = current[key].recipients[recipient] ?? [];
+      const next = checked ? [...new Set([...selected, userId])] : selected.filter((id) => id !== userId);
+      return { ...current, [key]: { ...current[key], recipients: { ...current[key].recipients, [recipient]: next } } };
+    });
 
   const save = async () => {
     setIsSaving(true);
@@ -59,6 +68,9 @@ export function TaskReminderPolicy() {
   };
 
   if (isLoading) return <Card><CardBody className="p-8 text-center text-sm text-[#718198]">Loading reminder policy…</CardBody></Card>;
+
+  const qualityUsers = users.filter((user) => user.role === 'Quality');
+  const fullAccessUsers = users.filter((user) => user.role === 'Full Access');
 
   return (
     <div className="space-y-5">
@@ -98,6 +110,20 @@ export function TaskReminderPolicy() {
                   <label key={recipient} className="inline-flex items-center gap-2 text-xs text-[#52627a] dark:text-slate-300"><input type="checkbox" checked={stage.recipients[recipient]} onChange={(event) => updateRecipient(key, recipient, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />{recipientLabel}</label>
                 ))}
               </fieldset>
+              {(stage.recipients.quality || stage.recipients.fullAccess) && <div className="mt-3 grid gap-3 border-t border-[#e2e8f0] pt-3 dark:border-white/10 sm:grid-cols-2">
+                {stage.recipients.quality && <div>
+                  <p className="text-xs font-semibold text-[#52627a] dark:text-slate-300">Selected Quality recipients</p>
+                  <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1">
+                    {qualityUsers.length === 0 ? <p className="text-xs text-[#718198] dark:text-slate-400">No active Quality users.</p> : qualityUsers.map((user) => <label key={user.userId} className="flex items-center gap-2 text-xs text-[#52627a] dark:text-slate-300"><input type="checkbox" checked={(stage.recipients.qualityUserIds ?? []).includes(user.userId)} onChange={(event) => updateRoleRecipient(key, 'qualityUserIds', user.userId, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />{user.fullName}</label>)}
+                  </div>
+                </div>}
+                {stage.recipients.fullAccess && <div>
+                  <p className="text-xs font-semibold text-[#52627a] dark:text-slate-300">Selected Full Access recipients</p>
+                  <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1">
+                    {fullAccessUsers.length === 0 ? <p className="text-xs text-[#718198] dark:text-slate-400">No active Full Access users.</p> : fullAccessUsers.map((user) => <label key={user.userId} className="flex items-center gap-2 text-xs text-[#52627a] dark:text-slate-300"><input type="checkbox" checked={(stage.recipients.fullAccessUserIds ?? []).includes(user.userId)} onChange={(event) => updateRoleRecipient(key, 'fullAccessUserIds', user.userId, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-300 text-[#3f8bca] focus:ring-[#3f8bca]" />{user.fullName}</label>)}
+                  </div>
+                </div>}
+              </div>}
             </div>;
           })}
           <div className="flex justify-end pt-1"><Button variant="primary" onClick={save} disabled={isSaving} leftIcon={<Save className="h-4 w-4" />}>{isSaving ? 'Saving…' : 'Save reminder policy'}</Button></div>

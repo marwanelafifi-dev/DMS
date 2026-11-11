@@ -34,6 +34,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 return TaskResult.NotFound("Folder not found");
 
             var hasLinkedResources = documentId.HasValue || folderId.HasValue || (documentIds?.Length > 0) || (folderIds?.Length > 0);
+            var normalizedTaskType = taskType?.Trim().ToLowerInvariant() ?? "task";
             if (directManagerId.HasValue)
             {
                 if (hasLinkedResources)
@@ -69,7 +70,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 Tags = NormalizeTags(tags),
                 // Normal work is independent from document approval. "pcar"
                 // is reserved for the released-document audit finding endpoint.
-                TaskType = taskType ?? "task",
+                TaskType = normalizedTaskType,
                 AuditStage = NormalizeAuditStage(auditStage),
                 RiskSeverity = riskSeverity ?? "medium",
                 AssignedToId = assignedToId,

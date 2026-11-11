@@ -127,6 +127,8 @@ export interface TaskReminderRecipients {
   directManager: boolean;
   quality: boolean;
   fullAccess: boolean;
+  qualityUserIds?: string[];
+  fullAccessUserIds?: string[];
 }
 
 export interface TaskReminderStage {

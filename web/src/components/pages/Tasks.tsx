@@ -847,6 +847,9 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       showError('Link the PCAR to at least one released file or folder');
       return;
     }
+    const isUnlinkedNormalTask = !isPcarForm
+      && newTask.documentIds.length === 0 && newTask.folderIds.length === 0
+      && !newTask.documentId && !newTask.folderId;
     if (isPcarForm && !newTask.findingSeverity) {
       showError('Select the audit finding severity');
       return;
@@ -867,7 +870,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
         folderId: (newTask.folderIds[0] || newTask.folderId) || undefined,
         documentIds: newTask.documentIds,
         folderIds: newTask.folderIds,
-        directManagerId: !isPcarForm && newTask.documentIds.length === 0 && newTask.folderIds.length === 0 && !newTask.documentId && !newTask.folderId
+        directManagerId: isUnlinkedNormalTask
           ? newTask.directManagerId || undefined
           : undefined,
         assignedToId: newTask.assignedToGroupId ? undefined : newTask.assignedTo,
@@ -1960,7 +1963,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   <option value="">No direct manager</option>
                   {users.filter((user) => String(user.role).toLowerCase() === 'manager').map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
                 </select>
-                <p className="mt-1 text-xs text-[#64748b] dark:text-slate-400">For an unlinked task, this manager receives the configured 1-day, due-date, and overdue reminders.</p>
+                <p className="mt-1 text-xs text-[#64748b] dark:text-slate-400">For an unlinked task, the selected manager receives the configured 1-day, due-date, and overdue reminders. If none is selected, only the assignee is notified; Quality and Full Access are not added.</p>
               </div>}
 
               {!isPcarForm && <div>

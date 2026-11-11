@@ -13,7 +13,9 @@ public sealed record TaskReminderRecipients(
     bool FolderOwner = false,
     bool DirectManager = false,
     bool Quality = false,
-    bool FullAccess = false);
+    bool FullAccess = false,
+    Guid[]? QualityUserIds = null,
+    Guid[]? FullAccessUserIds = null);
 
 public sealed record TaskReminderStage(
     bool Enabled = true,
@@ -78,6 +80,8 @@ public class TaskNotificationPolicyService(DmsContext context)
     {
         var recipients = stage.EffectiveRecipients;
         var recipientIds = new HashSet<Guid>();
+        var linkedFolderIds = await GetLinkedFolderIdsAsync(task);
+        var isUnlinkedNormalTask = linkedFolderIds.Count == 0 && task.TaskType != "pcar";
         if (recipients.Assignee)
         {
             if (task.AssignedToId.HasValue) recipientIds.Add(task.AssignedToId.Value);
@@ -90,9 +94,8 @@ public class TaskNotificationPolicyService(DmsContext context)
 
         if (recipients.FolderOwner)
         {
-            var folderIds = await GetLinkedFolderIdsAsync(task);
             foreach (var ownerId in await context.Folders.AsNoTracking()
-                .Where(folder => folderIds.Contains(folder.FolderId))
+                .Where(folder => linkedFolderIds.Contains(folder.FolderId))
                 .Select(folder => folder.OwnerId).ToListAsync())
                 recipientIds.Add(ownerId);
         }
@@ -100,17 +103,17 @@ public class TaskNotificationPolicyService(DmsContext context)
         // A direct manager is meaningful only when there is no document or
         // folder scope from which a folder owner can be resolved.
         if (recipients.DirectManager && task.DirectManagerId.HasValue
-            && !(await GetLinkedFolderIdsAsync(task)).Any())
+            && isUnlinkedNormalTask)
             recipientIds.Add(task.DirectManagerId.Value);
 
-        if (recipients.Quality)
+        if (recipients.Quality && !isUnlinkedNormalTask && recipients.QualityUserIds?.Length > 0)
             foreach (var userId in await context.Users.AsNoTracking()
-                .Where(user => user.IsActive && user.Role == "Quality")
+                .Where(user => user.IsActive && user.Role == "Quality" && recipients.QualityUserIds.Contains(user.UserId))
                 .Select(user => user.UserId).ToListAsync())
                 recipientIds.Add(userId);
-        if (recipients.FullAccess)
+        if (recipients.FullAccess && !isUnlinkedNormalTask && recipients.FullAccessUserIds?.Length > 0)
             foreach (var userId in await context.Users.AsNoTracking()
-                .Where(user => user.IsActive && user.Role == "Full Access")
+                .Where(user => user.IsActive && user.Role == "Full Access" && recipients.FullAccessUserIds.Contains(user.UserId))
                 .Select(user => user.UserId).ToListAsync())
                 recipientIds.Add(userId);
         // A disabled account must neither receive a notification nor appear in

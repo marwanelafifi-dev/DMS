@@ -32,6 +32,7 @@ public class TaskNotificationPolicyController(DmsContext context, TaskNotificati
             folderIds.AddRange(await context.Documents.AsNoTracking().Where(document => documentIds.Contains(document.DocumentId))
                 .Select(document => document.FolderId).ToListAsync());
         folderIds = folderIds.Distinct().ToList();
+        var isUnlinkedScope = folderIds.Count == 0;
 
         var policy = await policyService.LoadAsync();
         var stageDefinitions = new[]
@@ -59,15 +60,15 @@ public class TaskNotificationPolicyController(DmsContext context, TaskNotificati
                 }
                 if (settings.FolderOwner)
                     foreach (var userId in await context.Folders.AsNoTracking().Where(folder => folderIds.Contains(folder.FolderId)).Select(folder => folder.OwnerId).ToListAsync()) recipients.Add(userId);
-                if (settings.DirectManager && folderIds.Count == 0 && req.DirectManagerId.HasValue)
+                if (settings.DirectManager && isUnlinkedScope && req.DirectManagerId.HasValue)
                 {
                     var directManagerIsActive = await context.Users.AsNoTracking().AnyAsync(user => user.UserId == req.DirectManagerId.Value && user.IsActive && user.Role == "Manager");
                     if (directManagerIsActive) recipients.Add(req.DirectManagerId.Value);
                 }
-                if (settings.Quality)
-                    foreach (var userId in await context.Users.AsNoTracking().Where(user => user.IsActive && user.Role == "Quality").Select(user => user.UserId).ToListAsync()) recipients.Add(userId);
-                if (settings.FullAccess)
-                    foreach (var userId in await context.Users.AsNoTracking().Where(user => user.IsActive && user.Role == "Full Access").Select(user => user.UserId).ToListAsync()) recipients.Add(userId);
+                if (settings.Quality && !isUnlinkedScope && settings.QualityUserIds?.Length > 0)
+                    foreach (var userId in await context.Users.AsNoTracking().Where(user => user.IsActive && user.Role == "Quality" && settings.QualityUserIds.Contains(user.UserId)).Select(user => user.UserId).ToListAsync()) recipients.Add(userId);
+                if (settings.FullAccess && !isUnlinkedScope && settings.FullAccessUserIds?.Length > 0)
+                    foreach (var userId in await context.Users.AsNoTracking().Where(user => user.IsActive && user.Role == "Full Access" && settings.FullAccessUserIds.Contains(user.UserId)).Select(user => user.UserId).ToListAsync()) recipients.Add(userId);
             }
             allRecipientIds.UnionWith(recipients);
             stageRecipientIds.Add(recipients);
@@ -108,6 +109,18 @@ public class TaskNotificationPolicyController(DmsContext context, TaskNotificati
             return StatusCode(403, new { success = false, error = "You do not have permission to manage the Task/PCAR reminder policy" });
         var validationError = TaskNotificationPolicyService.Validate(policy);
         if (validationError != null) return BadRequest(new { success = false, error = validationError });
+
+        var stages = new[] { policy.Creation, policy.FirstBeforeDue, policy.SecondBeforeDue, policy.DueDate, policy.Overdue };
+        var selectedQualityIds = stages.SelectMany(stage => stage.EffectiveRecipients.QualityUserIds ?? []).Distinct().ToArray();
+        var selectedFullAccessIds = stages.SelectMany(stage => stage.EffectiveRecipients.FullAccessUserIds ?? []).Distinct().ToArray();
+        var selectedUsers = await context.Users.AsNoTracking()
+            .Where(user => user.IsActive && (selectedQualityIds.Contains(user.UserId) || selectedFullAccessIds.Contains(user.UserId)))
+            .Select(user => new { user.UserId, user.Role })
+            .ToListAsync();
+        if (selectedQualityIds.Except(selectedUsers.Where(user => user.Role == "Quality").Select(user => user.UserId)).Any())
+            return BadRequest(new { success = false, error = "Each selected Quality recipient must be an active Quality user" });
+        if (selectedFullAccessIds.Except(selectedUsers.Where(user => user.Role == "Full Access").Select(user => user.UserId)).Any())
+            return BadRequest(new { success = false, error = "Each selected Full Access recipient must be an active Full Access user" });
 
         var setting = await context.AppSettings.FirstOrDefaultAsync(item => item.Key == TaskNotificationPolicy.SettingKey);
         if (setting == null)
