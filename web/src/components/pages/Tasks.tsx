@@ -1182,10 +1182,10 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   )}
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
-                {isWorkflowCorrection && focusedPcar.qaReviewNotes && (
+                {isWorkflowCorrection && (
                   <div className="mt-4 rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">Additional notes</h2>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-amber-950 dark:text-amber-100">{focusedPcar.qaReviewNotes}</p>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">Additional notes <span className="font-normal normal-case">(optional)</span></h2>
+                    <p className={`mt-1 whitespace-pre-wrap text-sm leading-5 ${focusedPcar.qaReviewNotes ? 'text-amber-950 dark:text-amber-100' : 'italic text-amber-800/70 dark:text-amber-200/70'}`}>{focusedPcar.qaReviewNotes || 'No additional notes provided.'}</p>
                   </div>
                 )}
                 {isWorkflowCorrection && (

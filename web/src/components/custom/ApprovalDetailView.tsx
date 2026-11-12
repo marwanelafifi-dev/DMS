@@ -695,11 +695,6 @@ function CorrectionTaskForm({
   submitDisabled?: boolean;
   submitTitle?: string;
 }) {
-  const [assigneeSearch, setAssigneeSearch] = useState('');
-  const normalizedAssigneeSearch = assigneeSearch.trim().toLocaleLowerCase();
-  const filteredUsers = users.filter((user) => user.fullName.toLocaleLowerCase().includes(normalizedAssigneeSearch));
-  const filteredGroups = groups.filter((group) => group.name.toLocaleLowerCase().includes(normalizedAssigneeSearch));
-
   return (
     <DecisionForm title="Correction Task" onCancel={onCancel} onSubmit={onSubmit} submitLabel="Send Correction Task" isSubmitting={isSubmitting} submitDisabled={submitDisabled} submitTitle={submitTitle}>
       <TextField label="Task title" value={taskTitle} onChange={setTaskTitle} />
@@ -726,37 +721,16 @@ function CorrectionTaskForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Assign to</label>
-          <input
-            type="search"
-            value={assigneeSearch}
-            onChange={(event) => setAssigneeSearch(event.target.value)}
-            placeholder="Search users or groups"
-            aria-label="Search users or groups"
-            className="mb-2 w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-          />
-          <select
-            value={assignToGroupId ? `group:${assignToGroupId}` : assignToUserId ? `user:${assignToUserId}` : ''}
-            onChange={(e) => {
-              const [kind, id] = e.target.value.split(':');
-              setAssignToUserId(kind === 'user' ? id : '');
-              setAssignToGroupId(kind === 'group' ? id : '');
+          <AssigneeTypeahead
+            users={users}
+            groups={groups}
+            selectedUserId={assignToUserId}
+            selectedGroupId={assignToGroupId}
+            onSelect={(option) => {
+              setAssignToUserId(option?.kind === 'user' ? option.id : '');
+              setAssignToGroupId(option?.kind === 'group' ? option.id : '');
             }}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-          >
-            <option value="">Select user or group…</option>
-            <optgroup label="Users">
-              {filteredUsers.map((u) => (
-                <option key={u.userId} value={`user:${u.userId}`}>{u.fullName}</option>
-              ))}
-            </optgroup>
-            {filteredGroups.length > 0 && (
-              <optgroup label="Groups">
-                {filteredGroups.map((g) => (
-                  <option key={g.groupId} value={`group:${g.groupId}`}>{g.name}</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+          />
         </div>
         <TextField label="Due date" type="date" value={dueDate} onChange={setDueDate} />
       </div>
@@ -771,6 +745,59 @@ function CorrectionTaskForm({
       </div>
       <TextAreaField label={notesLabel} value={notes} onChange={setNotes} />
     </DecisionForm>
+  );
+}
+
+type AssigneeOption = { id: string; name: string; kind: 'user' | 'group' };
+
+function AssigneeTypeahead({
+  users, groups, selectedUserId, selectedGroupId, onSelect,
+}: {
+  users: Array<{ userId: string; fullName: string }>;
+  groups: Array<{ groupId: string; name: string }>;
+  selectedUserId: string;
+  selectedGroupId: string;
+  onSelect: (option: AssigneeOption | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const options: AssigneeOption[] = [
+    ...users.map((user) => ({ id: user.userId, name: user.fullName, kind: 'user' as const })),
+    ...groups.map((group) => ({ id: group.groupId, name: group.name, kind: 'group' as const })),
+  ];
+  const selected = options.find((option) => option.id === (selectedGroupId || selectedUserId) && option.kind === (selectedGroupId ? 'group' : 'user'));
+  const filtered = options.filter((option) => option.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const choose = (option: AssigneeOption) => { onSelect(option); setQuery(''); setIsOpen(false); };
+
+  return (
+    <div className="relative" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsOpen(false); }}>
+      <input
+        type="search"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={isOpen}
+        aria-label="Search users or groups"
+        value={isOpen ? query : selected?.name ?? ''}
+        placeholder="Search users or groups"
+        onFocus={() => { setQuery(''); setIsOpen(true); }}
+        onChange={(event) => { setQuery(event.target.value); setIsOpen(true); }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && filtered.length === 1) { event.preventDefault(); choose(filtered[0]); }
+          if (event.key === 'Escape') { setIsOpen(false); setQuery(''); }
+        }}
+        className="w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+      />
+      {isOpen && (
+        <div role="listbox" className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded border border-gray-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
+          {filtered.length === 0 ? <p className="px-3 py-2 text-sm text-gray-500 dark:text-slate-400">No users or groups match “{query}”.</p> : filtered.map((option) => (
+            <button key={`${option.kind}:${option.id}`} type="button" role="option" aria-selected={selected?.id === option.id && selected.kind === option.kind} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 focus:bg-blue-50 focus:outline-none dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:bg-blue-500/20">
+              <span className="truncate">{option.name}</span>
+              <span className="shrink-0 text-xs text-gray-500 dark:text-slate-400">{option.kind === 'user' ? 'User' : 'Group'}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
