@@ -1182,6 +1182,12 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   )}
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
+                {isWorkflowCorrection && focusedPcar.qaReviewNotes && (
+                  <div className="mt-4 rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">Additional notes</h2>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-amber-950 dark:text-amber-100">{focusedPcar.qaReviewNotes}</p>
+                  </div>
+                )}
                 {isWorkflowCorrection && (
                   <div className="mt-4 grid gap-2 rounded-[4px] border border-[#dbe2ec] bg-[#f8fafc] p-3 text-xs text-[#52627a] dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 sm:grid-cols-3">
                     <span><strong className="text-[#26334d] dark:text-white">Requested by:</strong> {getSubmittedByName(focusedPcar) ?? 'Workflow reviewer'}</span>
@@ -1205,7 +1211,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 )}
               </CardBody>
             </Card>
-            {(allLinkedItems.documents.length > 0 || allLinkedItems.folders.length > 0) && (
+            {!isWorkflowCorrection && (allLinkedItems.documents.length > 0 || allLinkedItems.folders.length > 0) && (
               <Card>
                 <CardBody className="p-5">
                   <h2 className="section-heading">Linked Files &amp; Folders</h2>
@@ -1276,7 +1282,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   ) : (
                     <p className="mt-3 text-sm text-[#94a3b8] dark:text-slate-400">Loading linked document…</p>
                   )}
-                  <div className="mt-4 border-t border-[#e2e8f0] pt-4 dark:border-slate-800">
+                  {focusedIsPcar && (
+                    <div className="mt-4 border-t border-[#e2e8f0] pt-4 dark:border-slate-800">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8] dark:text-slate-500">Evidence &amp; Attachments</h3>
                       <input
@@ -1307,7 +1314,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                         ))}
                       </div>
                     )}
-                  </div>
+                    </div>
+                  )}
                 </CardBody>
               </Card>
             )}
