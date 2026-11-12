@@ -1,5 +1,16 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 77 (2026-11-12) — Cloudflare Tunnel certificate-security update
+
+- The DMS Docker connector is pinned to `cloudflare/cloudflared:2026.10.7`. This is newer than Cloudflare's required `2026.10.2` security baseline for the compromised eMudhra intermediate-certificate issue; the previous pinned `2026.7.2` image must not be restarted or reused.
+- Upgrade an existing DMS connector by pulling and force-recreating only the `cloudflared` service under the `tunnel` profile (`up -d --no-deps --force-recreate cloudflared`). This intentionally does not rebuild or restart the API, web, database, or other DMS services. Confirm the release with `docker compose --profile tunnel exec cloudflared cloudflared --version` and check Cloudflare Zero Trust reports the connector as Healthy.
+
+## Session 76 (2026-11-12) — Separate live Task and PCAR cleanup
+
+- Admin Panel → Database now provides separate destructive actions for **Tasks (Internal Use)** and **PCARs (Auditor Findings)**. They share the live `dms_tasks` table, but the API scopes both the record count and deletion by `task_type`, so clearing Tasks cannot remove PCARs and clearing PCARs cannot remove normal Tasks.
+- A selective clear removes linked database records through existing foreign-key cascades and deletes only the matching Task/PCAR evidence objects from MinIO. If a historical PCAR was promoted to a normal Task, clearing normal Tasks removes the live task link and returns the immutable historical record to an unpromoted state; it never deletes the archive record.
+- The typed confirmation explains the exact separation. **Historical PCAR Archive** remains its own clear action. No database migration is required; deploy by rebuilding `api` and `web`.
+
 ## Session 75 (2026-11-11) — PCAR register separation and continuous finding numbers
 
 - **Related Tasks** now returns and renders only normal internal Tasks; **Related PCARs** returns and renders only `pcar` audit findings. This is enforced in the document and folder APIs and again in each dialog, so an incorrect or stale response cannot show a PCAR in the Tasks dialog.
@@ -32,7 +43,7 @@ After deployment, open the document in the reported issue: its PCAR must appear 
 - Migration `098_historical_pcar_live_promotion.sql` adds `migrated_task_id` and `migrated_at`. Apply it to an existing database before running the new API; otherwise the Historical PCAR page returns “Could not load historical PCAR records.” It does not delete or alter archived records.
 - The archive is now a separate page capability: **Historical PCAR Archive** controls page/link/API access, **View All Historical PCARs** controls whether every archive record is returned rather than only records linked to the caller, and **Import Historical PCARs** permits import/promote actions. Promotion additionally requires **Manage All Tasks / PCARs**. Migration `099_historical_pcar_page_access.sql` adds the page-access column and preserves archive access for roles that already had view-all or import enabled.
 - Historical records are included in manual database exports and Scheduled Synology Recovery Backups because both use a complete PostgreSQL `pg_dump`. No special object-storage backup rule is needed for this table.
-- The Admin Panel → Database cleanup now has a separate **Historical PCAR Archive** action. **PCAR / Tasks** clears only current tasks and attachments; **Clear All** clears both. This is permanent and uses the existing typed confirmation.
+- The Admin Panel → Database cleanup has a separate **Historical PCAR Archive** action. The current live registers are separately cleared through **Tasks (Internal Use)** and **PCARs (Auditor Findings)**; **Clear All** clears both. This is permanent and uses the existing typed confirmation.
 
 ### Document and page-access security fixes
 

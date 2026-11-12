@@ -337,12 +337,7 @@ public class DatabaseBackupController(
             var result = new List<object>();
             foreach (var group in ClearDataGroups.All)
             {
-                long total = 0;
-                foreach (var table in group.Tables)
-                {
-                    await using var cmd = new NpgsqlCommand($"SELECT count(*) FROM \"{table}\"", conn);
-                    total += (long)(await cmd.ExecuteScalarAsync() ?? 0L);
-                }
+                var total = await CountClearGroupRecordsAsync(conn, group);
                 result.Add(new { group.Key, group.Label, group.Description, RecordCount = total });
             }
 
@@ -355,6 +350,26 @@ public class DatabaseBackupController(
         }
     }
 
+    private static async Task<long> CountClearGroupRecordsAsync(NpgsqlConnection connection, ClearDataGroups.Group group)
+    {
+        if (group.TaskScope != ClearDataGroups.TaskRecordScope.None)
+        {
+            var taskPredicate = group.TaskScope == ClearDataGroups.TaskRecordScope.Pcars
+                ? "task_type = 'pcar'"
+                : "task_type <> 'pcar'";
+            await using var taskCommand = new NpgsqlCommand($"SELECT count(*) FROM dms_tasks WHERE {taskPredicate}", connection);
+            return (long)(await taskCommand.ExecuteScalarAsync() ?? 0L);
+        }
+
+        long total = 0;
+        foreach (var table in group.Tables)
+        {
+            await using var command = new NpgsqlCommand($"SELECT count(*) FROM \"{table}\"", connection);
+            total += (long)(await command.ExecuteScalarAsync() ?? 0L);
+        }
+        return total;
+    }
+
     private async Task TruncateTablesAsync(IEnumerable<string> tables)
     {
         var connectionString = configuration.GetConnectionString("Default");
@@ -363,6 +378,58 @@ public class DatabaseBackupController(
         var quoted = string.Join(", ", tables.Select(t => $"\"{t}\""));
         await using var cmd = new NpgsqlCommand($"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE;", conn);
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private IQueryable<DmsTask> GetTasksForClearScope(ClearDataGroups.TaskRecordScope scope) =>
+        scope == ClearDataGroups.TaskRecordScope.Pcars
+            ? context.Tasks.Where(task => task.TaskType == "pcar")
+            : context.Tasks.Where(task => task.TaskType != "pcar");
+
+    // Delete a single register from the shared task table. Database cascades
+    // remove reminders, notification links, document/folder links, and
+    // escalation rows for only the selected records. MinIO evidence objects
+    // are removed explicitly because they are outside PostgreSQL.
+    private async Task<int> ClearTaskRegisterAsync(ClearDataGroups.TaskRecordScope scope)
+    {
+        var tasks = GetTasksForClearScope(scope);
+        var attachmentKeys = await context.TaskAttachments
+            .Where(attachment => tasks.Select(task => task.TaskId).Contains(attachment.TaskId))
+            .Select(attachment => attachment.S3ObjectKey)
+            .ToListAsync();
+
+        foreach (var objectKey in attachmentKeys)
+        {
+            try
+            {
+                await minioService.DeleteAsync(objectKey);
+            }
+            catch (Exception ex)
+            {
+                // Keep the database cleanup reliable even if an already-missing
+                // object cannot be removed. The key is logged for follow-up.
+                logger.LogWarning(ex, "Failed to delete {ObjectKey} from MinIO while clearing {TaskScope}", objectKey, scope);
+            }
+        }
+
+        await using var transaction = await context.Database.BeginTransactionAsync();
+
+        // A historical record can point at a promoted normal task with an
+        // ON DELETE RESTRICT FK. Clearing Tasks returns that archive item to
+        // an unpromoted state without deleting or changing the archive itself.
+        if (scope == ClearDataGroups.TaskRecordScope.InternalTasks)
+        {
+            await context.Database.ExecuteSqlRawAsync("""
+                UPDATE dms_historical_pcars
+                SET migrated_task_id = NULL, migrated_at = NULL
+                WHERE migrated_task_id IN (
+                    SELECT task_id FROM dms_tasks WHERE task_type <> 'pcar'
+                )
+                """);
+        }
+
+        var deleted = await tasks.ExecuteDeleteAsync();
+        await transaction.CommitAsync();
+        return deleted;
     }
 
     // POST /api/database-backup/clear/{key} — wipes one named group only.
@@ -382,10 +449,14 @@ public class DatabaseBackupController(
 
         try
         {
-            await TruncateTablesAsync(group.Tables);
+            int? deletedRecords = group.TaskScope == ClearDataGroups.TaskRecordScope.None
+                ? null
+                : await ClearTaskRegisterAsync(group.TaskScope);
+            if (group.TaskScope == ClearDataGroups.TaskRecordScope.None)
+                await TruncateTablesAsync(group.Tables);
 
             var userId = GetCurrentUserId();
-            await auditService.LogAsync(userId, DATABASE_DATA_CLEARED, new { Group = group.Key, group.Tables });
+            await auditService.LogAsync(userId, DATABASE_DATA_CLEARED, new { Group = group.Key, group.Tables, DeletedRecords = deletedRecords });
             logger.LogWarning("Cleared data group {Group} by {UserId}", group.Key, userId);
 
             return Ok(new { success = true, message = $"{group.Label} data cleared" });

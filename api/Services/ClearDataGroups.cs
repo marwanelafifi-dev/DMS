@@ -8,7 +8,16 @@ namespace DMS.Api.Services;
 // cascade-wipe every user account too.
 public static class ClearDataGroups
 {
-    public record Group(string Key, string Label, string Description, string[] Tables);
+    // Tasks and PCARs share dms_tasks, but are two different registers. Keep
+    // the scope explicit so a selective clear can never remove the other.
+    public enum TaskRecordScope { None, InternalTasks, Pcars }
+
+    public record Group(
+        string Key,
+        string Label,
+        string Description,
+        string[] Tables,
+        TaskRecordScope TaskScope = TaskRecordScope.None);
 
     public static readonly Group[] All =
     [
@@ -18,8 +27,10 @@ public static class ClearDataGroups
              "dms_workflows", "dms_workflow_steps", "dms_workflow_templates"]),
         new("approvals", "C-Doc Workflow", "Approval batches and per-document stage history",
             ["dms_approval_documents", "dms_approvals"]),
-        new("tasks", "PCAR / Tasks", "Current PCAR and task records, including attachments",
-            ["dms_task_attachments", "dms_tasks"]),
+        new("tasks", "Tasks (Internal Use)", "Normal internal Tasks only, including their attachments and linked records",
+            ["dms_task_attachments", "dms_tasks"], TaskRecordScope.InternalTasks),
+        new("pcars", "PCARs (Auditor Findings)", "Current audit PCAR findings only, including their evidence and linked records",
+            ["dms_task_attachments", "dms_tasks"], TaskRecordScope.Pcars),
         new("historical_pcars", "Historical PCAR Archive", "Read-only PCAR records imported from the previous system",
             ["dms_historical_pcars"]),
         new("reminders", "Reminders", "Scheduled reminders",

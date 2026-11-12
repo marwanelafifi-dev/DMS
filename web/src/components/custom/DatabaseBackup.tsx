@@ -110,6 +110,7 @@ const CLEAR_GROUP_ICONS: Record<string, typeof Folder> = {
   document_library: Folder,
   approvals: ClipboardCheck,
   tasks: FileWarning,
+  pcars: ClipboardCheck,
   reminders: BellRing,
   notifications: Bell,
   announcements: Megaphone,
@@ -726,7 +727,11 @@ export function DatabaseBackup() {
         <TypedConfirmModal
           title={`Clear "${clearGroupConfirm.label}" Data`}
           message={`Permanently delete all "${clearGroupConfirm.label}" data (${clearGroupConfirm.recordCount.toLocaleString()} record${clearGroupConfirm.recordCount === 1 ? '' : 's'})?`}
-          warning="This cannot be undone."
+          warning={clearGroupConfirm.key === 'tasks'
+            ? 'This removes internal Tasks only. PCAR auditor findings are kept.'
+            : clearGroupConfirm.key === 'pcars'
+              ? 'This removes PCAR auditor findings only. Internal Tasks are kept.'
+              : 'This cannot be undone.'}
           confirmWord="DELETE"
           confirmLabel="Clear Data"
           isBusy={clearingKey === clearGroupConfirm.key}

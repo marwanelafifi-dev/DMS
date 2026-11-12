@@ -83,7 +83,8 @@ uvicorn main:app --reload --port 8000
 ## Expose (Stage 2 — Ubuntu + Cloudflare Tunnel)
 
 1. Copy the repo to the Ubuntu host, set `CLOUDFLARE_TUNNEL_TOKEN` in the uncommitted `.env` file, and keep that file at mode `0600`.
-2. `docker compose --profile tunnel up -d cloudflared`
+2. Pull and recreate only the pinned connector: `docker compose --profile tunnel pull cloudflared && docker compose --profile tunnel up -d --no-deps --force-recreate cloudflared`
+3. Verify the running release: `docker compose --profile tunnel exec cloudflared cloudflared --version`
 
 The same compose file runs unchanged; the pinned `cloudflared` container dials out to Cloudflare (no inbound ports). Configure the remotely managed tunnel's public hostname to use an origin reachable on the Compose network, normally `http://traefik:80`.
 

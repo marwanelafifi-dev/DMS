@@ -1486,6 +1486,7 @@ export const guideRegistry: GuideDefinition[] = [
         title: 'Clear Data',
         paragraphs: [
           'The Clear Data area contains destructive administrative actions, including per-module Clear controls and Clear All Data — Every Module. These actions use typed confirmation such as DELETE or DELETE ALL.',
+          'Tasks (Internal Use) and PCARs (Auditor Findings) are separate clear actions. Clearing one removes only that live register and its related evidence or links; it does not remove records from the other register. Historical PCAR Archive is separate and remains unchanged unless its own Clear action is used.',
           'Clear Data can permanently remove DMS data, and Clear All Data can affect multiple modules across the system. These controls must never be used as a troubleshooting shortcut.',
           'Before any clear operation, confirm the exact scope, the correct environment, that deletion is explicitly intended, and that required backups exist.',
         ],
