@@ -136,6 +136,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.Tags,
                     task.TaskType,
                     task.AuditStage,
+                    task.TaskNumber,
                     task.FindingNumber,
                     task.FindingSeverity,
                     task.StandardClause,
@@ -657,13 +658,19 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
                     ? NotFound(new { success = false, error = result.Message })
                     : BadRequest(new { success = false, error = result.Message });
 
-            var task = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == result.ResourceId!.Value);
             var finding = await context.Tasks.FirstAsync(t => t.TaskId == result.ResourceId!.Value);
-            finding.FindingNumber = $"PCAR-{DateTime.UtcNow:yyyy}-{await context.Tasks.CountAsync(t => t.TaskType == "pcar"):D4}";
+            // The sequence is seeded by migration 115 after the last numeric
+            // historical PCAR ID. Database allocation also keeps simultaneous
+            // auditors from receiving the same finding number.
+            var nextFindingNumber = await context.Database
+                .SqlQuery<long>($"SELECT nextval('dms_pcar_finding_number_seq') AS \"Value\"")
+                .SingleAsync();
+            finding.FindingNumber = $"PCAR-{nextFindingNumber:D6}";
             finding.FindingSeverity = req.FindingSeverity?.Trim().ToLowerInvariant();
             finding.StandardClause = req.StandardClause?.Trim();
             finding.AuditorNotes = req.AuditorNotes?.Trim();
             await context.SaveChangesAsync();
+            var task = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == result.ResourceId!.Value);
             await NotifyTaskAssignmentAsync(task, userId, "New audit PCAR assigned to you", "New audit PCAR assigned to your group");
             await auditService.LogAsync(userId, "PCAR_RAISED", new { task.TaskId, task.DocumentId, task.Title });
             return CreatedAtAction(nameof(GetTask), new { id = task.TaskId }, new { success = true, data = result.Data });

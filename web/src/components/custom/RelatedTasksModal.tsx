@@ -11,6 +11,7 @@ interface RelatedTaskRow {
   title: string;
   description?: string | null;
   taskType: string;
+  taskNumber?: string | null;
   riskSeverity?: string | null;
   assignedToUser?: { userId: string; fullName: string } | null;
   submittedByName?: string | null;
@@ -54,7 +55,10 @@ export function RelatedTasksModal({ documentId, folderId, fileName, onClose }: R
     (folderId ? apiClient.getTasksByFolder(folderId) : apiClient.getTasksByDocument(documentId!))
       .then((res) => {
         if (!res.success) throw new Error(res.error);
-        setTasks(res.data || []);
+        // The API already excludes PCARs. Keep this client-side guard so an
+        // incorrect/stale response can never display an audit finding as an
+        // internal task.
+        setTasks((res.data || []).filter((task: RelatedTaskRow) => task.taskType !== 'pcar'));
       })
       .catch((err: any) => setError(err?.response?.data?.error || err.message || 'Failed to load related tasks'))
       .finally(() => setIsLoading(false));
@@ -97,7 +101,15 @@ export function RelatedTasksModal({ documentId, folderId, fileName, onClose }: R
                       <button
                         type="button"
                         onClick={() => goToTask(task.taskId)}
-                        className="truncate text-left text-sm font-semibold text-navy-900 hover:underline dark:text-white"
+                        className="text-left text-xs font-semibold text-[#174f91] hover:underline dark:text-blue-200"
+                        title="Open this task"
+                      >
+                        Task No. {task.taskNumber ?? 'Not assigned'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => goToTask(task.taskId)}
+                        className="mt-1 truncate text-left text-sm font-semibold text-navy-900 hover:underline dark:text-white"
                         title="Open this task"
                       >
                         {task.title}

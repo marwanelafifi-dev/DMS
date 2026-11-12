@@ -291,6 +291,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+      (task.taskNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
       (task.findingNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
       (task.standardClause?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
       (task.auditorNotes?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
@@ -1159,6 +1160,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
           <div className="space-y-4">
             <Card>
               <CardBody className="p-5">
+                <p className="mb-2 text-sm font-semibold text-[#174f91] dark:text-blue-200">{focusedIsPcar ? `PCAR No. ${focusedPcar.findingNumber ?? 'Not assigned'}` : `Task No. ${focusedPcar.taskNumber ?? 'Not assigned'}`}</p>
                 <h1 className="text-lg font-semibold text-[#26334d] dark:text-white">{focusedPcar.title}</h1>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="section-heading">Issue Description</h2>
@@ -1546,7 +1548,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
             <table className="w-full">
               <thead className="bg-gray-100 dark:bg-navy-900 border-b border-gray-200 dark:border-navy-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Title</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">{mode === 'pcar' ? 'Finding / PCAR No.' : 'Task / Task No.'}</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Submitted By</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Assigned To</th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-navy-900 dark:text-white">Status</th>
@@ -1584,6 +1586,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                           />
                         ) : (
                           <div>
+                            <p className="mb-1 text-xs font-semibold text-[#174f91] dark:text-blue-200">{mode === 'pcar' ? `PCAR No. ${task.findingNumber ?? 'Not assigned'}` : `Task No. ${task.taskNumber ?? 'Not assigned'}`}</p>
                             <p className="font-medium text-navy-900 dark:text-white">{task.title}</p>
                             {task.description && (
                               <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>

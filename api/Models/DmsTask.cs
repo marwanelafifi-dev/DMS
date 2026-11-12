@@ -14,6 +14,8 @@ public class DmsTask
     public string[] Tags { get; set; } = Array.Empty<string>();
     public string TaskType { get; set; } = string.Empty;
     public string? AuditStage { get; set; }
+    // Internal Task register reference. PCAR findings use FindingNumber instead.
+    public string? TaskNumber { get; set; }
     public string? FindingNumber { get; set; }
     public string? FindingSeverity { get; set; }
     public string? StandardClause { get; set; }

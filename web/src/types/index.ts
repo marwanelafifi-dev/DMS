@@ -163,6 +163,7 @@ export interface Task {
   // finding raised against an already-released document.
   taskType: 'task' | 'review' | 'correction' | 'rca' | 'audit_action' | 'other' | 'pcar';
   auditStage?: 'preparation' | 'internal_audit' | 'external_audit';
+  taskNumber?: string;
   findingNumber?: string;
   findingSeverity?: 'observation' | 'minor_ncr' | 'major_ncr';
   standardClause?: string;

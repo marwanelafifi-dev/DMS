@@ -32,7 +32,7 @@ export interface GuideDefinition {
 export const guideRegistry: GuideDefinition[] = [
   {
     key: 'dashboard',
-    version: 2,
+    version: 3,
     title: 'Dashboard Guide',
     matches: (pathname) => pathname === '/',
     requiredAccess: 'canViewDashboard',
@@ -393,7 +393,7 @@ export const guideRegistry: GuideDefinition[] = [
       {
         id: 'about-tasks',
         title: 'About internal Tasks',
-        paragraphs: ['Tasks are internal work items. They are separate from audit PCAR findings and never enter the document-approval workflow. A Task may be linked to one or more files, folders, both, or neither.'],
+        paragraphs: ['Tasks are internal work items. They are separate from audit PCAR findings and never enter the document-approval workflow. Every Task has its own automatic Task No., starting at TASK-000001. A Task may be linked to one or more files, folders, both, or neither.'],
       },
       {
         id: 'creating-tasks',
@@ -426,7 +426,7 @@ export const guideRegistry: GuideDefinition[] = [
   },
   {
     key: 'pcar',
-    version: 3,
+    version: 4,
     title: 'PCAR (Auditor Findings) Guide',
     matches: (pathname) => pathname === '/pcars',
     requiredAccess: 'canViewPcar',
@@ -450,7 +450,8 @@ export const guideRegistry: GuideDefinition[] = [
         bullets: [
           'Status options: Open, In Progress, Submitted for approval, and Completed.',
           'Priority options: Low, Medium, High, and Critical.',
-          'Visible columns include Title, Submitted By, Assigned To, Status, Priority, Due Date, Type, and Actions.',
+          'Every live finding shows its PCAR No. in the register, details, and Related PCARs. This is the reference to use in audit discussions and searches.',
+          'Visible columns include Finding / PCAR No., Submitted By, Assigned To, Status, Priority, Due Date, Action, and Actions.',
           'If no tasks match the current view, the table may display “No tasks found.”',
         ],
         when: () => true,
@@ -462,7 +463,7 @@ export const guideRegistry: GuideDefinition[] = [
           'Raise PCAR opens the audit-finding form. The ability to create a PCAR depends on assigned access.',
         ],
         bullets: [
-          'Enter finding number, severity, clause or standard reference, auditor notes, priority, due date, and assignee.',
+          'Enter severity, clause or standard reference, auditor notes, priority, due date, and assignee. The system assigns the PCAR No. automatically after the last historical PCAR ID.',
           'Link at least one released file, one folder, or both. Every selected file must be released; a folder-only PCAR is allowed.',
           'A PCAR can link multiple files and folders and appears under Related PCARs for every linked item.',
         ],

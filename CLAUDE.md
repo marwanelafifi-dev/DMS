@@ -1,5 +1,27 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## Session 75 (2026-11-11) — PCAR register separation and continuous finding numbers
+
+- **Related Tasks** now returns and renders only normal internal Tasks; **Related PCARs** returns and renders only `pcar` audit findings. This is enforced in the document and folder APIs and again in each dialog, so an incorrect or stale response cannot show a PCAR in the Tasks dialog.
+- The live PCAR register, PCAR detail view, and Related PCARs dialog now display **PCAR No.** The in-app PCAR guide was updated to explain that it is assigned automatically and is the audit reference to use for searches and discussions.
+- Migration `115_pcar_finding_number_sequence.sql` creates a database sequence, normalises existing live PCARs in creation order, and seeds the next number after the highest numeric historical PCAR ID. New PCARs are allocated atomically as `PCAR-000001` style values, preventing duplicates when auditors create findings concurrently. Historical rows remain unchanged.
+- Migration `116_task_number_sequence.sql` assigns a separate immutable **Task No.** sequence for every normal internal Task, starting at `TASK-000001`. It normalises existing normal Tasks by creation date, and a PostgreSQL insert trigger covers normal Tasks created through the Task page, CSV import, and document-workflow correction requests. PCARs never receive a Task No.
+- In Related Tasks and Related PCARs, the visible Task No. or PCAR No. is a direct link to that record's detail view. The title remains clickable for Tasks as well.
+
+### Ubuntu deployment
+
+Apply migrations `115` and `116` before rebuilding the API; otherwise a newly raised PCAR or normal Task cannot receive its register number:
+
+```bash
+git pull --ff-only
+docker compose exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < infra/db/init/115_pcar_finding_number_sequence.sql
+docker compose exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < infra/db/init/116_task_number_sequence.sql
+docker compose up -d --build api web
+docker compose ps
+```
+
+After deployment, open the document in the reported issue: its PCAR must appear only in **Related PCARs**, and the same finding must show a PCAR No. throughout the register and detail dialog. Create or open a normal Task to confirm its independent Task No. begins at `TASK-000001`.
+
 ## Session 71 (2026-11-08/09) — Historical PCAR workflow and access-control corrections
 
 **Status:** Source committed and pushed through `5a7881d`. Frontend checks passed (`Sidebar.test.tsx`, `npm.cmd run type-check`, and `npm.cmd run build`). This Windows checkout has the .NET runtime but no SDK, so validate API compilation through the Ubuntu Docker build. The live PostgreSQL database was confirmed to contain **336** rows in `dms_historical_pcars`.

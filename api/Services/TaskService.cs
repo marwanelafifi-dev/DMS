@@ -87,6 +87,10 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             foreach (var id in (documentIds ?? (documentId.HasValue ? [documentId.Value] : [])).Distinct()) context.TaskDocumentLinks.Add(new DmsTaskDocumentLink { TaskId = task.TaskId, DocumentId = id, LinkedAt = DateTime.UtcNow });
             foreach (var id in (folderIds ?? (folderId.HasValue ? [folderId.Value] : [])).Distinct()) context.TaskFolderLinks.Add(new DmsTaskFolderLink { TaskId = task.TaskId, FolderId = id, LinkedAt = DateTime.UtcNow });
             await context.SaveChangesAsync();
+            // Migration 116 assigns the internal Task No. through a database
+            // trigger so every creation path (including workflow corrections)
+            // shares one atomic sequence. Reload it for the creation response.
+            await context.Entry(task).ReloadAsync();
 
             logger.LogInformation("Created task {TaskId} for document {DocumentId}", task.TaskId, documentId);
 
@@ -97,6 +101,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 task.FolderId,
                 task.Title,
                 task.Tags,
+                task.TaskNumber,
                 task.AssignedToId,
                 task.AssignedToGroupId,
                 task.DirectManagerId,
@@ -270,6 +275,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.Tags,
                     t.TaskType,
                     t.AuditStage,
+                    t.TaskNumber,
                     t.FindingNumber,
                     t.FindingSeverity,
                     t.StandardClause,
@@ -633,8 +639,11 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 // Keep the legacy primary-document column in the predicate so
                 // existing installations work before the link-table backfill
                 // has run. New tasks can be linked to several documents.
-                .Where(t => t.DocumentId == documentId || context.TaskDocumentLinks
-                    .Any(link => link.TaskId == t.TaskId && link.DocumentId == documentId))
+                // A PCAR is an audit finding, not an internal task. It has a
+                // separate Related PCARs endpoint and must never leak into the
+                // document's Related Tasks history.
+                .Where(t => t.TaskType != "pcar" && (t.DocumentId == documentId || context.TaskDocumentLinks
+                    .Any(link => link.TaskId == t.TaskId && link.DocumentId == documentId)))
                 .OrderByDescending(t => t.CreatedAt)
                 .Select(t => new
                 {
@@ -642,6 +651,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.Title,
                     t.Description,
                     t.TaskType,
+                    t.TaskNumber,
                     t.RiskSeverity,
                     AssignedTo = t.AssignedTo == null ? null : new { t.AssignedTo.UserId, t.AssignedTo.FullName },
                     AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
@@ -670,6 +680,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 t.Title,
                 t.Description,
                 t.TaskType,
+                t.TaskNumber,
                 t.RiskSeverity,
                 t.AssignedTo,
                 t.AssignedToGroupName,
@@ -700,7 +711,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => new
             {
-                t.TaskId, t.Title, t.Description, t.RiskSeverity,
+                t.TaskId, t.Title, t.Description, t.TaskType, t.TaskNumber, t.FindingNumber, t.RiskSeverity,
                 AssignedToName = t.AssignedTo == null ? null : t.AssignedTo.FullName,
                 AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
                 t.DueDate, t.Status, t.CreatedAt, t.CompletedAt,
@@ -714,11 +725,11 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         var tasks = await GetVisibleTasksQuery(userId, canViewAllTasks)
             .Where(t => (t.FolderId == folderId || context.TaskFolderLinks
                     .Any(link => link.TaskId == t.TaskId && link.FolderId == folderId))
-                && (!pcarsOnly || t.TaskType == "pcar"))
+                && (pcarsOnly ? t.TaskType == "pcar" : t.TaskType != "pcar"))
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => new
             {
-                t.TaskId, t.Title, t.Description, t.TaskType, t.RiskSeverity,
+                t.TaskId, t.Title, t.Description, t.TaskType, t.TaskNumber, t.FindingNumber, t.RiskSeverity,
                 AssignedToName = t.AssignedTo == null ? null : t.AssignedTo.FullName,
                 AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
                 t.DueDate, t.Status, t.CreatedAt, t.CompletedAt,
