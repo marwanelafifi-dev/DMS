@@ -1991,15 +1991,6 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
 
               {newTask.documentIds.length > 0 && <div className="flex flex-wrap gap-2">{newTask.documentIds.map((id) => { const doc = documents.find((item) => item.documentId === id); return <button type="button" key={id} onClick={() => setNewTask({ ...newTask, documentIds: newTask.documentIds.filter((item) => item !== id), documentId: newTask.documentIds.find((item) => item !== id) || '' })} className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800 dark:bg-blue-500/15 dark:text-blue-200">{doc ? getDocumentLabel(doc) : id} ×</button>; })}</div>}
 
-              {!isPcarForm && newTask.documentIds.length === 0 && newTask.folderIds.length === 0 && !newTask.documentId && !newTask.folderId && <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Direct Manager <span className="font-normal text-gray-500 dark:text-gray-400">(optional)</span></label>
-                <select value={newTask.directManagerId} onChange={(event) => setNewTask({ ...newTask, directManagerId: event.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white">
-                  <option value="">No direct manager</option>
-                  {users.filter((user) => String(user.role).toLowerCase() === 'manager').map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
-                </select>
-                <p className="mt-1 text-xs text-[#64748b] dark:text-slate-400">For an unlinked task, the selected manager receives the configured 1-day, due-date, and overdue reminders. If none is selected, only the assignee is notified; Quality and Full Access are not added.</p>
-              </div>}
-
               {!isPcarForm && <div>
                 <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Audit Stage</label>
                 <select value={newTask.auditStage} onChange={(event) => setNewTask({ ...newTask, auditStage: event.target.value as TaskForm['auditStage'] })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white">
@@ -2076,7 +2067,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
               </div>
 
               {canCreateTasks ? (
-                <div>
+                <>
+                  <div>
                   <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Assigned To</label>
                   <select
                     value={newTask.assignedToGroupId ? `group:${newTask.assignedToGroupId}` : `user:${newTask.assignedTo}`}
@@ -2099,7 +2091,24 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                       </optgroup>
                     )}
                   </select>
-                </div>
+                  </div>
+                  {!isPcarForm && newTask.documentIds.length === 0 && newTask.folderIds.length === 0 && !newTask.documentId && !newTask.folderId && (
+                    <div className="border-t border-[#e2e8f0] pt-3 dark:border-slate-700">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <label className="block text-sm font-medium text-navy-900 dark:text-white">Direct Manager <span className="font-normal text-gray-500 dark:text-gray-400">(optional)</span></label>
+                        <span className="text-xs text-[#718198] dark:text-slate-400">Unlinked tasks only</span>
+                      </div>
+                      <select value={newTask.directManagerId} onChange={(event) => setNewTask({ ...newTask, directManagerId: event.target.value })} className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-navy-900 dark:border-navy-700 dark:bg-navy-900 dark:text-white">
+                        <option value="">No direct manager</option>
+                        {users.filter((user) => String(user.role).toLowerCase() === 'manager').map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
+                      </select>
+                      <div role="note" className="mt-2 flex gap-2 rounded-[4px] bg-[#f8fafc] px-3 py-2 text-xs leading-5 text-[#52627a] dark:bg-slate-800/60 dark:text-slate-300">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#3f8bca]" aria-hidden="true" />
+                        <p>The assignee receives all reminders. A selected direct manager also receives the 1-day-before, due-date, and overdue reminders.</p>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <p className="text-sm text-gray-500 dark:text-slate-400">This PCAR will be filed under your own name.</p>
               )}
