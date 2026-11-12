@@ -4,6 +4,7 @@
 
 - The DMS Docker connector is pinned to `cloudflare/cloudflared:2026.10.7`. This is newer than Cloudflare's required `2026.10.2` security baseline for the compromised eMudhra intermediate-certificate issue; the previous pinned `2026.7.2` image must not be restarted or reused.
 - Upgrade an existing DMS connector by pulling and force-recreating only the `cloudflared` service under the `tunnel` profile (`up -d --no-deps --force-recreate cloudflared`). This intentionally does not rebuild or restart the API, web, database, or other DMS services. Confirm the release with `docker compose --profile tunnel exec cloudflared cloudflared --version` and check Cloudflare Zero Trust reports the connector as Healthy.
+- **Production verification (2026-11-12):** DMS was upgraded successfully from `2026.7.2` to `2026.10.7` on `dms-virtual-machine`. The connector registered all four QUIC tunnel connections, loaded both `new-dms.si-wareapps.com` and `dms.si-wareapps.com` ingress routes to `http://traefik:80`, and passed DNS, UDP/QUIC, TCP/HTTP2, and Cloudflare API connectivity pre-checks. The UDP receive-buffer message is non-blocking; the tunnel reported the environment as healthy.
 
 ## Session 76 (2026-11-12) — Separate live Task and PCAR cleanup
 
