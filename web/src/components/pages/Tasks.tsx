@@ -355,9 +355,11 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   // so the register table is always what's visible first on this page.
   const focusedPcar = highlightedTask || selectedTask;
   const focusedIsPcar = focusedPcar?.taskType === 'pcar';
+  const isWorkflowCorrection = !!focusedPcar && !focusedIsPcar && !!focusedPcar.approvalId && !!focusedPcar.documentId;
   const focusedTaskRequiresEvidence = !!focusedPcar
     && !focusedIsPcar
-    && ['correction', 'rca', 'audit_action', 'other'].includes(focusedPcar.taskType);
+    && !isWorkflowCorrection
+    && ['correction', 'rca', 'audit_action'].includes(focusedPcar.taskType);
   const focusedPcarIsMine = focusedPcar ? isTaskMine(focusedPcar) : true;
   const focusedTaskCanManage = focusedPcar
     ? (focusedPcar.canManage ?? (focusedPcarIsMine || canManageAllTasks))
@@ -372,6 +374,13 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   // 'in_progress' forever with no reviewer ever seeing it — that's a data
   // issue to repair directly, not something this check should paper over.)
   const pcarAlreadySubmitted = !!focusedIsPcar && (focusedPcar?.status === 'submitted' || focusedPcar?.status === 'done');
+  const workflowCorrectionCompleted = isWorkflowCorrection && (focusedPcar.status === 'completed' || focusedPcar.status === 'done');
+  const workflowStageLabel: Record<string, string> = {
+    qa_review: 'QA Review (Stage 1)',
+    manager_review: 'Manager Review (Stage 2)',
+    final_release: 'Final Release (Stage 3)',
+    released: 'Released',
+  };
 
   useEffect(() => {
     if (!showDocDropdown) return;
@@ -556,8 +565,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
 
   const handleDownloadLinkedDocumentForEditing = async () => {
     if (!linkedDocument?.currentVersionId) return;
-    if (pcarAlreadySubmitted) {
-      showError('This PCAR has already been submitted — view/download only');
+    if (pcarAlreadySubmitted || workflowCorrectionCompleted) {
+      showError('This workflow task has already been submitted — view/download only');
       return;
     }
     try {
@@ -581,8 +590,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
 
   const handleRequestUploadUpdatedLinkedDocument = () => {
     if (!linkedDocument || !focusedPcar) return;
-    if (pcarAlreadySubmitted) {
-      showError('This PCAR has already been submitted — view/download only');
+    if (pcarAlreadySubmitted || workflowCorrectionCompleted) {
+      showError('This workflow task has already been submitted — view/download only');
       return;
     }
     // Uploading the corrected file on an approval-linked task immediately
@@ -614,15 +623,17 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     // documentation fields validated above, then send the approval batch
     // back to that reviewer's queue. Tasks created the regular way (not
     // tied to an approval) simply skip this.
-    if (isApprovalLinked) {
+    if (isApprovalLinked || isWorkflowCorrection) {
       try {
-        await apiClient.updateTask(focusedPcar.taskId, {
-          rcaText: pcarDraft.rootCause.trim(),
-          correctionText: pcarDraft.correction.trim(),
-          preventiveActions: pcarDraft.preventiveAction.trim(),
-          dueDate: pcarDraft.targetDate,
-          tags: pcarDraft.tags,
-        });
+        if (isApprovalLinked) {
+          await apiClient.updateTask(focusedPcar.taskId, {
+            rcaText: pcarDraft.rootCause.trim(),
+            correctionText: pcarDraft.correction.trim(),
+            preventiveActions: pcarDraft.preventiveAction.trim(),
+            dueDate: pcarDraft.targetDate,
+            tags: pcarDraft.tags,
+          });
+        }
       } catch {
         // non-fatal — Save Documentation can retry this afterwards
       }
@@ -1171,6 +1182,13 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   )}
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
+                {isWorkflowCorrection && (
+                  <div className="mt-4 grid gap-2 rounded-[4px] border border-[#dbe2ec] bg-[#f8fafc] p-3 text-xs text-[#52627a] dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 sm:grid-cols-3">
+                    <span><strong className="text-[#26334d] dark:text-white">Requested by:</strong> {getSubmittedByName(focusedPcar) ?? 'Workflow reviewer'}</span>
+                    <span><strong className="text-[#26334d] dark:text-white">Workflow phase:</strong> {workflowStageLabel[focusedPcar.workflowStage ?? ''] ?? 'Document Workflow'}</span>
+                    <span><strong className="text-[#26334d] dark:text-white">Document ID:</strong> {allLinkedItems.documents.find((document) => document.documentId === focusedPcar.documentId)?.originalDocumentId ?? 'Not set'}</span>
+                  </div>
+                )}
                 {focusedIsPcar && <div className="mt-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">Tags</p>
                   <TagSelector value={pcarDraft.tags} onChange={(tags) => setPcarDraft({ ...pcarDraft, tags })} disabled={!focusedTaskCanManage || pcarAlreadySubmitted} />
@@ -1194,25 +1212,25 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   <p className="mt-1 text-xs text-[#718198] dark:text-slate-400">This {mode === 'pcar' ? 'finding' : 'task'} is shown in Related Tasks or Related PCARs for every item below.</p>
                   <div className="mt-3 space-y-2">
                     {allLinkedItems.documents.map((document) => (
-                      <div key={document.documentId} className="flex items-center gap-2 rounded-[4px] border border-[#e2e8f0] px-3 py-2 dark:border-slate-800">
+                      <button type="button" key={document.documentId} onClick={() => navigate(`/documents?preview=${encodeURIComponent(document.documentId)}`)} className="flex w-full items-center gap-2 rounded-[4px] border border-[#e2e8f0] px-3 py-2 text-left transition-colors hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:border-slate-800 dark:hover:bg-slate-800">
                         <FileText className="h-4 w-4 shrink-0 text-[#3f8bca]" />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#26334d] dark:text-white">{document.title}</span>
                         {document.originalDocumentId && <span className="shrink-0 font-mono text-xs text-[#718198] dark:text-slate-400">{document.originalDocumentId}</span>}
                         {document.status && <span className="shrink-0 text-xs capitalize text-[#718198] dark:text-slate-400">{document.status}</span>}
-                      </div>
+                      </button>
                     ))}
                     {allLinkedItems.folders.map((folder) => (
-                      <div key={folder.folderId} className="flex items-center gap-2 rounded-[4px] border border-[#e2e8f0] px-3 py-2 dark:border-slate-800">
+                      <button type="button" key={folder.folderId} onClick={() => navigate(`/documents?folder=${encodeURIComponent(folder.folderId)}`)} className="flex w-full items-center gap-2 rounded-[4px] border border-[#e2e8f0] px-3 py-2 text-left transition-colors hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] dark:border-slate-800 dark:hover:bg-slate-800">
                         <FolderIcon className="h-4 w-4 shrink-0 text-amber-500" />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#26334d] dark:text-white">{folder.name}</span>
                         <span className="text-xs text-[#718198] dark:text-slate-400">Folder</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </CardBody>
               </Card>
             )}
-            {focusedIsPcar && focusedPcar.documentId && (
+            {(focusedIsPcar || isWorkflowCorrection) && focusedPcar.documentId && (
               <Card>
                 <CardBody className="p-5">
                   <h2 className="section-heading">Linked Document</h2>
@@ -1236,8 +1254,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                           size="sm"
                           onClick={handleDownloadLinkedDocumentForEditing}
                           leftIcon={<PencilLine className="h-3.5 w-3.5" />}
-                          disabled={pcarAlreadySubmitted}
-                          title={pcarAlreadySubmitted ? 'This PCAR has already been submitted — view/download only' : undefined}
+                          disabled={pcarAlreadySubmitted || workflowCorrectionCompleted}
+                          title={pcarAlreadySubmitted || workflowCorrectionCompleted ? 'This workflow task has already been submitted — view/download only' : undefined}
                         >
                           Download for Editing
                         </Button>
@@ -1246,8 +1264,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                           size="sm"
                           onClick={handleRequestUploadUpdatedLinkedDocument}
                           leftIcon={<Upload className="h-3.5 w-3.5" />}
-                          disabled={pcarAlreadySubmitted}
-                          title={pcarAlreadySubmitted ? 'This PCAR has already been submitted — view/download only' : undefined}
+                          disabled={pcarAlreadySubmitted || workflowCorrectionCompleted}
+                          title={pcarAlreadySubmitted || workflowCorrectionCompleted ? 'This workflow task has already been submitted — view/download only' : undefined}
                         >
                           Upload Updated File
                         </Button>
@@ -1450,15 +1468,20 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
               <>
                 <Card>
                   <CardBody className="p-5">
-                    <h2 className="section-heading">Task Status</h2>
+                    <h2 className="section-heading">{isWorkflowCorrection ? 'Document Workflow' : 'Task Status'}</h2>
                     <div className="mt-4 flex items-center gap-2 text-sm text-[#52627a] dark:text-slate-300">
                       <span className={`h-2.5 w-2.5 rounded-full ${focusedPcar.status === 'completed' || focusedPcar.status === 'done' ? 'bg-[#3aa66a]' : 'bg-[#cbd5e3]'}`} />
-                      {focusedPcar.status === 'completed' || focusedPcar.status === 'done' ? 'Completed' : 'Open'}
+                      {workflowCorrectionCompleted
+                        ? 'Updated file submitted for review'
+                        : isWorkflowCorrection
+                          ? `Correction requested - ${workflowStageLabel[focusedPcar.workflowStage ?? ''] ?? 'Document Workflow'}`
+                          : focusedPcar.status === 'completed' || focusedPcar.status === 'done' ? 'Completed' : 'Open'}
                     </div>
                     {focusedPcar.completedAt && <p className="mt-2 text-xs text-[#94a3b8] dark:text-slate-400">Completed on {formatDateTime(focusedPcar.completedAt)}</p>}
                   </CardBody>
                 </Card>
-                {focusedPcar.status !== 'completed' && focusedPcar.status !== 'done' && <Card><CardBody className="p-5"><label className="block text-sm text-[#52627a] dark:text-slate-300">Completion comment <span className="text-xs text-[#718198] dark:text-slate-400">(optional)</span><textarea className="field-control mt-2 min-h-[92px] w-full py-2" value={completionComment} onChange={(event) => setCompletionComment(event.target.value)} placeholder="Summarize what was completed or any follow-up…" disabled={!focusedTaskCanManage} /></label><Button className="mt-4 w-full" onClick={handleCompleteFocusedTask} disabled={!focusedTaskCanManage || (focusedTaskRequiresEvidence && !hasPcarEvidence)} title={!focusedTaskCanManage ? 'Only the assignee, linked-folder owner, or linked-folder manager can complete this task' : focusedTaskRequiresEvidence && !hasPcarEvidence ? 'Add at least one attachment before completing this task' : undefined}>Complete task</Button>{focusedTaskRequiresEvidence && !hasPcarEvidence && focusedTaskCanManage && <p className="mt-3 text-center text-xs text-[#b96a08] dark:text-amber-300">Add at least one attachment before completing this task.</p>}</CardBody></Card>}
+                {isWorkflowCorrection && !workflowCorrectionCompleted && <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">Upload the updated linked file to return it to Quality for review.</p>}
+                {!isWorkflowCorrection && focusedPcar.status !== 'completed' && focusedPcar.status !== 'done' && <Card><CardBody className="p-5"><label className="block text-sm text-[#52627a] dark:text-slate-300">Completion comment <span className="text-xs text-[#718198] dark:text-slate-400">(optional)</span><textarea className="field-control mt-2 min-h-[92px] w-full py-2" value={completionComment} onChange={(event) => setCompletionComment(event.target.value)} placeholder="Summarize what was completed or any follow-up…" disabled={!focusedTaskCanManage} /></label><Button className="mt-4 w-full" onClick={handleCompleteFocusedTask} disabled={!focusedTaskCanManage || (focusedTaskRequiresEvidence && !hasPcarEvidence)} title={!focusedTaskCanManage ? 'Only the assignee, linked-folder owner, or linked-folder manager can complete this task' : focusedTaskRequiresEvidence && !hasPcarEvidence ? 'Add at least one attachment before completing this task' : undefined}>Complete task</Button>{focusedTaskRequiresEvidence && !hasPcarEvidence && focusedTaskCanManage && <p className="mt-3 text-center text-xs text-[#b96a08] dark:text-amber-300">Add at least one attachment before completing this task.</p>}</CardBody></Card>}
               </>
             )}
           </div>

@@ -988,11 +988,6 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
             if (approvalDocument.Status != "correction_requested")
                 return BadRequest(new { success = false, error = "This correction has already been resubmitted" });
 
-            if (string.IsNullOrWhiteSpace(task.RcaText) || task.RcaText.Trim().Length < 20)
-                return BadRequest(new { success = false, error = "Root cause analysis must contain at least 20 characters before resubmitting" });
-            if (string.IsNullOrWhiteSpace(task.CorrectionText) || string.IsNullOrWhiteSpace(task.PreventiveActions) || task.DueDate == null)
-                return BadRequest(new { success = false, error = "Complete the immediate correction, preventive action, and target date before resubmitting" });
-
             // The corrected file was uploaded as a new document version before this
             // call (bumping dms_documents.current_version_id) — but nothing had ever
             // pointed the approval-document row at it, so the reviewer's queue kept

@@ -176,6 +176,7 @@ export interface Task {
   // context) without ever having one; requiring a re-upload from it too
   // would block it from ever being submitted at all.
   approvalId?: string;
+  workflowStage?: 'qa_review' | 'manager_review' | 'final_release' | 'released';
   document?: Document;
   // Exactly one of assignedTo / assignedToGroupId is ever set — a group
   // assignment is one shared task visible to every member.

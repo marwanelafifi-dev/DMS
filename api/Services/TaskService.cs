@@ -269,6 +269,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.DocumentId,
                     t.FolderId,
                     t.ApprovalId,
+                    WorkflowStage = t.ApprovalId.HasValue && t.DocumentId.HasValue
+                        ? context.ApprovalDocuments.Where(ad => ad.ApprovalId == t.ApprovalId.Value && ad.DocumentId == t.DocumentId.Value).Select(ad => ad.CurrentStage).FirstOrDefault()
+                        : null,
                     Document = t.Document == null ? null : new { t.Document.DocumentId, t.Document.Title },
                     t.Title,
                     t.Description,
@@ -328,9 +331,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
             if (task.TaskType == "pcar")
                 return TaskResult.Invalid("Submit PCAR evidence for Quality/Auditor verification instead of completing the finding directly");
 
-            var requiresEvidence = task.TaskType is "correction" or "rca" or "audit_action" or "other";
+            var requiresEvidence = task.TaskType is "correction" or "rca" or "audit_action";
             if (requiresEvidence && !await context.TaskAttachments.AnyAsync(attachment => attachment.TaskId == taskId))
-                return TaskResult.Invalid("Attach at least one evidence item before completing a Correction, Root Cause Analysis, Audit Action, or Other task");
+                return TaskResult.Invalid("Attach at least one evidence item before completing a Correction, Root Cause Analysis, or Audit Action task");
 
             task.Status = "completed";
             task.CompletedById = userId;

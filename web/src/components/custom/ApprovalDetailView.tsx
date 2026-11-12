@@ -440,7 +440,6 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   groups={groups}
                   taskTitle={taskTitle} setTaskTitle={setTaskTitle}
                   taskDescription={taskDescription} setTaskDescription={setTaskDescription}
-                  taskType={taskType} setTaskType={setTaskType}
                   priority={priority} setPriority={setPriority}
                   assignToUserId={assignToUserId} setAssignToUserId={setAssignToUserId}
                   assignToGroupId={assignToGroupId} setAssignToGroupId={setAssignToGroupId}
@@ -490,7 +489,6 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   groups={groups}
                   taskTitle={taskTitle} setTaskTitle={setTaskTitle}
                   taskDescription={taskDescription} setTaskDescription={setTaskDescription}
-                  taskType={taskType} setTaskType={setTaskType}
                   priority={priority} setPriority={setPriority}
                   assignToUserId={assignToUserId} setAssignToUserId={setAssignToUserId}
                   assignToGroupId={assignToGroupId} setAssignToGroupId={setAssignToGroupId}
@@ -560,7 +558,6 @@ export function ApprovalDetailView({ approvalId, documentId, users, groups, onCl
                   groups={groups}
                   taskTitle={taskTitle} setTaskTitle={setTaskTitle}
                   taskDescription={taskDescription} setTaskDescription={setTaskDescription}
-                  taskType={taskType} setTaskType={setTaskType}
                   priority={priority} setPriority={setPriority}
                   assignToUserId={assignToUserId} setAssignToUserId={setAssignToUserId}
                   assignToGroupId={assignToGroupId} setAssignToGroupId={setAssignToGroupId}
@@ -676,7 +673,7 @@ function DocIdResolutionPanel({
 // assignee. Document is implicit here (it's the one being reviewed).
 function CorrectionTaskForm({
   users, groups, taskTitle, setTaskTitle, taskDescription, setTaskDescription,
-  taskType, setTaskType, priority, setPriority,
+  priority, setPriority,
   assignToUserId, setAssignToUserId, assignToGroupId, setAssignToGroupId, dueDate, setDueDate,
   attachment, setAttachment, notes, setNotes,
   notesLabel = 'Notes (optional)', onCancel, onSubmit, isSubmitting, submitDisabled, submitTitle,
@@ -685,7 +682,6 @@ function CorrectionTaskForm({
   groups: Array<{ groupId: string; name: string }>;
   taskTitle: string; setTaskTitle: (v: string) => void;
   taskDescription: string; setTaskDescription: (v: string) => void;
-  taskType: string; setTaskType: (v: string) => void;
   priority: string; setPriority: (v: string) => void;
   assignToUserId: string; setAssignToUserId: (v: string) => void;
   assignToGroupId: string; setAssignToGroupId: (v: string) => void;
@@ -699,6 +695,11 @@ function CorrectionTaskForm({
   submitDisabled?: boolean;
   submitTitle?: string;
 }) {
+  const [assigneeSearch, setAssigneeSearch] = useState('');
+  const normalizedAssigneeSearch = assigneeSearch.trim().toLocaleLowerCase();
+  const filteredUsers = users.filter((user) => user.fullName.toLocaleLowerCase().includes(normalizedAssigneeSearch));
+  const filteredGroups = groups.filter((group) => group.name.toLocaleLowerCase().includes(normalizedAssigneeSearch));
+
   return (
     <DecisionForm title="Correction Task" onCancel={onCancel} onSubmit={onSubmit} submitLabel="Send Correction Task" isSubmitting={isSubmitting} submitDisabled={submitDisabled} submitTitle={submitTitle}>
       <TextField label="Task title" value={taskTitle} onChange={setTaskTitle} />
@@ -706,15 +707,7 @@ function CorrectionTaskForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Type</label>
-          <select
-            value={taskType}
-            onChange={(e) => setTaskType(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-          >
-            <option value="correction">Correction</option>
-            <option value="rca">RCA</option>
-            <option value="audit_action">Audit Action</option>
-          </select>
+          <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">Correction</div>
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Priority</label>
@@ -733,6 +726,14 @@ function CorrectionTaskForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-navy-900 dark:text-white">Assign to</label>
+          <input
+            type="search"
+            value={assigneeSearch}
+            onChange={(event) => setAssigneeSearch(event.target.value)}
+            placeholder="Search users or groups"
+            aria-label="Search users or groups"
+            className="mb-2 w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+          />
           <select
             value={assignToGroupId ? `group:${assignToGroupId}` : assignToUserId ? `user:${assignToUserId}` : ''}
             onChange={(e) => {
@@ -744,13 +745,13 @@ function CorrectionTaskForm({
           >
             <option value="">Select user or group…</option>
             <optgroup label="Users">
-              {users.map((u) => (
+              {filteredUsers.map((u) => (
                 <option key={u.userId} value={`user:${u.userId}`}>{u.fullName}</option>
               ))}
             </optgroup>
-            {groups.length > 0 && (
+            {filteredGroups.length > 0 && (
               <optgroup label="Groups">
-                {groups.map((g) => (
+                {filteredGroups.map((g) => (
                   <option key={g.groupId} value={`group:${g.groupId}`}>{g.name}</option>
                 ))}
               </optgroup>

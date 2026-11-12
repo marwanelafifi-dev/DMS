@@ -93,6 +93,7 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
         return new
         {
             task.TaskId,
+            task.TaskNumber,
             task.Title,
             task.Status,
             assigneeName = task.AssignedTo?.FullName ?? task.AssignedToGroup?.Name,

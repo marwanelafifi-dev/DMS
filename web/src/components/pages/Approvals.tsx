@@ -26,6 +26,7 @@ interface QueueDocument {
 
 interface LinkedTask {
   taskId: string;
+  taskNumber?: string | null;
   title: string;
   status: string;
   assigneeName?: string | null;
@@ -508,8 +509,8 @@ function ApprovalQueueTable({
                   {approval.linkedTask && (
                     <div className="mt-1 flex items-center gap-1 text-[11px] text-[#b96a08] dark:text-amber-300">
                       <AlertCircle className="h-3 w-3 flex-shrink-0" />
-                      <span className="truncate" title={`Task: ${approval.linkedTask.title} — ${approval.linkedTask.assigneeName ?? 'Unassigned'}`}>
-                        Task: {approval.linkedTask.title} — {approval.linkedTask.assigneeName ?? 'Unassigned'}
+                      <span className="truncate" title={`Task ${approval.linkedTask.taskNumber ?? approval.linkedTask.taskId}: ${approval.linkedTask.title} — assigned to ${approval.linkedTask.assigneeName ?? 'Unassigned'}`}>
+                        {approval.linkedTask.taskNumber ?? 'Task'}: {approval.linkedTask.title} — assigned to {approval.linkedTask.assigneeName ?? 'Unassigned'}
                       </span>
                     </div>
                   )}
