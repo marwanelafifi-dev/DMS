@@ -3,7 +3,7 @@ import { ArrowRight, ClipboardCheck, FileCheck2, Printer, ShieldCheck, TriangleA
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { apiClient } from '../../utils/api';
 import type { Task, User } from '../../types';
-import type { ReadinessContact, ReadinessEvidence, ReadinessRequirement } from '../../utils/isoDepartmentReadiness';
+import type { ReadinessContact, ReadinessCoveredFolder, ReadinessEvidence, ReadinessRequirement } from '../../utils/isoDepartmentReadiness';
 import { Card, CardBody } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SkeletonCard } from '../ui/Skeleton';
@@ -34,7 +34,7 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
   const [documents, setDocuments] = useState<ReadinessEvidence[]>([]);
   const [coverageItems, setCoverageItems] = useState<ReadinessRequirement[]>([]);
   const [readinessContacts, setReadinessContacts] = useState<ReadinessContact[]>([]);
-  const [globalAccessRoles, setGlobalAccessRoles] = useState<string[]>([]);
+  const [coveredFolders, setCoveredFolders] = useState<ReadinessCoveredFolder[]>([]);
   const [reviewEntries, setReviewEntries] = useState<any[]>([]);
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [cycleLoadError, setCycleLoadError] = useState(false);
@@ -59,11 +59,12 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
         setUsersLoadError(userResult.status === 'rejected' || !Array.isArray(userResult.value.data));
         const activeCycle = cycles?.find((cycle: any) => cycle.standard === standard && cycle.status === 'active');
         setActiveCycleId(activeCycle?.auditCycleId ?? null);
-        const [documentResult, coverageResult, reviewResult, contactResult] = await Promise.allSettled([
+        const [documentResult, coverageResult, reviewResult, contactResult, setupResult] = await Promise.allSettled([
           apiClient.getIsoEvidence({ standard, auditCycleId: activeCycle?.auditCycleId }),
           activeCycle ? apiClient.getEvidenceRequirements(activeCycle.auditCycleId) : Promise.resolve({ data: [] }),
           activeCycle ? apiClient.getManagementReviewEntries({ auditCycleId: activeCycle.auditCycleId }) : Promise.resolve({ data: [] }),
-          activeCycle ? apiClient.getIsoReadinessContacts(activeCycle.auditCycleId) : Promise.resolve({ data: [], globalAccessRoles: [] }),
+          activeCycle ? apiClient.getIsoReadinessContacts(activeCycle.auditCycleId) : Promise.resolve({ data: [] }),
+          activeCycle ? apiClient.getAuditCycleSetup(activeCycle.auditCycleId) : Promise.resolve({ data: { folders: [] } }),
         ]);
         if (cancelled) return;
         setDocuments(documentResult.status === 'fulfilled' && Array.isArray(documentResult.value.data) ? documentResult.value.data as ReadinessEvidence[] : []);
@@ -71,8 +72,8 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
         setCoverageItems(coverageResult.status === 'fulfilled' && Array.isArray(coverageResult.value.data) ? coverageResult.value.data as ReadinessRequirement[] : []);
         setCoverageLoadError(coverageResult.status === 'rejected' || !Array.isArray(coverageResult.value.data));
         setReadinessContacts(contactResult.status === 'fulfilled' && Array.isArray(contactResult.value.data) ? contactResult.value.data as ReadinessContact[] : []);
-        setGlobalAccessRoles(contactResult.status === 'fulfilled' && Array.isArray(contactResult.value.globalAccessRoles) ? contactResult.value.globalAccessRoles as string[] : []);
-        setContactsLoadError(contactResult.status === 'rejected' || !Array.isArray(contactResult.value.data) || !Array.isArray(contactResult.value.globalAccessRoles));
+        setCoveredFolders(setupResult.status === 'fulfilled' && Array.isArray(setupResult.value.data?.folders) ? setupResult.value.data.folders as ReadinessCoveredFolder[] : []);
+        setContactsLoadError(contactResult.status === 'rejected' || !Array.isArray(contactResult.value.data) || setupResult.status === 'rejected' || !Array.isArray(setupResult.value.data?.folders));
         setReviewEntries(reviewResult.status === 'fulfilled' && Array.isArray(reviewResult.value.data) ? reviewResult.value.data : []);
       })
       .finally(() => { if (!cancelled) setIsLoading(false); });
@@ -106,7 +107,7 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
             <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Open cycle PCARs</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{tasksLoadError || !activeCycleId ? '—' : openPcars.length}</p><button onClick={() => navigate('/pcars')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open PCAR register</button></div>
             <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Unfinished DMS tasks</p><p className={`mt-1 text-2xl font-semibold ${overdueTasks.length ? 'text-[#c73c44]' : 'text-[#26334d] dark:text-white'}`}>{tasksLoadError ? '—' : openTasks.length}</p><button onClick={() => navigate('/tasks')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open task list</button></div>
             <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Active-cycle evidence</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{evidenceLoadError || !activeCycleId ? '—' : activeEvidence.length}</p><button onClick={() => navigate('/documents')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open controlled documents</button></div>
-            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Processes without evidence</p><p className={`mt-1 text-2xl font-semibold ${missingCoverage.length ? 'text-[#c27a12]' : 'text-[#26334d] dark:text-white'}`}>{coverageLoadError || !activeCycleId || coverageItems.length === 0 ? '—' : missingCoverage.length}</p><button onClick={() => navigate('/evidence-coverage')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">{coverageItems.length ? 'Review coverage rules' : 'Configure coverage rules'}</button></div>
+            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Processes without evidence</p><p className={`mt-1 text-2xl font-semibold ${missingCoverage.length ? 'text-[#c27a12]' : 'text-[#26334d] dark:text-white'}`}>{coverageLoadError || !activeCycleId || coverageItems.length === 0 ? '—' : missingCoverage.length}</p><button onClick={() => navigate('/evidence-coverage')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Review covered folders</button></div>
           </div>
         </CardBody>
       </Card>
@@ -140,7 +141,7 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
         evidence={documents}
         requirements={coverageItems}
         contacts={readinessContacts}
-        globalAccessRoles={globalAccessRoles}
+        coveredFolders={coveredFolders}
         standard={standard}
         activeCycleId={activeCycleId}
         loadError={cycleLoadError || tasksLoadError || usersLoadError || evidenceLoadError || coverageLoadError || contactsLoadError}

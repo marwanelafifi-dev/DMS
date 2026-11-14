@@ -37,7 +37,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
 
   const tabs = [
     {
-      id: 'programme' as SettingsTab, label: 'Audit Programme', icon: CalendarDays, description: 'Set annual ISO audit stages and owners',
+      id: 'programme' as SettingsTab, label: 'Audit Programme', icon: CalendarDays, description: 'Create cycles, select process folders, and map responsible owners',
     }, {
       id: 'api-keys' as SettingsTab,
       label: 'API Keys',

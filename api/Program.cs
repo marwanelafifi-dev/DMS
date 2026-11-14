@@ -48,6 +48,7 @@ builder.Services.AddScoped<AuditCalendarService>();
 builder.Services.AddScoped<UserGoogleCalendarService>();
 builder.Services.AddScoped<GoogleDirectoryUserSyncService>();
 builder.Services.AddScoped<AccessOverrideService>();
+builder.Services.AddScoped<AuditCycleSetupService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<AiChatSettingsService>();
 builder.Services.AddScoped<AiChatPromptsService>();

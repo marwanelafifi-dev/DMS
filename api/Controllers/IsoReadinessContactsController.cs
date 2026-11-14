@@ -8,7 +8,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/iso-readiness-contacts")]
-public class IsoReadinessContactsController(DmsContext context, AccessOverrideService accessOverrideService) : BaseController
+public class IsoReadinessContactsController(DmsContext context, AccessOverrideService accessOverrideService, AuditCycleSetupService setupService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> List([FromQuery] Guid auditCycleId)
@@ -22,17 +22,14 @@ public class IsoReadinessContactsController(DmsContext context, AccessOverrideSe
         var visible = new List<object>();
         foreach (var assignment in assignments)
             if (await accessOverrideService.HasFolderReadAccessAsync(userId, assignment.DepartmentFolderId)) visible.Add(assignment);
-        var globalAccessRoles = await context.PageAccessRoles.AsNoTracking()
-            .Where(role => role.BypassFolderPermissions)
-            .Select(role => role.Role).ToArrayAsync();
-        return Ok(new { success = true, data = visible, globalAccessRoles });
+        return Ok(new { success = true, data = visible });
     }
 
     [HttpPut("{departmentFolderId:guid}")]
     public async Task<ActionResult<object>> Replace(Guid departmentFolderId, [FromBody] IsoReadinessContactsRequest request)
     {
         var actorId = GetCurrentUserId();
-        if ((await GetPageAccessRoleAsync(context, actorId))?.CanCreatePcars != true) return Forbid();
+        if ((await GetPageAccessRoleAsync(context, actorId))?.CanViewAdminPanel != true) return Forbid();
         var cycle = await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(item => item.AuditCycleId == request.AuditCycleId);
         if (cycle == null) return BadRequest(new { success = false, error = "Select a valid audit cycle" });
         if (cycle.Status == "historical") return BadRequest(new { success = false, error = "Historical audit cycles cannot be changed" });
@@ -49,28 +46,16 @@ public class IsoReadinessContactsController(DmsContext context, AccessOverrideSe
             return BadRequest(new { success = false, error = "Select a department directly under Corporate / QMS / Procedures" });
         if (cycle.Standard == "ISO 27001:2022" && !folder.Name.Equals("IT", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { success = false, error = "ISO 27001 readiness contacts belong to the IT department" });
-        var coveredFolderIds = await context.EvidenceRequirements.AsNoTracking()
-            .Where(requirement => requirement.AuditCycleId == cycle.AuditCycleId && requirement.Standard == cycle.Standard)
-            .Join(context.Documents.AsNoTracking(), requirement => requirement.RelatedDocumentId, document => document.DocumentId,
-                (_, document) => document.FolderId)
-            .Distinct().ToListAsync();
-        var parentFolders = await context.Folders.AsNoTracking()
-            .Select(item => new { item.FolderId, item.ParentFolderId }).ToDictionaryAsync(item => item.FolderId, item => item.ParentFolderId);
-        var isCoveredDepartment = coveredFolderIds.Any(folderId =>
-        {
-            var current = folderId;
-            for (var depth = 0; depth < 64 && parentFolders.TryGetValue(current, out var parent); depth++)
-            {
-                if (current == departmentFolderId) return true;
-                if (!parent.HasValue) break;
-                current = parent.Value;
-            }
-            return false;
-        });
-        if (!isCoveredDepartment) return BadRequest(new { success = false, error = "Add a process folder to this cycle's Evidence Coverage before assigning contacts" });
-        if (request.UserIds == null || request.UserIds.Length > 100)
-            return BadRequest(new { success = false, error = "Select no more than 100 readiness contacts" });
+        var coveredFolderIds = await context.AuditCycleCoverageFolders.AsNoTracking()
+            .Where(item => item.AuditCycleId == cycle.AuditCycleId).Select(item => item.FolderId).ToListAsync();
+        var eligibleUsers = (await setupService.GetOptionsAsync(cycle.Standard, actorId))
+            .Where(option => coveredFolderIds.Contains(option.FolderId) && option.DepartmentFolderId == departmentFolderId)
+            .SelectMany(option => option.EligibleUsers).Select(user => user.UserId).ToHashSet();
+        if (eligibleUsers.Count == 0) return BadRequest(new { success = false, error = "Configure this department in Admin → Audit Programme first" });
+        if (request.UserIds == null || request.UserIds.Length is < 1 or > 100)
+            return BadRequest(new { success = false, error = "Select between 1 and 100 responsible owners or managers" });
         var userIds = request.UserIds.Distinct().ToArray();
+        if (userIds.Any(id => !eligibleUsers.Contains(id))) return BadRequest(new { success = false, error = "Select owners or managers of the covered department folders only" });
         var activeCount = await context.Users.CountAsync(user => userIds.Contains(user.UserId) && user.IsActive);
         if (activeCount != userIds.Length) return BadRequest(new { success = false, error = "Select active DMS users only" });
 

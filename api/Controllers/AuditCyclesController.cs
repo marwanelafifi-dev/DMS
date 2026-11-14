@@ -1,5 +1,6 @@
 using DMS.Api.Data;
 using DMS.Api.Models;
+using DMS.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,7 +8,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/audit-cycles")]
-public class AuditCyclesController(DmsContext context) : BaseController
+public class AuditCyclesController(DmsContext context, AuditCycleSetupService setupService, AccessOverrideService accessOverrideService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> List()
@@ -21,8 +22,60 @@ public class AuditCyclesController(DmsContext context) : BaseController
         if ((await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.CanViewAdminPanel != true) return Forbid();
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Trim().Length > 180 || req.Standard is not ("ISO 9001:2015" or "ISO 27001:2022") || req.EndDate < req.StartDate) return BadRequest(new { success = false, error = "Enter a name, supported standard, and valid date range" });
         if (req.Standard == "ISO 27001:2022" && (req.StartDate.Year != req.EndDate.Year || req.StartDate.Month != 1 || req.StartDate.Day != 1 || req.EndDate.Month != 12 || req.EndDate.Day != 31)) return BadRequest(new { success = false, error = "ISO 27001 programmes must run from 1 January through 31 December of one year" });
-        var cycle = new DmsAuditCycle { AuditCycleId = Guid.NewGuid(), Name = req.Name.Trim(), Standard = req.Standard, StartDate = req.StartDate, EndDate = req.EndDate, Status = "planned", CreatedAt = DateTime.UtcNow, CreatedBy = GetCurrentUserId() };
-        context.AuditCycles.Add(cycle); await context.SaveChangesAsync(); return Ok(new { success = true, data = cycle });
+        if (req.Setup == null) return BadRequest(new { success = false, error = "Select process folders and responsible owners or managers before creating the cycle" });
+        var actorId = GetCurrentUserId();
+        var cycle = new DmsAuditCycle { AuditCycleId = Guid.NewGuid(), Name = req.Name.Trim(), Standard = req.Standard, StartDate = req.StartDate, EndDate = req.EndDate, Status = "planned", CreatedAt = DateTime.UtcNow, CreatedBy = actorId };
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        context.AuditCycles.Add(cycle);
+        await context.SaveChangesAsync();
+        var error = await setupService.ApplyAsync(cycle, req.Setup, actorId);
+        if (error != null) return BadRequest(new { success = false, error });
+        await transaction.CommitAsync();
+        return Ok(new { success = true, data = cycle });
+    }
+
+    [HttpGet("setup-options")]
+    public async Task<ActionResult<object>> GetSetupOptions([FromQuery] string standard)
+    {
+        var userId = GetCurrentUserId();
+        if ((await GetPageAccessRoleAsync(context, userId))?.CanViewAdminPanel != true) return Forbid();
+        if (standard is not ("ISO 9001:2015" or "ISO 27001:2022")) return BadRequest(new { success = false, error = "Select an ISO standard" });
+        return Ok(new { success = true, data = await setupService.GetOptionsAsync(standard, userId) });
+    }
+
+    [HttpGet("{id:guid}/setup")]
+    public async Task<ActionResult<object>> GetSetup(Guid id)
+    {
+        if (!await context.AuditCycles.AnyAsync(cycle => cycle.AuditCycleId == id)) return NotFound();
+        var userId = GetCurrentUserId();
+        var folders = await context.AuditCycleCoverageFolders.AsNoTracking()
+            .Where(item => item.AuditCycleId == id).Select(item => item.FolderId).ToListAsync();
+        var visibleFolderIds = new List<Guid>();
+        foreach (var folderId in folders)
+            if (await accessOverrideService.HasFolderReadAccessAsync(userId, folderId)) visibleFolderIds.Add(folderId);
+        var options = await setupService.GetOptionsAsync((await context.AuditCycles.AsNoTracking().FirstAsync(cycle => cycle.AuditCycleId == id)).Standard, userId);
+        var visibleOptions = options.Where(option => visibleFolderIds.Contains(option.FolderId)).ToArray();
+        var departmentIds = visibleOptions
+            .Select(option => option.DepartmentFolderId).ToHashSet();
+        var contacts = await context.IsoReadinessContacts.AsNoTracking()
+            .Where(item => item.AuditCycleId == id && departmentIds.Contains(item.DepartmentFolderId))
+            .Select(item => new { item.DepartmentFolderId, item.UserId }).ToListAsync();
+        return Ok(new { success = true, data = new { folderIds = visibleFolderIds, folders = visibleOptions.Select(option => new { option.FolderId, option.Path, option.DepartmentFolderId, option.DepartmentFolderName }), contacts } });
+    }
+
+    [HttpPut("{id:guid}/setup")]
+    public async Task<ActionResult<object>> UpdateSetup(Guid id, [FromBody] AuditCycleSetupRequest setup)
+    {
+        var actorId = GetCurrentUserId();
+        if ((await GetPageAccessRoleAsync(context, actorId))?.CanViewAdminPanel != true) return Forbid();
+        var cycle = await context.AuditCycles.FirstOrDefaultAsync(item => item.AuditCycleId == id);
+        if (cycle == null) return NotFound();
+        if (cycle.Status == "historical") return BadRequest(new { success = false, error = "Historical audit cycles cannot be changed" });
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        var error = await setupService.ApplyAsync(cycle, setup, actorId);
+        if (error != null) return BadRequest(new { success = false, error });
+        await transaction.CommitAsync();
+        return Ok(new { success = true });
     }
 
     [HttpPost("{id:guid}/activate")]
@@ -45,4 +98,4 @@ public class AuditCyclesController(DmsContext context) : BaseController
         await context.SaveChangesAsync(); return Ok(new { success = true, data = new { cycle.AuditCycleId, CycleStatus = cycle.Status, PreparationStatus = preparation.Status } });
     }
 }
-public record AuditCycleRequest(string Name, string Standard, DateOnly StartDate, DateOnly EndDate);
+public record AuditCycleRequest(string Name, string Standard, DateOnly StartDate, DateOnly EndDate, AuditCycleSetupRequest? Setup);

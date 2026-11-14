@@ -547,7 +547,10 @@ class APIClient {
     return data;
   }
   async getAuditCycles() { const { data } = await this.client.get<ApiResponse>('/audit-cycles'); return data; }
-  async createAuditCycle(payload: { name: string; standard: string; startDate: string; endDate: string }) { const { data } = await this.client.post<ApiResponse>('/audit-cycles', payload); return data; }
+  async createAuditCycle(payload: { name: string; standard: string; startDate: string; endDate: string; setup: { folderIds: string[]; departments: { departmentFolderId: string; userIds: string[] }[] } }) { const { data } = await this.client.post<ApiResponse>('/audit-cycles', payload); return data; }
+  async getAuditCycleSetupOptions(standard: string) { const { data } = await this.client.get<ApiResponse>('/audit-cycles/setup-options', { params: { standard } }); return data; }
+  async getAuditCycleSetup(id: string) { const { data } = await this.client.get<ApiResponse>(`/audit-cycles/${id}/setup`); return data; }
+  async updateAuditCycleSetup(id: string, payload: { folderIds: string[]; departments: { departmentFolderId: string; userIds: string[] }[] }) { const { data } = await this.client.put<ApiResponse>(`/audit-cycles/${id}/setup`, payload); return data; }
   async activateAuditCycle(id: string) { const { data } = await this.client.post<ApiResponse>(`/audit-cycles/${id}/activate`); return data; }
   async startAuditCycle(id: string) { const { data } = await this.client.post<ApiResponse>(`/audit-cycles/${id}/start`); return data; }
   async getAuditRecords(params?: { standard?: string; auditCycleId?: string }) { const { data } = await this.client.get<ApiResponse>('/audits', { params }); return data; }
@@ -555,11 +558,7 @@ class APIClient {
   async updateAuditRecord(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/audits/${id}`, payload); return data; }
   async deleteAuditRecord(id: string) { const { data } = await this.client.delete<ApiResponse>(`/audits/${id}`); return data; }
   async getEvidenceRequirements(auditCycleId: string) { const { data } = await this.client.get<ApiResponse>('/evidence-requirements', { params: { auditCycleId } }); return data; }
-  async createEvidenceRequirement(payload: { auditCycleId: string; standard: string; relatedDocumentId: string }) { const { data } = await this.client.post<ApiResponse>('/evidence-requirements', payload); return data; }
-  async createEvidenceRequirementsForFolders(payload: { auditCycleId: string; standard: string; folderIds: string[] }) { const { data } = await this.client.post<ApiResponse>('/evidence-requirements/folders', payload); return data; }
-  async deleteEvidenceRequirement(id: string) { const { data } = await this.client.delete<ApiResponse>(`/evidence-requirements/${id}`); return data; }
-  async getIsoReadinessContacts(auditCycleId: string) { const { data } = await this.client.get<{ success: boolean; data: { departmentFolderId: string; userId: string }[]; globalAccessRoles: string[] }>('/iso-readiness-contacts', { params: { auditCycleId } }); return data; }
-  async setIsoReadinessContacts(departmentFolderId: string, payload: { auditCycleId: string; userIds: string[] }) { const { data } = await this.client.put<ApiResponse>(`/iso-readiness-contacts/${departmentFolderId}`, payload); return data; }
+  async getIsoReadinessContacts(auditCycleId: string) { const { data } = await this.client.get<{ success: boolean; data: { departmentFolderId: string; userId: string }[] }>('/iso-readiness-contacts', { params: { auditCycleId } }); return data; }
   async getManagementReviewEntries(params?: { auditCycleId?: string; standard?: string }) { const { data } = await this.client.get<ApiResponse>('/management-review', { params }); return data; }
   async createManagementReviewEntry(payload: any) { const { data } = await this.client.post<ApiResponse>('/management-review', payload); return data; }
   async updateManagementReviewEntry(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/management-review/${id}`, payload); return data; }

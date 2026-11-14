@@ -14,10 +14,28 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
     public async Task<ActionResult<object>> List([FromQuery] Guid auditCycleId)
     {
         var userId = GetCurrentUserId();
-        var raw = await context.EvidenceRequirements.AsNoTracking().Where(requirement => requirement.AuditCycleId == auditCycleId)
+        var cycle = await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(item => item.AuditCycleId == auditCycleId);
+        if (cycle == null) return NotFound();
+        var selectedFolderIds = await context.AuditCycleCoverageFolders.AsNoTracking()
+            .Where(item => item.AuditCycleId == auditCycleId).Select(item => item.FolderId).ToListAsync();
+        var stored = await context.EvidenceRequirements.AsNoTracking().Where(requirement => requirement.AuditCycleId == auditCycleId)
             .Join(context.Documents.AsNoTracking().Where(document => document.DeletedAt == null), requirement => requirement.RelatedDocumentId, document => document.DocumentId, (requirement, document) => new { requirement, document })
             .Join(context.Folders.AsNoTracking(), item => item.document.FolderId, folder => folder.FolderId,
-                (item, folder) => new { item.requirement.EvidenceRequirementId, item.requirement.AuditCycleId, item.requirement.Standard, item.requirement.RelatedDocumentId, DocumentTitle = item.document.Title, item.document.FolderId, FolderName = folder.Name, DocumentOwnerId = item.document.OwnerId, DocumentDepartment = item.document.Department, FolderDepartment = folder.Department }).ToListAsync();
+                (item, folder) => new { item.requirement.EvidenceRequirementId, item.requirement.RelatedDocumentId, DocumentTitle = item.document.Title, item.document.FolderId, FolderName = folder.Name, DocumentOwnerId = item.document.OwnerId, DocumentDepartment = item.document.Department, FolderDepartment = folder.Department, Category = item.document.Category })
+            .Where(item => selectedFolderIds.Contains(item.FolderId) && (item.Category == null || item.Category != "Evidence"))
+            .ToListAsync();
+        var existingDocumentIds = stored.Select(item => item.RelatedDocumentId).ToHashSet();
+        var addedDocuments = await context.Documents.AsNoTracking()
+            .Where(document => selectedFolderIds.Contains(document.FolderId) && document.DeletedAt == null && !existingDocumentIds.Contains(document.DocumentId)
+                && (document.Category == null || document.Category != "Evidence"))
+            .Join(context.Folders.AsNoTracking(), document => document.FolderId, folder => folder.FolderId,
+                (document, folder) => new { document.DocumentId, DocumentTitle = document.Title, document.FolderId, FolderName = folder.Name, DocumentOwnerId = document.OwnerId, DocumentDepartment = document.Department, FolderDepartment = folder.Department })
+            .ToListAsync();
+        var raw = stored.Select(item => new EvidenceRequirementView(item.EvidenceRequirementId, auditCycleId, cycle.Standard,
+                item.RelatedDocumentId, item.DocumentTitle, item.FolderId, item.FolderName, item.DocumentOwnerId, item.DocumentDepartment, item.FolderDepartment))
+            .Concat(addedDocuments.Select(item => new EvidenceRequirementView(item.DocumentId, auditCycleId, cycle.Standard,
+                item.DocumentId, item.DocumentTitle, item.FolderId, item.FolderName, item.DocumentOwnerId, item.DocumentDepartment, item.FolderDepartment)))
+            .ToList();
         var linkedDocumentIds = await context.EvidenceLinks.AsNoTracking()
             .Where(link => link.AuditCycleId == auditCycleId && context.Documents.Any(document => document.DocumentId == link.EvidenceDocumentId && document.DeletedAt == null) && context.EvidenceVersionCycleAssignments.Any(assignment =>
                 assignment.DocumentId == link.EvidenceDocumentId && assignment.AuditCycleId == auditCycleId &&
@@ -156,3 +174,5 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
 
 public record EvidenceRequirementRequest(Guid AuditCycleId, string Standard, Guid RelatedDocumentId);
 public record EvidenceRequirementFolderRequest(Guid AuditCycleId, string Standard, Guid[] FolderIds);
+public record EvidenceRequirementView(Guid EvidenceRequirementId, Guid AuditCycleId, string Standard, Guid RelatedDocumentId,
+    string DocumentTitle, Guid FolderId, string FolderName, Guid DocumentOwnerId, string? DocumentDepartment, string? FolderDepartment);

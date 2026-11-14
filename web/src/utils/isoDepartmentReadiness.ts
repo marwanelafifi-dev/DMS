@@ -8,6 +8,7 @@ export type ReadinessEvidence = {
 };
 
 export type ReadinessContact = { departmentFolderId: string; userId: string };
+export type ReadinessCoveredFolder = { folderId: string; departmentFolderId: string; departmentFolderName: string };
 
 export type ReadinessRequirement = {
   evidenceRequirementId: string;
@@ -65,7 +66,7 @@ export function buildDepartmentReadiness(
   standard: 'ISO 9001:2015' | 'ISO 27001:2022',
   activeCycleId: string | null,
   contacts: ReadinessContact[],
-  globalAccessRoles: string[],
+  coveredFolders: ReadinessCoveredFolder[] = [],
 ): DepartmentReadinessResult {
   const usersById = new Map(users.map(user => [key(user.userId), user]));
   const contactsByFolder = new Map<string, Set<string>>();
@@ -74,17 +75,26 @@ export function buildDepartmentReadiness(
     if (!contactsByFolder.has(folderId)) contactsByFolder.set(folderId, new Set());
     contactsByFolder.get(folderId)!.add(key(contact.userId));
   }
-  const globalRoles = new Set(globalAccessRoles.map(key));
   const departmentsById = new Map<string, DepartmentBuilder>();
   const departmentByProcessFolder = new Map<string, DepartmentBuilder>();
   const departmentByDocument = new Map<string, DepartmentBuilder>();
   const unassignedRequirements: ReadinessRequirement[] = [];
 
+  for (const folder of coveredFolders) {
+    const id = key(folder.departmentFolderId);
+    let department = departmentsById.get(id);
+    if (!department) {
+      department = { id, name: folder.departmentFolderName, people: [], peopleById: new Map(), requirementCount: 0, taskCount: 0, pcarCount: 0, missingEvidenceCount: 0, evidenceUploadCount: 0, missingWithoutOwner: [] };
+      departmentsById.set(id, department);
+    }
+    departmentByProcessFolder.set(key(folder.folderId), department);
+  }
+
   const personFor = (department: DepartmentBuilder, userId: string | null | undefined, responsibility?: Responsibility) => {
     if (!userId) return undefined;
     const id = key(userId);
     const user = usersById.get(id);
-    if (!user || (user.role && globalRoles.has(key(user.role)) && !contactsByFolder.get(department.id)?.has(id))) return undefined;
+    if (!user || !contactsByFolder.get(department.id)?.has(id)) return undefined;
     let person = department.peopleById.get(id);
     if (!person) {
       person = { user, responsibilities: [], tasks: [], pcars: [], missingRequirements: [], uploadedEvidence: [] };
@@ -111,11 +121,18 @@ export function buildDepartmentReadiness(
     departmentByDocument.set(key(requirement.relatedDocumentId), department);
     for (const ownerId of requirement.folderOwnerUserIds ?? []) personFor(department, ownerId, 'Folder owner');
     for (const managerId of requirement.folderManagerUserIds ?? []) personFor(department, managerId, 'Folder manager');
-    const documentOwner = personFor(department, requirement.documentOwnerId, 'Process document owner');
+    personFor(department, requirement.documentOwnerId, 'Process document owner');
     if (!requirement.hasEvidence) {
       department.missingEvidenceCount += 1;
-      if (documentOwner) documentOwner.missingRequirements.push(requirement);
-      else department.missingWithoutOwner.push(requirement);
+      const responsibleIds = contactsByFolder.get(department.id) ?? new Set<string>();
+      let assigned = false;
+      for (const userId of responsibleIds) {
+        const person = personFor(department, userId, 'Readiness contact');
+        if (!person) continue;
+        person.missingRequirements.push(requirement);
+        assigned = true;
+      }
+      if (!assigned) department.missingWithoutOwner.push(requirement);
     }
   }
 
