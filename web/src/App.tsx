@@ -13,6 +13,7 @@ const AuditRegister = lazy(() => import('./components/pages/AuditRegister').then
 const ManagementReview = lazy(() => import('./components/pages/ManagementReview').then((module) => ({ default: module.ManagementReview })));
 const EvidenceCoverage = lazy(() => import('./components/pages/EvidenceCoverage').then((module) => ({ default: module.EvidenceCoverage })));
 const IsoWorkspace = lazy(() => import('./components/pages/IsoWorkspace').then((module) => ({ default: module.IsoWorkspace })));
+const Iso27001Workspace = lazy(() => import('./components/pages/Iso27001Workspace').then((module) => ({ default: module.Iso27001Workspace })));
 const Documents = lazy(() => import('./components/pages/Documents').then((module) => ({ default: module.Documents })));
 const Settings = lazy(() => import('./components/pages/Settings').then((module) => ({ default: module.Settings })));
 const Tasks = lazy(() => import('./components/pages/Tasks').then((module) => ({ default: module.Tasks })));
@@ -103,7 +104,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route element={<RequirePageAccess flag="canViewDashboard" />}>
                 <Route path="/iso-readiness" element={<IsoReadiness />} />
-                <Route path="/iso27001-readiness" element={<IsoReadiness standard="ISO 27001:2022" />} />
+                <Route path="/iso27001-readiness" element={<Iso27001Workspace />} />
               </Route>
 
               {/* Internal tasks and auditor PCAR findings have separate registers. */}

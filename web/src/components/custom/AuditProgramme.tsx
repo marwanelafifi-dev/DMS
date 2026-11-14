@@ -15,10 +15,10 @@ type StageValue = { date: string; dueDate: string; ownerId: string; status: stri
 const optionalStageKeys = new Set(['evidence_deadline', 'pcar_closure', 'external_response', 'cycle_closure']);
 const emptyStage = (): StageValue => ({ date: '', dueDate: '', ownerId: '', status: 'planned', notes: '' });
 
-export function AuditProgramme() {
+export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard }: { defaultStandard?: Standard }) {
   const { showError, showSuccess } = useToast();
   const [cycles, setCycles] = useState<any[]>([]);
-  const [standard, setStandard] = useState<Standard>('ISO 9001:2015');
+  const [standard, setStandard] = useState<Standard>(defaultStandard);
   const [cycleId, setCycleId] = useState('');
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
   const [values, setValues] = useState<Record<string, StageValue>>({});
@@ -28,6 +28,7 @@ export function AuditProgramme() {
 
   const loadCycles = () => apiClient.getAuditCycles().then(response => setCycles(response.data ?? [])).catch(() => showError('Could not load audit cycles'));
   useEffect(() => { void loadCycles(); apiClient.getUsers().then(response => setUsers((response.data ?? []).filter((user: any) => user.isActive))).catch(() => {}); }, []);
+  useEffect(() => { setStandard(defaultStandard); }, [defaultStandard]);
 
   const standardCycles = useMemo(() => cycles.filter(cycle => cycle.standard === standard), [cycles, standard]);
   useEffect(() => { const active = standardCycles.find(cycle => cycle.status === 'active'); setCycleId(active?.auditCycleId ?? standardCycles[0]?.auditCycleId ?? ''); }, [standard, cycles]);

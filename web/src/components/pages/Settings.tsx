@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Bell, Building2, CalendarDays, Check, Database, FileText, KeyRound, Lock, LockKeyhole, Settings as SettingsIcon, Users, UsersRound } from 'lucide-react';
-import { AuditProgramme } from '../custom/AuditProgramme';
 import { AuditCycleManager } from '../custom/AuditCycleManager';
 import { RolePermissions } from '../custom/RolePermissions';
 import { UserManagement } from '../custom/UserManagement';
@@ -185,7 +184,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'groups' && <GroupManagement />}
         {activeTab === 'audit' && <AuditTrail />}
-        {activeTab === 'programme' && <><AuditCycleManager /><AuditProgramme /></>}
+        {activeTab === 'programme' && <AuditCycleManager />}
         {activeTab === 'settings' && <PlatformSettings />}
         {activeTab === 'notifications' && <NotificationConfig />}
         {activeTab === 'company-data' && <CompanyData />}

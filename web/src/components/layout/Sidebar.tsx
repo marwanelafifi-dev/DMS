@@ -38,7 +38,7 @@ interface SidebarProps {
 const navItems: Array<{ label: string; path: string; icon: typeof LayoutDashboard; exact?: boolean; visibleWhen: keyof PageAccessRoleFlags }> = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, exact: true, visibleWhen: 'canViewDashboard' },
   { label: 'ISO 9001 Workspace', path: '/iso-workspace', icon: Shield, visibleWhen: 'canViewPcar' },
-  { label: 'ISO 27001 Readiness', path: '/iso27001-readiness', icon: Shield, visibleWhen: 'canViewDashboard' },
+  { label: 'ISO 27001 Workspace', path: '/iso27001-readiness', icon: Shield, visibleWhen: 'canViewDashboard' },
   { label: 'Document Library', path: '/documents', icon: Folder, visibleWhen: 'canViewDocumentLibrary' },
   { label: 'Document Workflow', path: '/approvals', icon: ClipboardCheck, visibleWhen: 'canViewApprovals' },
   { label: 'Tasks (Internal Use)', path: '/tasks', icon: ClipboardCheck, visibleWhen: 'canViewTasks' },
