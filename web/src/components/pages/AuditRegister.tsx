@@ -40,7 +40,9 @@ export function AuditRegister({ stageContext, onCloseStageRecord, onSaved }: { s
     if (existing) edit(existing); else setForm(blank(stageContext.standard, stageContext));
   }, [stageContext?.auditCycleId, stageContext?.auditType, audits]);
   const save = async () => {
-    if (!form.title.trim() || !form.auditCycleId || !form.auditDate || !form.scope.trim()) return showError('Title, audit cycle, target date, and scope are required');
+    if (!form.title.trim()) return showError('Enter a title for this stage record.');
+    if (!form.scope.trim()) return showError('Enter the scope: the processes, sites, exclusions, and objectives covered by this stage.');
+    if (!form.auditCycleId || !form.auditDate) return showError('Set a planned stage date before saving this record.');
     setIsSaving(true); const { auditRecordId, auditPlanDocumentId, auditReportDocumentId, ...body } = form; const payload = { ...body, auditPlanDocumentId: auditPlanDocumentId || undefined, auditReportDocumentId: auditReportDocumentId || undefined };
     try { if (auditRecordId) await apiClient.updateAuditRecord(auditRecordId, payload); else await apiClient.createAuditRecord(payload); showSuccess(auditRecordId ? 'Stage record updated' : 'Stage record created'); await load(); onSaved?.(); }
     catch (error: any) { showError(error.response?.data?.error || 'Could not save the stage record'); }
