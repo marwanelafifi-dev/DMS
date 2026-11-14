@@ -37,8 +37,11 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
 
   useEffect(() => {
     if (!cycleId) { setValues({}); setRemovedKeys([]); return; }
-    Promise.all([apiClient.getAuditCalendarEvents(), apiClient.getRemovedAuditProgrammeStages(cycleId)])
-      .then(([calendarResponse, excludedResponse]) => {
+    Promise.allSettled([apiClient.getAuditCalendarEvents(), apiClient.getRemovedAuditProgrammeStages(cycleId)])
+      .then(([calendarResult, excludedResult]) => {
+        if (calendarResult.status !== 'fulfilled') throw calendarResult.reason;
+        const calendarResponse = calendarResult.value;
+        const excludedResponse = excludedResult.status === 'fulfilled' ? excludedResult.value : { data: [] };
         const next: Record<string, StageValue> = {};
         (calendarResponse.data ?? []).filter((event: any) => event.auditCycleId === cycleId && event.stageKey).forEach((event: any) => {
           next[event.stageKey] = { date: String(event.eventDate).slice(0, 10), dueDate: event.dueDate ? String(event.dueDate).slice(0, 10) : '', ownerId: event.ownerId ?? '', notes: event.notes ?? '' };

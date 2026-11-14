@@ -26,34 +26,42 @@ const displayDate = (value?: string) => {
 };
 
 const statusLabel = (status?: string) => ({ completed: 'Completed', in_progress: 'In progress', planned: 'Planned' }[status ?? ''] ?? 'Not scheduled');
+const auditTypeForStage: Record<string, string> = { preparation: 'preparation', internal_audit: 'internal', management_review: 'management_review', surveillance_audit: 'external' };
 
 export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, onOpenDocuments, onOpenAudits }: IsoSurveillanceJourneyProps) {
   const [cycle, setCycle] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
+  const [records, setRecords] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([apiClient.getAuditCycles(), apiClient.getAuditCalendarEvents()])
-      .then(([cycles, calendar]) => {
+      .then(async ([cycles, calendar]) => {
         if (cancelled) return;
         const active = (cycles.data ?? []).find((item: any) => item.standard === 'ISO 9001:2015' && item.status === 'active');
+        const audits = active ? await apiClient.getAuditRecords({ auditCycleId: active.auditCycleId }) : { data: [] };
+        if (cancelled) return;
         setCycle(active ?? null);
         setEvents((calendar.data ?? []).filter((item: any) => item.auditCycleId === active?.auditCycleId));
+        setRecords(audits.data ?? []);
       })
-      .catch(() => { if (!cancelled) { setCycle(null); setEvents([]); } });
+      .catch(() => { if (!cancelled) { setCycle(null); setEvents([]); setRecords([]); } });
     return () => { cancelled = true; };
   }, []);
 
   const journey = useMemo(() => {
     const eventFor = (key: string) => events.find(event => event.stageKey === key);
-    const currentKey = stages.find(stage => eventFor(stage.key)?.status === 'in_progress')?.key
-      ?? stages.find(stage => eventFor(stage.key)?.status !== 'completed')?.key
+    const recordFor = (key: string) => records.find(record => record.auditType === auditTypeForStage[key]);
+    const statusFor = (key: string) => recordFor(key)?.status ?? (eventFor(key) ? 'planned' : undefined);
+    const currentKey = stages.find(stage => statusFor(stage.key) === 'in_progress')?.key
+      ?? stages.find(stage => statusFor(stage.key) !== 'completed')?.key
       ?? stages[stages.length - 1].key;
     const currentIndex = stages.findIndex(stage => stage.key === currentKey);
 
     return stages.map((stage, index) => {
       const event = eventFor(stage.key);
-      const complete = event?.status === 'completed';
+      const status = statusFor(stage.key);
+      const complete = status === 'completed';
       const current = stage.key === currentKey;
       return {
         ...stage,
@@ -61,10 +69,10 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
         complete,
         current,
         next: !complete && !current && index > currentIndex,
-        status: statusLabel(event?.status),
+        status: statusLabel(status),
       };
     });
-  }, [events]);
+  }, [events, records]);
 
   const current = journey.find(stage => stage.current) ?? journey[0];
   const actionIsAudit = current?.key === 'internal_audit' || current?.key === 'surveillance_audit';
