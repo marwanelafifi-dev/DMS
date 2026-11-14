@@ -11,6 +11,21 @@ type Standard = 'ISO 9001:2015' | 'ISO 27001:2022';
 type AuditForm = { auditRecordId: string; standard: Standard; auditCycleId: string; title: string; auditType: string; status: string; auditDate: string; scope: string; auditTeamUserIds: string[]; participantUserIds: string[]; auditPlanDocumentId: string; auditReportDocumentId: string; notes: string };
 const blank = (standard: Standard, context?: JourneyStageContext): AuditForm => ({ auditRecordId: '', standard, auditCycleId: context?.auditCycleId ?? '', title: context ? `${standard.replace(':2015', '').replace(':2022', '')} ${context.stageLabel}` : '', auditType: context?.auditType ?? 'preparation', status: 'planned', auditDate: context?.auditDate ?? '', scope: '', auditTeamUserIds: [], participantUserIds: [], auditPlanDocumentId: '', auditReportDocumentId: '', notes: '' });
 
+function saveErrorMessage(error: any) {
+  const response = error?.response;
+  const body = response?.data;
+  if (typeof body?.error === 'string') return body.error;
+  if (typeof body?.detail === 'string') return body.detail;
+  const validation = body?.errors && typeof body.errors === 'object'
+    ? Object.values(body.errors).flat().filter((message): message is string => typeof message === 'string').join(' ')
+    : '';
+  if (validation) return validation;
+  if (typeof body?.title === 'string') return body.title;
+  if (response?.status === 403) return 'Your role does not have permission to create or update audit stage records.';
+  if (response?.status >= 500) return 'The DMS server could not save this stage record. Please try again; if it continues, contact the DMS administrator.';
+  return 'Could not save the stage record. Check the required fields and try again.';
+}
+
 function UserPicker({ label, hint, users, selected, onChange }: { label: string; hint: string; users: any[]; selected: string[]; onChange: (ids: string[]) => void }) {
   const [query, setQuery] = useState('');
   const term = query.trim().toLowerCase();
@@ -45,7 +60,7 @@ export function AuditRegister({ stageContext, onCloseStageRecord, onSaved }: { s
     if (!form.auditCycleId || !form.auditDate) return showError('Set a planned stage date before saving this record.');
     setIsSaving(true); const { auditRecordId, auditPlanDocumentId, auditReportDocumentId, ...body } = form; const payload = { ...body, auditPlanDocumentId: auditPlanDocumentId || undefined, auditReportDocumentId: auditReportDocumentId || undefined };
     try { if (auditRecordId) await apiClient.updateAuditRecord(auditRecordId, payload); else await apiClient.createAuditRecord(payload); showSuccess(auditRecordId ? 'Stage record updated' : 'Stage record created'); await load(); onSaved?.(); }
-    catch (error: any) { showError(error.response?.data?.error || 'Could not save the stage record'); }
+    catch (error: any) { showError(saveErrorMessage(error)); }
     finally { setIsSaving(false); }
   };
   const remove = async () => {
