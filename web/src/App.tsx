@@ -10,7 +10,6 @@ const MainLayout = lazy(() => import('./components/layout/MainLayout').then((mod
 const Dashboard = lazy(() => import('./components/pages/Dashboard').then((module) => ({ default: module.Dashboard })));
 const IsoReadiness = lazy(() => import('./components/pages/IsoReadiness').then((module) => ({ default: module.IsoReadiness })));
 const AuditRegister = lazy(() => import('./components/pages/AuditRegister').then((module) => ({ default: module.AuditRegister })));
-const ManagementReview = lazy(() => import('./components/pages/ManagementReview').then((module) => ({ default: module.ManagementReview })));
 const IsoWorkspace = lazy(() => import('./components/pages/IsoWorkspace').then((module) => ({ default: module.IsoWorkspace })));
 const Iso27001Workspace = lazy(() => import('./components/pages/Iso27001Workspace').then((module) => ({ default: module.Iso27001Workspace })));
 const Documents = lazy(() => import('./components/pages/Documents').then((module) => ({ default: module.Documents })));
@@ -114,7 +113,6 @@ function App() {
                 <Route path="/iso-workspace" element={<IsoWorkspace />} />
                 <Route path="/pcars" element={<Tasks mode="pcar" />} />
                 <Route path="/audits" element={<AuditRegister />} />
-                <Route path="/management-review" element={<ManagementReview />} />
                 <Route element={<RequirePageAccess flag="canViewHistoricalPcars" />}>
                   <Route path="/tasks/history" element={<HistoricalPcarPage />} />
                 </Route>
