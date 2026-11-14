@@ -53,23 +53,27 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
     const eventFor = (key: string) => events.find(event => event.stageKey === key);
     const recordFor = (key: string) => records.find(record => record.auditType === auditTypeForStage[key]);
     const statusFor = (key: string) => recordFor(key)?.status ?? (eventFor(key) ? 'planned' : undefined);
-    const currentKey = stages.find(stage => statusFor(stage.key) === 'in_progress')?.key
-      ?? stages.find(stage => statusFor(stage.key) !== 'completed')?.key
+    const rawJourney = stages.map(stage => ({ ...stage, event: eventFor(stage.key), rawStatus: statusFor(stage.key) }));
+    // The current focus is always the first incomplete mandatory milestone.
+    // A later legacy record can never jump the user ahead in the journey.
+    const currentKey = rawJourney.find(stage => stage.rawStatus !== 'completed')?.key
       ?? stages[stages.length - 1].key;
     const currentIndex = stages.findIndex(stage => stage.key === currentKey);
 
-    return stages.map((stage, index) => {
-      const event = eventFor(stage.key);
-      const status = statusFor(stage.key);
-      const complete = status === 'completed';
+    return rawJourney.map((stage, index) => {
+      const blockingStage = rawJourney.slice(0, index).find(previous => previous.rawStatus !== 'completed');
+      // A legacy or incorrectly entered later record must never make the
+      // journey look complete before the prerequisite stage is complete.
+      const blocked = Boolean(blockingStage && (stage.rawStatus === 'in_progress' || stage.rawStatus === 'completed'));
+      const complete = !blocked && stage.rawStatus === 'completed';
       const current = stage.key === currentKey;
       return {
         ...stage,
-        event,
         complete,
         current,
         next: !complete && !current && index > currentIndex,
-        status: statusLabel(status),
+        blocked,
+        status: blocked ? `Waiting for ${blockingStage!.title}` : statusLabel(stage.rawStatus),
       };
     });
   }, [events, records]);
@@ -132,7 +136,7 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
         <div className="flex items-center justify-between gap-4"><h3 className="text-sm font-semibold text-[#26334d] dark:text-white">Journey timeline</h3><p className="text-xs text-[#718198]">Live status from the active cycle</p></div>
         <ol className="mt-4 grid gap-3 md:grid-cols-4" aria-label="ISO 9001 surveillance workflow">
           {journey.map((stage, index) => <li key={stage.key} className={`min-w-0 border-t-2 pt-3 ${stage.current ? 'border-[#1f6caf]' : stage.complete ? 'border-[#57a87b]' : 'border-[#d7e0eb] dark:border-slate-700'}`}>
-            <div className="flex items-center gap-2"><span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${stage.complete ? 'bg-[#e8f6ee] text-[#24734a] dark:bg-emerald-500/15 dark:text-emerald-300' : stage.current ? 'bg-[#1763a5] text-white' : 'bg-[#eef2f6] text-[#64748b] dark:bg-slate-800 dark:text-slate-300'}`}>{stage.complete ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className={`text-xs font-semibold ${stage.current ? 'text-[#1763a5] dark:text-blue-300' : 'text-[#718198]'}`}>{stage.status}</span></div>
+            <div className="flex items-center gap-2"><span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${stage.complete ? 'bg-[#e8f6ee] text-[#24734a] dark:bg-emerald-500/15 dark:text-emerald-300' : stage.current ? 'bg-[#1763a5] text-white' : 'bg-[#eef2f6] text-[#64748b] dark:bg-slate-800 dark:text-slate-300'}`}>{stage.complete ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className={`text-xs font-semibold ${stage.current ? 'text-[#1763a5] dark:text-blue-300' : stage.blocked ? 'text-[#8a5b12] dark:text-amber-300' : 'text-[#718198]'}`}>{stage.status}</span></div>
             <p className="mt-2 text-sm font-semibold text-[#26334d] dark:text-white">{stage.title}</p>
             <p className="mt-1 text-xs text-[#718198]">{stage.event?.eventDate ? displayDate(stage.event.eventDate) : 'Date not set'}</p>
           </li>)}
