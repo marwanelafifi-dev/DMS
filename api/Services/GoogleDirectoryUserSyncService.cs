@@ -23,6 +23,11 @@ public sealed class GoogleDirectoryUserSyncService(
     private const string DirectoryUserReadScope = "https://www.googleapis.com/auth/admin.directory.user.readonly";
     private const string DirectoryOrgUnitReadScope = "https://www.googleapis.com/auth/admin.directory.orgunit.readonly";
 
+    private string? ServiceAccountFilePath => FirstNonEmpty(
+        configuration["GoogleDirectory:ServiceAccountFile"],
+        configuration["GOOGLE_DIRECTORY_SERVICE_ACCOUNT_FILE"],
+        configuration["GOOGLE_SERVICE_ACCOUNT_KEY_FILE"]);
+
     private string? ServiceAccountJson
     {
         get
@@ -32,19 +37,14 @@ public sealed class GoogleDirectoryUserSyncService(
             // Accept the established server variable name as well as the
             // DMS-specific name, so deployment does not require copying a
             // private key into the UI or changing an existing secret mount.
-            var filePath = configuration["GoogleDirectory:ServiceAccountFile"];
-            if (string.IsNullOrWhiteSpace(filePath)) filePath = configuration["GOOGLE_SERVICE_ACCOUNT_KEY_FILE"];
+            var filePath = ServiceAccountFilePath;
             return !string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath) ? File.ReadAllText(filePath) : null;
         }
     }
-    private string? DelegatedAdminEmail
-    {
-        get
-        {
-            var delegatedAdminEmail = configuration["GoogleDirectory:DelegatedAdminEmail"];
-            return string.IsNullOrWhiteSpace(delegatedAdminEmail) ? configuration["GOOGLE_SYNC_SUBJECT"] : delegatedAdminEmail;
-        }
-    }
+    private string? DelegatedAdminEmail => FirstNonEmpty(
+        configuration["GoogleDirectory:DelegatedAdminEmail"],
+        configuration["GOOGLE_DIRECTORY_DELEGATED_ADMIN_EMAIL"],
+        configuration["GOOGLE_SYNC_SUBJECT"]);
     private string Customer => configuration["GoogleDirectory:Customer"] ?? "my_customer";
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ServiceAccountJson) && !string.IsNullOrWhiteSpace(DelegatedAdminEmail);
 
@@ -55,6 +55,12 @@ public sealed class GoogleDirectoryUserSyncService(
         return new
         {
             configured = IsConfigured,
+            diagnostics = new
+            {
+                credentialFilePathConfigured = !string.IsNullOrWhiteSpace(ServiceAccountFilePath),
+                credentialFileReadable = !string.IsNullOrWhiteSpace(ServiceAccountFilePath) && File.Exists(ServiceAccountFilePath),
+                delegatedAdminConfigured = !string.IsNullOrWhiteSpace(DelegatedAdminEmail),
+            },
             configuration = syncConfiguration,
             schedule = DescribeSchedule(syncConfiguration),
             lastRun = string.IsNullOrWhiteSpace(previous?.Value) ? null : (object)JsonSerializer.Deserialize<JsonElement>(previous.Value),
@@ -325,6 +331,8 @@ public sealed class GoogleDirectoryUserSyncService(
         };
         return $"{cadence} at {syncConfiguration.Time} ({syncConfiguration.TimeZoneId})";
     }
+
+    private static string? FirstNonEmpty(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private static string? CleanDepartment(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(value.Trim().Length, 160)];
     private sealed record GoogleDirectoryUser(string? Email, string? GoogleId, string? FullName, string? Department, bool Suspended);
