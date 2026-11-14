@@ -317,6 +317,7 @@ export function Documents() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [relatedEvidenceDocumentIds, setRelatedEvidenceDocumentIds] = useState<string[]>([]);
+  const [requiredEvidenceDocumentIds, setRequiredEvidenceDocumentIds] = useState<string[]>([]);
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadTags, setUploadTags] = useState<string[]>([]);
@@ -451,6 +452,27 @@ export function Documents() {
     () => (selectedFolder ? buildFolderAncestryPath(selectedFolder, folders) : []),
     [selectedFolder, folders],
   );
+  const evidenceStandard = folderPath.some((folder) => folder.name.toLowerCase() === 'iso 27001') ? 'ISO 27001:2022' : 'ISO 9001:2015';
+  useEffect(() => {
+    let cancelled = false;
+    if (!showUploadModal || !isEvidenceUploadFolder || !selectedFolder?.parentFolderId) {
+      setRequiredEvidenceDocumentIds([]);
+      return undefined;
+    }
+    void apiClient.getAuditCycles().then(async (cycleResult) => {
+      const activeCycle = (cycleResult.data ?? []).find((cycle: any) => cycle.standard === evidenceStandard && cycle.status === 'active');
+      if (!activeCycle) return [];
+      const requirementResult = await apiClient.getEvidenceRequirements(activeCycle.auditCycleId);
+      return (requirementResult.data ?? []).filter((item: any) => item.folderId === selectedFolder.parentFolderId).map((item: any) => item.relatedDocumentId);
+    }).then((requiredIds: string[]) => {
+      if (cancelled) return;
+      setRequiredEvidenceDocumentIds(requiredIds);
+      setRelatedEvidenceDocumentIds((current) => [...new Set([...current, ...requiredIds])]);
+    }).catch(() => {
+      if (!cancelled) setRequiredEvidenceDocumentIds([]);
+    });
+    return () => { cancelled = true; };
+  }, [showUploadModal, isEvidenceUploadFolder, selectedFolder?.parentFolderId, evidenceStandard]);
   // Folders "in view" independent of the Tag/Department/Owner filters
   // themselves — used both to build the filter dropdowns' own option lists
   // (so picking a tag doesn't shrink the set of tags offered) and as the
@@ -1665,7 +1687,7 @@ export function Documents() {
   const uploadDepartmentOptions = [...dropdownOptions.department, 'Other'];
   const uploadTagOptions = [...dropdownOptions.tag.map((label) => ({ value: label, label })), { value: 'OTHER', label: 'Other' }];
   const uploadIsOtherCategory = uploadCategory === 'OTHER';
-  const effectiveUploadCategory = uploadIsOtherCategory ? uploadCustomCategory.trim() : uploadCategory;
+  const effectiveUploadCategory = isEvidenceUploadFolder ? 'Evidence' : uploadIsOtherCategory ? uploadCustomCategory.trim() : uploadCategory;
   const uploadIsOtherDepartment = uploadDepartment === 'Other';
   const effectiveUploadDepartment = uploadIsOtherDepartment ? uploadCustomDepartment.trim() : uploadDepartment;
   const uploadIsOtherTag = uploadTags.includes('OTHER');
@@ -1679,7 +1701,7 @@ export function Documents() {
   const uploadMissingFields = {
     description: !uploadDescription.trim(),
     version: !uploadVersionLabel.trim(),
-    category: !uploadCategory || (uploadIsOtherCategory && !uploadCustomCategory.trim()),
+    category: !isEvidenceUploadFolder && (!uploadCategory || (uploadIsOtherCategory && !uploadCustomCategory.trim())),
     owner: !uploadOwnerId,
     department: !uploadDepartment || (uploadIsOtherDepartment && !uploadCustomDepartment.trim()),
   };
@@ -1936,8 +1958,8 @@ export function Documents() {
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
     setRelatedEvidenceDocumentIds([]);
+    setRequiredEvidenceDocumentIds([]);
     setUploadValidationAttempted(false);
-    setRelatedEvidenceDocumentIds([]);
     setShowUploadModal(true);
   };
 
@@ -1955,6 +1977,7 @@ export function Documents() {
     setUploadDepartment('');
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
+    setRequiredEvidenceDocumentIds([]);
     setUploadValidationAttempted(false);
   };
 
@@ -2441,8 +2464,11 @@ export function Documents() {
               {isEvidenceUploadFolder && (
                 <div className="space-y-2 rounded-[4px] border border-[#dbe2ec] bg-[#f8fbff] p-3 dark:border-white/10 dark:bg-blue-950/20">
                   <p className="text-sm font-semibold text-[#26334d] dark:text-white">Related policy / process documents</p>
-                  <p className="text-xs text-[#64748b] dark:text-slate-400">Select documents from the parent process folder that this evidence supports. Optional.</p>
-                  {relatedEvidenceCandidates.length ? relatedEvidenceCandidates.map((document) => <label key={document.documentId} className="flex items-center gap-2 py-1 text-sm text-[#34425b] dark:text-slate-200"><input type="checkbox" checked={relatedEvidenceDocumentIds.includes(document.documentId)} onChange={() => setRelatedEvidenceDocumentIds((ids) => ids.includes(document.documentId) ? ids.filter((id) => id !== document.documentId) : [...ids, document.documentId])} /><span>{document.name ?? document.title}</span></label>) : <p className="text-xs text-[#718198]">No documents are available in the parent process folder.</p>}
+                  <p className="text-xs text-[#64748b] dark:text-slate-400">Documents required by Evidence Coverage are linked automatically. You may also select additional related documents.</p>
+                  {relatedEvidenceCandidates.length ? relatedEvidenceCandidates.map((document) => {
+                    const isRequired = requiredEvidenceDocumentIds.includes(document.documentId);
+                    return <label key={document.documentId} className="flex items-center gap-2 py-1 text-sm text-[#34425b] dark:text-slate-200"><input type="checkbox" checked={relatedEvidenceDocumentIds.includes(document.documentId)} disabled={isRequired} onChange={() => setRelatedEvidenceDocumentIds((ids) => ids.includes(document.documentId) ? ids.filter((id) => id !== document.documentId) : [...ids, document.documentId])} /><span>{document.name ?? document.title}</span>{isRequired && <span className="ml-auto rounded-full bg-[#e8f6ee] px-2 py-0.5 text-[11px] font-medium text-[#24734a] dark:bg-emerald-500/15 dark:text-emerald-300">Required</span>}</label>;
+                  }) : <p className="text-xs text-[#718198]">No documents are available in the parent process folder.</p>}
                 </div>
               )}
               <div className="space-y-2">
@@ -2527,7 +2553,7 @@ export function Documents() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label htmlFor="upload-category" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                  {isEvidenceUploadFolder ? <><label className="block text-sm font-medium text-[#34425b] dark:text-slate-200">Document Category</label><div className="field-control flex h-10 items-center bg-[#f8fbff] px-3 text-sm font-medium text-[#1763a5] dark:bg-slate-900 dark:text-blue-300">Evidence</div><p className="text-xs text-[#718198]">Set automatically because this file is uploaded in an Evidences folder.</p></> : <><label htmlFor="upload-category" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
                     Document Category <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -2555,7 +2581,7 @@ export function Documents() {
                   )}
                   {uploadValidationAttempted && uploadMissingFields.category && (
                     <p className="text-xs text-red-500">{uploadIsOtherCategory ? 'Please specify the category.' : 'Document Category is required.'}</p>
-                  )}
+                  )}</>}
                 </div>
 
                 <div className="space-y-2">
