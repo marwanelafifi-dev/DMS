@@ -24,7 +24,7 @@ describe('department audit readiness', () => {
         requirement('it', 'it-root', 'IT', 'tamer', { folderManagerUserIds: ['marwan'] }),
         requirement('sales', 'sales-root', 'Marketing and Sales', 'sales', { folderOwnerUserIds: ['sales'] }),
       ],
-      'ISO 9001:2015', 'current',
+      'ISO 9001:2015', 'current', [], [],
     );
 
     expect(result.departments.map(department => department.name)).toEqual(['IT', 'Marketing and Sales', 'Quality Management', 'Strategic Management']);
@@ -51,7 +51,7 @@ describe('department audit readiness', () => {
         requirement('strategy', 'strategy-root', 'Strategic Management', 'tamer'),
         requirement('it', 'it-root', 'IT', 'tamer', { folderManagerUserIds: ['marwan'] }),
       ],
-      'ISO 9001:2015', 'current',
+      'ISO 9001:2015', 'current', [], [],
     );
 
     expect(result.departments.find(department => department.name === 'Strategic Management')?.pcarCount).toBe(1);
@@ -65,7 +65,7 @@ describe('department audit readiness', () => {
     const result = buildDepartmentReadiness(
       [user('tamer', 'Tamer', null)], [], [],
       [requirement('unknown', '', '', 'tamer')],
-      'ISO 9001:2015', 'current',
+      'ISO 9001:2015', 'current', [], [],
     );
 
     expect(result.departments).toEqual([]);
@@ -87,7 +87,13 @@ describe('department audit readiness', () => {
         requirement('strategy', 'strategy-root', 'Strategic Management', 'tamer', { folderManagerUserIds: ['marwan', 'tamer'] }),
         requirement('sales', 'sales-root', 'Marketing and Sales', 'tamer', { folderOwnerUserIds: ['sales'], folderManagerUserIds: ['marwan', 'tamer', 'sales-manager'] }),
       ],
-      'ISO 9001:2015', 'current',
+      'ISO 9001:2015', 'current', [
+        { departmentFolderId: 'it-root', userId: 'marwan' },
+        { departmentFolderId: 'it-root', userId: 'tamer' },
+        { departmentFolderId: 'quality-root', userId: 'tamer' },
+        { departmentFolderId: 'strategy-root', userId: 'tamer' },
+        { departmentFolderId: 'strategy-root', userId: 'amr' },
+      ], ['Full Access'],
     );
 
     const names = (departmentName: string) => result.departments.find(department => department.name === departmentName)!.people.map(person => person.user.fullName);
@@ -98,5 +104,17 @@ describe('department audit readiness', () => {
     expect(result.departments.find(department => department.name === 'Marketing and Sales')?.missingEvidenceCount).toBe(1);
     expect(result.departments.find(department => department.name === 'Marketing and Sales')?.missingWithoutOwner).toHaveLength(1);
     expect(result.unassignedTasks.map(item => item.taskId)).toEqual(['sales-task']);
+  });
+
+  it('uses role configuration rather than a role name or person name to identify global access', () => {
+    const globalManager = { ...user('global', 'Global Manager', null), role: 'Custom Administrator' };
+    const localManager = user('local', 'Local Manager', null);
+    const result = buildDepartmentReadiness(
+      [globalManager, localManager], [], [],
+      [requirement('process', 'department-root', 'Department', 'global', { folderManagerUserIds: ['global', 'local'] })],
+      'ISO 9001:2015', 'current', [], ['Custom Administrator'],
+    );
+    expect(result.departments[0].people.map(person => person.user.fullName)).toEqual(['Local Manager']);
+    expect(result.departments[0].missingEvidenceCount).toBe(1);
   });
 });

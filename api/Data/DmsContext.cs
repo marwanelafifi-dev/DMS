@@ -34,6 +34,7 @@ public class DmsContext : DbContext
     public DbSet<DmsAuditRecord> AuditRecords => Set<DmsAuditRecord>();
     public DbSet<DmsAuditChecklistItem> AuditChecklistItems => Set<DmsAuditChecklistItem>();
     public DbSet<DmsEvidenceRequirement> EvidenceRequirements => Set<DmsEvidenceRequirement>();
+    public DbSet<DmsIsoReadinessContact> IsoReadinessContacts => Set<DmsIsoReadinessContact>();
     public DbSet<DmsManagementReviewEntry> ManagementReviewEntries => Set<DmsManagementReviewEntry>();
     public DbSet<DmsUserCalendarConnection> UserCalendarConnections => Set<DmsUserCalendarConnection>();
     public DbSet<DmsUserCalendarEventSync> UserCalendarEventSyncs => Set<DmsUserCalendarEventSync>();
@@ -129,6 +130,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsAuditRecord>().ToTable("dms_audit_records").HasKey(a => a.AuditRecordId);
         modelBuilder.Entity<DmsAuditRecord>().Property(a => a.AuditDate).HasColumnType("date");
         modelBuilder.Entity<DmsEvidenceRequirement>().ToTable("dms_evidence_requirements").HasKey(e => e.EvidenceRequirementId);
+        modelBuilder.Entity<DmsIsoReadinessContact>().ToTable("dms_iso_readiness_contacts").HasKey(e => new { e.AuditCycleId, e.DepartmentFolderId, e.UserId });
         modelBuilder.Entity<DmsManagementReviewEntry>().ToTable("dms_management_review_entries").HasKey(e => e.ManagementReviewEntryId);
         modelBuilder.Entity<DmsManagementReviewEntry>().Property(e => e.DueDate).HasColumnType("date");
         modelBuilder.Entity<DmsAuditChecklistItem>().ToTable("dms_audit_checklist_items").HasKey(e => e.AuditChecklistItemId);

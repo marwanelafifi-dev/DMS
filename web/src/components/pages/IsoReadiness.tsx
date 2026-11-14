@@ -3,7 +3,7 @@ import { ArrowRight, ClipboardCheck, FileCheck2, Printer, ShieldCheck, TriangleA
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { apiClient } from '../../utils/api';
 import type { Task, User } from '../../types';
-import type { ReadinessEvidence, ReadinessRequirement } from '../../utils/isoDepartmentReadiness';
+import type { ReadinessContact, ReadinessEvidence, ReadinessRequirement } from '../../utils/isoDepartmentReadiness';
 import { Card, CardBody } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SkeletonCard } from '../ui/Skeleton';
@@ -33,6 +33,8 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
   const [users, setUsers] = useState<User[]>([]);
   const [documents, setDocuments] = useState<ReadinessEvidence[]>([]);
   const [coverageItems, setCoverageItems] = useState<ReadinessRequirement[]>([]);
+  const [readinessContacts, setReadinessContacts] = useState<ReadinessContact[]>([]);
+  const [globalAccessRoles, setGlobalAccessRoles] = useState<string[]>([]);
   const [reviewEntries, setReviewEntries] = useState<any[]>([]);
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [cycleLoadError, setCycleLoadError] = useState(false);
@@ -40,6 +42,7 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
   const [usersLoadError, setUsersLoadError] = useState(false);
   const [evidenceLoadError, setEvidenceLoadError] = useState(false);
   const [coverageLoadError, setCoverageLoadError] = useState(false);
+  const [contactsLoadError, setContactsLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -56,16 +59,20 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
         setUsersLoadError(userResult.status === 'rejected' || !Array.isArray(userResult.value.data));
         const activeCycle = cycles?.find((cycle: any) => cycle.standard === standard && cycle.status === 'active');
         setActiveCycleId(activeCycle?.auditCycleId ?? null);
-        const [documentResult, coverageResult, reviewResult] = await Promise.allSettled([
+        const [documentResult, coverageResult, reviewResult, contactResult] = await Promise.allSettled([
           apiClient.getIsoEvidence({ standard, auditCycleId: activeCycle?.auditCycleId }),
           activeCycle ? apiClient.getEvidenceRequirements(activeCycle.auditCycleId) : Promise.resolve({ data: [] }),
           activeCycle ? apiClient.getManagementReviewEntries({ auditCycleId: activeCycle.auditCycleId }) : Promise.resolve({ data: [] }),
+          activeCycle ? apiClient.getIsoReadinessContacts(activeCycle.auditCycleId) : Promise.resolve({ data: [], globalAccessRoles: [] }),
         ]);
         if (cancelled) return;
         setDocuments(documentResult.status === 'fulfilled' && Array.isArray(documentResult.value.data) ? documentResult.value.data as ReadinessEvidence[] : []);
         setEvidenceLoadError(documentResult.status === 'rejected' || !Array.isArray(documentResult.value.data));
         setCoverageItems(coverageResult.status === 'fulfilled' && Array.isArray(coverageResult.value.data) ? coverageResult.value.data as ReadinessRequirement[] : []);
         setCoverageLoadError(coverageResult.status === 'rejected' || !Array.isArray(coverageResult.value.data));
+        setReadinessContacts(contactResult.status === 'fulfilled' && Array.isArray(contactResult.value.data) ? contactResult.value.data as ReadinessContact[] : []);
+        setGlobalAccessRoles(contactResult.status === 'fulfilled' && Array.isArray(contactResult.value.globalAccessRoles) ? contactResult.value.globalAccessRoles as string[] : []);
+        setContactsLoadError(contactResult.status === 'rejected' || !Array.isArray(contactResult.value.data) || !Array.isArray(contactResult.value.globalAccessRoles));
         setReviewEntries(reviewResult.status === 'fulfilled' && Array.isArray(reviewResult.value.data) ? reviewResult.value.data : []);
       })
       .finally(() => { if (!cancelled) setIsLoading(false); });
@@ -132,9 +139,11 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
         tasks={tasks}
         evidence={documents}
         requirements={coverageItems}
+        contacts={readinessContacts}
+        globalAccessRoles={globalAccessRoles}
         standard={standard}
         activeCycleId={activeCycleId}
-        loadError={cycleLoadError || tasksLoadError || usersLoadError || evidenceLoadError || coverageLoadError}
+        loadError={cycleLoadError || tasksLoadError || usersLoadError || evidenceLoadError || coverageLoadError || contactsLoadError}
       />
 
       <Card className="print:break-before-page">

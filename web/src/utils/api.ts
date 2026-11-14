@@ -558,6 +558,8 @@ class APIClient {
   async createEvidenceRequirement(payload: { auditCycleId: string; standard: string; relatedDocumentId: string }) { const { data } = await this.client.post<ApiResponse>('/evidence-requirements', payload); return data; }
   async createEvidenceRequirementsForFolders(payload: { auditCycleId: string; standard: string; folderIds: string[] }) { const { data } = await this.client.post<ApiResponse>('/evidence-requirements/folders', payload); return data; }
   async deleteEvidenceRequirement(id: string) { const { data } = await this.client.delete<ApiResponse>(`/evidence-requirements/${id}`); return data; }
+  async getIsoReadinessContacts(auditCycleId: string) { const { data } = await this.client.get<{ success: boolean; data: { departmentFolderId: string; userId: string }[]; globalAccessRoles: string[] }>('/iso-readiness-contacts', { params: { auditCycleId } }); return data; }
+  async setIsoReadinessContacts(departmentFolderId: string, payload: { auditCycleId: string; userIds: string[] }) { const { data } = await this.client.put<ApiResponse>(`/iso-readiness-contacts/${departmentFolderId}`, payload); return data; }
   async getManagementReviewEntries(params?: { auditCycleId?: string; standard?: string }) { const { data } = await this.client.get<ApiResponse>('/management-review', { params }); return data; }
   async createManagementReviewEntry(payload: any) { const { data } = await this.client.post<ApiResponse>('/management-review', payload); return data; }
   async updateManagementReviewEntry(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/management-review/${id}`, payload); return data; }

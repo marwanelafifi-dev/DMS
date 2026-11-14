@@ -1,5 +1,12 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## 2026-11-15 — Configurable ISO readiness contacts
+
+- ISO Readiness now derives ordinary department responsibility from covered process folders, their owners and managers, and process document owners. A user whose page-access role bypasses folder permissions is excluded from the automatic department roster. Their DMS permissions are unchanged.
+- Evidence Coverage has a searchable, cycle-specific **Department readiness contacts** editor. Quality can explicitly add a global-access user or another participant to a covered department. The assignments are saved by audit cycle and Procedures department folder; they do not change folder access or user roles. Historical cycle assignments are read-only.
+- The readiness calculation no longer contains personal names, email addresses, or department exceptions. To configure the requested 2026–2027 roster, add Marwan Elafifi and Tamer Elsherif to IT; Tamer Elsherif to Quality Management; and Tamer Elsherif plus Amr Mosallamy to Strategic Management. Other covered folders continue to derive their local owners and managers automatically. If Amr is already a local owner or manager, adding him explicitly is optional.
+- Existing PostgreSQL deployments must apply `infra/db/init/134_iso_readiness_contacts.sql` before rebuilding the API. Run from `/opt/dms`: `docker compose -f docker-compose.yml -f docker-compose.google-directory-sync.yml exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < infra/db/init/134_iso_readiness_contacts.sql`, then `docker compose -f docker-compose.yml -f docker-compose.google-directory-sync.yml up -d --build api web`. New empty database volumes load the migration from `infra/db/init` automatically.
+
 ## Session 77 (2026-11-12) — Cloudflare Tunnel certificate-security update
 
 - The DMS Docker connector is pinned to `cloudflare/cloudflared:2026.10.7`. This is newer than Cloudflare's required `2026.10.2` security baseline for the compromised eMudhra intermediate-certificate issue; the previous pinned `2026.7.2` image must not be restarted or reused.

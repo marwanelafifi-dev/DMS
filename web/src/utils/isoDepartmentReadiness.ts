@@ -7,6 +7,8 @@ export type ReadinessEvidence = {
   isAssignedToSelectedCycle?: boolean;
 };
 
+export type ReadinessContact = { departmentFolderId: string; userId: string };
+
 export type ReadinessRequirement = {
   evidenceRequirementId: string;
   folderId: string;
@@ -54,26 +56,6 @@ export type DepartmentReadinessResult = {
 type DepartmentBuilder = DepartmentReadiness & { peopleById: Map<string, PersonReadiness> };
 const isOpen = (task: Task) => task.status !== 'done' && task.status !== 'completed';
 const key = (id: string) => id.toLowerCase();
-const normalized = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-
-// These two accounts manage folders globally for access purposes. Their
-// operational ISO roster is narrower and was supplied by Quality. This rule
-// changes readiness display only; it never changes folder permissions.
-const globalReadinessUsers = [
-  { email: 'marwan.elafifi@si-ware.com', name: 'marwan elafifi', departments: ['it', 'informationtechnology'] },
-  { email: 'tamer.elsherif@si-ware.com', name: 'tamer elsherif', departments: ['it', 'informationtechnology', 'qualitymanagement', 'strategicmanagement'] },
-];
-const explicitReadinessContacts: Record<string, string[]> = {
-  it: ['marwan elafifi', 'tamer elsherif'],
-  informationtechnology: ['marwan elafifi', 'tamer elsherif'],
-  qualitymanagement: ['tamer elsherif'],
-  strategicmanagement: ['tamer elsherif', 'amr mosallamy'],
-};
-
-const allowedInDepartment = (user: User, departmentName: string) => {
-  const identity = globalReadinessUsers.find(item => item.email === user.email.toLowerCase() || normalized(item.name) === normalized(user.fullName));
-  return !identity || identity.departments.includes(normalized(departmentName));
-};
 
 export function buildDepartmentReadiness(
   users: User[],
@@ -82,8 +64,17 @@ export function buildDepartmentReadiness(
   requirements: ReadinessRequirement[],
   standard: 'ISO 9001:2015' | 'ISO 27001:2022',
   activeCycleId: string | null,
+  contacts: ReadinessContact[],
+  globalAccessRoles: string[],
 ): DepartmentReadinessResult {
   const usersById = new Map(users.map(user => [key(user.userId), user]));
+  const contactsByFolder = new Map<string, Set<string>>();
+  for (const contact of contacts) {
+    const folderId = key(contact.departmentFolderId);
+    if (!contactsByFolder.has(folderId)) contactsByFolder.set(folderId, new Set());
+    contactsByFolder.get(folderId)!.add(key(contact.userId));
+  }
+  const globalRoles = new Set(globalAccessRoles.map(key));
   const departmentsById = new Map<string, DepartmentBuilder>();
   const departmentByProcessFolder = new Map<string, DepartmentBuilder>();
   const departmentByDocument = new Map<string, DepartmentBuilder>();
@@ -93,7 +84,7 @@ export function buildDepartmentReadiness(
     if (!userId) return undefined;
     const id = key(userId);
     const user = usersById.get(id);
-    if (!user || !allowedInDepartment(user, department.name)) return undefined;
+    if (!user || (user.role && globalRoles.has(key(user.role)) && !contactsByFolder.get(department.id)?.has(id))) return undefined;
     let person = department.peopleById.get(id);
     if (!person) {
       person = { user, responsibilities: [], tasks: [], pcars: [], missingRequirements: [], uploadedEvidence: [] };
@@ -128,12 +119,9 @@ export function buildDepartmentReadiness(
     }
   }
 
-  for (const department of departmentsById.values()) {
-    for (const contactName of explicitReadinessContacts[normalized(department.name)] ?? []) {
-      const user = users.find(item => normalized(item.fullName) === normalized(contactName));
-      if (user && !department.peopleById.has(key(user.userId))) personFor(department, user.userId, 'Readiness contact');
-    }
-  }
+  for (const department of departmentsById.values())
+    for (const userId of contactsByFolder.get(department.id) ?? [])
+      if (!department.peopleById.has(userId)) personFor(department, userId, 'Readiness contact');
 
   let unattributedEvidenceCount = 0;
   for (const item of evidence) {

@@ -5,15 +5,10 @@ import { folderPathLabel } from '../../utils/folderPath';
 import { Button } from '../ui/Button';
 import { Card, CardBody } from '../ui/Card';
 import { useToast } from '../../hooks/useToast';
+import { ReadinessContactsEditor } from './ReadinessContactsEditor';
+import type { ReadinessRequirement } from '../../utils/isoDepartmentReadiness';
 
-type CoverageItem = {
-  evidenceRequirementId: string;
-  relatedDocumentId: string;
-  documentTitle: string;
-  folderId: string;
-  folderName: string;
-  hasEvidence: boolean;
-};
+type CoverageItem = ReadinessRequirement & { folderName: string };
 
 export function EvidenceCoverage() {
   const { showError, showSuccess } = useToast();
@@ -98,5 +93,6 @@ export function EvidenceCoverage() {
       <div className="border-t border-[#e2e8f0] pt-4 dark:border-white/10"><div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center"><div><h2 className="section-heading">Process folders</h2><p className="mt-1 text-sm text-[#64748b]">Select one or more process folders. Do not select an <strong>Evidences</strong> folder; it is detected automatically.</p></div><span className="text-sm font-medium text-[#1763a5]">{selectedFolderIds.length} selected</span></div><div className="relative mt-4"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#718198]" /><input value={query} onChange={event => setQuery(event.target.value)} className="field-control h-10 w-full pl-10 pr-3" placeholder="Search process folder, for example MEMS, Hiring, or ISO 9001" aria-label="Search process folders" /></div><div className="mt-3 max-h-72 overflow-y-auto rounded-[5px] border border-[#dbe2ec] bg-[#fbfdff] p-2 dark:border-white/10 dark:bg-slate-950/30">{matchingFolders.length ? matchingFolders.map(folder => <label key={folder.folderId} className="flex cursor-pointer items-center gap-3 rounded px-3 py-2.5 hover:bg-[#eef4fb] dark:hover:bg-slate-800"><input type="checkbox" checked={selectedFolderIds.includes(folder.folderId)} onChange={() => toggle(folder.folderId)} className="h-4 w-4 shrink-0 accent-[#2f6f9f]" /><span className="min-w-0"><span className="block truncate text-sm font-medium text-[#26334d] dark:text-white">{folder.path}</span><span className="text-xs text-[#718198]">{folder.documents} controlled document{folder.documents === 1 ? '' : 's'} detected</span></span></label>) : <p className="px-3 py-5 text-sm text-[#718198]">No eligible process folders match this search.</p>}</div><div className="mt-4 flex justify-end"><Button onClick={() => void add()} disabled={isAdding || !cycleId || selectedFolderIds.length === 0} leftIcon={<FolderCheck className="h-4 w-4" />}>{isAdding ? 'Adding folders...' : 'Require evidence for selected folders'}</Button></div></div>
     </CardBody></Card>
     <Card><CardBody className="p-0"><div className="border-b border-[#dbe2ec] px-5 py-4 dark:border-white/10"><h2 className="section-heading">Cycle coverage</h2><p className="mt-1 text-sm text-[#64748b]">Each folder is ready only when every required controlled document has linked evidence.</p></div>{groups.length ? <div className="divide-y divide-[#e8eef5] dark:divide-white/10">{groups.map(group => { const linked = group.requirements.filter(item => item.hasEvidence).length; const missing = group.requirements.length - linked; return <div key={group.folderId} className="flex items-center justify-between gap-4 px-5 py-4"><div className="min-w-0"><p className="truncate font-medium text-[#26334d] dark:text-white">{path(group.folderId) || group.folderName}</p><p className="mt-1 text-sm text-[#64748b]">{group.requirements.length} controlled document{group.requirements.length === 1 ? '' : 's'} · {linked} linked</p><p className={`mt-1 text-xs font-semibold ${missing === 0 ? 'text-[#258456]' : 'text-[#b16a08]'}`}>{missing === 0 ? 'Evidence coverage complete' : `${missing} document${missing === 1 ? '' : 's'} still need evidence`}</p></div><button onClick={() => void removeGroup(group)} className="rounded p-2 text-[#b33a42] hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`Remove ${group.folderName} coverage`} title="Remove folder coverage"><Trash2 className="h-4 w-4" /></button></div>; })}</div> : <p className="px-5 py-10 text-center text-sm text-[#718198]">No process folders have been added for this cycle.</p>}</CardBody></Card>
+    {cycleId && <ReadinessContactsEditor cycleId={cycleId} requirements={items} historical={cycles.find(cycle => cycle.auditCycleId === cycleId)?.status === 'historical'} />}
   </div>;
 }

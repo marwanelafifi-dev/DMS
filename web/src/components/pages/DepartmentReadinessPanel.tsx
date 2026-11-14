@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Task, User } from '../../types';
 import {
   buildDepartmentReadiness,
+  type ReadinessContact,
   type DepartmentReadiness,
   type PersonReadiness,
   type ReadinessEvidence,
@@ -13,18 +14,20 @@ import { Card, CardBody } from '../ui/Card';
 
 type Standard = 'ISO 9001:2015' | 'ISO 27001:2022';
 
-export function DepartmentReadinessPanel({ users, tasks, evidence, requirements, standard, activeCycleId, loadError }: {
+export function DepartmentReadinessPanel({ users, tasks, evidence, requirements, contacts, globalAccessRoles, standard, activeCycleId, loadError }: {
   users: User[];
   tasks: Task[];
   evidence: ReadinessEvidence[];
   requirements: ReadinessRequirement[];
+  contacts: ReadinessContact[];
+  globalAccessRoles: string[];
   standard: Standard;
   activeCycleId: string | null;
   loadError: boolean;
 }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const rollup = useMemo(() => buildDepartmentReadiness(users, tasks, evidence, requirements, standard, activeCycleId), [users, tasks, evidence, requirements, standard, activeCycleId]);
+  const rollup = useMemo(() => buildDepartmentReadiness(users, tasks, evidence, requirements, standard, activeCycleId, contacts, globalAccessRoles), [users, tasks, evidence, requirements, standard, activeCycleId, contacts, globalAccessRoles]);
   const term = query.trim().toLocaleLowerCase();
   const departments = rollup.departments.filter(department => !term || department.name.toLocaleLowerCase().includes(term) || department.people.some(person =>
     person.user.fullName.toLocaleLowerCase().includes(term) || person.user.email.toLocaleLowerCase().includes(term),
@@ -36,7 +39,8 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
         <div className="flex flex-col gap-4 border-b border-[#dbe2ec] px-5 py-5 lg:flex-row lg:items-end lg:justify-between dark:border-white/10">
           <div className="max-w-3xl">
             <h2 className="section-heading">Department readiness</h2>
-            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Departments follow the selected process folders under Corporate / QMS / Procedures. Folder owners, managers, and process document owners may appear in more than one department. Global access does not make someone responsible for every folder.</p>
+            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Departments follow selected process folders. Local folder owners, managers, and process document owners appear automatically. Assign people with global folder access as readiness contacts in Evidence Coverage.</p>
+            <button type="button" onClick={() => navigate('/evidence-coverage')} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[#1763a5] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]">Manage readiness contacts <ArrowRight className="h-4 w-4" aria-hidden="true" /></button>
           </div>
           <label className="relative block w-full shrink-0 lg:w-72">
             <span className="sr-only">Search departments or users</span>
