@@ -533,6 +533,7 @@ class APIClient {
   async getAuditRecords(params?: { standard?: string; auditCycleId?: string }) { const { data } = await this.client.get<ApiResponse>('/audits', { params }); return data; }
   async createAuditRecord(payload: any) { const { data } = await this.client.post<ApiResponse>('/audits', payload); return data; }
   async updateAuditRecord(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/audits/${id}`, payload); return data; }
+  async deleteAuditRecord(id: string) { const { data } = await this.client.delete<ApiResponse>(`/audits/${id}`); return data; }
   async getEvidenceRequirements(auditCycleId: string) { const { data } = await this.client.get<ApiResponse>('/evidence-requirements', { params: { auditCycleId } }); return data; }
   async createEvidenceRequirement(payload: { auditCycleId: string; standard: string; relatedDocumentId: string }) { const { data } = await this.client.post<ApiResponse>('/evidence-requirements', payload); return data; }
   async deleteEvidenceRequirement(id: string) { const { data } = await this.client.delete<ApiResponse>(`/evidence-requirements/${id}`); return data; }

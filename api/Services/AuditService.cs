@@ -217,6 +217,7 @@ public static class AuditActions
     public const string REMINDER_DELETED = "REMINDER_DELETED";
     public const string AUDIT_EVENT_CREATED = "AUDIT_EVENT_CREATED";
     public const string AUDIT_EVENT_DELETED = "AUDIT_EVENT_DELETED";
+    public const string AUDIT_RECORD_DELETED = "AUDIT_RECORD_DELETED";
     public const string GOOGLE_CALENDAR_CONNECTED = "GOOGLE_CALENDAR_CONNECTED";
     public const string GOOGLE_CALENDAR_DISCONNECTED = "GOOGLE_CALENDAR_DISCONNECTED";
     public const string GOOGLE_CALENDAR_SYNCED = "GOOGLE_CALENDAR_SYNCED";

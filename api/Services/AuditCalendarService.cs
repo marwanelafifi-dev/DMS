@@ -63,7 +63,10 @@ public class AuditCalendarService(DmsContext context, AuditService auditService,
             auditEvent.ProgrammeYear = programmeYear ?? eventDate.Year;
             auditEvent.AuditCycleId = auditCycleId;
             auditEvent.StageKey = string.IsNullOrWhiteSpace(stageKey) ? null : stageKey.Trim();
-            auditEvent.Status = string.IsNullOrWhiteSpace(status) ? "planned" : status.Trim().ToLowerInvariant();
+            // Planning edits deliberately do not overwrite an execution status
+            // that is maintained by the matching journey record.
+            if (!string.IsNullOrWhiteSpace(status)) auditEvent.Status = status.Trim().ToLowerInvariant();
+            else if (isNew) auditEvent.Status = "planned";
             auditEvent.OwnerId = ownerId;
             auditEvent.DueDate = dueDate;
             if (isNew) context.AuditCalendarEvents.Add(auditEvent);

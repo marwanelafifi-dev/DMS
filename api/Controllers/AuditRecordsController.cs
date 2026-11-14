@@ -8,7 +8,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/audits")]
-public class AuditRecordsController(DmsContext context, AccessOverrideService accessOverrideService) : BaseController
+public class AuditRecordsController(DmsContext context, AccessOverrideService accessOverrideService, AuditService auditService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> List([FromQuery] string? standard = null, [FromQuery] Guid? auditCycleId = null)
@@ -31,6 +31,8 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         var userId = GetCurrentUserId();
         if ((await GetPageAccessRoleAsync(context, userId))?.CanCreatePcars != true) return Forbid();
         var error = await Validate(request, userId); if (error != null) return BadRequest(new { success = false, error });
+        if (await context.AuditRecords.AnyAsync(a => a.AuditCycleId == request.AuditCycleId && a.AuditType == request.AuditType))
+            return BadRequest(new { success = false, error = "This cycle already has a record for this journey stage. Open that record to edit it." });
         var teamResult = await ResolveTeam(request.AuditTeamUserIds); var participantResult = await ResolveTeam(request.ParticipantUserIds); if (teamResult.Error != null || participantResult.Error != null) return BadRequest(new { success = false, error = teamResult.Error ?? participantResult.Error }); var team = teamResult.Team; var participants = participantResult.Team;
         var record = new DmsAuditRecord { AuditRecordId = Guid.NewGuid(), AuditCycleId = request.AuditCycleId, Standard = request.Standard, Title = request.Title.Trim(), AuditType = request.AuditType, Status = request.Status, AuditDate = request.AuditDate, Scope = request.Scope.Trim(), Departments = Clean(request.Departments), AuditTeam = team.Names, AuditTeamUserIds = team.Ids, ParticipantUserIds = participants.Ids, AuditPlanReference = CleanText(request.AuditPlanReference), AuditReportReference = CleanText(request.AuditReportReference), AuditPlanDocumentId = request.AuditPlanDocumentId, AuditReportDocumentId = request.AuditReportDocumentId, Notes = CleanText(request.Notes), CreatedBy = userId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         context.AuditRecords.Add(record);
@@ -46,10 +48,44 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         if ((await GetPageAccessRoleAsync(context, userId))?.CanCreatePcars != true) return Forbid();
         var record = await context.AuditRecords.FindAsync(id); if (record == null) return NotFound();
         var error = await Validate(request, userId); if (error != null) return BadRequest(new { success = false, error });
+        if (await context.AuditRecords.AnyAsync(a => a.AuditRecordId != id && a.AuditCycleId == request.AuditCycleId && a.AuditType == request.AuditType))
+            return BadRequest(new { success = false, error = "This cycle already has a record for this journey stage. Open that record to edit it." });
         var teamResult = await ResolveTeam(request.AuditTeamUserIds); var participantResult = await ResolveTeam(request.ParticipantUserIds); if (teamResult.Error != null || participantResult.Error != null) return BadRequest(new { success = false, error = teamResult.Error ?? participantResult.Error }); var team = teamResult.Team; var participants = participantResult.Team;
         record.AuditCycleId = request.AuditCycleId; record.Standard = request.Standard; record.Title = request.Title.Trim(); record.AuditType = request.AuditType; record.Status = request.Status; record.AuditDate = request.AuditDate; record.Scope = request.Scope.Trim(); record.Departments = Clean(request.Departments); record.AuditTeam = team.Names; record.AuditTeamUserIds = team.Ids; record.ParticipantUserIds = participants.Ids; record.AuditPlanReference = CleanText(request.AuditPlanReference); record.AuditReportReference = CleanText(request.AuditReportReference); record.AuditPlanDocumentId = request.AuditPlanDocumentId; record.AuditReportDocumentId = request.AuditReportDocumentId; record.Notes = CleanText(request.Notes); record.UpdatedAt = DateTime.UtcNow;
         await SyncJourneyStageAsync(record, userId);
         await context.SaveChangesAsync(); return Ok(new { success = true, data = record });
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<ActionResult<object>> Delete(Guid id)
+    {
+        var userId = GetCurrentUserId();
+        if ((await GetPageAccessRoleAsync(context, userId))?.CanDeleteTasks != true) return Forbid();
+
+        var record = await context.AuditRecords.FindAsync(id);
+        if (record == null) return NotFound();
+
+        var cycle = await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(c => c.AuditCycleId == record.AuditCycleId);
+        if (cycle == null) return BadRequest(new { success = false, error = "The audit cycle for this record is unavailable." });
+        if (cycle.Status is "completed" or "historical" or "closed")
+            return BadRequest(new { success = false, error = "Records cannot be deleted after the audit cycle is completed or archived." });
+        if (await context.Tasks.AnyAsync(task => task.AuditRecordId == id && task.TaskType == "pcar") ||
+            await context.AuditChecklistItems.AnyAsync(item => item.AuditRecordId == id))
+            return BadRequest(new { success = false, error = "This record has checklist findings or linked PCARs and must be retained for audit traceability." });
+
+        var stageKey = StageKeyFor(record.AuditType);
+        if (stageKey != null)
+        {
+            var stage = await context.AuditCalendarEvents.FirstOrDefaultAsync(e =>
+                e.AuditCycleId == record.AuditCycleId && e.Standard == record.Standard && e.StageKey == stageKey);
+            if (stage != null) stage.Status = "planned";
+        }
+
+        var snapshot = new { record.AuditRecordId, record.AuditCycleId, record.Standard, record.Title, record.AuditType, record.Status, record.AuditDate };
+        context.AuditRecords.Remove(record);
+        await context.SaveChangesAsync();
+        await auditService.LogAsync(userId, AuditActions.AUDIT_RECORD_DELETED, snapshot);
+        return Ok(new { success = true });
     }
 
     private async Task<string?> Validate(AuditRecordRequest request, Guid userId)
@@ -81,14 +117,7 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
     // separately in the Admin programme plan.
     private async Task SyncJourneyStageAsync(DmsAuditRecord record, Guid actorUserId)
     {
-        var stageKey = record.AuditType switch
-        {
-            "preparation" => "preparation",
-            "internal" => "internal_audit",
-            "management_review" => "management_review",
-            "external" => "surveillance_audit",
-            _ => null,
-        };
+        var stageKey = StageKeyFor(record.AuditType);
         if (stageKey == null || record.Status == "cancelled") return;
 
         var stage = await context.AuditCalendarEvents.FirstOrDefaultAsync(e =>
@@ -132,6 +161,15 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         // its record controls the matching journey stage.
         stage.Status = record.Status;
     }
+
+    private static string? StageKeyFor(string auditType) => auditType switch
+    {
+        "preparation" => "preparation",
+        "internal" => "internal_audit",
+        "management_review" => "management_review",
+        "external" => "surveillance_audit",
+        _ => null,
+    };
     private static string? CleanText(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
