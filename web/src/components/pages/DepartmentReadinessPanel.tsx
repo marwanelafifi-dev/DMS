@@ -25,7 +25,8 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const rollup = useMemo(() => buildDepartmentReadiness(users, tasks, evidence, requirements, standard, activeCycleId), [users, tasks, evidence, requirements, standard, activeCycleId]);
-  const usersWithoutDepartment = users.filter(user => !user.department?.trim()).length;
+  const coverageOwnerIds = new Set(requirements.map(requirement => requirement.documentOwnerId?.toLowerCase()).filter(Boolean));
+  const usersWithoutDepartment = users.filter(user => coverageOwnerIds.has(user.userId.toLowerCase()) && !user.department?.trim()).length;
   const term = query.trim().toLocaleLowerCase();
   const departments = rollup.departments.filter(department => !term || department.name.toLocaleLowerCase().includes(term) || department.people.some(person =>
     person.user.fullName.toLocaleLowerCase().includes(term) || person.user.email.toLocaleLowerCase().includes(term),
@@ -37,7 +38,7 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
         <div className="flex flex-col gap-4 border-b border-[#dbe2ec] px-5 py-5 lg:flex-row lg:items-end lg:justify-between dark:border-white/10">
           <div className="max-w-3xl">
             <h2 className="section-heading">Department readiness</h2>
-            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Departments come from user profiles. Tasks are visible DMS work; PCARs and evidence belong to the active {standard} cycle.</p>
+            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Only departments connected to process folders selected in Evidence Coverage appear here. Department names come from user profiles; PCARs and evidence use the active {standard} cycle.</p>
           </div>
           <label className="relative block w-full shrink-0 lg:w-72">
             <span className="sr-only">Search departments or users</span>
@@ -52,24 +53,22 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
         ) : (
           <>
             <p className="border-b border-[#e8eef5] px-5 py-3 text-xs leading-5 text-[#52627a] dark:border-white/10 dark:text-slate-300">
-              A missing evidence item is a required process document owned by that user with no linked evidence for this cycle. An upload count of zero alone is not a missing item. Shared or unassigned work is listed separately below.
+              A missing evidence item is a required process document owned by that user with no linked evidence for this cycle. An upload count of zero alone is not a missing item. Tasks are visible DMS work assigned to people in these departments.
             </p>
-            {usersWithoutDepartment > 0 && <p className="border-b border-[#e8eef5] bg-[#fffaf0] px-5 py-3 text-sm text-[#8a5411] dark:border-white/10 dark:bg-amber-500/10 dark:text-amber-200">{usersWithoutDepartment} user{usersWithoutDepartment === 1 ? '' : 's'} have no Department in their profile. Assign or sync their department in Admin → Users to group their work correctly.</p>}
+            {usersWithoutDepartment > 0 && <p className="border-b border-[#e8eef5] bg-[#fffaf0] px-5 py-3 text-sm text-[#8a5411] dark:border-white/10 dark:bg-amber-500/10 dark:text-amber-200">{usersWithoutDepartment} owner{usersWithoutDepartment === 1 ? '' : 's'} of selected process documents have no Department in their profile. Assign or sync it in Admin → Users to group their work correctly.</p>}
             {departments.length ? (
               <div className="divide-y divide-[#dbe2ec] dark:divide-white/10">
                 {departments.map((department, index) => <DepartmentGroup key={department.name.toLocaleLowerCase()} department={department} defaultOpen={index === 0 && !term} onNavigate={navigate} />)}
               </div>
             ) : (
-              <p className="px-5 py-8 text-center text-sm text-[#52627a] dark:text-slate-300">{term ? 'No department or user matches your search.' : 'No users are available for department readiness.'}</p>
+              <p className="px-5 py-8 text-center text-sm text-[#52627a] dark:text-slate-300">{term ? 'No covered department or user matches your search.' : 'No departments are linked to this cycle’s selected coverage folders. Add process folders in Evidence Coverage.'}</p>
             )}
-            {(rollup.unassignedTasks.length > 0 || rollup.unassignedPcars.length > 0 || rollup.unassignedRequirements.length > 0 || rollup.unattributedEvidenceCount > 0) && (
+            {rollup.unassignedRequirements.length > 0 && (
               <div className="border-t border-[#dbe2ec] bg-[#f8fafc] px-5 py-4 text-sm text-[#34425b] dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-200">
-                <p className="font-semibold">Work without a matching user department</p>
-                <p className="mt-1">{rollup.unassignedTasks.length} shared or unassigned task{rollup.unassignedTasks.length === 1 ? '' : 's'} · {rollup.unassignedPcars.length} PCAR{rollup.unassignedPcars.length === 1 ? '' : 's'} · {rollup.unassignedRequirements.length} missing evidence item{rollup.unassignedRequirements.length === 1 ? '' : 's'} · {rollup.unattributedEvidenceCount} cycle upload{rollup.unattributedEvidenceCount === 1 ? '' : 's'} without a matching uploader.</p>
+                <p className="font-semibold">Selected coverage without a matching user</p>
+                <p className="mt-1">{rollup.unassignedRequirements.length} required process document{rollup.unassignedRequirements.length === 1 ? '' : 's'} still need evidence, but their owner is not in the user directory.</p>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
-                  {rollup.unassignedTasks.length > 0 && <button type="button" onClick={() => navigate('/tasks')} className="font-medium text-[#1763a5] underline-offset-4 hover:underline">Review tasks</button>}
-                  {rollup.unassignedPcars.length > 0 && <button type="button" onClick={() => navigate('/pcars')} className="font-medium text-[#1763a5] underline-offset-4 hover:underline">Review PCARs</button>}
-                  {rollup.unassignedRequirements.length > 0 && <button type="button" onClick={() => navigate('/evidence-coverage')} className="font-medium text-[#1763a5] underline-offset-4 hover:underline">Review evidence coverage</button>}
+                  <button type="button" onClick={() => navigate('/evidence-coverage')} className="font-medium text-[#1763a5] underline-offset-4 hover:underline">Review evidence coverage</button>
                 </div>
               </div>
             )}
@@ -89,9 +88,9 @@ function DepartmentGroup({ department, defaultOpen, onNavigate }: { department: 
   return (
     <details className="group" open={isOpen} onToggle={event => setIsOpen(event.currentTarget.open)}>
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-[#f8fafc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#1763a5] dark:hover:bg-slate-800/40 [&::-webkit-details-marker]:hidden">
-        <span className="flex min-w-0 items-center gap-2 font-semibold text-[#26334d] dark:text-white"><ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-[#1763a5] transition-transform group-open:rotate-0" aria-hidden="true" /><span className="truncate">{department.name}</span><span className="shrink-0 text-xs font-normal text-[#52627a] dark:text-slate-300">{department.people.length} users</span></span>
+        <span className="flex min-w-0 items-center gap-2 font-semibold text-[#26334d] dark:text-white"><ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-[#1763a5] transition-transform group-open:rotate-0" aria-hidden="true" /><span className="truncate">{department.name}</span><span className="shrink-0 text-xs font-normal text-[#52627a] dark:text-slate-300">{department.people.length} user{department.people.length === 1 ? '' : 's'}</span></span>
         <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-[#34425b] dark:text-slate-200">
-          <span>{department.taskCount} tasks</span><span>{department.pcarCount} PCARs</span><span className={department.missingEvidenceCount ? 'text-[#a65f08] dark:text-amber-300' : ''}>{department.missingEvidenceCount} evidence gaps</span><span>{department.evidenceUploadCount} uploads</span>
+          <span>{department.taskCount} task{department.taskCount === 1 ? '' : 's'}</span><span>{department.pcarCount} PCAR{department.pcarCount === 1 ? '' : 's'}</span><span className={department.missingEvidenceCount ? 'text-[#a65f08] dark:text-amber-300' : ''}>{department.missingEvidenceCount} evidence gap{department.missingEvidenceCount === 1 ? '' : 's'}</span><span>{department.evidenceUploadCount} upload{department.evidenceUploadCount === 1 ? '' : 's'}</span>
         </span>
       </summary>
       <div className="border-t border-[#e8eef5] px-5 pb-5 dark:border-white/10">

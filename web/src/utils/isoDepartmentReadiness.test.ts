@@ -20,10 +20,10 @@ describe('department audit readiness', () => {
         task('isms-pcar', { taskType: 'pcar', assignedTo: 'it', auditStandard: 'ISO 27001:2022', auditCycleId: 'current' }),
         task('closed-task', { assignedTo: 'hr', status: 'completed' }),
       ],
-      [{ documentId: 'evidence-it', assignedById: 'it', isAssignedToSelectedCycle: true }],
+      [{ documentId: 'evidence-it', processFolderId: 'folder-it', assignedById: 'it', isAssignedToSelectedCycle: true }],
       [
-        { evidenceRequirementId: 'required-hr', relatedDocumentId: 'policy-hr', documentTitle: 'Hiring', documentOwnerId: 'hr', hasEvidence: false },
-        { evidenceRequirementId: 'required-it', relatedDocumentId: 'policy-it', documentTitle: 'Security', documentOwnerId: 'it', hasEvidence: true },
+        { evidenceRequirementId: 'required-hr', folderId: 'folder-hr', relatedDocumentId: 'policy-hr', documentTitle: 'Hiring', documentOwnerId: 'hr', hasEvidence: false },
+        { evidenceRequirementId: 'required-it', folderId: 'folder-it', relatedDocumentId: 'policy-it', documentTitle: 'Security', documentOwnerId: 'it', hasEvidence: true },
       ],
       'ISO 9001:2015', 'current',
     );
@@ -39,14 +39,29 @@ describe('department audit readiness', () => {
       [user('hr', 'HR Owner', null)],
       [task('shared', { assignedToGroupId: 'group-hr' })],
       [{ documentId: 'old-evidence', assignedById: 'hr', isAssignedToSelectedCycle: false }],
-      [{ evidenceRequirementId: 'missing', relatedDocumentId: 'policy', documentTitle: 'Policy', hasEvidence: false }],
+      [{ evidenceRequirementId: 'missing', folderId: 'folder-selected', relatedDocumentId: 'policy', documentTitle: 'Policy', hasEvidence: false }],
       'ISO 9001:2015', 'current',
     );
 
-    expect(result.departments[0].name).toBe('Department not set');
-    expect(result.departments[0].taskCount).toBe(0);
-    expect(result.departments[0].evidenceUploadCount).toBe(0);
+    expect(result.departments).toEqual([]);
     expect(result.unassignedTasks.map(item => item.taskId)).toEqual(['shared']);
     expect(result.unassignedRequirements.map(item => item.evidenceRequirementId)).toEqual(['missing']);
+  });
+
+  it('shows only departments tied to selected coverage folders and ignores uploads elsewhere', () => {
+    const result = buildDepartmentReadiness(
+      [user('hr', 'HR Owner', 'People Team'), user('sales', 'Sales Owner', 'Sales')],
+      [task('sales-task', { assignedTo: 'sales' })],
+      [
+        { documentId: 'hr-evidence', processFolderId: 'folder-hr', assignedById: 'hr', isAssignedToSelectedCycle: true },
+        { documentId: 'other-evidence', processFolderId: 'folder-other', assignedById: 'hr', isAssignedToSelectedCycle: true },
+      ],
+      [{ evidenceRequirementId: 'required-hr', folderId: 'folder-hr', relatedDocumentId: 'policy-hr', documentTitle: 'Hiring', documentOwnerId: 'hr', hasEvidence: true }],
+      'ISO 9001:2015', 'current',
+    );
+
+    expect(result.departments.map(department => department.name)).toEqual(['People Team']);
+    expect(result.departments[0].evidenceUploadCount).toBe(1);
+    expect(result.departments[0].missingEvidenceCount).toBe(0);
   });
 });

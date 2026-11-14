@@ -2,12 +2,14 @@ import type { Task, User } from '../types';
 
 export type ReadinessEvidence = {
   documentId: string;
+  processFolderId?: string | null;
   assignedById?: string | null;
   isAssignedToSelectedCycle?: boolean;
 };
 
 export type ReadinessRequirement = {
   evidenceRequirementId: string;
+  folderId: string;
   relatedDocumentId: string;
   documentTitle: string;
   documentOwnerId?: string | null;
@@ -53,6 +55,7 @@ export function buildDepartmentReadiness(
 ): DepartmentReadinessResult {
   const peopleById = new Map<string, PersonReadiness>();
   const departmentsByName = new Map<string, DepartmentReadiness>();
+  const selectedFolderIds = new Set(requirements.map(requirement => requirement.folderId.toLowerCase()));
 
   for (const user of users) {
     const name = departmentName(user);
@@ -90,13 +93,13 @@ export function buildDepartmentReadiness(
   }
 
   let unattributedEvidenceCount = 0;
-  for (const item of evidence.filter(item => item.isAssignedToSelectedCycle)) {
+  for (const item of evidence.filter(item => item.isAssignedToSelectedCycle && item.processFolderId && selectedFolderIds.has(item.processFolderId.toLowerCase()))) {
     const person = item.assignedById ? peopleById.get(item.assignedById.toLowerCase()) : undefined;
     if (person) person.uploadedEvidence.push(item);
     else unattributedEvidenceCount += 1;
   }
 
-  const departments = [...departmentsByName.values()];
+  const departments = [...departmentsByName.values()].filter(department => department.requirementCount > 0);
   for (const department of departments) {
     department.people.sort((left, right) => left.user.fullName.localeCompare(right.user.fullName));
     department.taskCount = department.people.reduce((sum, person) => sum + person.tasks.length, 0);

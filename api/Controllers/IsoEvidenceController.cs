@@ -34,6 +34,18 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
             }
             return result.ToArray();
         }
+        Guid? ProcessFolderId(Guid id)
+        {
+            var current = id; var guard = 0;
+            while (byId.TryGetValue(current, out var folder) && guard++ < 64)
+            {
+                if (string.Equals(folder.Name, "Evidences", StringComparison.OrdinalIgnoreCase))
+                    return folder.ParentFolderId;
+                if (!folder.ParentFolderId.HasValue) break;
+                current = folder.ParentFolderId.Value;
+            }
+            return null;
+        }
         var evidenceFolderIds = folders.Where(folder =>
         {
             var path = Path(folder.FolderId);
@@ -82,6 +94,7 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
                     row.document.Category, row.document.Status, row.document.Tags, row.document.CreatedAt, row.document.UpdatedAt,
                     OwnerName = row.FullName,
                     FolderPath = string.Join(" / ", Path(row.document.FolderId)),
+                    ProcessFolderId = ProcessFolderId(row.document.FolderId),
                     AssignedVersionId = assigned?.VersionId,
                     AssignedById = assigned?.AssignedBy,
                     IsAssignedToSelectedCycle = assigned != null,
