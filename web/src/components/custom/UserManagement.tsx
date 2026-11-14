@@ -281,11 +281,7 @@ export function UserManagement() {
   };
 
   const handleGoogleDirectorySync = async () => {
-    if (!googleDirectoryStatus?.configured) {
-      showError('Google Directory sync is not configured on this server yet.');
-      return;
-    }
-    if (googleDirectoryStatus.configuration.organizationalUnitPaths.length === 0) {
+    if (!googleDirectoryStatus || googleDirectoryStatus.configuration.organizationalUnitPaths.length === 0) {
       showError('Select at least one Google Workspace organizational unit in Directory settings first.');
       return;
     }
@@ -303,10 +299,6 @@ export function UserManagement() {
   };
 
   const openDirectorySettings = async () => {
-    if (!googleDirectoryStatus?.configured) {
-      showError('Add the service-account settings on Ubuntu before loading Google Workspace organizational units.');
-      return;
-    }
     setShowDirectorySettings(true);
     setOrganizationalUnitQuery('');
     if (organizationalUnits.length > 0) return;
@@ -520,9 +512,9 @@ export function UserManagement() {
               variant="secondary"
               size="sm"
               className="flex items-center gap-2"
-              disabled={isGoogleDirectorySyncing || !googleDirectoryStatus.configured || googleDirectoryStatus.configuration.organizationalUnitPaths.length === 0}
+              disabled={isGoogleDirectorySyncing || googleDirectoryStatus.configuration.organizationalUnitPaths.length === 0}
               onClick={handleGoogleDirectorySync}
-              title={googleDirectoryStatus.configured ? 'Synchronize new Google Workspace users and department values now' : 'Google Directory service-account sync is not configured on this server'}
+              title={googleDirectoryStatus.configuration.organizationalUnitPaths.length > 0 ? 'Synchronize new Google Workspace users and department values now' : 'Select organizational units in Directory settings before synchronizing'}
             >
               <RefreshCw className={`w-4 h-4 ${isGoogleDirectorySyncing ? 'animate-spin' : ''}`} />
               {isGoogleDirectorySyncing ? 'Syncing Google…' : 'Sync Google users'}
@@ -570,7 +562,7 @@ export function UserManagement() {
               <p className="text-xs text-gray-500 dark:text-navy-400">
                 {googleDirectoryStatus.configured
                   ? `${googleDirectoryStatus.schedule}. ${googleDirectoryStatus.configuration.organizationalUnitPaths.length} selected OU${googleDirectoryStatus.configuration.organizationalUnitPaths.length === 1 ? '' : 's'}; new accounts receive User access and existing roles are never changed.`
-                  : 'Not configured on this server. Add the service-account settings before enabling synchronization.'}
+                  : 'Connection will be verified when Directory settings loads Google Workspace organizational units.'}
               </p>
             </div>
           </div>
