@@ -1,5 +1,7 @@
 using DMS.Api.Services;
+using DMS.Api.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Api.Controllers;
 
@@ -7,6 +9,7 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class AuditCalendarController(AuditCalendarService auditCalendarService, DMS.Api.Data.DmsContext context, ILogger<AuditCalendarController> logger) : BaseController
 {
+    private static readonly string[] OptionalStageKeys = ["evidence_deadline", "pcar_closure", "external_response", "cycle_closure"];
     // GET /api/auditcalendar — all audit calendar events, visible to all users
     [HttpGet]
     public async Task<ActionResult<object>> GetEvents()
@@ -21,6 +24,45 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
             logger.LogError(ex, "Error retrieving audit calendar events");
             return StatusCode(500, new { success = false, error = ex.Message });
         }
+    }
+
+    [HttpGet("cycles/{cycleId:guid}/removed-stages")]
+    public async Task<ActionResult<object>> GetRemovedStages(Guid cycleId)
+    {
+        if ((await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.CanViewAdminPanel != true) return Forbid();
+        var stages = await context.AuditCycleStageExclusions.AsNoTracking()
+            .Where(exclusion => exclusion.AuditCycleId == cycleId)
+            .OrderBy(exclusion => exclusion.StageKey)
+            .Select(exclusion => new { exclusion.StageKey, exclusion.RemovedAt, exclusion.RemovedBy })
+            .ToListAsync();
+        return Ok(new { success = true, data = stages });
+    }
+
+    [HttpPost("cycles/{cycleId:guid}/stages/{stageKey}/remove")]
+    public async Task<ActionResult<object>> RemoveOptionalStage(Guid cycleId, string stageKey)
+    {
+        var userId = GetCurrentUserId();
+        if ((await GetPageAccessRoleAsync(context, userId))?.CanViewAdminPanel != true) return Forbid();
+        if (!OptionalStageKeys.Contains(stageKey)) return BadRequest(new { success = false, error = "This is a required stage and cannot be removed" });
+        if (!await context.AuditCycles.AnyAsync(cycle => cycle.AuditCycleId == cycleId)) return NotFound();
+
+        var exclusion = await context.AuditCycleStageExclusions.FindAsync(cycleId, stageKey);
+        if (exclusion == null)
+        {
+            context.AuditCycleStageExclusions.Add(new DmsAuditCycleStageExclusion { AuditCycleId = cycleId, StageKey = stageKey, RemovedBy = userId, RemovedAt = DateTime.UtcNow });
+            await context.SaveChangesAsync();
+        }
+        return Ok(new { success = true, data = new { stageKey } });
+    }
+
+    [HttpPost("cycles/{cycleId:guid}/stages/{stageKey}/restore")]
+    public async Task<ActionResult<object>> RestoreOptionalStage(Guid cycleId, string stageKey)
+    {
+        if ((await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.CanViewAdminPanel != true) return Forbid();
+        if (!OptionalStageKeys.Contains(stageKey)) return BadRequest(new { success = false, error = "This is a required stage and cannot be restored" });
+        var exclusion = await context.AuditCycleStageExclusions.FindAsync(cycleId, stageKey);
+        if (exclusion != null) { context.AuditCycleStageExclusions.Remove(exclusion); await context.SaveChangesAsync(); }
+        return Ok(new { success = true, data = new { stageKey } });
     }
 
     // POST /api/auditcalendar — publish a new event

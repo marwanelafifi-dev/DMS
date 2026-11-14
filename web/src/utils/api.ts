@@ -1682,6 +1682,10 @@ class APIClient {
     return data;
   }
 
+  async getRemovedAuditProgrammeStages(cycleId: string) { const { data } = await this.client.get<ApiResponse>(`/auditcalendar/cycles/${cycleId}/removed-stages`); return data; }
+  async removeAuditProgrammeStage(cycleId: string, stageKey: string) { const { data } = await this.client.post<ApiResponse>(`/auditcalendar/cycles/${cycleId}/stages/${stageKey}/remove`); return data; }
+  async restoreAuditProgrammeStage(cycleId: string, stageKey: string) { const { data } = await this.client.post<ApiResponse>(`/auditcalendar/cycles/${cycleId}/stages/${stageKey}/restore`); return data; }
+
   async createAuditCalendarEvent(eventData: { title: string; phase: string; standard: string; eventDate: string; notes?: string; programmeYear?: number; stageKey?: string; status?: string; ownerId?: string; dueDate?: string; auditCycleId?: string }) {
     const { data } = await this.client.post<ApiResponse>('/auditcalendar', eventData);
     return data;

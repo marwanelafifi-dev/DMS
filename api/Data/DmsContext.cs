@@ -30,6 +30,7 @@ public class DmsContext : DbContext
     public DbSet<DmsReminder> Reminders => Set<DmsReminder>();
     public DbSet<DmsAuditCalendarEvent> AuditCalendarEvents => Set<DmsAuditCalendarEvent>();
     public DbSet<DmsAuditCycle> AuditCycles => Set<DmsAuditCycle>();
+    public DbSet<DmsAuditCycleStageExclusion> AuditCycleStageExclusions => Set<DmsAuditCycleStageExclusion>();
     public DbSet<DmsAuditRecord> AuditRecords => Set<DmsAuditRecord>();
     public DbSet<DmsAuditChecklistItem> AuditChecklistItems => Set<DmsAuditChecklistItem>();
     public DbSet<DmsEvidenceRequirement> EvidenceRequirements => Set<DmsEvidenceRequirement>();
@@ -121,6 +122,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsReminder>().ToTable("dms_reminders").HasKey(r => r.ReminderId);
         modelBuilder.Entity<DmsAuditCalendarEvent>().ToTable("dms_audit_calendar_events").HasKey(e => e.EventId);
         modelBuilder.Entity<DmsAuditCycle>().ToTable("dms_audit_cycles").HasKey(c => c.AuditCycleId);
+        modelBuilder.Entity<DmsAuditCycleStageExclusion>().ToTable("dms_audit_cycle_stage_exclusions").HasKey(e => new { e.AuditCycleId, e.StageKey });
         modelBuilder.Entity<DmsAuditCycle>().Property(c => c.StartDate).HasColumnType("date");
         modelBuilder.Entity<DmsAuditCycle>().Property(c => c.EndDate).HasColumnType("date");
         modelBuilder.Entity<DmsAuditRecord>().ToTable("dms_audit_records").HasKey(a => a.AuditRecordId);
