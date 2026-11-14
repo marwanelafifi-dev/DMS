@@ -2,6 +2,8 @@
 
 ## 2026-11-15 — Single Admin setup for ISO cycle coverage and responsibility
 
+- Roles now expose **ISO 9001 Workspace** and **ISO 27001 Workspace** as separate page permissions. They control both the Sidebar entries and direct routes, including ISO 9001 Readiness and the merged Audit Plan & Register. Migration `136_iso_workspace_page_access.sql` preserves current user access by initially copying the legacy ISO 9001 PCAR permission and ISO 27001 Dashboard permission; an administrator can then change each role independently in Admin → Roles.
+
 - Audit-stage status changes notify every selected audit-team member and department participant, including the person who saves the stage. Each recipient receives one in-app notification and, when Admin Notifications has a working enabled email configuration, one email for Planned, In Progress, Completed, or Cancelled. Editing notes or other record fields does not notify recipients.
 
 - Admin → Audit Programme now creates a cycle with its covered process folders and a multiuser responsibility map for each selected department. Searchable choices contain only active DMS users who are Owners or Managers of a selected process folder or its Procedures department parent. Existing planned/active cycles can be edited there; historical cycles remain read-only. Folder access and user roles do not change.

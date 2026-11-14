@@ -11,6 +11,8 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canViewReminders: false,
   canViewApprovals: false,
   canViewPcar: false,
+  canViewIso9001Workspace: false,
+  canViewIso27001Workspace: false,
   canViewTasks: false,
   canViewAllTasks: false,
   canViewAdminPanel: false,

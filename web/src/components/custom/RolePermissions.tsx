@@ -13,7 +13,7 @@ import { ModalOverlay } from '../ui/ModalOverlay';
 // delete, rename, etc.) — those are governed entirely by per-folder grants
 // and File/Folder Permission overrides, set from the Document Library.
 const PERMISSION_KEYS = [
-  'canViewDashboard', 'canViewDocumentLibrary', 'canViewApprovals', 'canViewTasks', 'canViewPcar', 'canViewReminders',
+  'canViewDashboard', 'canViewIso9001Workspace', 'canViewIso27001Workspace', 'canViewDocumentLibrary', 'canViewApprovals', 'canViewTasks', 'canViewPcar', 'canViewReminders',
   'canDeleteReminders',
   'canDeleteDocumentVersions',
   'canManageBulkActions',
@@ -28,6 +28,8 @@ const PERMISSION_KEYS = [
 ] as const;
 const PERMISSION_LABELS: Record<typeof PERMISSION_KEYS[number], string> = {
   canViewDashboard: 'Dashboard',
+  canViewIso9001Workspace: 'ISO 9001 Workspace',
+  canViewIso27001Workspace: 'ISO 27001 Workspace',
   canViewDocumentLibrary: 'Document Library',
   canViewReminders: 'Reminders',
   canDeleteReminders: 'Delete Reminders',

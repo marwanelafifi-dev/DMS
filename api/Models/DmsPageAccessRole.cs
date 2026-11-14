@@ -16,6 +16,11 @@ public class DmsPageAccessRole
     public bool CanViewReminders { get; set; }
     public bool CanViewApprovals { get; set; }
     public bool CanViewPcar { get; set; }
+    // ISO workspaces are independent operational areas. Keeping them separate
+    // from Dashboard/PCAR access lets an administrator grant a Quality role
+    // the ISO 9001 or ISO 27001 journey without exposing unrelated registers.
+    public bool CanViewIso9001Workspace { get; set; }
+    public bool CanViewIso27001Workspace { get; set; }
     // Internal operational tasks are intentionally separate from auditor PCAR
     // findings, so roles can be granted either register independently.
     public bool CanViewTasks { get; set; }

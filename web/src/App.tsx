@@ -100,8 +100,10 @@ function App() {
                 below wrapped its own separate <MainLayout> instance. */}
             <Route element={<MainLayout />}>
               <Route path="/" element={<Dashboard />} />
-              <Route element={<RequirePageAccess flag="canViewDashboard" />}>
+              <Route element={<RequirePageAccess flag="canViewIso9001Workspace" />}>
                 <Route path="/iso-readiness" element={<IsoReadiness />} />
+              </Route>
+              <Route element={<RequirePageAccess flag="canViewIso27001Workspace" />}>
                 <Route path="/iso27001-readiness" element={<Iso27001Workspace />} />
               </Route>
 
@@ -110,12 +112,14 @@ function App() {
                 <Route path="/tasks" element={<Tasks mode="tasks" />} />
               </Route>
               <Route element={<RequirePageAccess flag="canViewPcar" />}>
-                <Route path="/iso-workspace" element={<IsoWorkspace />} />
                 <Route path="/pcars" element={<Tasks mode="pcar" />} />
-                <Route path="/audits" element={<AuditRegister />} />
                 <Route element={<RequirePageAccess flag="canViewHistoricalPcars" />}>
                   <Route path="/tasks/history" element={<HistoricalPcarPage />} />
                 </Route>
+              </Route>
+              <Route element={<RequirePageAccess flag="canViewIso9001Workspace" />}>
+                <Route path="/iso-workspace" element={<IsoWorkspace />} />
+                <Route path="/audits" element={<AuditRegister />} />
               </Route>
 
               {/* Documents */}
