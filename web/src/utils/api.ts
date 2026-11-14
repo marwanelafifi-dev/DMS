@@ -529,6 +529,7 @@ class APIClient {
   async getAuditCycles() { const { data } = await this.client.get<ApiResponse>('/audit-cycles'); return data; }
   async createAuditCycle(payload: { name: string; standard: string; startDate: string; endDate: string }) { const { data } = await this.client.post<ApiResponse>('/audit-cycles', payload); return data; }
   async activateAuditCycle(id: string) { const { data } = await this.client.post<ApiResponse>(`/audit-cycles/${id}/activate`); return data; }
+  async startAuditCycle(id: string) { const { data } = await this.client.post<ApiResponse>(`/audit-cycles/${id}/start`); return data; }
   async getAuditRecords(params?: { standard?: string; auditCycleId?: string }) { const { data } = await this.client.get<ApiResponse>('/audits', { params }); return data; }
   async createAuditRecord(payload: any) { const { data } = await this.client.post<ApiResponse>('/audits', payload); return data; }
   async updateAuditRecord(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/audits/${id}`, payload); return data; }
