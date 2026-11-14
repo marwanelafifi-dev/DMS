@@ -30,7 +30,11 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
         var managers = await context.FolderManagers.AsNoTracking()
             .Select(manager => new { manager.FolderId, manager.UserId })
             .ToListAsync();
-        var managersByFolder = managers.GroupBy(manager => manager.FolderId)
+        var managerPermissions = await context.FolderPermissions.AsNoTracking()
+            .Where(permission => permission.Role == FolderRoles.Manager)
+            .Select(permission => new { permission.FolderId, permission.UserId })
+            .ToListAsync();
+        var managersByFolder = managers.Concat(managerPermissions).GroupBy(manager => manager.FolderId)
             .ToDictionary(group => group.Key, group => group.Select(manager => manager.UserId).ToArray());
         var visible = new List<object>();
         foreach (var item in raw)
