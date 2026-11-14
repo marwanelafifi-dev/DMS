@@ -25,8 +25,6 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const rollup = useMemo(() => buildDepartmentReadiness(users, tasks, evidence, requirements, standard, activeCycleId), [users, tasks, evidence, requirements, standard, activeCycleId]);
-  const coverageOwnerIds = new Set(requirements.map(requirement => requirement.documentOwnerId?.toLowerCase()).filter(Boolean));
-  const usersWithoutDepartment = users.filter(user => coverageOwnerIds.has(user.userId.toLowerCase()) && !user.department?.trim()).length;
   const term = query.trim().toLocaleLowerCase();
   const departments = rollup.departments.filter(department => !term || department.name.toLocaleLowerCase().includes(term) || department.people.some(person =>
     person.user.fullName.toLocaleLowerCase().includes(term) || person.user.email.toLocaleLowerCase().includes(term),
@@ -38,7 +36,7 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
         <div className="flex flex-col gap-4 border-b border-[#dbe2ec] px-5 py-5 lg:flex-row lg:items-end lg:justify-between dark:border-white/10">
           <div className="max-w-3xl">
             <h2 className="section-heading">Department readiness</h2>
-            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Only departments connected to process folders selected in Evidence Coverage appear here. Department names come from user profiles; PCARs and evidence use the active {standard} cycle.</p>
+            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Departments follow the selected process folders under Corporate / QMS / Procedures. Folder owners, managers, and process document owners may appear in more than one department.</p>
           </div>
           <label className="relative block w-full shrink-0 lg:w-72">
             <span className="sr-only">Search departments or users</span>
@@ -53,20 +51,19 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
         ) : (
           <>
             <p className="border-b border-[#e8eef5] px-5 py-3 text-xs leading-5 text-[#52627a] dark:border-white/10 dark:text-slate-300">
-              A missing evidence item is a required process document owned by that user with no linked evidence for this cycle. An upload count of zero alone is not a missing item. Tasks are visible DMS work assigned to people in these departments.
+              Evidence gaps and uploads use the active {standard} cycle. A missing item belongs to its process folder; the process document owner is shown beside it. A user with zero uploads is not automatically missing evidence. Tasks without a clear folder or single responsible department remain in the main task list.
             </p>
-            {usersWithoutDepartment > 0 && <p className="border-b border-[#e8eef5] bg-[#fffaf0] px-5 py-3 text-sm text-[#8a5411] dark:border-white/10 dark:bg-amber-500/10 dark:text-amber-200">{usersWithoutDepartment} owner{usersWithoutDepartment === 1 ? '' : 's'} of selected process documents have no Department in their profile. Assign or sync it in Admin → Users to group their work correctly.</p>}
             {departments.length ? (
               <div className="divide-y divide-[#dbe2ec] dark:divide-white/10">
-                {departments.map((department, index) => <DepartmentGroup key={department.name.toLocaleLowerCase()} department={department} defaultOpen={index === 0 && !term} onNavigate={navigate} />)}
+                {departments.map((department, index) => <DepartmentGroup key={department.id} department={department} defaultOpen={index === 0 && !term} onNavigate={navigate} />)}
               </div>
             ) : (
-              <p className="px-5 py-8 text-center text-sm text-[#52627a] dark:text-slate-300">{term ? 'No covered department or user matches your search.' : 'No departments are linked to this cycle’s selected coverage folders. Add process folders in Evidence Coverage.'}</p>
+              <p className="px-5 py-8 text-center text-sm text-[#52627a] dark:text-slate-300">{term ? 'No covered folder or responsible user matches your search.' : 'No process folders are linked to this cycle’s Evidence Coverage. Add process folders there first.'}</p>
             )}
             {rollup.unassignedRequirements.length > 0 && (
               <div className="border-t border-[#dbe2ec] bg-[#f8fafc] px-5 py-4 text-sm text-[#34425b] dark:border-white/10 dark:bg-slate-950/30 dark:text-slate-200">
-                <p className="font-semibold">Selected coverage without a matching user</p>
-                <p className="mt-1">{rollup.unassignedRequirements.length} required process document{rollup.unassignedRequirements.length === 1 ? '' : 's'} still need evidence, but their owner is not in the user directory.</p>
+                <p className="font-semibold">Coverage outside the Procedures department folders</p>
+                <p className="mt-1">{rollup.unassignedRequirements.length} required process document{rollup.unassignedRequirements.length === 1 ? '' : 's'} could not be placed under a department folder. Review the folder location.</p>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
                   <button type="button" onClick={() => navigate('/evidence-coverage')} className="font-medium text-[#1763a5] underline-offset-4 hover:underline">Review evidence coverage</button>
                 </div>
@@ -82,32 +79,29 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
 function DepartmentGroup({ department, defaultOpen, onNavigate }: { department: DepartmentReadiness; defaultOpen: boolean; onNavigate: ReturnType<typeof useNavigate> }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
-  const peopleWithActivity = department.people.filter(person => person.tasks.length || person.pcars.length || person.missingRequirements.length || person.uploadedEvidence.length);
-  const otherMembers = department.people.length - peopleWithActivity.length;
 
   return (
     <details className="group" open={isOpen} onToggle={event => setIsOpen(event.currentTarget.open)}>
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-[#f8fafc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#1763a5] dark:hover:bg-slate-800/40 [&::-webkit-details-marker]:hidden">
-        <span className="flex min-w-0 items-center gap-2 font-semibold text-[#26334d] dark:text-white"><ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-[#1763a5] transition-transform group-open:rotate-0" aria-hidden="true" /><span className="truncate">{department.name}</span><span className="shrink-0 text-xs font-normal text-[#52627a] dark:text-slate-300">{department.people.length} user{department.people.length === 1 ? '' : 's'}</span></span>
+        <span className="flex min-w-0 items-center gap-2 font-semibold text-[#26334d] dark:text-white"><ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-[#1763a5] transition-transform group-open:rotate-0" aria-hidden="true" /><span className="truncate">{department.name}</span><span className="shrink-0 text-xs font-normal text-[#52627a] dark:text-slate-300">{department.people.length} responsible user{department.people.length === 1 ? '' : 's'}</span></span>
         <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-[#34425b] dark:text-slate-200">
           <span>{department.taskCount} task{department.taskCount === 1 ? '' : 's'}</span><span>{department.pcarCount} PCAR{department.pcarCount === 1 ? '' : 's'}</span><span className={department.missingEvidenceCount ? 'text-[#a65f08] dark:text-amber-300' : ''}>{department.missingEvidenceCount} evidence gap{department.missingEvidenceCount === 1 ? '' : 's'}</span><span>{department.evidenceUploadCount} upload{department.evidenceUploadCount === 1 ? '' : 's'}</span>
         </span>
       </summary>
       <div className="border-t border-[#e8eef5] px-5 pb-5 dark:border-white/10">
-        {department.requirementCount === 0 && <p className="py-3 text-xs text-[#8a5411] dark:text-amber-300">No evidence coverage rules are linked to process documents owned by users in this department.</p>}
-        {peopleWithActivity.length ? (
+        {department.missingWithoutOwner.length > 0 && <p className="py-3 text-xs text-[#8a5411] dark:text-amber-300">{department.missingWithoutOwner.length} process document{department.missingWithoutOwner.length === 1 ? '' : 's'} still need evidence, but the document owner is not in the user directory.</p>}
+        {department.people.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
-              <thead><tr className="border-b border-[#e8eef5] text-xs font-semibold uppercase tracking-wide text-[#52627a] dark:border-white/10 dark:text-slate-300"><th className="py-3 pr-3">User</th><th className="px-3 py-3">Open tasks</th><th className="px-3 py-3">Open PCARs</th><th className="px-3 py-3">Evidence gaps</th><th className="px-3 py-3">Cycle uploads</th></tr></thead>
+              <thead><tr className="border-b border-[#e8eef5] text-xs font-semibold uppercase tracking-wide text-[#52627a] dark:border-white/10 dark:text-slate-300"><th className="py-3 pr-3">Responsible user</th><th className="px-3 py-3">Open tasks</th><th className="px-3 py-3">Open PCARs</th><th className="px-3 py-3">Owned evidence gaps</th><th className="px-3 py-3">Cycle uploads</th></tr></thead>
               <tbody>
-                {peopleWithActivity.map(person => (
+                {department.people.map(person => (
                   <PersonRow key={person.user.userId} person={person} expanded={expandedUserId === person.user.userId} onToggle={() => setExpandedUserId(current => current === person.user.userId ? null : person.user.userId)} onNavigate={onNavigate} />
                 ))}
               </tbody>
             </table>
           </div>
-        ) : <p className="py-4 text-sm text-[#52627a] dark:text-slate-300">No open work or evidence uploads are recorded for users in this department.</p>}
-        {otherMembers > 0 && <p className="pt-3 text-xs text-[#52627a] dark:text-slate-300">{otherMembers} other user{otherMembers === 1 ? '' : 's'} with no assigned open work or cycle uploads.</p>}
+        ) : <p className="py-4 text-sm text-[#52627a] dark:text-slate-300">No folder owner, manager, document owner, or evidence uploader matches a DMS user. Check the folder assignments.</p>}
       </div>
     </details>
   );
@@ -118,7 +112,7 @@ function PersonRow({ person, expanded, onToggle, onNavigate }: { person: PersonR
   return (
     <>
       <tr className="border-b border-[#edf1f6] text-[#34425b] dark:border-white/10 dark:text-slate-200">
-        <td className="py-3 pr-3"><span className="block font-medium text-[#26334d] dark:text-white">{person.user.fullName}{!person.user.isActive && <span className="ml-2 text-xs font-normal text-[#52627a] dark:text-slate-300">Inactive</span>}</span><span className="block text-xs text-[#52627a] dark:text-slate-300">{person.user.email}</span>{hasDetails && <button type="button" onClick={onToggle} aria-label={`${expanded ? 'Hide' : 'View'} work for ${person.user.fullName}`} aria-expanded={expanded} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#1763a5] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]">{expanded ? 'Hide work' : 'View work'} <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" /></button>}</td>
+        <td className="py-3 pr-3"><span className="block font-medium text-[#26334d] dark:text-white">{person.user.fullName}{!person.user.isActive && <span className="ml-2 text-xs font-normal text-[#52627a] dark:text-slate-300">Inactive</span>}</span><span className="block text-xs text-[#52627a] dark:text-slate-300">{person.user.email}</span><span className="block text-xs text-[#52627a] dark:text-slate-300">{person.responsibilities.join(' · ') || 'Assigned work'}</span>{hasDetails && <button type="button" onClick={onToggle} aria-label={`${expanded ? 'Hide' : 'View'} work for ${person.user.fullName}`} aria-expanded={expanded} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#1763a5] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]">{expanded ? 'Hide work' : 'View work'} <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" /></button>}</td>
         <td className="px-3 py-3 tabular-nums">{person.tasks.length}</td>
         <td className="px-3 py-3 tabular-nums">{person.pcars.length}</td>
         <td className={`px-3 py-3 tabular-nums ${person.missingRequirements.length ? 'font-semibold text-[#a65f08] dark:text-amber-300' : ''}`}>{person.missingRequirements.length}</td>
