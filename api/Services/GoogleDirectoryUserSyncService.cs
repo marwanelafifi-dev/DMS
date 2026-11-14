@@ -29,11 +29,16 @@ public sealed class GoogleDirectoryUserSyncService(
         {
             var inlineValue = configuration["GoogleDirectory:ServiceAccountJson"];
             if (!string.IsNullOrWhiteSpace(inlineValue)) return inlineValue;
-            var filePath = configuration["GoogleDirectory:ServiceAccountFile"];
+            // Accept the established server variable name as well as the
+            // DMS-specific name, so deployment does not require copying a
+            // private key into the UI or changing an existing secret mount.
+            var filePath = configuration["GoogleDirectory:ServiceAccountFile"]
+                ?? configuration["GOOGLE_SERVICE_ACCOUNT_KEY_FILE"];
             return !string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath) ? File.ReadAllText(filePath) : null;
         }
     }
-    private string? DelegatedAdminEmail => configuration["GoogleDirectory:DelegatedAdminEmail"];
+    private string? DelegatedAdminEmail => configuration["GoogleDirectory:DelegatedAdminEmail"]
+        ?? configuration["GOOGLE_SYNC_SUBJECT"];
     private string Customer => configuration["GoogleDirectory:Customer"] ?? "my_customer";
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ServiceAccountJson) && !string.IsNullOrWhiteSpace(DelegatedAdminEmail);
 
@@ -263,7 +268,7 @@ public sealed class GoogleDirectoryUserSyncService(
     private void EnsureConfigured()
     {
         if (!IsConfigured)
-            throw new InvalidOperationException("Google Directory sync is not configured on the Ubuntu server. Mount the service-account JSON file and set GOOGLE_DIRECTORY_SERVICE_ACCOUNT_FILE and GOOGLE_DIRECTORY_DELEGATED_ADMIN_EMAIL there.");
+            throw new InvalidOperationException("Google Directory sync is not configured on the Ubuntu server. Mount the service-account JSON file and set GOOGLE_SERVICE_ACCOUNT_KEY_FILE and GOOGLE_SYNC_SUBJECT there.");
     }
 
     private static GoogleDirectorySyncConfiguration NormalizeConfiguration(GoogleDirectorySyncConfiguration requested)

@@ -84,6 +84,8 @@ services:
       GoogleDirectory__ServiceAccountJson: ${GOOGLE_DIRECTORY_SERVICE_ACCOUNT_JSON:-}
       GoogleDirectory__DelegatedAdminEmail: ${GOOGLE_DIRECTORY_DELEGATED_ADMIN_EMAIL:-}
       GoogleDirectory__Customer: ${GOOGLE_DIRECTORY_CUSTOMER:-my_customer}
+      GOOGLE_SERVICE_ACCOUNT_KEY_FILE: ${GOOGLE_SERVICE_ACCOUNT_KEY_FILE:-}
+      GOOGLE_SYNC_SUBJECT: ${GOOGLE_SYNC_SUBJECT:-}
       Smtp__User: ${SMTP_USER}
       Smtp__Password: ${SMTP_PASSWORD}
     ports:

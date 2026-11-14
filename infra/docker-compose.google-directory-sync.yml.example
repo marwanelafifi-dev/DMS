@@ -5,4 +5,4 @@
 services:
   api:
     volumes:
-      - /opt/dms/secrets/google-directory-service-account.json:/run/secrets/google-directory-service-account.json:ro
+      - /opt/dms/secrets/google-workspace.json:/run/secrets/google-workspace.json:ro
