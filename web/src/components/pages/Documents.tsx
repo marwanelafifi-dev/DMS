@@ -1700,7 +1700,7 @@ export function Documents() {
   };
   const uploadMissingFields = {
     description: !uploadDescription.trim(),
-    version: !uploadVersionLabel.trim(),
+    version: !isEvidenceUploadFolder && !uploadVersionLabel.trim(),
     category: !isEvidenceUploadFolder && (!uploadCategory || (uploadIsOtherCategory && !uploadCustomCategory.trim())),
     owner: !uploadOwnerId,
     department: !uploadDepartment || (uploadIsOtherDepartment && !uploadCustomDepartment.trim()),
@@ -1716,7 +1716,7 @@ export function Documents() {
   const fieldError = (field: keyof typeof uploadMissingFields) =>
     uploadValidationAttempted && uploadMissingFields[field] ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/20' : '';
 
-  const handleUploadDocument = async (action: 'draft' | 'submit') => {
+  const handleUploadDocument = async (action: 'draft' | 'submit' | 'evidence') => {
     if (!selectedFolder) {
       showError('Create or restore a folder before uploading documents');
       return;
@@ -1772,7 +1772,7 @@ export function Documents() {
           if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
           createdDocumentId = createdDocument.documentId;
 
-          const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile, uploadVersionLabel);
+          const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile, isEvidenceUploadFolder ? undefined : uploadVersionLabel);
           // An evidence link is created only after the actual file is safely
           // uploaded. The server detects ISO 9001 vs ISO 27001 from its path
           // and attaches the active cycle; the uploader never chooses a year.
@@ -1819,7 +1819,7 @@ export function Documents() {
             fileName: uploadFile.name,
             fileSize: uploadFile.size,
             contentType: uploadFile.type || 'application/octet-stream',
-            versionLabel: uploadVersionLabel.trim() || null,
+            versionLabel: isEvidenceUploadFolder ? null : uploadVersionLabel.trim() || null,
             status: createdDocument.status ?? 'draft',
             department: effectiveUploadDepartment,
             category: effectiveUploadCategory,
@@ -1873,7 +1873,7 @@ export function Documents() {
           documentObjectUrlsRef.current.set(uploadedDocument.documentId, uploadPreviewUrls);
           touchPreviewCache(uploadedDocument.documentId);
           uploaded.push(uploadedDocument);
-          submittedForApproval.push({
+          if (!isEvidenceUploadFolder) submittedForApproval.push({
             documentId: createdDocument.documentId,
             filename: uploadFile.name,
             filesize: uploadFile.size,
@@ -1912,7 +1912,9 @@ export function Documents() {
       } else if (parseErrors.length > 0) {
         showError(`${uploaded.length} uploaded; ${parseErrors.length} could not be parsed locally`);
       } else {
-        showSuccess(`${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} saved as draft`);
+        showSuccess(isEvidenceUploadFolder
+          ? `${uploaded.length} evidence file${uploaded.length === 1 ? '' : 's'} saved directly.`
+          : `${uploaded.length} ${uploaded.length === 1 ? 'document' : 'documents'} saved as draft`);
       }
 
       if (errors.length === 0) {
@@ -2530,7 +2532,7 @@ export function Documents() {
                   )}
                   <p className="text-xs text-[#718198]">Select any number of tags, or none.</p>
                 </div>
-                <div className="space-y-2">
+                {!isEvidenceUploadFolder && <div className="space-y-2">
                   <label htmlFor="upload-version" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
                     Version <span className="text-red-500">*</span>
                   </label>
@@ -2548,12 +2550,12 @@ export function Documents() {
                   ) : (
                     <p className="text-xs text-[#718198]">Shown when viewing the file.</p>
                   )}
-                </div>
+                </div>}
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  {isEvidenceUploadFolder ? <><label className="block text-sm font-medium text-[#34425b] dark:text-slate-200">Document Category</label><div className="field-control flex h-10 items-center bg-[#f8fbff] px-3 text-sm font-medium text-[#1763a5] dark:bg-slate-900 dark:text-blue-300">Evidence</div><p className="text-xs text-[#718198]">Set automatically because this file is uploaded in an Evidences folder.</p></> : <><label htmlFor="upload-category" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
+                  {isEvidenceUploadFolder ? <><label className="block text-sm font-medium text-[#34425b] dark:text-slate-200">Document Category</label><div className="field-control flex h-10 items-center bg-[#f8fbff] px-3 text-sm font-medium text-[#1763a5] dark:bg-slate-900 dark:text-blue-300">Evidence</div><p className="text-xs text-[#718198]">Evidence and a DMS Document ID are set automatically.</p></> : <><label htmlFor="upload-category" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
                     Document Category <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -2642,7 +2644,7 @@ export function Documents() {
                   auto-detects it from the file's own content on upload (see extractDocId
                   below), and QA/Admin resolve or review it afterward at First Review. */}
 
-              <div className="space-y-2">
+              {!isEvidenceUploadFolder && <div className="space-y-2">
                 <label htmlFor="upload-approval-notes" className="block text-sm font-medium text-[#34425b] dark:text-slate-200">
                   Approval Notes (Optional)
                 </label>
@@ -2654,9 +2656,9 @@ export function Documents() {
                   disabled={isUploading}
                   className="field-control min-h-[40px] w-full resize-none rounded-[4px] border border-[#dbe2ec] bg-white p-2 text-sm text-[#26334d] placeholder-[#8ea0ba] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:placeholder-slate-500"
                 />
-              </div>
+              </div>}
 
-              <p className="text-xs text-[#718198]">{selectedFolder ? `Uploading to ${selectedFolder.name}. New documents remain view-only while entering review.` : 'A folder is required before uploading documents.'}</p>
+              <p className="text-xs text-[#718198]">{selectedFolder ? isEvidenceUploadFolder ? `Saving evidence to ${selectedFolder.name}. Evidence is stored directly without an approval workflow.` : `Uploading to ${selectedFolder.name}. New documents remain view-only while entering review.` : 'A folder is required before uploading documents.'}</p>
               {isUploading && (
                 <div role="status" aria-label={activeUploadStage === 'parsing' ? 'Converting document with Docling' : 'Upload progress'} className="space-y-1.5">
                   <div className="flex items-center justify-between gap-3 text-xs text-[#52627a]">
@@ -2671,6 +2673,7 @@ export function Documents() {
               )}
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={closeUploadModal} disabled={isUploading} className="flex-1">Cancel</Button>
+                {isEvidenceUploadFolder ? <Button onClick={() => handleUploadDocument('evidence')} disabled={uploadFiles.length === 0 || isUploading} className="flex-1">{isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Saving evidence...') : `Save evidence${uploadFiles.length === 1 ? '' : ` (${uploadFiles.length})`}`}</Button> : <>
                 <Button
                   variant="secondary"
                   onClick={() => handleUploadDocument('draft')}
@@ -2686,6 +2689,7 @@ export function Documents() {
                 >
                   {isUploading ? (activeUploadStage === 'parsing' ? 'Converting...' : 'Uploading...') : 'Submit'}
                 </Button>
+                </>}
               </div>
             </CardBody>
             </Card>

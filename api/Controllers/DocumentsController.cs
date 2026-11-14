@@ -752,17 +752,21 @@ public class DocumentsController(
             if (isAdmin && !string.IsNullOrWhiteSpace(req.OriginalDocumentId) && await IsDocIdTakenAsync(req.OriginalDocumentId))
                 return BadRequest(new { success = false, error = $"Document ID \"{req.OriginalDocumentId.Trim()}\" is already used by another document" });
 
+            // Evidence is an operational record, not a controlled document.
+            // It receives an immutable DMS ID immediately and never enters the
+            // QA/Manager/Final Release approval workflow.
+            var generatedEvidenceDocumentId = isEvidenceFolder ? await GenerateSystemDocumentIdAsync() : null;
             var document = new DmsDocument
             {
                 DocumentId = Guid.NewGuid(),
                 FolderId = req.FolderId,
                 Title = req.Title.Trim(),
-                Status = "draft",
+                Status = isEvidenceFolder ? "released" : "draft",
                 Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
                 Tags = (req.Tags?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Append(isEvidenceFolder ? "Evidence" : string.Empty).Where(t => !string.IsNullOrEmpty(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()) ?? Array.Empty<string>(),
                 Department = string.IsNullOrWhiteSpace(req.Department) ? null : req.Department.Trim(),
                 Category = isEvidenceFolder ? "Evidence" : string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim(),
-                OriginalDocumentId = isAdmin && !string.IsNullOrWhiteSpace(req.OriginalDocumentId) ? req.OriginalDocumentId.Trim() : null,
+                OriginalDocumentId = generatedEvidenceDocumentId ?? (isAdmin && !string.IsNullOrWhiteSpace(req.OriginalDocumentId) ? req.OriginalDocumentId.Trim() : null),
                 OwnerId = req.OwnerId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -980,6 +984,41 @@ public class DocumentsController(
         }
     }
 
+    private async Task<string> GenerateSystemDocumentIdAsync()
+    {
+        var now = DateTime.UtcNow;
+        var periodKey = now.ToString("yyMM", System.Globalization.CultureInfo.InvariantCulture);
+        var currentPeriodPattern = $"^SWS-{periodKey}[0-9]{{4}}$";
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        await using var sequenceCommand = context.Database.GetDbConnection().CreateCommand();
+        sequenceCommand.Transaction = transaction.GetDbTransaction();
+        sequenceCommand.CommandText = """
+            INSERT INTO dms_document_id_sequences (period_key, last_value, updated_at)
+            VALUES (
+                @period_key,
+                COALESCE((
+                    SELECT MAX(RIGHT(original_document_id, 4)::INTEGER)
+                    FROM dms_documents
+                    WHERE original_document_id ~* @period_pattern
+                ), 0) + 1,
+                now()
+            )
+            ON CONFLICT (period_key) DO UPDATE
+            SET last_value = GREATEST(dms_document_id_sequences.last_value + 1, EXCLUDED.last_value), updated_at = now()
+            RETURNING last_value
+            """;
+        var periodParameter = sequenceCommand.CreateParameter(); periodParameter.ParameterName = "period_key"; periodParameter.Value = periodKey; sequenceCommand.Parameters.Add(periodParameter);
+        var patternParameter = sequenceCommand.CreateParameter(); patternParameter.ParameterName = "period_pattern"; patternParameter.Value = currentPeriodPattern; sequenceCommand.Parameters.Add(patternParameter);
+        var nextNumber = Convert.ToInt32(await sequenceCommand.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+        if (nextNumber > 9999)
+        {
+            await transaction.RollbackAsync();
+            throw new InvalidOperationException($"The Document ID sequence for {periodKey} has reached its 9,999-document limit");
+        }
+        await transaction.CommitAsync();
+        return $"SWS-{periodKey}{nextNumber:D4}";
+    }
+
     /// <summary>
     /// System auto-generation of a Document ID at QA Triage.
     /// Format: SWS-YYMM####, with an atomic four-digit sequence that restarts
@@ -1130,15 +1169,15 @@ public class DocumentsController(
             // Version/Upload Updated File) already require this client-side —
             // enforced here too so a direct API call can't attach a version
             // with no label at all.
-            if (string.IsNullOrWhiteSpace(versionLabel))
-                return BadRequest(new { success = false, error = "Version label is required" });
-
             // Verify the document exists
             var document = await context.Documents
                 .FirstOrDefaultAsync(d => d.DocumentId == id);
 
             if (document == null)
                 return NotFound(new { success = false, error = "Document not found" });
+            var isEvidenceDocument = string.Equals(document.Category, "Evidence", StringComparison.OrdinalIgnoreCase);
+            if (!isEvidenceDocument && string.IsNullOrWhiteSpace(versionLabel))
+                return BadRequest(new { success = false, error = "Version label is required" });
 
             var previousOwnerId = document.OwnerId;
 
@@ -1213,14 +1252,14 @@ public class DocumentsController(
                 VersionId = Guid.NewGuid(),
                 DocumentId = id,
                 VersionNumber = $"{nextMajorVersion}.0",
-                VersionLabel = string.IsNullOrWhiteSpace(versionLabel) ? null : versionLabel.Trim(),
+                VersionLabel = isEvidenceDocument || string.IsNullOrWhiteSpace(versionLabel) ? null : versionLabel.Trim(),
                 MajorVersion = nextMajorVersion,
                 MinorVersion = 0,
                 FileName = file.FileName,
                 FileSizeBytes = file.Length,
                 MimeType = file.ContentType,
                 Sha256Hash = sha256Hash,
-                Status = "draft",
+                Status = isEvidenceDocument ? "released" : "draft",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -1271,7 +1310,7 @@ public class DocumentsController(
             // Draft until it is explicitly submitted. Correction uploads tied
             // to an active approval keep that workflow's current stage.
             if (activeApprovalDocument == null)
-                document.Status = "draft";
+                document.Status = isEvidenceDocument ? "released" : "draft";
 
             await context.SaveChangesAsync();
             backgroundJobs.Enqueue<OcrIndexService>(service => service.ReindexJobAsync(id));
