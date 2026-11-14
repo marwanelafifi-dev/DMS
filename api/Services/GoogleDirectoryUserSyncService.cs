@@ -100,7 +100,7 @@ public sealed class GoogleDirectoryUserSyncService(
     public async Task<IReadOnlyList<GoogleDirectoryOrganizationalUnit>> GetOrganizationalUnitsAsync(CancellationToken cancellationToken = default)
     {
         EnsureConfigured();
-        var token = await GetAccessTokenAsync(cancellationToken);
+        var token = await GetAccessTokenAsync(DirectoryOrgUnitReadScope, cancellationToken);
         var client = httpClientFactory.CreateClient("GoogleDirectory");
         var requestUri = $"https://admin.googleapis.com/admin/directory/v1/customer/{Uri.EscapeDataString(Customer)}/orgunits?type=all";
         using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
@@ -132,7 +132,7 @@ public sealed class GoogleDirectoryUserSyncService(
         if (syncConfiguration.OrganizationalUnitPaths.Count == 0)
             throw new InvalidOperationException("Select at least one Google Workspace organizational unit before synchronizing users.");
 
-        var token = await GetAccessTokenAsync(cancellationToken);
+        var token = await GetAccessTokenAsync(DirectoryUserReadScope, cancellationToken);
         var googleUsers = await LoadGoogleUsersAsync(token, syncConfiguration.OrganizationalUnitPaths, cancellationToken);
         var existingByEmail = (await context.Users.ToListAsync(cancellationToken))
             .ToDictionary(user => user.Email, StringComparer.OrdinalIgnoreCase);
@@ -213,10 +213,10 @@ public sealed class GoogleDirectoryUserSyncService(
         }
     }
 
-    private async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken)
+    private async Task<string> GetAccessTokenAsync(string scope, CancellationToken cancellationToken)
     {
         var credential = GoogleCredential.FromJson(ServiceAccountJson!)
-            .CreateScoped(new[] { DirectoryUserReadScope, DirectoryOrgUnitReadScope })
+            .CreateScoped(scope)
             .CreateWithUser(DelegatedAdminEmail!);
         return await credential.UnderlyingCredential.GetAccessTokenForRequestAsync(cancellationToken: cancellationToken);
     }
@@ -230,7 +230,11 @@ public sealed class GoogleDirectoryUserSyncService(
             string? pageToken = null;
             do
             {
-                var requestUri = $"https://admin.googleapis.com/admin/directory/v1/users?customer={Uri.EscapeDataString(Customer)}&orgUnitPath={Uri.EscapeDataString(organizationalUnitPath)}&maxResults=500&orderBy=email&projection=full" + (pageToken == null ? string.Empty : $"&pageToken={Uri.EscapeDataString(pageToken)}");
+                // users.list filters organizational units through `query`, not
+                // through an `orgUnitPath` URL parameter. Escape quotes in a
+                // saved path before encoding the complete search expression.
+                var ouQuery = $"orgUnitPath='{organizationalUnitPath.Replace("'", "\\'")}'";
+                var requestUri = $"https://admin.googleapis.com/admin/directory/v1/users?customer={Uri.EscapeDataString(Customer)}&query={Uri.EscapeDataString(ouQuery)}&maxResults=500&orderBy=email&projection=full&viewType=admin_view" + (pageToken == null ? string.Empty : $"&pageToken={Uri.EscapeDataString(pageToken)}");
                 using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                 using var response = await client.SendAsync(request, cancellationToken);

@@ -132,6 +132,7 @@ export function UserManagement() {
   const [directoryConfiguration, setDirectoryConfiguration] = useState<GoogleDirectorySyncConfiguration>(defaultDirectoryConfiguration);
   const [organizationalUnits, setOrganizationalUnits] = useState<GoogleDirectoryOrganizationalUnit[]>([]);
   const [organizationalUnitQuery, setOrganizationalUnitQuery] = useState('');
+  const [organizationalUnitError, setOrganizationalUnitError] = useState<string | null>(null);
   const [isLoadingOrganizationalUnits, setIsLoadingOrganizationalUnits] = useState(false);
   const [isSavingDirectorySettings, setIsSavingDirectorySettings] = useState(false);
 
@@ -298,19 +299,25 @@ export function UserManagement() {
     }
   };
 
-  const openDirectorySettings = async () => {
-    setShowDirectorySettings(true);
-    setOrganizationalUnitQuery('');
-    if (organizationalUnits.length > 0) return;
+  const loadOrganizationalUnits = async () => {
+    setOrganizationalUnitError(null);
     setIsLoadingOrganizationalUnits(true);
     try {
       const response = await apiClient.getGoogleDirectoryOrganizationalUnits();
-      setOrganizationalUnits((response.data || []) as GoogleDirectoryOrganizationalUnit[]);
+      const units = (response.data || []) as GoogleDirectoryOrganizationalUnit[];
+      setOrganizationalUnits(units);
+      if (units.length === 0) setOrganizationalUnitError('Google Workspace returned no organizational units. Check the delegated account’s access to the Directory API.');
     } catch (err: any) {
-      showError(err.response?.data?.error || 'Could not load Google Workspace organizational units.');
+      setOrganizationalUnitError(err.response?.data?.error || 'Could not load Google Workspace organizational units. Check the API connection and retry.');
     } finally {
       setIsLoadingOrganizationalUnits(false);
     }
+  };
+
+  const openDirectorySettings = async () => {
+    setShowDirectorySettings(true);
+    setOrganizationalUnitQuery('');
+    if (organizationalUnits.length === 0) await loadOrganizationalUnits();
   };
 
   const toggleOrganizationalUnit = (path: string) => {
@@ -603,7 +610,8 @@ export function UserManagement() {
                 <div className="relative mt-3"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input type="search" value={organizationalUnitQuery} onChange={(event) => setOrganizationalUnitQuery(event.target.value)} placeholder="Search organizational unit name or path" className="block w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-navy-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-navy-600 dark:bg-navy-900 dark:text-white" /></div>
                 <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-navy-700">
                   {isLoadingOrganizationalUnits ? <p className="p-4 text-sm text-gray-500 dark:text-navy-400">Loading organizational units…</p> : organizationalUnits.filter((unit) => `${unit.name} ${unit.path}`.toLowerCase().includes(organizationalUnitQuery.trim().toLowerCase())).map((unit) => <label key={unit.path} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 dark:border-navy-700 dark:hover:bg-navy-700/40"><input type="checkbox" checked={directoryConfiguration.organizationalUnitPaths.includes(unit.path)} onChange={() => toggleOrganizationalUnit(unit.path)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /><span className="min-w-0"><span className="block truncate text-sm font-medium text-navy-900 dark:text-white">{unit.name}</span><span className="block truncate text-xs text-gray-500 dark:text-navy-400">{unit.path}</span></span></label>)}
-                  {!isLoadingOrganizationalUnits && organizationalUnits.length === 0 && <p className="p-4 text-sm text-gray-500 dark:text-navy-400">No organizational units were returned by Google Workspace.</p>}
+                  {!isLoadingOrganizationalUnits && organizationalUnitError && <div role="alert" className="flex flex-col gap-3 p-4 text-sm text-red-700 dark:text-red-300 sm:flex-row sm:items-center sm:justify-between"><span>{organizationalUnitError}</span><button type="button" onClick={() => void loadOrganizationalUnits()} className="self-start rounded-md border border-red-300 px-3 py-1.5 font-medium hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-700 dark:hover:bg-red-950">Retry</button></div>}
+                  {!isLoadingOrganizationalUnits && !organizationalUnitError && organizationalUnits.length > 0 && !organizationalUnits.some((unit) => `${unit.name} ${unit.path}`.toLowerCase().includes(organizationalUnitQuery.trim().toLowerCase())) && <p className="p-4 text-sm text-gray-500 dark:text-navy-400">No organizational units match this search.</p>}
                 </div>
               </div>
             </div>
