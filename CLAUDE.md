@@ -2,6 +2,8 @@
 
 ## 2026-11-15 — Single Admin setup for ISO cycle coverage and responsibility
 
+- Audit-stage status changes notify every selected audit-team member and department participant, including the person who saves the stage. Each recipient receives one in-app notification and, when Admin Notifications has a working enabled email configuration, one email for Planned, In Progress, Completed, or Cancelled. Editing notes or other record fields does not notify recipients.
+
 - Admin → Audit Programme now creates a cycle with its covered process folders and a multiuser responsibility map for each selected department. Searchable choices contain only active DMS users who are Owners or Managers of a selected process folder or its Procedures department parent. Existing planned/active cycles can be edited there; historical cycles remain read-only. Folder access and user roles do not change.
 - The selection is saved atomically. Migration `135_audit_cycle_coverage_folders.sql` records selected folders, including empty folders, and backfills the selection from existing evidence requirements. The setup synchronizes required documents with the selected folders. New controlled documents directly inside a selected folder appear in Evidence Coverage without another Admin selection.
 - Cycle coverage is configured only in Admin → Audit Programme. ISO Readiness lists only the people explicitly mapped for the cycle, including selected departments whose folders currently have no controlled documents. A missing process document is shown for each mapped responsible person, while the department gap total counts that document once. The separate Evidence Coverage and Management Review workspaces are removed from the active workflow; Management Review remains a planned journey stage.

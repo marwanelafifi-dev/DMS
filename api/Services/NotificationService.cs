@@ -14,9 +14,9 @@ public class NotificationService(DmsContext context, EmailService emailService, 
     // In-app operational notices are deliberately independent from the email
     // notification switch. Audit participants must still see a controlled DMS
     // update in their notification bell even when outbound email is disabled.
-    public async Task NotifyInAppAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null)
+    public async Task NotifyInAppAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, bool includeActor = false)
     {
-        if (recipientUserId == actorUserId) return;
+        if (!includeActor && recipientUserId == actorUserId) return;
         try
         {
             context.Notifications.Add(new DmsNotification
@@ -47,8 +47,11 @@ public class NotificationService(DmsContext context, EmailService emailService, 
     // and configured). Ordinary edits never call this method.
     public async Task NotifyAuditStageAsync(Guid recipientUserId, Guid actorUserId, string title, string body, string cycleName, string stageName, string status)
     {
-        if (recipientUserId == actorUserId) return;
-        await NotifyInAppAsync(recipientUserId, actorUserId, title, body);
+        // A person deliberately selected for an audit stage needs a durable
+        // confirmation of that status even when they are also the person who
+        // saved it. This exception applies only to audit-stage notices; normal
+        // document/task notifications still suppress self-notification.
+        await NotifyInAppAsync(recipientUserId, actorUserId, title, body, includeActor: true);
 
         try
         {
