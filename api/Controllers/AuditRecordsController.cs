@@ -8,7 +8,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/audits")]
-public class AuditRecordsController(DmsContext context, AccessOverrideService accessOverrideService, AuditService auditService) : BaseController
+public class AuditRecordsController(DmsContext context, AccessOverrideService accessOverrideService, AuditService auditService, NotificationService notificationService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> List([FromQuery] string? standard = null, [FromQuery] Guid? auditCycleId = null)
@@ -47,13 +47,17 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         var userId = GetCurrentUserId();
         if ((await GetPageAccessRoleAsync(context, userId))?.CanCreatePcars != true) return Forbid();
         var record = await context.AuditRecords.FindAsync(id); if (record == null) return NotFound();
+        var previousStatus = record.Status;
         var error = await Validate(request, userId); if (error != null) return BadRequest(new { success = false, error });
         if (await context.AuditRecords.AnyAsync(a => a.AuditRecordId != id && a.AuditCycleId == request.AuditCycleId && a.AuditType == request.AuditType))
             return BadRequest(new { success = false, error = "This cycle already has a record for this journey stage. Open that record to edit it." });
         var teamResult = await ResolveTeam(request.AuditTeamUserIds); var participantResult = await ResolveTeam(request.ParticipantUserIds); if (teamResult.Error != null || participantResult.Error != null) return BadRequest(new { success = false, error = teamResult.Error ?? participantResult.Error }); var team = teamResult.Team; var participants = participantResult.Team;
         record.AuditCycleId = request.AuditCycleId; record.Standard = request.Standard; record.Title = request.Title.Trim(); record.AuditType = request.AuditType; record.Status = request.Status; record.AuditDate = request.AuditDate; record.Scope = request.Scope.Trim(); record.Departments = Clean(request.Departments); record.AuditTeam = team.Names; record.AuditTeamUserIds = team.Ids; record.ParticipantUserIds = participants.Ids; record.AuditPlanReference = CleanText(request.AuditPlanReference); record.AuditReportReference = CleanText(request.AuditReportReference); record.AuditPlanDocumentId = request.AuditPlanDocumentId; record.AuditReportDocumentId = request.AuditReportDocumentId; record.Notes = CleanText(request.Notes); record.UpdatedAt = DateTime.UtcNow;
         await SyncJourneyStageAsync(record, userId);
-        await context.SaveChangesAsync(); return Ok(new { success = true, data = record });
+        await context.SaveChangesAsync();
+        if (!string.Equals(previousStatus, record.Status, StringComparison.OrdinalIgnoreCase))
+            await NotifyStatusChangeAsync(record, userId);
+        return Ok(new { success = true, data = record });
     }
 
     [HttpDelete("{id:guid}")]
@@ -170,6 +174,41 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         "external" => "surveillance_audit",
         _ => null,
     };
+
+    private async Task NotifyStatusChangeAsync(DmsAuditRecord record, Guid actorUserId)
+    {
+        var recipientIds = record.AuditTeamUserIds
+            .Concat(record.ParticipantUserIds)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+        if (recipientIds.Length == 0) return;
+
+        var cycleName = await context.AuditCycles.AsNoTracking()
+            .Where(cycle => cycle.AuditCycleId == record.AuditCycleId)
+            .Select(cycle => cycle.Name)
+            .FirstOrDefaultAsync() ?? "the audit cycle";
+        var stageName = record.AuditType switch
+        {
+            "preparation" => "Preparation",
+            "internal" => "Internal Audit",
+            "management_review" => "Management Review",
+            "external" => "Surveillance Audit",
+            _ => "Audit stage",
+        };
+        var status = record.Status switch
+        {
+            "in_progress" => "In Progress",
+            "completed" => "Completed",
+            "planned" => "Planned",
+            "cancelled" => "Cancelled",
+            _ => record.Status,
+        };
+        var title = $"{stageName} status changed to {status}";
+        var body = $"{cycleName}: please open DMS and review your assigned tasks, PCAR findings, and actions. Update anything still outstanding.";
+        foreach (var recipientId in recipientIds)
+            await notificationService.NotifyInAppAsync(recipientId, actorUserId, title, body);
+    }
     private static string? CleanText(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 

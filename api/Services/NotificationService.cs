@@ -11,6 +11,37 @@ namespace DMS.Api.Services;
 // their own action.
 public class NotificationService(DmsContext context, EmailService emailService, AccessOverrideService accessOverrideService, AuditService auditService, IConfiguration configuration, ILogger<NotificationService> logger)
 {
+    // In-app operational notices are deliberately independent from the email
+    // notification switch. Audit participants must still see a controlled DMS
+    // update in their notification bell even when outbound email is disabled.
+    public async Task NotifyInAppAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null)
+    {
+        if (recipientUserId == actorUserId) return;
+        try
+        {
+            context.Notifications.Add(new DmsNotification
+            {
+                NotificationId = Guid.NewGuid(),
+                UserId = recipientUserId,
+                Title = title,
+                Body = body,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await context.SaveChangesAsync();
+
+            var recipientName = await context.Users.AsNoTracking()
+                .Where(user => user.UserId == recipientUserId)
+                .Select(user => user.FullName)
+                .FirstOrDefaultAsync();
+            await auditService.LogAsync(actorUserId, NOTIFICATION_SENT, new { RecipientId = recipientUserId, RecipientName = recipientName, Title = title, Channel = "in_app" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error creating in-app notification for user {UserId}", recipientUserId);
+        }
+    }
+
     public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null, Guid? announcementId = null)
     {
         if (!await emailService.AreNotificationsEnabledAsync())
