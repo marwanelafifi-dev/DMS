@@ -71,4 +71,32 @@ describe('department audit readiness', () => {
     expect(result.departments).toEqual([]);
     expect(result.unassignedRequirements.map(item => item.evidenceRequirementId)).toEqual(['unknown']);
   });
+
+  it('hides global managers outside their explicit readiness departments while retaining local owners and managers', () => {
+    const marwan = { ...user('marwan', 'Marwan Elafifi', 'Information Technology'), email: 'marwan.elafifi@si-ware.com', role: 'Full Access' };
+    const tamer = { ...user('tamer', 'Tamer Elsherif', 'Information Technology'), email: 'tamer.elsherif@si-ware.com', role: 'Full Access' };
+    const amr = user('amr', 'Amr Mosallamy', 'Strategic Management');
+    const salesOwner = user('sales', 'Sales Owner', 'Sales');
+    const salesManager = user('sales-manager', 'Sales Manager', 'Sales');
+    const result = buildDepartmentReadiness(
+      [marwan, tamer, amr, salesOwner, salesManager],
+      [task('sales-task', { assignedTo: 'marwan', documentId: 'sales-document' })], [],
+      [
+        requirement('it', 'it-root', 'IT', 'tamer', { folderManagerUserIds: ['marwan', 'tamer'] }),
+        requirement('quality', 'quality-root', 'Quality Management', 'tamer', { folderManagerUserIds: ['marwan', 'tamer'] }),
+        requirement('strategy', 'strategy-root', 'Strategic Management', 'tamer', { folderManagerUserIds: ['marwan', 'tamer'] }),
+        requirement('sales', 'sales-root', 'Marketing and Sales', 'tamer', { folderOwnerUserIds: ['sales'], folderManagerUserIds: ['marwan', 'tamer', 'sales-manager'] }),
+      ],
+      'ISO 9001:2015', 'current',
+    );
+
+    const names = (departmentName: string) => result.departments.find(department => department.name === departmentName)!.people.map(person => person.user.fullName);
+    expect(names('IT')).toEqual(['Marwan Elafifi', 'Tamer Elsherif']);
+    expect(names('Quality Management')).toEqual(['Tamer Elsherif']);
+    expect(names('Strategic Management')).toEqual(['Amr Mosallamy', 'Tamer Elsherif']);
+    expect(names('Marketing and Sales')).toEqual(['Sales Manager', 'Sales Owner']);
+    expect(result.departments.find(department => department.name === 'Marketing and Sales')?.missingEvidenceCount).toBe(1);
+    expect(result.departments.find(department => department.name === 'Marketing and Sales')?.missingWithoutOwner).toHaveLength(1);
+    expect(result.unassignedTasks.map(item => item.taskId)).toEqual(['sales-task']);
+  });
 });

@@ -36,7 +36,7 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
         <div className="flex flex-col gap-4 border-b border-[#dbe2ec] px-5 py-5 lg:flex-row lg:items-end lg:justify-between dark:border-white/10">
           <div className="max-w-3xl">
             <h2 className="section-heading">Department readiness</h2>
-            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Departments follow the selected process folders under Corporate / QMS / Procedures. Folder owners, managers, and process document owners may appear in more than one department.</p>
+            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Departments follow the selected process folders under Corporate / QMS / Procedures. Folder owners, managers, and process document owners may appear in more than one department. Global access does not make someone responsible for every folder.</p>
           </div>
           <label className="relative block w-full shrink-0 lg:w-72">
             <span className="sr-only">Search departments or users</span>
@@ -89,7 +89,7 @@ function DepartmentGroup({ department, defaultOpen, onNavigate }: { department: 
         </span>
       </summary>
       <div className="border-t border-[#e8eef5] px-5 pb-5 dark:border-white/10">
-        {department.missingWithoutOwner.length > 0 && <p className="py-3 text-xs text-[#8a5411] dark:text-amber-300">{department.missingWithoutOwner.length} process document{department.missingWithoutOwner.length === 1 ? '' : 's'} still need evidence, but the document owner is not in the user directory.</p>}
+        {department.missingWithoutOwner.length > 0 && <p className="py-3 text-xs text-[#8a5411] dark:text-amber-300">{department.missingWithoutOwner.length} process document{department.missingWithoutOwner.length === 1 ? '' : 's'} still need evidence, but the document owner is not on this department's readiness roster.</p>}
         {department.people.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">

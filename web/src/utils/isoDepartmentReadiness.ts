@@ -20,7 +20,7 @@ export type ReadinessRequirement = {
   hasEvidence: boolean;
 };
 
-export type Responsibility = 'Folder owner' | 'Folder manager' | 'Process document owner' | 'Evidence uploader';
+export type Responsibility = 'Folder owner' | 'Folder manager' | 'Process document owner' | 'Evidence uploader' | 'Readiness contact';
 
 export type PersonReadiness = {
   user: User;
@@ -54,6 +54,26 @@ export type DepartmentReadinessResult = {
 type DepartmentBuilder = DepartmentReadiness & { peopleById: Map<string, PersonReadiness> };
 const isOpen = (task: Task) => task.status !== 'done' && task.status !== 'completed';
 const key = (id: string) => id.toLowerCase();
+const normalized = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// These two accounts manage folders globally for access purposes. Their
+// operational ISO roster is narrower and was supplied by Quality. This rule
+// changes readiness display only; it never changes folder permissions.
+const globalReadinessUsers = [
+  { email: 'marwan.elafifi@si-ware.com', name: 'marwan elafifi', departments: ['it', 'informationtechnology'] },
+  { email: 'tamer.elsherif@si-ware.com', name: 'tamer elsherif', departments: ['it', 'informationtechnology', 'qualitymanagement', 'strategicmanagement'] },
+];
+const explicitReadinessContacts: Record<string, string[]> = {
+  it: ['marwan elafifi', 'tamer elsherif'],
+  informationtechnology: ['marwan elafifi', 'tamer elsherif'],
+  qualitymanagement: ['tamer elsherif'],
+  strategicmanagement: ['tamer elsherif', 'amr mosallamy'],
+};
+
+const allowedInDepartment = (user: User, departmentName: string) => {
+  const identity = globalReadinessUsers.find(item => item.email === user.email.toLowerCase() || normalized(item.name) === normalized(user.fullName));
+  return !identity || identity.departments.includes(normalized(departmentName));
+};
 
 export function buildDepartmentReadiness(
   users: User[],
@@ -73,7 +93,7 @@ export function buildDepartmentReadiness(
     if (!userId) return undefined;
     const id = key(userId);
     const user = usersById.get(id);
-    if (!user) return undefined;
+    if (!user || !allowedInDepartment(user, department.name)) return undefined;
     let person = department.peopleById.get(id);
     if (!person) {
       person = { user, responsibilities: [], tasks: [], pcars: [], missingRequirements: [], uploadedEvidence: [] };
@@ -105,6 +125,13 @@ export function buildDepartmentReadiness(
       department.missingEvidenceCount += 1;
       if (documentOwner) documentOwner.missingRequirements.push(requirement);
       else department.missingWithoutOwner.push(requirement);
+    }
+  }
+
+  for (const department of departmentsById.values()) {
+    for (const contactName of explicitReadinessContacts[normalized(department.name)] ?? []) {
+      const user = users.find(item => normalized(item.fullName) === normalized(contactName));
+      if (user && !department.peopleById.has(key(user.userId))) personFor(department, user.userId, 'Readiness contact');
     }
   }
 
