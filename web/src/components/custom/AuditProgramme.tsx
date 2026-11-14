@@ -17,7 +17,7 @@ const optionalStageKeys = new Set(['evidence_deadline', 'pcar_closure', 'externa
 const recordStageTypes: Record<string, JourneyStageContext['auditType']> = { preparation: 'preparation', internal_audit: 'internal', management_review: 'management_review', surveillance_audit: 'external' };
 const emptyStage = (): StageValue => ({ date: '', dueDate: '', ownerId: '', notes: '' });
 
-export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, onManageRecord }: { defaultStandard?: Standard; onManageRecord?: (context: JourneyStageContext) => void }) {
+export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, onManageRecord, lockStandard = false }: { defaultStandard?: Standard; onManageRecord?: (context: JourneyStageContext) => void; lockStandard?: boolean }) {
   const { showError, showSuccess } = useToast();
   const [cycles, setCycles] = useState<any[]>([]);
   const [standard, setStandard] = useState<Standard>(defaultStandard);
@@ -94,7 +94,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
       <div className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-[#3f8bca]" /><h2 className="section-heading">Cycle plan</h2></div>
       <p className="mt-1 text-sm text-[#64748b]">Plan each stage once: dates, accountable owner, and planning notes. Execution status and audit evidence belong to the stage record.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-medium text-[#34425b] dark:text-slate-200">Standard<select value={standard} onChange={event => setStandard(event.target.value as Standard)} className="field-control mt-1 h-10 w-full px-3"><option value="ISO 9001:2015">ISO 9001:2015</option><option value="ISO 27001:2022">ISO 27001:2022</option></select></label>
+        <label className="text-sm font-medium text-[#34425b] dark:text-slate-200">Standard<select value={standard} onChange={event => setStandard(event.target.value as Standard)} disabled={lockStandard} className="field-control mt-1 h-10 w-full px-3 disabled:cursor-not-allowed disabled:bg-[#f1f5f9]">{lockStandard ? <option value={standard}>{standard}</option> : <><option value="ISO 9001:2015">ISO 9001:2015</option><option value="ISO 27001:2022">ISO 27001:2022</option></>}</select></label>
         <label className="text-sm font-medium text-[#34425b] dark:text-slate-200">Audit cycle<select value={cycleId} onChange={event => setCycleId(event.target.value)} className="field-control mt-1 h-10 w-full px-3"><option value="">Select a cycle</option>{standardCycles.map(item => <option key={item.auditCycleId} value={item.auditCycleId}>{item.name}{item.status === 'active' ? ' - Active' : ` - ${item.status}`}</option>)}</select></label>
       </div>
       {cycle && <p className="mt-3 text-xs text-[#64748b]">{cycle.startDate} to {cycle.endDate} · {cycle.status}</p>}
