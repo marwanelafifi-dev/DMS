@@ -12,6 +12,7 @@ const IsoReadiness = lazy(() => import('./components/pages/IsoReadiness').then((
 const AuditRegister = lazy(() => import('./components/pages/AuditRegister').then((module) => ({ default: module.AuditRegister })));
 const ManagementReview = lazy(() => import('./components/pages/ManagementReview').then((module) => ({ default: module.ManagementReview })));
 const EvidenceCoverage = lazy(() => import('./components/pages/EvidenceCoverage').then((module) => ({ default: module.EvidenceCoverage })));
+const IsoWorkspace = lazy(() => import('./components/pages/IsoWorkspace').then((module) => ({ default: module.IsoWorkspace })));
 const Documents = lazy(() => import('./components/pages/Documents').then((module) => ({ default: module.Documents })));
 const Settings = lazy(() => import('./components/pages/Settings').then((module) => ({ default: module.Settings })));
 const Tasks = lazy(() => import('./components/pages/Tasks').then((module) => ({ default: module.Tasks })));
@@ -110,6 +111,7 @@ function App() {
                 <Route path="/tasks" element={<Tasks mode="tasks" />} />
               </Route>
               <Route element={<RequirePageAccess flag="canViewPcar" />}>
+                <Route path="/iso-workspace" element={<IsoWorkspace />} />
                 <Route path="/pcars" element={<Tasks mode="pcar" />} />
                 <Route path="/audits" element={<AuditRegister />} />
                 <Route path="/management-review" element={<ManagementReview />} />
