@@ -2,6 +2,7 @@ using DMS.Api;
 using DMS.Api.Data;
 using DMS.Api.Middleware;
 using DMS.Api.Services;
+using QuestPDF.Infrastructure;
 using Hangfire;
 using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
@@ -9,6 +10,7 @@ using Minio;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+QuestPDF.Settings.License = LicenseType.Community;
 
 // Database
 var connectionString = builder.Configuration.GetConnectionString("Default")

@@ -8,6 +8,10 @@ import { Toaster } from 'sonner';
 
 const MainLayout = lazy(() => import('./components/layout/MainLayout').then((module) => ({ default: module.MainLayout })));
 const Dashboard = lazy(() => import('./components/pages/Dashboard').then((module) => ({ default: module.Dashboard })));
+const IsoReadiness = lazy(() => import('./components/pages/IsoReadiness').then((module) => ({ default: module.IsoReadiness })));
+const AuditRegister = lazy(() => import('./components/pages/AuditRegister').then((module) => ({ default: module.AuditRegister })));
+const ManagementReview = lazy(() => import('./components/pages/ManagementReview').then((module) => ({ default: module.ManagementReview })));
+const EvidenceCoverage = lazy(() => import('./components/pages/EvidenceCoverage').then((module) => ({ default: module.EvidenceCoverage })));
 const Documents = lazy(() => import('./components/pages/Documents').then((module) => ({ default: module.Documents })));
 const Settings = lazy(() => import('./components/pages/Settings').then((module) => ({ default: module.Settings })));
 const Tasks = lazy(() => import('./components/pages/Tasks').then((module) => ({ default: module.Tasks })));
@@ -96,6 +100,10 @@ function App() {
                 below wrapped its own separate <MainLayout> instance. */}
             <Route element={<MainLayout />}>
               <Route path="/" element={<Dashboard />} />
+              <Route element={<RequirePageAccess flag="canViewDashboard" />}>
+                <Route path="/iso-readiness" element={<IsoReadiness />} />
+                <Route path="/iso27001-readiness" element={<IsoReadiness standard="ISO 27001:2022" />} />
+              </Route>
 
               {/* Internal tasks and auditor PCAR findings have separate registers. */}
               <Route element={<RequirePageAccess flag="canViewTasks" />}>
@@ -103,6 +111,9 @@ function App() {
               </Route>
               <Route element={<RequirePageAccess flag="canViewPcar" />}>
                 <Route path="/pcars" element={<Tasks mode="pcar" />} />
+                <Route path="/audits" element={<AuditRegister />} />
+                <Route path="/management-review" element={<ManagementReview />} />
+                <Route path="/evidence-coverage" element={<EvidenceCoverage />} />
                 <Route element={<RequirePageAccess flag="canViewHistoricalPcars" />}>
                   <Route path="/tasks/history" element={<HistoricalPcarPage />} />
                 </Route>
@@ -141,6 +152,7 @@ function App() {
                 <Route path="/admin/roles" element={<Settings defaultTab="roles" />} />
                 <Route path="/admin/groups" element={<Settings defaultTab="groups" />} />
                 <Route path="/admin/audit" element={<Settings defaultTab="audit" />} />
+                <Route path="/admin/audit-programme" element={<Settings defaultTab="programme" />} />
                 <Route path="/admin/settings" element={<Settings defaultTab="settings" />} />
                 <Route path="/admin/notifications" element={<Settings defaultTab="notifications" />} />
                 <Route path="/admin/company-data" element={<Settings defaultTab="company-data" />} />

@@ -34,6 +34,11 @@ interface TaskForm {
   findingSeverity: '' | 'observation' | 'minor_ncr' | 'major_ncr';
   standardClause: string;
   auditorNotes: string;
+  auditReference: string;
+  auditDate: string;
+  auditStandard: '' | 'ISO 9001:2015' | 'ISO 27001:2022';
+  auditCycleId: string;
+  auditRecordId: string;
   tags: string[];
 }
 
@@ -91,6 +96,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [groups, setGroups] = useState<Array<{ groupId: string; name: string }>>([]);
+  const [auditCycles, setAuditCycles] = useState<any[]>([]);
+  const [auditRecords, setAuditRecords] = useState<any[]>([]);
   const canRaisePcar = pageAccess?.canCreatePcars ?? false;
   const canVerifyPcar = pageAccess?.canVerifyPcars ?? false;
   const [myGroupIds, setMyGroupIds] = useState<Set<string>>(new Set());
@@ -124,7 +131,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     folderId: '',
     documentIds: [], folderIds: [],
     auditStage: '',
-    findingSeverity: '', standardClause: '', auditorNotes: '',
+    findingSeverity: '', standardClause: '', auditorNotes: '', auditReference: '', auditDate: '', auditStandard: '', auditCycleId: '', auditRecordId: '',
     tags: [],
   });
   const [taskReminderPreview, setTaskReminderPreview] = useState<TaskNotificationPreview | null>(null);
@@ -190,6 +197,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       // Silently fail - groups list is just for assignment dropdown
     }
   };
+  const loadAuditCycles = async () => { try { const res = await apiClient.getAuditCycles(); setAuditCycles(res.data || []); } catch { setAuditCycles([]); } };
+  const loadAuditRecords = async () => { try { const res = await apiClient.getAuditRecords(); setAuditRecords(res.data || []); } catch { setAuditRecords([]); } };
 
   const loadDocuments = async () => {
     try {
@@ -260,6 +269,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     loadTasks(page);
     loadUsers();
     loadGroups();
+    loadAuditCycles();
+    loadAuditRecords();
     loadDocuments();
     loadFolders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -893,6 +904,11 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
         findingSeverity: isPcarForm ? newTask.findingSeverity || undefined : undefined,
         standardClause: isPcarForm ? newTask.standardClause || undefined : undefined,
         auditorNotes: isPcarForm ? newTask.auditorNotes || undefined : undefined,
+        auditReference: isPcarForm ? newTask.auditReference || undefined : undefined,
+        auditDate: isPcarForm ? newTask.auditDate || undefined : undefined,
+        auditStandard: isPcarForm ? newTask.auditStandard || undefined : undefined,
+        auditCycleId: isPcarForm ? newTask.auditCycleId || undefined : undefined,
+        auditRecordId: isPcarForm ? newTask.auditRecordId || undefined : undefined,
       };
       const res = isPcarForm ? await apiClient.createPcar(payload) : await apiClient.createTask(payload);
 
@@ -921,7 +937,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
         folderId: '',
         documentIds: [], folderIds: [],
         auditStage: '',
-        findingSeverity: '', standardClause: '', auditorNotes: '',
+        findingSeverity: '', standardClause: '', auditorNotes: '', auditReference: '', auditDate: '', auditStandard: '', auditCycleId: '', auditRecordId: '',
         tags: [],
       });
       setNewTaskAttachment(null);
@@ -1890,7 +1906,11 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                     <option value="">Select severity…</option><option value="observation">Observation</option><option value="minor_ncr">Minor NCR</option><option value="major_ncr">Major NCR</option>
                   </select>
                 </div>
+                <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Audit record *</label><select value={newTask.auditRecordId} onChange={(event) => { const audit = auditRecords.find(record => record.auditRecordId === event.target.value); setNewTask({ ...newTask, auditRecordId: event.target.value, auditStandard: audit?.standard ?? '', auditCycleId: audit?.auditCycleId ?? '', auditReference: audit?.title ?? '', auditDate: audit?.auditDate ? String(audit.auditDate).slice(0, 10) : '' }); }} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"><option value="">Select the audit that raised this finding</option>{auditRecords.filter(audit => audit.status !== 'cancelled').map(audit => <option key={audit.auditRecordId} value={audit.auditRecordId}>{audit.standard} · {audit.auditDate} · {audit.title}</option>)}</select><p className="mt-1 text-xs text-[#718198]">The ISO standard, cycle, audit date, and audit reference are taken from this record.</p></div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">ISO standard</label><select value={newTask.auditStandard} onChange={(event) => setNewTask({ ...newTask, auditStandard: event.target.value as TaskForm['auditStandard'], auditCycleId: '' })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"><option value="">Not assigned</option><option value="ISO 9001:2015">ISO 9001:2015</option><option value="ISO 27001:2022">ISO 27001:2022</option></select></div><div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Audit cycle</label><select disabled={!newTask.auditStandard} value={newTask.auditCycleId} onChange={(event) => setNewTask({ ...newTask, auditCycleId: event.target.value })} className="w-full px-3 py-2 border border-gray-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white"><option value="">Not assigned</option>{auditCycles.filter(c => c.standard === newTask.auditStandard).map(c => <option key={c.auditCycleId} value={c.auditCycleId}>{c.name}{c.status === 'active' ? ' — Active' : ''}</option>)}</select></div></div>
                 <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Clause / Standard Reference</label><input value={newTask.standardClause} onChange={(event) => setNewTask({ ...newTask, standardClause: event.target.value })} placeholder="e.g., ISO 9001:2015 — 7.5.3" className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" /></div>
+                <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Audit reference</label><input value={newTask.auditReference} onChange={(event) => setNewTask({ ...newTask, auditReference: event.target.value })} placeholder="e.g., ISO 9001 Internal Audit 2027" className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" /></div>
+                <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Audit date</label><input type="date" value={newTask.auditDate} onChange={(event) => setNewTask({ ...newTask, auditDate: event.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" /></div>
                 <div><label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Auditor Notes</label><textarea value={newTask.auditorNotes} onChange={(event) => setNewTask({ ...newTask, auditorNotes: event.target.value })} rows={3} placeholder="Objective evidence and audit observations…" className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" /></div>
               </>}
 

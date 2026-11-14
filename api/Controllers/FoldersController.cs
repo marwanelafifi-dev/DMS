@@ -382,6 +382,31 @@ public class FoldersController(DmsContext context, AuditService auditService, Ac
 
             context.Folders.Add(folder);
             context.FolderPermissions.Add(ownerPermission);
+
+            // Evidence folders are operational drop-zones, not a new security
+            // boundary. Copy the parent folder's explicit grants so every user
+            // who could already upload to the department/process folder can
+            // upload evidence immediately. The normal permission checks still
+            // apply; this never grants access beyond the parent folder.
+            if (req.ParentFolderId.HasValue && string.Equals(folder.Name, "Evidences", StringComparison.OrdinalIgnoreCase))
+            {
+                var parentPermissions = await context.FolderPermissions
+                    .AsNoTracking()
+                    .Where(permission => permission.FolderId == req.ParentFolderId.Value)
+                    .ToListAsync();
+                foreach (var parentPermission in parentPermissions.Where(permission => permission.UserId != userId))
+                {
+                    context.FolderPermissions.Add(new DmsFolderPermission
+                    {
+                        PermissionId = Guid.NewGuid(),
+                        FolderId = folder.FolderId,
+                        UserId = parentPermission.UserId,
+                        Role = parentPermission.Role,
+                        GrantedAt = DateTime.UtcNow,
+                        GrantedById = userId,
+                    });
+                }
+            }
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(userId, AuditActions.FOLDER_CREATED, new

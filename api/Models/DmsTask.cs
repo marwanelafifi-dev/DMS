@@ -20,6 +20,13 @@ public class DmsTask
     public string? FindingSeverity { get; set; }
     public string? StandardClause { get; set; }
     public string? AuditorNotes { get; set; }
+    // Identifies the specific internal/external audit programme that raised a
+    // PCAR, keeping unrelated findings out of a surveillance report.
+    public string? AuditReference { get; set; }
+    public DateOnly? AuditDate { get; set; }
+    public string? AuditStandard { get; set; }
+    public Guid? AuditCycleId { get; set; }
+    public Guid? AuditRecordId { get; set; }
     // Exactly one of AssignedToId / AssignedToGroupId is set — a group
     // assignment is one shared task visible to every member, completable by
     // whoever gets to it first, not a fan-out of duplicate per-member tasks.

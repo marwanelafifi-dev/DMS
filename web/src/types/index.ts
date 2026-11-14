@@ -168,6 +168,11 @@ export interface Task {
   findingSeverity?: 'observation' | 'minor_ncr' | 'major_ncr';
   standardClause?: string;
   auditorNotes?: string;
+  auditReference?: string;
+  auditDate?: string;
+  auditStandard?: 'ISO 9001:2015' | 'ISO 27001:2022';
+  auditCycleId?: string;
+  auditRecordId?: string;
   documentId?: string;
   folderId?: string;
   // Only set for a correction task spawned by a QA/Manager rejection in the

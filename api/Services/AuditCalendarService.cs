@@ -9,7 +9,7 @@ public class AuditCalendarService(DmsContext context, AuditService auditService,
     public static readonly string[] ValidPhases =
     [
         "Internal Audit", "Stage 1 Audit", "Stage 2 Audit",
-        "Surveillance Audit", "Recertification Audit", "Management Review",
+        "Surveillance Audit", "Recertification Audit", "Management Review", "Preparation", "Evidence Deadline", "PCAR Closure Deadline", "External Finding Response", "Cycle Closure",
     ];
 
     public static readonly string[] ValidStandards = ["ISO 9001:2015", "ISO 27001:2022", "Both"];
@@ -26,6 +26,8 @@ public class AuditCalendarService(DmsContext context, AuditService auditService,
                 e.Standard,
                 e.EventDate,
                 e.Notes,
+                e.ProgrammeYear, e.AuditCycleId, e.StageKey, e.Status, e.OwnerId, e.DueDate,
+                OwnerName = e.Owner == null ? null : e.Owner.FullName,
                 e.PostedBy,
                 PostedByName = e.PostedByUser == null ? null : e.PostedByUser.FullName,
                 e.CreatedAt,
@@ -35,7 +37,7 @@ public class AuditCalendarService(DmsContext context, AuditService auditService,
         return events.Cast<object>().ToList();
     }
 
-    public async Task<AuditCalendarResult> CreateAsync(string title, string phase, string standard, DateOnly eventDate, string? notes, Guid postedBy)
+    public async Task<AuditCalendarResult> CreateAsync(string title, string phase, string standard, DateOnly eventDate, string? notes, Guid postedBy, int? programmeYear = null, string? stageKey = null, string? status = null, Guid? ownerId = null, DateOnly? dueDate = null, Guid? auditCycleId = null)
     {
         try
         {
@@ -45,20 +47,26 @@ public class AuditCalendarService(DmsContext context, AuditService auditService,
                 return AuditCalendarResult.Invalid($"Phase must be one of: {string.Join(", ", ValidPhases)}");
             if (!ValidStandards.Contains(standard))
                 return AuditCalendarResult.Invalid($"Standard must be one of: {string.Join(", ", ValidStandards)}");
+            if (auditCycleId.HasValue && !await context.AuditCycles.AnyAsync(c => c.AuditCycleId == auditCycleId && c.Standard == standard))
+                return AuditCalendarResult.Invalid("The audit cycle does not belong to the selected standard");
 
-            var auditEvent = new DmsAuditCalendarEvent
-            {
-                EventId = Guid.NewGuid(),
-                Title = title.Trim(),
-                Phase = phase,
-                Standard = standard,
-                EventDate = eventDate,
-                Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
-                PostedBy = postedBy,
-                CreatedAt = DateTime.UtcNow,
-            };
-
-            context.AuditCalendarEvents.Add(auditEvent);
+            var auditEvent = !string.IsNullOrWhiteSpace(stageKey)
+                ? await context.AuditCalendarEvents.FirstOrDefaultAsync(e => e.AuditCycleId == auditCycleId && e.StageKey == stageKey && e.Standard == standard)
+                : null;
+            var isNew = auditEvent == null;
+            auditEvent ??= new DmsAuditCalendarEvent { EventId = Guid.NewGuid(), PostedBy = postedBy, CreatedAt = DateTime.UtcNow };
+            auditEvent.Title = title.Trim();
+            auditEvent.Phase = phase;
+            auditEvent.Standard = standard;
+            auditEvent.EventDate = eventDate;
+            auditEvent.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+            auditEvent.ProgrammeYear = programmeYear ?? eventDate.Year;
+            auditEvent.AuditCycleId = auditCycleId;
+            auditEvent.StageKey = string.IsNullOrWhiteSpace(stageKey) ? null : stageKey.Trim();
+            auditEvent.Status = string.IsNullOrWhiteSpace(status) ? "planned" : status.Trim().ToLowerInvariant();
+            auditEvent.OwnerId = ownerId;
+            auditEvent.DueDate = dueDate;
+            if (isNew) context.AuditCalendarEvents.Add(auditEvent);
             await context.SaveChangesAsync();
 
             await auditService.LogAsync(postedBy, AuditActions.AUDIT_EVENT_CREATED, new

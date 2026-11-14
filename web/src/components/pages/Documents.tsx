@@ -316,6 +316,7 @@ export function Documents() {
   const [activeUploadFileName, setActiveUploadFileName] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [relatedEvidenceDocumentIds, setRelatedEvidenceDocumentIds] = useState<string[]>([]);
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadTags, setUploadTags] = useState<string[]>([]);
@@ -439,6 +440,10 @@ export function Documents() {
     return allDocuments.filter((document) => document.folderId === selectedFolderId);
   }, [allDocuments, selectedFolderId, showOnlyMySubmissions, currentUser?.userId, searchQuery]);
   const selectedFolder = folders.find((folder) => folder.folderId === selectedFolderId) ?? folders[0];
+  const isEvidenceUploadFolder = selectedFolder?.name?.toLowerCase() === 'evidences';
+  const relatedEvidenceCandidates = isEvidenceUploadFolder && selectedFolder?.parentFolderId
+    ? allDocuments.filter((document) => document.folderId === selectedFolder.parentFolderId)
+    : [];
   // Full ancestor chain (root-first) of the folder being browsed, so the header
   // can show a clickable location path instead of just the current folder's own
   // name.
@@ -1217,6 +1222,7 @@ export function Documents() {
     writeLibraryLocation(LAST_LIBRARY_PREVIEW_STORAGE_KEY, null);
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set());
+    setRelatedEvidenceDocumentIds([]);
     setPreviewDocument(null);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -1745,6 +1751,18 @@ export function Documents() {
           createdDocumentId = createdDocument.documentId;
 
           const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile, uploadVersionLabel);
+          // An evidence link is created only after the actual file is safely
+          // uploaded. The server detects ISO 9001 vs ISO 27001 from its path
+          // and attaches the active cycle; the uploader never chooses a year.
+          if (isEvidenceUploadFolder && relatedEvidenceDocumentIds.length > 0) {
+            try {
+              await Promise.all(relatedEvidenceDocumentIds.map((relatedDocumentId) =>
+                apiClient.createEvidenceLink({ evidenceDocumentId: createdDocument.documentId, relatedDocumentId })
+              ));
+            } catch (error: any) {
+              errors.push(`${uploadFile.name}: file saved but its evidence links could not be added (${error.response?.data?.error || 'review the active audit cycle'})`);
+            }
+          }
           setActiveUploadStage('parsing');
           let parsedContent: string | undefined;
           try {
@@ -1917,7 +1935,9 @@ export function Documents() {
     setUploadDepartment('');
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
+    setRelatedEvidenceDocumentIds([]);
     setUploadValidationAttempted(false);
+    setRelatedEvidenceDocumentIds([]);
     setShowUploadModal(true);
   };
 
@@ -2416,6 +2436,13 @@ export function Documents() {
                       <span className="flex-shrink-0 whitespace-nowrap pr-3 text-sm text-[#718198] dark:text-slate-400">{splitFileName(uploadFiles[0].name).ext}</span>
                     )}
                   </div>
+                </div>
+              )}
+              {isEvidenceUploadFolder && (
+                <div className="space-y-2 rounded-[4px] border border-[#dbe2ec] bg-[#f8fbff] p-3 dark:border-white/10 dark:bg-blue-950/20">
+                  <p className="text-sm font-semibold text-[#26334d] dark:text-white">Related policy / process documents</p>
+                  <p className="text-xs text-[#64748b] dark:text-slate-400">Select documents from the parent process folder that this evidence supports. Optional.</p>
+                  {relatedEvidenceCandidates.length ? relatedEvidenceCandidates.map((document) => <label key={document.documentId} className="flex items-center gap-2 py-1 text-sm text-[#34425b] dark:text-slate-200"><input type="checkbox" checked={relatedEvidenceDocumentIds.includes(document.documentId)} onChange={() => setRelatedEvidenceDocumentIds((ids) => ids.includes(document.documentId) ? ids.filter((id) => id !== document.documentId) : [...ids, document.documentId])} /><span>{document.name ?? document.title}</span></label>) : <p className="text-xs text-[#718198]">No documents are available in the parent process folder.</p>}
                 </div>
               )}
               <div className="space-y-2">

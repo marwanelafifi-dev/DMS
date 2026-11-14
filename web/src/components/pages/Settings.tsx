@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Bell, Building2, Check, Database, FileText, KeyRound, Lock, LockKeyhole, Settings as SettingsIcon, Users, UsersRound } from 'lucide-react';
+import { Bell, Building2, CalendarDays, Check, Database, FileText, KeyRound, Lock, LockKeyhole, Settings as SettingsIcon, Users, UsersRound } from 'lucide-react';
+import { AuditProgramme } from '../custom/AuditProgramme';
+import { AuditCycleManager } from '../custom/AuditCycleManager';
 import { RolePermissions } from '../custom/RolePermissions';
 import { UserManagement } from '../custom/UserManagement';
 import { GroupManagement } from '../custom/GroupManagement';
@@ -13,7 +15,7 @@ import { Card, CardBody } from '../ui';
 import { apiClient } from '../../utils/api';
 import type { Document } from '../../types';
 
-type SettingsTab = 'roles' | 'users' | 'groups' | 'audit' | 'settings' | 'notifications' | 'company-data' | 'database' | 'api-keys';
+type SettingsTab = 'roles' | 'users' | 'groups' | 'audit' | 'programme' | 'settings' | 'notifications' | 'company-data' | 'database' | 'api-keys';
 
 interface SettingsProps {
   defaultTab?: SettingsTab;
@@ -36,6 +38,8 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
 
   const tabs = [
     {
+      id: 'programme' as SettingsTab, label: 'Audit Programme', icon: CalendarDays, description: 'Set annual ISO audit stages and owners',
+    }, {
       id: 'api-keys' as SettingsTab,
       label: 'API Keys',
       icon: KeyRound,
@@ -93,7 +97,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
 
   return (
     <div className="space-y-5">
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && activeTab !== 'api-keys' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'company-data' && activeTab !== 'audit' && activeTab !== 'programme' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && activeTab !== 'api-keys' && (
         <>
           <div>
             <h1 className="page-heading">Admin Panel</h1>
@@ -149,7 +153,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
       {/* Quick Navigation — redundant with the sidebar's own Admin Panel links on
           the Users tab, so it's skipped there; kept for the other tabs since this
           is still the only way to switch between them from within the page. */}
-      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'audit' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && activeTab !== 'api-keys' && (
+      {activeTab !== 'users' && activeTab !== 'groups' && activeTab !== 'roles' && activeTab !== 'audit' && activeTab !== 'programme' && activeTab !== 'notifications' && activeTab !== 'settings' && activeTab !== 'database' && activeTab !== 'api-keys' && (
         <>
           <div className="pt-1"><h2 className="section-heading">Administration</h2></div>
           <div className="flex flex-wrap gap-2 rounded-[5px] border border-[#dbe2ec] bg-white p-2 dark:border-white/10 dark:bg-slate-900">
@@ -181,6 +185,7 @@ export function Settings({ defaultTab = 'users' }: SettingsProps) {
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'groups' && <GroupManagement />}
         {activeTab === 'audit' && <AuditTrail />}
+        {activeTab === 'programme' && <><AuditCycleManager /><AuditProgramme /></>}
         {activeTab === 'settings' && <PlatformSettings />}
         {activeTab === 'notifications' && <NotificationConfig />}
         {activeTab === 'company-data' && <CompanyData />}

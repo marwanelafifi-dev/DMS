@@ -522,6 +522,26 @@ class APIClient {
     return data;
   }
 
+  async getIsoEvidence(params?: { standard?: 'ISO 9001:2015' | 'ISO 27001:2022'; auditCycleId?: string }) {
+    const { data } = await this.client.get<ApiResponse>('/iso-evidence', { params });
+    return data;
+  }
+  async getAuditCycles() { const { data } = await this.client.get<ApiResponse>('/audit-cycles'); return data; }
+  async createAuditCycle(payload: { name: string; standard: string; startDate: string; endDate: string }) { const { data } = await this.client.post<ApiResponse>('/audit-cycles', payload); return data; }
+  async activateAuditCycle(id: string) { const { data } = await this.client.post<ApiResponse>(`/audit-cycles/${id}/activate`); return data; }
+  async getAuditRecords(params?: { standard?: string; auditCycleId?: string }) { const { data } = await this.client.get<ApiResponse>('/audits', { params }); return data; }
+  async createAuditRecord(payload: any) { const { data } = await this.client.post<ApiResponse>('/audits', payload); return data; }
+  async updateAuditRecord(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/audits/${id}`, payload); return data; }
+  async getEvidenceRequirements(auditCycleId: string) { const { data } = await this.client.get<ApiResponse>('/evidence-requirements', { params: { auditCycleId } }); return data; }
+  async createEvidenceRequirement(payload: { auditCycleId: string; standard: string; relatedDocumentId: string }) { const { data } = await this.client.post<ApiResponse>('/evidence-requirements', payload); return data; }
+  async deleteEvidenceRequirement(id: string) { const { data } = await this.client.delete<ApiResponse>(`/evidence-requirements/${id}`); return data; }
+  async getManagementReviewEntries(params?: { auditCycleId?: string; standard?: string }) { const { data } = await this.client.get<ApiResponse>('/management-review', { params }); return data; }
+  async createManagementReviewEntry(payload: any) { const { data } = await this.client.post<ApiResponse>('/management-review', payload); return data; }
+  async updateManagementReviewEntry(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/management-review/${id}`, payload); return data; }
+  async getEvidenceLinks(documentId: string) { const { data } = await this.client.get<ApiResponse>(`/evidence-links/${documentId}`); return data; }
+  async createEvidenceLink(payload: { evidenceDocumentId: string; relatedDocumentId: string }) { const { data } = await this.client.post<ApiResponse>('/evidence-links', payload); return data; }
+  async deleteEvidenceLink(evidenceLinkId: string) { const { data } = await this.client.delete<ApiResponse>(`/evidence-links/${evidenceLinkId}`); return data; }
+
   async getDocument(documentId: string) {
     const { data } = await this.client.get<ApiResponse>(`/documents/${documentId}`);
     return data;
@@ -1661,7 +1681,7 @@ class APIClient {
     return data;
   }
 
-  async createAuditCalendarEvent(eventData: { title: string; phase: string; standard: string; eventDate: string; notes?: string }) {
+  async createAuditCalendarEvent(eventData: { title: string; phase: string; standard: string; eventDate: string; notes?: string; programmeYear?: number; stageKey?: string; status?: string; ownerId?: string; dueDate?: string; auditCycleId?: string }) {
     const { data } = await this.client.post<ApiResponse>('/auditcalendar', eventData);
     return data;
   }

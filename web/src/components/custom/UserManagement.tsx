@@ -20,6 +20,7 @@ interface User {
   isOnline: boolean;
   role: string | null;
   avatarUrl?: string | null;
+  department?: string | null;
 }
 
 interface Group {
@@ -54,10 +55,10 @@ export function UserManagement() {
   const [authTypeFilter, setAuthTypeFilter] = useState<'' | 'Local' | 'Google'>('');
   const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'inactive'>('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editData, setEditData] = useState<{ fullName: string; email: string; isActive: boolean; role: string }>({ fullName: '', email: '', isActive: true, role: '' });
+  const [editData, setEditData] = useState<{ fullName: string; email: string; isActive: boolean; role: string; department: string }>({ fullName: '', email: '', isActive: true, role: '', department: '' });
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '', role: '', groupIds: [] as string[] });
+  const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '', role: '', department: '', groupIds: [] as string[] });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [deactivateConfirm, setDeactivateConfirm] = useState<{ userId?: string; fullName?: string }>({});
@@ -79,7 +80,8 @@ export function UserManagement() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
-    created: Array<{ email: string; fullName: string; role: string | null; warning: string | null }>;
+    created: Array<{ email: string; fullName: string; role: string | null; department?: string | null; warning: string | null }>;
+    updated: Array<{ email: string; fullName: string; role: string | null; department?: string | null; warning: string | null }>;
     skipped: Array<{ email?: string; row?: string; reason: string }>;
   } | null>(null);
 
@@ -119,7 +121,7 @@ export function UserManagement() {
   // stat cards) has everyone.
   const filteredUsers = (isSearching ? allUsers : users).filter(u => {
     const query = searchQuery.trim().toLowerCase();
-    const matchesSearch = !query || u.fullName.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
+    const matchesSearch = !query || u.fullName.toLowerCase().includes(query) || u.email.toLowerCase().includes(query) || u.department?.toLowerCase().includes(query);
     const matchesRole = !roleFilter || (roleFilter === 'NONE' ? !u.role : u.role === roleFilter);
     const matchesAuthType = !authTypeFilter || u.authType === authTypeFilter;
     const matchesStatus = !statusFilter || (statusFilter === 'active' ? u.isActive : !u.isActive);
@@ -133,7 +135,7 @@ export function UserManagement() {
 
   const handleEdit = (user: User) => {
     setEditingId(user.userId);
-    setEditData({ fullName: user.fullName, email: user.email, isActive: user.isActive, role: user.role ?? '' });
+    setEditData({ fullName: user.fullName, email: user.email, isActive: user.isActive, role: user.role ?? '', department: user.department ?? '' });
   };
 
   const handleSave = async () => {
@@ -149,7 +151,7 @@ export function UserManagement() {
     // problem.
     const user = allUsers.find(u => u.userId === editingId);
     try {
-      const payload: Record<string, unknown> = { fullName: editData.fullName, isActive: editData.isActive };
+      const payload: Record<string, unknown> = { fullName: editData.fullName, isActive: editData.isActive, department: editData.department };
       // Email doubles as the login username for local accounts only — a
       // Google-auth account's email is asserted by Google itself, so it's
       // never sent for those (the backend rejects the field outright if it
@@ -178,7 +180,7 @@ export function UserManagement() {
     }
     setIsSubmitting(true);
     try {
-      const res = await apiClient.createUser({ fullName: newUser.fullName, email: newUser.email, password: newUser.password });
+      const res = await apiClient.createUser({ fullName: newUser.fullName, email: newUser.email, password: newUser.password, department: newUser.department });
       const createdUserId = res.data?.userId;
 
       // Role and group membership are separate resources from user creation itself
@@ -200,7 +202,7 @@ export function UserManagement() {
 
       showSuccess(followUpErrors.length > 0 ? `User created, but failed to apply: ${followUpErrors.join(', ')}` : 'User created');
       setShowAddForm(false);
-      setNewUser({ fullName: '', email: '', password: '', role: '', groupIds: [] });
+      setNewUser({ fullName: '', email: '', password: '', role: '', department: '', groupIds: [] });
       loadUsers();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to create user');
@@ -213,7 +215,7 @@ export function UserManagement() {
     setIsImporting(true);
     try {
       const res = await apiClient.importUsers(file);
-      setImportResult(res.data ?? { created: [], skipped: [] });
+      setImportResult(res.data ?? { created: [], updated: [], skipped: [] });
       loadUsers();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to import users');
@@ -388,7 +390,7 @@ export function UserManagement() {
             className="flex items-center gap-2"
             disabled={isImporting}
             onClick={() => importInputRef.current?.click()}
-            title="Import users from a CSV file (columns: User Name, Email, Access)"
+            title="Import users from CSV (columns: User Name or Full Name, Email, Access or Role, Department)"
           >
             <Upload className="w-4 h-4" />
             {isImporting ? 'Importing...' : 'Import CSV'}
@@ -509,6 +511,7 @@ export function UserManagement() {
           <thead className="border-b border-[#e2e8f0] bg-[#f7f9fc] dark:border-white/10 dark:bg-slate-950">
             <tr className="text-left text-xs uppercase text-[#64748b] dark:text-slate-400">
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">User</th>
+              <th className="px-6 py-4 font-semibold text-sm tracking-wide">Department</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Access</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Auth Type</th>
               <th className="px-6 py-4 font-semibold text-sm tracking-wide">Status</th>
@@ -570,6 +573,9 @@ export function UserManagement() {
                       )}
                     </div>
                   </div>
+                </td>
+                <td className="px-6 py-4">
+                  {editingId === user.userId ? <input value={editData.department} onChange={(e) => setEditData({ ...editData, department: e.target.value })} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm text-navy-900 dark:border-navy-600 dark:bg-navy-950 dark:text-white" placeholder="Department" /> : <span className="text-sm text-[#52627a] dark:text-slate-300">{user.department || '—'}</span>}
                 </td>
                 <td className="px-6 py-4">
                   {editingId === user.userId ? (
@@ -788,7 +794,7 @@ export function UserManagement() {
             </div>
             <div className="px-6 py-4 space-y-4 overflow-y-auto">
               <p className="text-sm text-gray-600 dark:text-navy-300">
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{importResult.created.length} created</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{importResult.created.length} created</span><span className="ml-2 font-semibold text-[#2f6f9f] dark:text-blue-300">{importResult.updated.length} updated</span>
                 {' · '}
                 <span className="font-semibold text-gray-500 dark:text-navy-400">{importResult.skipped.length} skipped</span>
               </p>
@@ -848,6 +854,10 @@ export function UserManagement() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Department</label>
+                <input type="text" value={newUser.department} onChange={(e) => setNewUser({ ...newUser, department: e.target.value })} className="w-full px-3 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white" placeholder="e.g. Human Resources" />
+              </div>
+              <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Password</label>
                 <input
                   type="password"
@@ -901,7 +911,7 @@ export function UserManagement() {
             </div>
             <div className="px-6 py-4 bg-gray-50 dark:bg-navy-900 border-t border-gray-200 dark:border-navy-700 flex gap-3">
               <button
-                onClick={() => { setShowAddForm(false); setNewUser({ fullName: '', email: '', password: '', role: '', groupIds: [] }); }}
+                onClick={() => { setShowAddForm(false); setNewUser({ fullName: '', email: '', password: '', role: '', department: '', groupIds: [] }); }}
                 className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-700 transition-colors"
               >
                 Cancel

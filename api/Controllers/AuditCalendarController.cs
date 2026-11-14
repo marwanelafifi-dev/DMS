@@ -5,7 +5,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuditCalendarController(AuditCalendarService auditCalendarService, ILogger<AuditCalendarController> logger) : BaseController
+public class AuditCalendarController(AuditCalendarService auditCalendarService, DMS.Api.Data.DmsContext context, ILogger<AuditCalendarController> logger) : BaseController
 {
     // GET /api/auditcalendar — all audit calendar events, visible to all users
     [HttpGet]
@@ -37,7 +37,8 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
         try
         {
             var userId = GetCurrentUserId();
-            var result = await auditCalendarService.CreateAsync(req.Title, req.Phase, req.Standard, req.EventDate, req.Notes, userId);
+            if ((await GetPageAccessRoleAsync(context, userId))?.CanViewAdminPanel != true) return Forbid();
+            var result = await auditCalendarService.CreateAsync(req.Title, req.Phase, req.Standard, req.EventDate, req.Notes, userId, req.ProgrammeYear, req.StageKey, req.Status, req.OwnerId, req.DueDate, req.AuditCycleId);
 
             if (!result.Success)
             {
@@ -63,6 +64,7 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
     {
         try
         {
+            if ((await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.CanViewAdminPanel != true) return Forbid();
             var result = await auditCalendarService.DeleteAsync(id, GetCurrentUserId());
 
             if (!result.Success)
@@ -84,4 +86,4 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
     }
 }
 
-public record CreateAuditCalendarEventRequest(string Title, string Phase, string Standard, DateOnly EventDate, string? Notes = null);
+public record CreateAuditCalendarEventRequest(string Title, string Phase, string Standard, DateOnly EventDate, string? Notes = null, int? ProgrammeYear = null, string? StageKey = null, string? Status = null, Guid? OwnerId = null, DateOnly? DueDate = null, Guid? AuditCycleId = null);

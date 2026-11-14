@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { apiClient } from '../../utils/api';
 import { AuditCalendarCard } from '../custom/AuditCalendarCard';
+import { IsoSurveillanceJourney } from '../custom/IsoSurveillanceJourney';
 import { resolveLibraryStatus } from '../../fixtures/documentLibrary';
 import { statusLabels } from '../../utils/documentStatus';
 import { ModalOverlay } from '../ui/ModalOverlay';
@@ -175,6 +176,12 @@ export function Dashboard() {
   const myTasks = tasks.filter((t) => t.assignedTo === currentUserId);
   const myNormalTasks = myTasks.filter((task) => task.taskType !== 'pcar');
   const myPcars = myTasks.filter((task) => task.taskType === 'pcar');
+  const isClosedPcar = (task: Task) => task.status === 'done' || task.status === 'completed';
+  const openPcars = myPcars.filter((task) => !isClosedPcar(task)).length;
+  const overduePcars = myPcars.filter((task) => {
+    const due = dueTime(task.dueDate);
+    return !isClosedPcar(task) && due !== null && due < Date.now();
+  }).length;
   const taskStats = {
     open: myTasks.filter((t) => t.status === 'open').length,
     inProgress: myTasks.filter((t) => t.status === 'in_progress').length,
@@ -258,6 +265,13 @@ export function Dashboard() {
           </button>
         ))}
       </div>
+
+      <IsoSurveillanceJourney
+        openPcars={openPcars}
+        overduePcars={overduePcars}
+        onOpenPcars={() => navigate('/pcars')}
+        onOpenDocuments={() => navigate('/documents')}
+      />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(330px,0.85fr)]">
         <AuditCalendarCard isFullAccess={user?.role === 'Full Access'} />

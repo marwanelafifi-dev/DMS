@@ -11,11 +11,13 @@ import {
   FileText,
   History,
   Lock,
+  Link2,
   PencilLine,
   Printer,
   Search,
   ScanText,
   UploadCloud,
+  Trash2,
   X,
 } from 'lucide-react';
 import type { MockLibraryDocument } from '../../fixtures/documentLibrary';
@@ -191,6 +193,9 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showRelatedTasks, setShowRelatedTasks] = useState(false);
   const [showRelatedPcars, setShowRelatedPcars] = useState(false);
+  const [showEvidenceLinks, setShowEvidenceLinks] = useState(false);
+  const [evidenceLinks, setEvidenceLinks] = useState<Array<{ evidenceLinkId: string; title: string; auditCycleId?: string }>>([]);
+  const [isLoadingEvidenceLinks, setIsLoadingEvidenceLinks] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
   const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
   const [documentPermissions, setDocumentPermissions] = useState<RolePermissionFlags | null>(null);
@@ -213,6 +218,17 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
   const activeMatchRef = useRef<HTMLElement | null>(null);
   const markdownContainerRef = useRef<HTMLDivElement>(null);
   const pdfViewerRef = useRef<PdfJsViewerHandle>(null);
+
+  const loadEvidenceLinks = async () => {
+    setIsLoadingEvidenceLinks(true);
+    try {
+      const response = await apiClient.getEvidenceLinks(document.documentId);
+      setEvidenceLinks((response.data ?? []) as Array<{ evidenceLinkId: string; title: string; auditCycleId?: string }>);
+    } catch { setEvidenceLinks([]); } finally { setIsLoadingEvidenceLinks(false); }
+  };
+
+  const openEvidenceLinks = () => { setShowEvidenceLinks(true); void loadEvidenceLinks(); };
+  const removeEvidenceLink = async (id: string) => { await apiClient.deleteEvidenceLink(id); await loadEvidenceLinks(); onDocumentUpdated?.(); };
 
   const openEditModal = () => {
     markDocumentEditActive(document.documentId);
@@ -998,6 +1014,16 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
               fileName={document.fileName}
               canView={Boolean(documentPermissions?.viewMetadataHistory)}
             />
+            {(document.category === 'Evidence' || document.tags?.some((tag) => tag.toLowerCase() === 'evidence')) && (
+              <button
+                onClick={openEvidenceLinks}
+                disabled={!documentPermissions?.viewOnly}
+                title={!documentPermissions?.viewOnly ? 'Your role does not have permission to view this document' : 'View linked policy and process documents'}
+                className="inline-flex h-8 items-center gap-2 rounded-[4px] border border-[#dbe2ec] px-3 text-xs font-medium text-[#52627a] hover:bg-[#eef2f7] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]"
+              >
+                <Link2 className="h-4 w-4" /> Evidence links
+              </button>
+            )}
             <button
               onClick={() => setShowRelatedTasks(true)}
               disabled={!documentPermissions?.viewRelatedTasks}
@@ -1182,6 +1208,14 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
           fileName={document.fileName}
           onClose={() => setShowRelatedPcars(false)}
         />
+      )}
+      {showEvidenceLinks && (
+        <ModalOverlay onClose={() => setShowEvidenceLinks(false)} className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-lg rounded-[6px] bg-white shadow-xl dark:bg-slate-900" role="dialog" aria-modal="true" aria-label="Evidence links">
+            <div className="flex items-start justify-between border-b border-[#e2e8f0] px-5 py-4 dark:border-white/10"><div><h2 className="section-heading">Linked policy / process documents</h2><p className="mt-1 text-sm text-[#64748b]">Only documents you can access are listed.</p></div><button onClick={() => setShowEvidenceLinks(false)} className="rounded p-1 text-[#64748b] hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close evidence links"><X className="h-5 w-5" /></button></div>
+            <div className="max-h-[50vh] overflow-y-auto px-5 py-3">{isLoadingEvidenceLinks ? <p className="py-4 text-sm text-[#64748b]">Loading links…</p> : evidenceLinks.length ? evidenceLinks.map((link) => <div key={link.evidenceLinkId} className="flex items-center justify-between gap-3 border-b border-[#edf1f5] py-3 last:border-0 dark:border-white/10"><div className="min-w-0"><p className="truncate text-sm font-medium text-[#26334d] dark:text-white">{link.title}</p><p className="text-xs text-[#718198]">Linked for the active audit cycle</p></div>{documentPermissions?.edit && <button onClick={() => void removeEvidenceLink(link.evidenceLinkId)} className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-medium text-[#b33a42] hover:bg-red-50 dark:hover:bg-red-500/10" title="Remove evidence link"><Trash2 className="h-3.5 w-3.5" />Remove</button>}</div>) : <p className="py-4 text-sm text-[#64748b]">No linked policy or process documents yet. Add them during upload from the parent process folder.</p>}</div>
+          </div>
+        </ModalOverlay>
       )}
       </Suspense>
     </ModalOverlay>

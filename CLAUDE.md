@@ -32,6 +32,36 @@ docker compose up -d --build api web
 docker compose ps
 ```
 
+## Session 75 (2026-11-14) — ISO surveillance journey and audit controls
+
+### Delivered ISO controls
+
+- Separate active audit cycles are supported for ISO 9001:2015 and ISO 27001:2022. ISO 9001 supports cross-year cycles such as `2026–2027`; ISO 27001 remains IT-only and calendar-year scoped.
+- Evidence is collected by approved path, not loose tags. ISO 9001 reports only `Corporate/QMS/Procedures/**/Evidences/**`, excluding `OLD DMS` and IT ISO 27001. ISO 27001 reports only `Corporate/QMS/Procedures/IT/ISO 27001/Evidences/**`.
+- Evidence uploads automatically receive the active standard's cycle. Uploaders can link evidence only to a controlled document in its direct parent process folder, and access to both documents is enforced.
+- Evidence Coverage defines which policy/process documents require evidence in a cycle. The ISO readiness dashboard shows processes without linked evidence.
+- The Audit Register records cycle, standard, audit details, DMS-user audit team/participants, and controlled Audit Plan/Report selections. PCARs are isolated by standard and cycle. User departments are maintained/imported for participant grouping.
+- Management Review contains structured KPI, risk, customer-feedback, supplier-performance, and action registers. Audit and review screens export Excel workbooks; the Audit Pack PDF endpoint is `GET /api/audits/{auditRecordId}/pack.pdf`.
+
+### Checklist foundation and remaining work
+
+- Migration `128_audit_checklist.sql` creates checklist rows with process, ISO clause, requirement, result, objective evidence, auditor notes, and future PCAR link. `GET/POST /api/audits/{auditId}/checklist` is available.
+- The checklist screen, direct finding-to-PCAR action, immutable stored PDF snapshots, and readiness setup wizard are not delivered yet. Do not represent these as completed.
+
+### Ubuntu deployment: migrations 117–128
+
+- Existing databases require migrations 117 through 128 in numerical order. Docker Compose applies `infra/db/init` only to a new empty database volume.
+
+```bash
+for migration in infra/db/init/{117_pcar_audit_reference,118_audit_programme_stages,119_evidence_links,120_audit_cycles,121_audit_cycle_links,122_evidence_cycle_assignments,123_formal_audit_register,124_audit_team_users,125_audit_participant_users,126_user_departments,127_audit_review_registers,128_audit_checklist}.sql; do
+  docker compose exec -T postgres sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$migration"
+done
+docker compose up -d --build api web
+docker compose ps
+```
+
+- After deployment, activate ISO 9001 `2026–2027`, enter stages/owners, set Evidence Coverage rules, upload/link one test evidence file, create one Audit/PCAR, and confirm OLD DMS content does not appear in readiness reporting.
+
 After deployment, open the document in the reported issue: its PCAR must appear only in **Related PCARs**, and the same finding must show a PCAR No. throughout the register and detail dialog. Create or open a normal Task to confirm its independent Task No. begins at `TASK-000001`.
 
 ## Session 71 (2026-11-08/09) — Historical PCAR workflow and access-control corrections

@@ -88,9 +88,11 @@ export const guideRegistry: GuideDefinition[] = [
         id: 'iso-audit-calendar',
         title: 'ISO Certification Journey & Audit Calendar',
         paragraphs: [
-          'This area is used for ISO audit meeting information and Google Calendar synchronization.',
+          'This area shows the ISO 9001:2015 surveillance journey and Google Calendar synchronization. The current journey follows ISO 9001 preparation, Internal Audit, Management Review, and External Surveillance Audit.',
         ],
         bullets: [
+          'Review the certificate cycle, certified scope, current journey phase, and preparation window.',
+          'Use the PCAR and Evidence preparation links to work through visible readiness actions.',
           'Connect your Si-Ware Google Calendar.',
           'Synchronize calendar information with the DMS.',
           'Display ISO audit meetings from Google Calendar.',

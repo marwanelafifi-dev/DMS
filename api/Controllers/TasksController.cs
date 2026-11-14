@@ -141,6 +141,11 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.FindingSeverity,
                     task.StandardClause,
                     task.AuditorNotes,
+                    task.AuditReference,
+                    task.AuditDate,
+                    task.AuditStandard,
+                    task.AuditCycleId,
+                    task.AuditRecordId,
                     task.RiskSeverity,
                     AssignedTo = task.AssignedTo == null ? null : new { task.AssignedTo.UserId, task.AssignedTo.FullName, task.AssignedTo.Email },
                     AssignedToGroup = task.AssignedToGroup == null ? null : new { task.AssignedToGroup.GroupId, task.AssignedToGroup.Name },
@@ -615,6 +620,10 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
                 return BadRequest(new { success = false, error = "PCAR title is required" });
             if (req.AssignedToId.HasValue == req.AssignedToGroupId.HasValue)
                 return BadRequest(new { success = false, error = "Assign the PCAR to exactly one user or group" });
+            if (!req.AuditRecordId.HasValue)
+                return BadRequest(new { success = false, error = "Select the audit record that raised this PCAR" });
+            var selectedAuditRecord = await context.AuditRecords.AsNoTracking().FirstOrDefaultAsync(a => a.AuditRecordId == req.AuditRecordId.Value);
+            if (selectedAuditRecord == null) return BadRequest(new { success = false, error = "The selected audit record was not found" });
 
             var userId = GetCurrentUserId();
             var role = await GetPageAccessRoleAsync(context, userId);
@@ -669,6 +678,11 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
             finding.FindingSeverity = req.FindingSeverity?.Trim().ToLowerInvariant();
             finding.StandardClause = req.StandardClause?.Trim();
             finding.AuditorNotes = req.AuditorNotes?.Trim();
+            finding.AuditRecordId = selectedAuditRecord.AuditRecordId;
+            finding.AuditStandard = selectedAuditRecord.Standard;
+            finding.AuditCycleId = selectedAuditRecord.AuditCycleId;
+            finding.AuditReference = selectedAuditRecord.Title;
+            finding.AuditDate = selectedAuditRecord.AuditDate;
             await context.SaveChangesAsync();
             var task = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == result.ResourceId!.Value);
             await NotifyTaskAssignmentAsync(task, userId, "New audit PCAR assigned to you", "New audit PCAR assigned to your group");
@@ -1224,8 +1238,13 @@ public record CreateTaskRequest(
     string? AuditStage = null,
     string? FindingSeverity = null,
     string? StandardClause = null,
-    string? AuditorNotes = null
-    , Guid[]? DocumentIds = null, Guid[]? FolderIds = null, Guid? DirectManagerId = null
+    string? AuditorNotes = null,
+    string? AuditReference = null,
+    DateOnly? AuditDate = null,
+    string? AuditStandard = null,
+    Guid? AuditCycleId = null,
+    Guid? AuditRecordId = null,
+    Guid[]? DocumentIds = null, Guid[]? FolderIds = null, Guid? DirectManagerId = null
 );
 
 public record SubmitPcarRequest(string? Rca, string? Correction, string? PreventiveActions, DateTime TargetDate, string[]? Tags = null);

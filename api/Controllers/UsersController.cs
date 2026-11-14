@@ -53,6 +53,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                     u.LastHeartbeatAt,
                     u.AvatarUrl,
                     u.Role,
+                    u.Department,
                     AuthType = u.SsoSubject != null ? "Google" : "Local"
                 })
                 .ToListAsync();
@@ -72,6 +73,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                 // The user's directly-assigned global role (see PUT /{id}/role),
                 // shown as-is on the Users admin page; null means "No Access".
                 Role = u.Role,
+                Department = u.Department,
                 AccessLevel = u.Role ?? "No Access",
             }).ToList();
 
@@ -137,6 +139,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                     Permissions = permissions,
                     PendingTasks = taskCount,
                     user.Role,
+                    user.Department,
                     user.CreatedAt,
                     user.LastLoginAt,
                     user.UpdatedAt
@@ -179,6 +182,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                 UserId = Guid.NewGuid(),
                 Email = req.Email.ToLower().Trim(),
                 FullName = req.FullName.Trim(),
+                Department = CleanDepartment(req.Department),
                 SsoSubject = req.SsoSubject?.Trim(),
                 PasswordHash = string.IsNullOrEmpty(req.Password) ? null : PasswordHasher.Hash(req.Password),
                 IsActive = true,
@@ -253,14 +257,15 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
         }
     }
 
-    // POST /api/users/import — bulk-create users from a CSV export
-    // (columns: "User Name", "Email", "Access" — Access matches an existing
+    // POST /api/users/import — bulk-create or safely update users from a CSV export
+    // (columns: "User Name", "Email", "Access", "Department" — Access matches an existing
     // Page Access Role by name). Every imported user is created with no
     // local password and no SsoSubject — identical to any other SSO-only
     // account: the only way in is Google, matched by email the first time
     // they actually sign in (see AuthController.VerifyGoogleIdTokenAndUpsertUserAsync).
-    // A row with an email that already exists is skipped, not overwritten,
-    // so re-importing the same file twice is safe. An unrecognized Access
+    // A row with an email that already exists updates only its supplied name,
+    // department and recognized role; credentials and SSO identity never change.
+    // An unrecognized Access
     // value doesn't reject the row — the user is still created, just with no
     // role assigned, and the admin can fix it manually afterward.
     [HttpPost("import")]
@@ -282,32 +287,28 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
             if (rows.Count == 0)
                 return BadRequest(new { success = false, error = "The file has no data rows" });
 
-            var existingEmails = new HashSet<string>(
-                await context.Users.Select(u => u.Email).ToListAsync(),
-                StringComparer.OrdinalIgnoreCase);
+            var existingUsers = (await context.Users.ToListAsync()).ToDictionary(u => u.Email, StringComparer.OrdinalIgnoreCase);
             var validRoles = await context.PageAccessRoles.Select(r => r.Role).ToListAsync();
 
             var now = DateTime.UtcNow;
             var created = new List<object>();
+            var updated = new List<object>();
             var skipped = new List<object>();
 
             foreach (var row in rows)
             {
                 var fullName = row.GetValue("User Name").Trim();
+                if (string.IsNullOrEmpty(fullName)) fullName = row.GetValue("Full Name").Trim();
                 var email = row.GetValue("Email").Trim().ToLowerInvariant();
                 var access = row.GetValue("Access").Trim();
+                if (string.IsNullOrEmpty(access)) access = row.GetValue("Role").Trim();
+                var department = CleanDepartment(row.GetValue("Department"));
 
                 if (string.IsNullOrEmpty(email))
                 {
                     skipped.Add(new { Row = string.IsNullOrEmpty(fullName) ? "(blank row)" : fullName, Reason = "Missing email" });
                     continue;
                 }
-                if (existingEmails.Contains(email))
-                {
-                    skipped.Add(new { Email = email, Reason = "A user with this email already exists" });
-                    continue;
-                }
-
                 string? role = null;
                 string? warning = null;
                 if (!string.IsNullOrEmpty(access))
@@ -317,27 +318,37 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                     else warning = $"Unknown role '{access}' — created with no role assigned";
                 }
 
-                context.Users.Add(new DmsUser
+                if (existingUsers.TryGetValue(email, out var existing))
+                {
+                    if (!string.IsNullOrEmpty(fullName)) existing.FullName = fullName;
+                    if (department != null) existing.Department = department;
+                    if (!string.IsNullOrEmpty(access) && role != null) existing.Role = role;
+                    existing.UpdatedAt = now;
+                    updated.Add(new { Email = email, FullName = existing.FullName, Role = existing.Role, Department = existing.Department, Warning = warning });
+                    continue;
+                }
+                var imported = new DmsUser
                 {
                     UserId = Guid.NewGuid(),
                     Email = email,
                     FullName = string.IsNullOrEmpty(fullName) ? email : fullName,
                     Role = role,
+                    Department = department,
                     PasswordHash = null,
                     IsActive = true,
                     CreatedAt = now,
                     UpdatedAt = now,
-                });
-                // Guards against two rows in the same file sharing an email.
-                existingEmails.Add(email);
-                created.Add(new { Email = email, FullName = fullName, Role = role, Warning = warning });
+                };
+                context.Users.Add(imported);
+                existingUsers[email] = imported;
+                created.Add(new { Email = email, FullName = fullName, Role = role, Department = department, Warning = warning });
             }
 
             await context.SaveChangesAsync();
 
-            await auditService.LogAsync(GetCurrentUserId(), USERS_IMPORTED, new { CreatedCount = created.Count, SkippedCount = skipped.Count });
+            await auditService.LogAsync(GetCurrentUserId(), USERS_IMPORTED, new { CreatedCount = created.Count, UpdatedCount = updated.Count, SkippedCount = skipped.Count });
 
-            return Ok(new { success = true, data = new { created, skipped } });
+            return Ok(new { success = true, data = new { created, updated, skipped } });
         }
         catch (Exception ex)
         {
@@ -353,6 +364,8 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
             return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "You don't have permission to manage users" });
         return null;
     }
+
+    private static string? CleanDepartment(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(value.Trim().Length, 160)];
 
     // PUT /api/users/{id} — update user
     [HttpPut("{id}")]
@@ -372,6 +385,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
             var previousFullName = user.FullName;
             var previousEmail = user.Email;
             var previousIsActive = user.IsActive;
+            var previousDepartment = user.Department;
 
             if (!string.IsNullOrWhiteSpace(req.FullName))
                 user.FullName = req.FullName.Trim();
@@ -399,6 +413,8 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
 
             if (req.IsActive.HasValue)
                 user.IsActive = req.IsActive.Value;
+            if (req.Department != null)
+                user.Department = CleanDepartment(req.Department);
 
             user.UpdatedAt = DateTime.UtcNow;
 
@@ -413,7 +429,8 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                 Changes = AuditService.BuildChanges(
                     ("Full Name", previousFullName, user.FullName),
                     ("Email", previousEmail, user.Email),
-                    ("Active", previousIsActive, user.IsActive)),
+                    ("Active", previousIsActive, user.IsActive),
+                    ("Department", previousDepartment, user.Department)),
             });
 
             logger.LogInformation("Updated user {UserId}", id);
@@ -427,6 +444,7 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                     user.Email,
                     user.FullName,
                     user.IsActive,
+                    user.Department,
                     user.UpdatedAt
                 }
             });
@@ -697,8 +715,8 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
     }
 }
 
-public record CreateUserRequest(string Email, string FullName, string? SsoSubject = null, string? Password = null);
-public record UpdateUserRequest(string? FullName = null, bool? IsActive = null, string? Email = null);
+public record CreateUserRequest(string Email, string FullName, string? SsoSubject = null, string? Password = null, string? Department = null);
+public record UpdateUserRequest(string? FullName = null, bool? IsActive = null, string? Email = null, string? Department = null);
 public record UpdateUserRoleRequest(string? Role);
 public record ResetPasswordRequest(string NewPassword);
 public record TransferOwnershipRequest(Guid ToUserId);

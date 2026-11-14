@@ -700,12 +700,18 @@ public class DocumentsController(
             if (string.IsNullOrWhiteSpace(req.Department))
                 return BadRequest(new { success = false, error = "Department is required" });
 
-            // Verify the folder exists
-            var folderExists = await context.Folders
-                .AnyAsync(f => f.FolderId == req.FolderId);
+            // Verify the folder exists. An upload directly into an Evidences
+            // folder is automatically classified as Evidence below; the
+            // uploader does not need a special document type or workflow.
+            var targetFolder = await context.Folders
+                .AsNoTracking()
+                .Where(f => f.FolderId == req.FolderId)
+                .Select(f => new { f.FolderId, f.Name })
+                .FirstOrDefaultAsync();
 
-            if (!folderExists)
+            if (targetFolder == null)
                 return BadRequest(new { success = false, error = "Folder not found" });
+            var isEvidenceFolder = string.Equals(targetFolder.Name, "Evidences", StringComparison.OrdinalIgnoreCase);
 
             // POST /api/documents has no document ID in the path yet (nothing to
             // exist to gate on), so RBACMiddleware never sees this request —
@@ -753,9 +759,9 @@ public class DocumentsController(
                 Title = req.Title.Trim(),
                 Status = "draft",
                 Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
-                Tags = req.Tags?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToArray() ?? Array.Empty<string>(),
+                Tags = (req.Tags?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Append(isEvidenceFolder ? "Evidence" : string.Empty).Where(t => !string.IsNullOrEmpty(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()) ?? Array.Empty<string>(),
                 Department = string.IsNullOrWhiteSpace(req.Department) ? null : req.Department.Trim(),
-                Category = string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim(),
+                Category = isEvidenceFolder ? "Evidence" : string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim(),
                 OriginalDocumentId = isAdmin && !string.IsNullOrWhiteSpace(req.OriginalDocumentId) ? req.OriginalDocumentId.Trim() : null,
                 OwnerId = req.OwnerId,
                 CreatedAt = DateTime.UtcNow,
@@ -763,6 +769,30 @@ public class DocumentsController(
             };
 
             context.Documents.Add(document);
+            // Evidence assignment is automatic and non-blocking: a user who
+            // can upload may still save evidence when an administrator has not
+            // activated a cycle yet, but that file remains visibly unassigned
+            // instead of silently appearing in an audit pack.
+            if (isEvidenceFolder)
+            {
+                var folderRows = await context.Folders.AsNoTracking().Select(f => new { f.FolderId, f.ParentFolderId, f.Name }).ToListAsync();
+                var folderMap = folderRows.ToDictionary(f => f.FolderId, f => (f.ParentFolderId, f.Name));
+                var path = new List<string>(); var current = req.FolderId; var guard = 0;
+                while (folderMap.TryGetValue(current, out var currentFolder) && guard++ < 64)
+                {
+                    path.Insert(0, currentFolder.Name);
+                    if (!currentFolder.ParentFolderId.HasValue) break;
+                    current = currentFolder.ParentFolderId.Value;
+                }
+                var controlled = path.Count >= 5 && path[0].Equals("Corporate", StringComparison.OrdinalIgnoreCase) && path[1].Equals("QMS", StringComparison.OrdinalIgnoreCase) && path[2].Equals("Procedures", StringComparison.OrdinalIgnoreCase) && !path.Any(p => p.Equals("OLD DMS", StringComparison.OrdinalIgnoreCase));
+                if (controlled)
+                {
+                    var standard = path.Skip(3).Any(p => p.Equals("ISO 27001", StringComparison.OrdinalIgnoreCase)) ? "ISO 27001:2022" : "ISO 9001:2015";
+                    var activeCycle = await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(c => c.Standard == standard && c.Status == "active");
+                    if (activeCycle != null)
+                        context.EvidenceCycleAssignments.Add(new DmsEvidenceCycleAssignment { DocumentId = document.DocumentId, AuditCycleId = activeCycle.AuditCycleId, Standard = standard, AssignedBy = userId, AssignedAt = DateTime.UtcNow });
+                }
+            }
             await context.SaveChangesAsync();
 
             var currentUserId = GetCurrentUserId();

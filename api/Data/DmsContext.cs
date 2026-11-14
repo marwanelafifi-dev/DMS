@@ -29,6 +29,11 @@ public class DmsContext : DbContext
     public DbSet<DmsWorkflowStep> WorkflowSteps => Set<DmsWorkflowStep>();
     public DbSet<DmsReminder> Reminders => Set<DmsReminder>();
     public DbSet<DmsAuditCalendarEvent> AuditCalendarEvents => Set<DmsAuditCalendarEvent>();
+    public DbSet<DmsAuditCycle> AuditCycles => Set<DmsAuditCycle>();
+    public DbSet<DmsAuditRecord> AuditRecords => Set<DmsAuditRecord>();
+    public DbSet<DmsAuditChecklistItem> AuditChecklistItems => Set<DmsAuditChecklistItem>();
+    public DbSet<DmsEvidenceRequirement> EvidenceRequirements => Set<DmsEvidenceRequirement>();
+    public DbSet<DmsManagementReviewEntry> ManagementReviewEntries => Set<DmsManagementReviewEntry>();
     public DbSet<DmsUserCalendarConnection> UserCalendarConnections => Set<DmsUserCalendarConnection>();
     public DbSet<DmsUserCalendarEventSync> UserCalendarEventSyncs => Set<DmsUserCalendarEventSync>();
     public DbSet<DmsApproval> Approvals => Set<DmsApproval>();
@@ -42,6 +47,8 @@ public class DmsContext : DbContext
     public DbSet<DmsDropdownItem> DropdownItems => Set<DmsDropdownItem>();
     public DbSet<DmsNotification> Notifications => Set<DmsNotification>();
     public DbSet<DmsTaskAttachment> TaskAttachments => Set<DmsTaskAttachment>();
+    public DbSet<DmsEvidenceLink> EvidenceLinks => Set<DmsEvidenceLink>();
+    public DbSet<DmsEvidenceCycleAssignment> EvidenceCycleAssignments => Set<DmsEvidenceCycleAssignment>();
     public DbSet<DmsAppSetting> AppSettings => Set<DmsAppSetting>();
     public DbSet<DmsGoogleMeetingReminder> GoogleMeetingReminders => Set<DmsGoogleMeetingReminder>();
     public DbSet<DmsAnnouncement> Announcements => Set<DmsAnnouncement>();
@@ -86,6 +93,9 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsTask>()
             .Property(t => t.DueDate)
             .HasColumnType("date");
+        modelBuilder.Entity<DmsTask>()
+            .Property(t => t.AuditDate)
+            .HasColumnType("date");
 
         // === PRIMARY KEYS & TABLE NAMES (explicit configuration) ===
         modelBuilder.Entity<DmsUser>().ToTable("dms_users").HasKey(u => u.UserId);
@@ -110,6 +120,14 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsHistoricalPcar>().HasIndex(p => new { p.SourceSystem, p.LegacyRequestId }).IsUnique();
         modelBuilder.Entity<DmsReminder>().ToTable("dms_reminders").HasKey(r => r.ReminderId);
         modelBuilder.Entity<DmsAuditCalendarEvent>().ToTable("dms_audit_calendar_events").HasKey(e => e.EventId);
+        modelBuilder.Entity<DmsAuditCycle>().ToTable("dms_audit_cycles").HasKey(c => c.AuditCycleId);
+        modelBuilder.Entity<DmsAuditCycle>().Property(c => c.StartDate).HasColumnType("date");
+        modelBuilder.Entity<DmsAuditCycle>().Property(c => c.EndDate).HasColumnType("date");
+        modelBuilder.Entity<DmsAuditRecord>().ToTable("dms_audit_records").HasKey(a => a.AuditRecordId);
+        modelBuilder.Entity<DmsAuditRecord>().Property(a => a.AuditDate).HasColumnType("date");
+        modelBuilder.Entity<DmsEvidenceRequirement>().ToTable("dms_evidence_requirements").HasKey(e => e.EvidenceRequirementId);
+        modelBuilder.Entity<DmsManagementReviewEntry>().ToTable("dms_management_review_entries").HasKey(e => e.ManagementReviewEntryId);
+        modelBuilder.Entity<DmsManagementReviewEntry>().Property(e => e.DueDate).HasColumnType("date");
         modelBuilder.Entity<DmsUserCalendarConnection>().ToTable("dms_user_calendar_connections").HasKey(c => c.ConnectionId);
         modelBuilder.Entity<DmsUserCalendarEventSync>().ToTable("dms_user_calendar_event_syncs").HasKey(s => s.SyncId);
         modelBuilder.Entity<DmsAuditTrail>().ToTable("dms_audit_trails").HasKey(a => a.LogId);
@@ -124,6 +142,8 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsDropdownItem>().ToTable("dms_dropdown_items").HasKey(i => i.ItemId);
         modelBuilder.Entity<DmsNotification>().ToTable("dms_notifications").HasKey(n => n.NotificationId);
         modelBuilder.Entity<DmsTaskAttachment>().ToTable("dms_task_attachments").HasKey(a => a.AttachmentId);
+        modelBuilder.Entity<DmsEvidenceLink>().ToTable("dms_evidence_links").HasKey(l => l.EvidenceLinkId);
+        modelBuilder.Entity<DmsEvidenceCycleAssignment>().ToTable("dms_evidence_cycle_assignments").HasKey(a => a.DocumentId);
         modelBuilder.Entity<DmsAppSetting>().ToTable("dms_app_settings").HasKey(s => s.Key);
         modelBuilder.Entity<DmsGoogleMeetingReminder>().ToTable("dms_google_meeting_reminders").HasKey(r => r.ReminderId);
         modelBuilder.Entity<DmsAnnouncement>().ToTable("dms_announcements").HasKey(a => a.AnnouncementId);
