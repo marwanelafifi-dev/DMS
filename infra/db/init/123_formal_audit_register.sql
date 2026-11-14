@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS dms_audit_records (
   audit_cycle_id UUID NOT NULL REFERENCES dms_audit_cycles(audit_cycle_id) ON DELETE RESTRICT,
   standard VARCHAR(32) NOT NULL CHECK (standard IN ('ISO 9001:2015','ISO 27001:2022')),
   title VARCHAR(240) NOT NULL,
-  audit_type VARCHAR(32) NOT NULL CHECK (audit_type IN ('internal','external','supplier','follow_up')),
+  audit_type VARCHAR(32) NOT NULL CHECK (audit_type IN ('preparation','internal','management_review','external')),
   status VARCHAR(24) NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','in_progress','completed','cancelled')),
   audit_date DATE NOT NULL,
   scope TEXT NOT NULL,
