@@ -56,7 +56,7 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
     {
         if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Scope)) return "Audit title and scope are required";
         if (request.Standard is not ("ISO 9001:2015" or "ISO 27001:2022")) return "Select a supported ISO standard";
-        if (request.AuditType is not ("preparation" or "internal" or "external")) return "Select Preparation, Internal audit, or External audit";
+        if (request.AuditType is not ("preparation" or "internal" or "management_review" or "external")) return "Select Preparation, Internal audit, Management Review, or External audit";
         if (request.Status is not ("planned" or "in_progress" or "completed" or "cancelled")) return "Select a valid audit status";
         if (!await context.AuditCycles.AnyAsync(c => c.AuditCycleId == request.AuditCycleId && c.Standard == request.Standard)) return "The audit cycle does not match the selected standard";
         foreach (var documentId in new[] { request.AuditPlanDocumentId, request.AuditReportDocumentId }.Where(id => id.HasValue).Select(id => id!.Value).Distinct())
@@ -85,6 +85,7 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         {
             "preparation" => "preparation",
             "internal" => "internal_audit",
+            "management_review" => "management_review",
             "external" => "surveillance_audit",
             _ => null,
         };
@@ -100,8 +101,8 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
                 EventId = Guid.NewGuid(),
                 AuditCycleId = record.AuditCycleId,
                 StageKey = stageKey,
-                Title = $"{record.Title} — {stageKey switch { "preparation" => "Preparation", "internal_audit" => "Internal Audit", _ => "Surveillance Audit" }}",
-                Phase = stageKey switch { "preparation" => "Preparation", "internal_audit" => "Internal Audit", _ => "Surveillance Audit" },
+                Title = $"{record.Title} — {stageKey switch { "preparation" => "Preparation", "internal_audit" => "Internal Audit", "management_review" => "Management Review", _ => "Surveillance Audit" }}",
+                Phase = stageKey switch { "preparation" => "Preparation", "internal_audit" => "Internal Audit", "management_review" => "Management Review", _ => "Surveillance Audit" },
                 Standard = record.Standard,
                 EventDate = record.AuditDate,
                 ProgrammeYear = record.AuditDate.Year,
