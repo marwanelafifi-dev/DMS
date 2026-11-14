@@ -32,9 +32,6 @@ public class AuditPacksController(DmsContext context) : BaseController
                 column.Item().PaddingTop(10).Text("Findings and PCARs").FontSize(12).Bold();
                 if (pcars.Count == 0) column.Item().Text("No PCAR findings are linked to this audit.");
                 foreach (var pcar in pcars) column.Item().Border(1).BorderColor(Colors.Grey.Lighten1).Padding(6).Column(item => { item.Item().Text($"{pcar.FindingNumber ?? pcar.TaskNumber ?? "PCAR"} — {pcar.Title}").Bold(); item.Item().Text($"Severity: {pcar.FindingSeverity ?? "Not assessed"} · Clause: {pcar.StandardClause ?? "Not stated"} · Status: {pcar.Status}"); item.Item().Text(pcar.AuditorNotes ?? pcar.Description ?? "No objective evidence note recorded."); });
-                column.Item().PaddingTop(10).Text("Controlled documents").FontSize(12).Bold();
-                column.Item().Text($"Audit Plan document ID: {audit.AuditPlanDocumentId?.ToString() ?? "Not selected"}");
-                column.Item().Text($"Audit Report document ID: {audit.AuditReportDocumentId?.ToString() ?? "Not selected"}");
             });
             page.Footer().AlignCenter().Text(text => { text.Span("Controlled DMS export · "); text.CurrentPageNumber(); text.Span(" / "); text.TotalPages(); });
         })).GeneratePdf();

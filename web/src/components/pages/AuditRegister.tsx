@@ -34,8 +34,11 @@ function UserPicker({ label, hint, users, selected, onChange }: { label: string;
   return <fieldset className="md:col-span-2"><legend className="text-sm font-medium text-[#34425b] dark:text-slate-200">{label}</legend><p className="mt-1 text-xs text-[#718198]">{hint}</p><input value={query} onChange={event => setQuery(event.target.value)} className="field-control mt-3 h-10 w-full px-3" placeholder="Search name, email, or department" aria-label={`Search ${label}`} /><div className="mt-2 grid max-h-52 gap-1 overflow-y-auto rounded-[5px] border border-[#dbe2ec] bg-[#fbfdff] p-2 sm:grid-cols-2 dark:border-white/10 dark:bg-slate-950/30">{matches.length ? matches.map(user => <label key={user.userId} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm text-[#34425b] hover:bg-[#eef4fb] dark:text-slate-200 dark:hover:bg-slate-800"><input type="checkbox" checked={selected.includes(user.userId)} onChange={() => toggle(user.userId)} className="h-4 w-4 accent-[#2f6f9f]" /><span className="truncate">{user.fullName}</span>{user.department && <span className="ml-auto truncate text-xs text-[#718198]">{user.department}</span>}</label>) : <p className="col-span-2 px-2 py-3 text-sm text-[#718198]">No users match this search.</p>}</div>{selected.length > 0 && <p className="mt-2 text-xs font-medium text-[#2f6f9f]">{selected.length} selected</p>}</fieldset>;
 }
 
-function ControlledDocumentSelect({ label, value, documents, onChange }: { label: string; value: string; documents: any[]; onChange: (value: string) => void }) {
-  return <label className="text-sm font-medium text-[#34425b] dark:text-slate-200">{label}<select value={value} onChange={event => onChange(event.target.value)} className="field-control mt-1 h-10 w-full px-3"><option value="">No controlled document selected</option>{documents.map(document => <option key={document.documentId} value={document.documentId}>{document.title ?? document.name}</option>)}</select><span className="mt-1 block text-xs font-normal text-[#718198]">Select a controlled DMS file; no free-text reference is used.</span></label>;
+function ControlledDocumentSelect(_: { label: string; value: string; documents: any[]; onChange: (value: string) => void }) {
+  // Kept as a no-op for compatibility with existing records. Audit Plan/Report
+  // links are not part of the operational ISO journey and are intentionally
+  // no longer presented as fields Quality must manage.
+  return null;
 }
 
 export function AuditRegister({ stageContext, onCloseStageRecord, onSaved }: { stageContext?: JourneyStageContext; onCloseStageRecord?: () => void; onSaved?: () => void }) {
