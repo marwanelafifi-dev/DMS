@@ -247,30 +247,34 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {metrics.map((metric) => (
-          <button
-            key={metric.label}
-            onClick={metric.action}
-            className="text-left transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca] rounded-[4px]"
-            aria-label={`Navigate to ${metric.label}`}
-          >
-            <Card>
-              <CardBody className="p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-[#687a95] dark:text-slate-400">{metric.label}</div>
-                <div data-testid={`metric-${metric.label}`} className={`mt-2 text-[29px] font-semibold leading-none ${metric.valueClass}`}>{metric.value.toLocaleString()}</div>
-                <div className={`mt-3 text-xs ${metric.detailClass}`}>{metric.detail}</div>
-              </CardBody>
-            </Card>
-          </button>
-        ))}
-      </div>
+      <Card>
+        <CardBody className="p-0">
+          <div className="border-b border-[#e2e8f0] px-5 py-3 dark:border-white/10">
+            <h2 className="text-sm font-semibold text-[#26334d] dark:text-white">My work</h2>
+          </div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-5">
+            {metrics.map((metric, index) => (
+              <button
+                key={metric.label}
+                onClick={metric.action}
+                className={`min-w-0 px-5 py-4 text-left transition-colors hover:bg-[#f8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3f8bca] dark:hover:bg-white/5 ${index > 0 ? 'border-t border-[#e2e8f0] sm:border-t-0 sm:border-l dark:border-white/10' : ''} ${index === 2 ? 'xl:border-l' : ''}`}
+                aria-label={`Navigate to ${metric.label}`}
+              >
+                <p className="truncate text-xs font-medium uppercase tracking-wide text-[#687a95] dark:text-slate-400">{metric.label}</p>
+                <p data-testid={`metric-${metric.label}`} className={`mt-2 text-2xl font-semibold leading-none ${metric.valueClass}`}>{metric.value.toLocaleString()}</p>
+                <p className={`mt-2 truncate text-xs ${metric.detailClass}`}>{metric.detail}</p>
+              </button>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
 
       <IsoSurveillanceJourney
         openPcars={openPcars}
         overduePcars={overduePcars}
         onOpenPcars={() => navigate('/pcars')}
         onOpenDocuments={() => navigate('/documents')}
+        onOpenAudits={() => navigate('/audits')}
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(330px,0.85fr)]">

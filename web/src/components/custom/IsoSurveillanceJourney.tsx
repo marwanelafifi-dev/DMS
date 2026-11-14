@@ -1,4 +1,4 @@
-import { ArrowRight, BadgeCheck, ClipboardCheck, FileCheck2, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ArrowRight, BadgeCheck, CalendarDays, Check, ClipboardCheck, FileCheck2, ShieldCheck, TriangleAlert, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../../utils/api';
 import { Card, CardBody } from '../ui/Card';
@@ -9,108 +9,128 @@ interface IsoSurveillanceJourneyProps {
   overduePcars: number;
   onOpenPcars: () => void;
   onOpenDocuments: () => void;
+  onOpenAudits: () => void;
 }
 
-const phases = [
-  {
-    title: 'ISO 9001 preparation',
-    detail: 'Confirm controlled evidence, competence records, quality objectives, risks, and supplier controls.',
-    state: 'Current focus',
-    tone: 'current',
-  },
-  {
-    title: 'Internal Audit',
-    detail: 'Test the management system, retain objective evidence, and raise findings where required.',
-    state: 'Next',
-    tone: 'next',
-  },
-  {
-    title: 'Management Review',
-    detail: 'Review audit outcomes, performance, risks, CAPA effectiveness, and resulting actions.',
-    state: 'Planned',
-    tone: 'next',
-  },
-  {
-    title: 'External Surveillance Audit',
-    detail: 'Present the evidence pack and demonstrate effective operation of the QMS.',
-    state: 'Target: next 3 months',
-    tone: 'target',
-  },
+const stages = [
+  { key: 'preparation', title: 'Preparation', summary: 'Collect controlled evidence and confirm readiness.' },
+  { key: 'internal_audit', title: 'Internal Audit', summary: 'Test the QMS and record findings.' },
+  { key: 'management_review', title: 'Management Review', summary: 'Review outcomes, risks, and actions.' },
+  { key: 'surveillance_audit', title: 'Surveillance Audit', summary: 'Present the QMS to the external auditor.' },
 ] as const;
 
-export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, onOpenDocuments }: IsoSurveillanceJourneyProps) {
-  const [cycle, setCycle] = useState<any>(null); const [events, setEvents] = useState<any[]>([]);
-  useEffect(() => { Promise.all([apiClient.getAuditCycles(), apiClient.getAuditCalendarEvents()]).then(([cycles, calendar]) => { const active = (cycles.data ?? []).find((item: any) => item.standard === 'ISO 9001:2015' && item.status === 'active'); setCycle(active ?? null); setEvents((calendar.data ?? []).filter((item: any) => item.auditCycleId === active?.auditCycleId)); }).catch(() => { setCycle(null); setEvents([]); }); }, []);
-  const livePhases = useMemo(() => { const mapping: Record<string, string> = { preparation: 'ISO 9001 preparation', internal_audit: 'Internal Audit', management_review: 'Management Review', surveillance_audit: 'External Surveillance Audit' }; const status = (key: string) => events.find(event => event.stageKey === key); const current = ['preparation', 'internal_audit', 'management_review', 'surveillance_audit'].find(key => status(key)?.status !== 'completed') ?? 'surveillance_audit'; return phases.map((phase, index) => { const key = Object.keys(mapping).find(item => mapping[item] === phase.title)!; const item = status(key); const isCurrent = key === current; return { ...phase, state: item?.status === 'completed' ? 'Completed' : isCurrent ? 'Current focus' : item?.date ? 'Planned' : 'Not scheduled', tone: item?.status === 'completed' ? 'next' : isCurrent ? 'current' : 'next', detail: item?.date ? `${phase.detail} Target: ${item.date}${item.ownerName ? ` · Owner: ${item.ownerName}` : ''}` : phase.detail, index }; }); }, [events]);
-  return (
-    <Card className="overflow-hidden">
-      <CardBody className="p-0">
-        <div className="border-b border-[#dbe2ec] bg-[#f5f8fc] px-5 py-5 dark:border-white/10 dark:bg-[#142238]">
-          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
-            <div className="max-w-3xl">
-              <div className="flex items-center gap-2 text-[#174f91] dark:text-blue-200">
-                <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-                <h2 className="text-lg font-semibold tracking-[-0.01em]">ISO 9001:2015 Surveillance Journey</h2>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-[#52627a] dark:text-slate-300">
-                The active surveillance cycle is structured around readiness evidence, internal assurance, management review, and the external audit.
-              </p>
+const displayDate = (value?: string) => {
+  if (!value) return 'Date not set';
+  const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const statusLabel = (status?: string) => ({ completed: 'Completed', in_progress: 'In progress', planned: 'Planned' }[status ?? ''] ?? 'Not scheduled');
+
+export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, onOpenDocuments, onOpenAudits }: IsoSurveillanceJourneyProps) {
+  const [cycle, setCycle] = useState<any>(null);
+  const [events, setEvents] = useState<any[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([apiClient.getAuditCycles(), apiClient.getAuditCalendarEvents()])
+      .then(([cycles, calendar]) => {
+        if (cancelled) return;
+        const active = (cycles.data ?? []).find((item: any) => item.standard === 'ISO 9001:2015' && item.status === 'active');
+        setCycle(active ?? null);
+        setEvents((calendar.data ?? []).filter((item: any) => item.auditCycleId === active?.auditCycleId));
+      })
+      .catch(() => { if (!cancelled) { setCycle(null); setEvents([]); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  const journey = useMemo(() => {
+    const eventFor = (key: string) => events.find(event => event.stageKey === key);
+    const currentKey = stages.find(stage => eventFor(stage.key)?.status === 'in_progress')?.key
+      ?? stages.find(stage => eventFor(stage.key)?.status !== 'completed')?.key
+      ?? stages[stages.length - 1].key;
+    const currentIndex = stages.findIndex(stage => stage.key === currentKey);
+
+    return stages.map((stage, index) => {
+      const event = eventFor(stage.key);
+      const complete = event?.status === 'completed';
+      const current = stage.key === currentKey;
+      return {
+        ...stage,
+        event,
+        complete,
+        current,
+        next: !complete && !current && index > currentIndex,
+        status: statusLabel(event?.status),
+      };
+    });
+  }, [events]);
+
+  const current = journey.find(stage => stage.current) ?? journey[0];
+  const actionIsAudit = current?.key === 'internal_audit' || current?.key === 'surveillance_audit';
+  const currentAction = actionIsAudit ? onOpenAudits : onOpenDocuments;
+  const currentActionLabel = actionIsAudit ? `Open ${current.title}` : 'Open evidence library';
+  const completedCount = journey.filter(stage => stage.complete).length;
+
+  return <Card className="overflow-hidden">
+    <CardBody className="p-0">
+      <div className="border-b border-[#dbe2ec] bg-[#f8fafc] px-5 py-5 dark:border-white/10 dark:bg-slate-900/70 sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-[#174f91] dark:text-blue-200"><ShieldCheck className="h-5 w-5" aria-hidden="true" /><h2 className="text-lg font-semibold tracking-[-0.01em]">ISO 9001 Surveillance</h2></div>
+            <p className="mt-1.5 text-sm text-[#52627a] dark:text-slate-300">{cycle?.name ?? 'No active ISO 9001 cycle'}</p>
+          </div>
+          <div className="text-sm lg:text-right">
+            <p className="font-semibold text-[#26334d] dark:text-white">{cycle ? `${displayDate(cycle.startDate)} – ${displayDate(cycle.endDate)}` : 'Configure a cycle in Admin Panel'}</p>
+            <p className="mt-1 text-xs text-[#718198] dark:text-slate-400">{completedCount} of {journey.length} major stages complete</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-[minmax(0,1.45fr)_minmax(17rem,.7fr)]">
+        <section className="px-5 py-6 sm:px-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#1763a5] dark:text-blue-300">Current focus</p>
+          <div className="mt-2 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+            <div>
+              <h3 className="text-2xl font-semibold tracking-[-0.025em] text-[#26334d] dark:text-white">{current.title}</h3>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-[#52627a] dark:text-slate-300">{current.summary}</p>
             </div>
-            <div className="border-t border-[#cfdbe9] pt-3 text-sm lg:min-w-[15rem] lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0 dark:border-white/15">
-              <p className="font-semibold text-[#26334d] dark:text-white">{cycle?.name ?? 'No active ISO 9001 cycle'}</p>
-              <p className="mt-1 text-[#52627a] dark:text-slate-300">{cycle ? `${cycle.startDate} to ${cycle.endDate}` : 'Configure the cycle in Admin Panel'}</p>
-            </div>
+            <Button onClick={currentAction} rightIcon={<ArrowRight className="h-4 w-4" />}>{currentActionLabel}</Button>
           </div>
-        </div>
+          <div className="mt-6 grid gap-3 border-t border-[#e2e8f0] pt-4 sm:grid-cols-3 dark:border-white/10">
+            <div className="flex items-start gap-2.5"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-[#3f8bca]" /><div><p className="text-xs text-[#718198]">Target date</p><p className="mt-0.5 text-sm font-medium text-[#26334d] dark:text-white">{displayDate(current.event?.eventDate)}</p></div></div>
+            <div className="flex items-start gap-2.5"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-[#3f8bca]" /><div><p className="text-xs text-[#718198]">Accountable owner</p><p className="mt-0.5 text-sm font-medium text-[#26334d] dark:text-white">{current.event?.ownerName ?? 'Not assigned'}</p></div></div>
+            <div className="flex items-start gap-2.5"><FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-[#3f8bca]" /><div><p className="text-xs text-[#718198]">Stage status</p><p className="mt-0.5 text-sm font-medium text-[#26334d] dark:text-white">{current.status}</p></div></div>
+          </div>
+        </section>
 
-        <div className="grid border-b border-[#e2e8f0] sm:grid-cols-3 dark:border-white/10">
-          <div className="px-5 py-4 sm:border-r sm:border-[#e2e8f0] dark:sm:border-white/10">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">Certificate</p>
-            <p className="mt-1 font-medium text-[#26334d] dark:text-white">No. 00.12.1041 · EUROCERT S.A.</p>
+        <aside className="border-t border-[#e2e8f0] bg-[#fbfdff] px-5 py-6 dark:border-white/10 dark:bg-slate-950/20 lg:border-l lg:border-t-0 sm:px-6">
+          <h3 className="text-sm font-semibold text-[#26334d] dark:text-white">Readiness checks</h3>
+          <p className="mt-1 text-xs leading-5 text-[#718198]">Resolve these before the surveillance audit.</p>
+          <div className="mt-4 divide-y divide-[#e2e8f0] border-y border-[#e2e8f0] dark:divide-white/10 dark:border-white/10">
+            <button onClick={onOpenPcars} className="flex w-full items-center justify-between gap-4 py-3 text-left hover:text-[#1763a5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]">
+              <span className="flex items-center gap-2 text-sm font-medium text-[#26334d] dark:text-white"><ClipboardCheck className="h-4 w-4 text-[#3f8bca]" />Open PCARs</span>
+              <span className={overduePcars > 0 ? 'text-sm font-semibold text-[#c73c44]' : 'text-sm font-semibold text-[#26334d] dark:text-white'}>{openPcars}{overduePcars > 0 ? ` · ${overduePcars} overdue` : ''}</span>
+            </button>
+            <button onClick={onOpenDocuments} className="flex w-full items-center justify-between gap-4 py-3 text-left hover:text-[#1763a5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]">
+              <span className="flex items-center gap-2 text-sm font-medium text-[#26334d] dark:text-white"><BadgeCheck className="h-4 w-4 text-[#3f8bca]" />Evidence library</span>
+              <span className="text-xs font-semibold text-[#1763a5]">Review</span>
+            </button>
           </div>
-          <div className="border-t border-[#e2e8f0] px-5 py-4 sm:border-r sm:border-t-0 sm:border-[#e2e8f0] dark:border-white/10 dark:sm:border-white/10">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">Certificate cycle</p>
-            <p className="mt-1 font-medium text-[#26334d] dark:text-white">25 Feb 2026 – 05 Feb 2029</p>
-          </div>
-          <div className="border-t border-[#e2e8f0] px-5 py-4 sm:border-t-0 dark:border-white/10">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#718198] dark:text-slate-400">Certified scope</p>
-            <p className="mt-1 font-medium leading-5 text-[#26334d] dark:text-white">Design, development &amp; supply of sensing solutions and sensor-management software</p>
-          </div>
-        </div>
+        </aside>
+      </div>
 
-        <div className="px-5 py-6">
-          <ol className="grid gap-0 lg:grid-cols-4" aria-label="ISO 9001 surveillance workflow">
-            {livePhases.map((phase, index) => (
-              <li key={phase.title} className="relative flex gap-3 pb-5 last:pb-0 lg:block lg:pb-0 lg:pr-5">
-                {index < phases.length - 1 && <div className="absolute left-[9px] top-5 h-[calc(100%-16px)] w-px bg-[#cbd8e6] lg:left-5 lg:top-[19px] lg:h-px lg:w-[calc(100%-24px)] dark:bg-white/20" aria-hidden="true" />}
-                <div className={`relative z-10 mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 lg:mb-4 ${phase.tone === 'current' ? 'border-[#1f6caf] bg-[#1f6caf] text-white' : phase.tone === 'target' ? 'border-[#c27a12] bg-[#fff7e6] text-[#a86100] dark:bg-amber-500/15 dark:text-amber-300' : 'border-[#98abc0] bg-white text-[#52627a] dark:border-slate-500 dark:bg-slate-900 dark:text-slate-300'}`}>
-                  {phase.tone === 'current' ? <FileCheck2 className="h-3 w-3" /> : <span className="text-[10px] font-bold">{index + 1}</span>}
-                </div>
-                <div className="min-w-0 lg:pr-4">
-                  <p className={`text-xs font-semibold ${phase.tone === 'current' ? 'text-[#1763a5] dark:text-blue-300' : phase.tone === 'target' ? 'text-[#a86100] dark:text-amber-300' : 'text-[#718198] dark:text-slate-400'}`}>{phase.state}</p>
-                  <h3 className="mt-1 text-sm font-semibold text-[#26334d] dark:text-white">{phase.title}</h3>
-                  <p className="mt-1.5 text-xs leading-5 text-[#64748b] dark:text-slate-400">{phase.detail}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        <div className="grid gap-px border-t border-[#dbe2ec] bg-[#dbe2ec] sm:grid-cols-[1fr_1fr_auto] dark:border-white/10 dark:bg-white/10">
-          <button onClick={onOpenPcars} className="group bg-white px-5 py-4 text-left transition-colors hover:bg-[#f8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3f8bca] dark:bg-slate-900 dark:hover:bg-white/5">
-            <div className="flex items-center gap-2 text-[#52627a] dark:text-slate-300"><ClipboardCheck className="h-4 w-4 text-[#3f8bca]" /><span className="text-sm font-medium">My open PCAR findings</span></div>
-            <p className={`mt-1 text-sm ${overduePcars > 0 ? 'font-semibold text-[#c73c44] dark:text-red-300' : 'text-[#26334d] dark:text-white'}`}>{openPcars} open{overduePcars > 0 ? ` · ${overduePcars} overdue` : ' · review evidence and closure actions'}</p>
-          </button>
-          <button onClick={onOpenDocuments} className="group bg-white px-5 py-4 text-left transition-colors hover:bg-[#f8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3f8bca] dark:bg-slate-900 dark:hover:bg-white/5">
-            <div className="flex items-center gap-2 text-[#52627a] dark:text-slate-300"><BadgeCheck className="h-4 w-4 text-[#3f8bca]" /><span className="text-sm font-medium">Evidence preparation</span></div>
-            <p className="mt-1 text-sm text-[#26334d] dark:text-white">Review released procedures, records, and audit evidence</p>
-          </button>
-          <div className="flex items-center justify-start bg-white px-5 py-4 sm:justify-end dark:bg-slate-900">
-            <Button size="sm" variant="secondary" onClick={onOpenDocuments} rightIcon={<ArrowRight className="h-4 w-4" />}>Open documents</Button>
-          </div>
-        </div>
-        {overduePcars > 0 && <div className="flex items-center gap-2 border-t border-[#f0c9cc] bg-[#fff6f6] px-5 py-3 text-sm text-[#9f3038] dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-200"><TriangleAlert className="h-4 w-4 shrink-0" />Overdue PCAR findings may block surveillance readiness. Review and update their evidence before the internal audit.</div>}
-      </CardBody>
-    </Card>
-  );
+      <section className="border-t border-[#dbe2ec] px-5 py-5 sm:px-6 dark:border-white/10">
+        <div className="flex items-center justify-between gap-4"><h3 className="text-sm font-semibold text-[#26334d] dark:text-white">Journey timeline</h3><p className="text-xs text-[#718198]">Live status from the active cycle</p></div>
+        <ol className="mt-4 grid gap-3 md:grid-cols-4" aria-label="ISO 9001 surveillance workflow">
+          {journey.map((stage, index) => <li key={stage.key} className={`min-w-0 border-t-2 pt-3 ${stage.current ? 'border-[#1f6caf]' : stage.complete ? 'border-[#57a87b]' : 'border-[#d7e0eb] dark:border-slate-700'}`}>
+            <div className="flex items-center gap-2"><span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${stage.complete ? 'bg-[#e8f6ee] text-[#24734a] dark:bg-emerald-500/15 dark:text-emerald-300' : stage.current ? 'bg-[#1763a5] text-white' : 'bg-[#eef2f6] text-[#64748b] dark:bg-slate-800 dark:text-slate-300'}`}>{stage.complete ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className={`text-xs font-semibold ${stage.current ? 'text-[#1763a5] dark:text-blue-300' : 'text-[#718198]'}`}>{stage.status}</span></div>
+            <p className="mt-2 text-sm font-semibold text-[#26334d] dark:text-white">{stage.title}</p>
+            <p className="mt-1 text-xs text-[#718198]">{stage.event?.eventDate ? displayDate(stage.event.eventDate) : 'Date not set'}</p>
+          </li>)}
+        </ol>
+      </section>
+      {overduePcars > 0 && <div className="flex items-center gap-2 border-t border-[#f0c9cc] bg-[#fff6f6] px-5 py-3 text-sm text-[#9f3038] dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-200"><TriangleAlert className="h-4 w-4 shrink-0" />{overduePcars} overdue PCAR finding{overduePcars === 1 ? '' : 's'} may block surveillance readiness.</div>}
+    </CardBody>
+  </Card>;
 }
