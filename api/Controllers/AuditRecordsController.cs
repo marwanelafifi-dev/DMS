@@ -39,6 +39,10 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         context.AuditRecords.Add(record);
         await SyncJourneyStageAsync(record, userId);
         await context.SaveChangesAsync();
+        // Creating a planned/in-progress/completed record is the first status
+        // event for its participants. Treat it exactly like a later status
+        // update so they never miss the beginning of their stage.
+        await NotifyStatusChangeAsync(record, userId);
         return Ok(new { success = true, data = record });
     }
 
