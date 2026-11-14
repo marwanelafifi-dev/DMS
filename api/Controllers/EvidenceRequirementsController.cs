@@ -15,12 +15,13 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
     {
         var userId = GetCurrentUserId();
         var raw = await context.EvidenceRequirements.AsNoTracking().Where(requirement => requirement.AuditCycleId == auditCycleId)
-            .Join(context.Documents.AsNoTracking(), requirement => requirement.RelatedDocumentId, document => document.DocumentId, (requirement, document) => new { requirement.EvidenceRequirementId, requirement.AuditCycleId, requirement.Standard, requirement.RelatedDocumentId, DocumentTitle = document.Title, document.FolderId }).ToListAsync();
+            .Join(context.Documents.AsNoTracking(), requirement => requirement.RelatedDocumentId, document => document.DocumentId, (requirement, document) => new { requirement, document })
+            .Join(context.Folders.AsNoTracking(), item => item.document.FolderId, folder => folder.FolderId, (item, folder) => new { item.requirement.EvidenceRequirementId, item.requirement.AuditCycleId, item.requirement.Standard, item.requirement.RelatedDocumentId, DocumentTitle = item.document.Title, item.document.FolderId, FolderName = folder.Name }).ToListAsync();
         var linkedDocumentIds = await context.EvidenceLinks.AsNoTracking().Where(link => link.AuditCycleId == auditCycleId).Select(link => link.RelatedDocumentId).Distinct().ToListAsync();
         var visible = new List<object>();
         foreach (var item in raw)
             if (await accessOverrideService.HasDocumentReadAccessAsync(userId, item.RelatedDocumentId, item.FolderId))
-                visible.Add(new { item.EvidenceRequirementId, item.AuditCycleId, item.Standard, item.RelatedDocumentId, item.DocumentTitle, item.FolderId, HasEvidence = linkedDocumentIds.Contains(item.RelatedDocumentId) });
+                visible.Add(new { item.EvidenceRequirementId, item.AuditCycleId, item.Standard, item.RelatedDocumentId, item.DocumentTitle, item.FolderId, item.FolderName, HasEvidence = linkedDocumentIds.Contains(item.RelatedDocumentId) });
         return Ok(new { success = true, data = visible });
     }
 
@@ -39,6 +40,56 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
         var item = new DmsEvidenceRequirement { EvidenceRequirementId = Guid.NewGuid(), AuditCycleId = request.AuditCycleId, Standard = request.Standard, RelatedDocumentId = request.RelatedDocumentId, CreatedBy = userId, CreatedAt = DateTime.UtcNow };
         context.EvidenceRequirements.Add(item); await context.SaveChangesAsync();
         return Ok(new { success = true, data = item });
+    }
+
+    [HttpPost("folders")]
+    public async Task<ActionResult<object>> CreateForFolders([FromBody] EvidenceRequirementFolderRequest request)
+    {
+        var userId = GetCurrentUserId();
+        if ((await GetPageAccessRoleAsync(context, userId))?.CanCreatePcars != true) return Forbid();
+        if (request.FolderIds == null || request.FolderIds.Length == 0) return BadRequest(new { success = false, error = "Select at least one process folder" });
+        if (request.FolderIds.Length > 100) return BadRequest(new { success = false, error = "Select no more than 100 process folders at a time" });
+        if (!await context.AuditCycles.AnyAsync(cycle => cycle.AuditCycleId == request.AuditCycleId && cycle.Standard == request.Standard)) return BadRequest(new { success = false, error = "Select a valid audit cycle" });
+
+        var folderIds = request.FolderIds.Distinct().ToArray();
+        var folders = await context.Folders.AsNoTracking().Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name }).ToListAsync();
+        var paths = folders.ToDictionary(folder => folder.FolderId, folder => (folder.ParentFolderId, folder.Name));
+        foreach (var folderId in folderIds)
+        {
+            if (!paths.ContainsKey(folderId) || !await accessOverrideService.HasFolderReadAccessAsync(userId, folderId))
+                return BadRequest(new { success = false, error = "One or more selected process folders are unavailable" });
+            if (ResolveStandard(folderId, paths) != request.Standard)
+                return BadRequest(new { success = false, error = "Each selected folder must be inside the selected ISO standard's Procedures area, not an Evidences or OLD DMS folder" });
+        }
+
+        var documents = await context.Documents.AsNoTracking()
+            .Where(document => folderIds.Contains(document.FolderId) && document.DeletedAt == null && (document.Category == null || document.Category != "Evidence"))
+            .Select(document => new { document.DocumentId, document.FolderId })
+            .ToListAsync();
+        var accessibleDocuments = new List<(Guid DocumentId, Guid FolderId)>();
+        foreach (var document in documents)
+            if (await accessOverrideService.HasDocumentReadAccessAsync(userId, document.DocumentId, document.FolderId))
+                accessibleDocuments.Add((document.DocumentId, document.FolderId));
+
+        var accessibleDocumentIds = accessibleDocuments.Select(document => document.DocumentId).ToArray();
+        var existingDocumentIds = await context.EvidenceRequirements.AsNoTracking()
+            .Where(requirement => requirement.AuditCycleId == request.AuditCycleId && accessibleDocumentIds.Contains(requirement.RelatedDocumentId))
+            .Select(requirement => requirement.RelatedDocumentId)
+            .ToListAsync();
+        var newDocumentIds = accessibleDocuments.Select(document => document.DocumentId).Except(existingDocumentIds).ToArray();
+        context.EvidenceRequirements.AddRange(newDocumentIds.Select(documentId => new DmsEvidenceRequirement
+        {
+            EvidenceRequirementId = Guid.NewGuid(), AuditCycleId = request.AuditCycleId, Standard = request.Standard,
+            RelatedDocumentId = documentId, CreatedBy = userId, CreatedAt = DateTime.UtcNow,
+        }));
+        if (newDocumentIds.Length > 0) await context.SaveChangesAsync();
+
+        var foldersWithoutDocuments = folderIds.Where(folderId => accessibleDocuments.All(document => document.FolderId != folderId)).ToArray();
+        return Ok(new
+        {
+            success = true,
+            data = new { added = newDocumentIds.Length, alreadyRequired = existingDocumentIds.Count, foldersWithoutControlledDocuments = foldersWithoutDocuments },
+        });
     }
 
     [HttpDelete("{id:guid}")]
@@ -61,3 +112,4 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
 }
 
 public record EvidenceRequirementRequest(Guid AuditCycleId, string Standard, Guid RelatedDocumentId);
+public record EvidenceRequirementFolderRequest(Guid AuditCycleId, string Standard, Guid[] FolderIds);
