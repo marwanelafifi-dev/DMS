@@ -1,4 +1,6 @@
 import { ArrowRight, BadgeCheck, ClipboardCheck, FileCheck2, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { apiClient } from '../../utils/api';
 import { Card, CardBody } from '../ui/Card';
 import { Button } from '../ui/Button';
 
@@ -37,6 +39,9 @@ const phases = [
 ] as const;
 
 export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, onOpenDocuments }: IsoSurveillanceJourneyProps) {
+  const [cycle, setCycle] = useState<any>(null); const [events, setEvents] = useState<any[]>([]);
+  useEffect(() => { Promise.all([apiClient.getAuditCycles(), apiClient.getAuditCalendarEvents()]).then(([cycles, calendar]) => { const active = (cycles.data ?? []).find((item: any) => item.standard === 'ISO 9001:2015' && item.status === 'active'); setCycle(active ?? null); setEvents((calendar.data ?? []).filter((item: any) => item.auditCycleId === active?.auditCycleId)); }).catch(() => { setCycle(null); setEvents([]); }); }, []);
+  const livePhases = useMemo(() => { const mapping: Record<string, string> = { preparation: 'ISO 9001 preparation', internal_audit: 'Internal Audit', management_review: 'Management Review', surveillance_audit: 'External Surveillance Audit' }; const status = (key: string) => events.find(event => event.stageKey === key); const current = ['preparation', 'internal_audit', 'management_review', 'surveillance_audit'].find(key => status(key)?.status !== 'completed') ?? 'surveillance_audit'; return phases.map((phase, index) => { const key = Object.keys(mapping).find(item => mapping[item] === phase.title)!; const item = status(key); const isCurrent = key === current; return { ...phase, state: item?.status === 'completed' ? 'Completed' : isCurrent ? 'Current focus' : item?.date ? 'Planned' : 'Not scheduled', tone: item?.status === 'completed' ? 'next' : isCurrent ? 'current' : 'next', detail: item?.date ? `${phase.detail} Target: ${item.date}${item.ownerName ? ` · Owner: ${item.ownerName}` : ''}` : phase.detail, index }; }); }, [events]);
   return (
     <Card className="overflow-hidden">
       <CardBody className="p-0">
@@ -52,8 +57,8 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
               </p>
             </div>
             <div className="border-t border-[#cfdbe9] pt-3 text-sm lg:min-w-[15rem] lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0 dark:border-white/15">
-              <p className="font-semibold text-[#26334d] dark:text-white">External audit date to be confirmed</p>
-              <p className="mt-1 text-[#52627a] dark:text-slate-300">Preparation window: next 3 months</p>
+              <p className="font-semibold text-[#26334d] dark:text-white">{cycle?.name ?? 'No active ISO 9001 cycle'}</p>
+              <p className="mt-1 text-[#52627a] dark:text-slate-300">{cycle ? `${cycle.startDate} to ${cycle.endDate}` : 'Configure the cycle in Admin Panel'}</p>
             </div>
           </div>
         </div>
@@ -75,7 +80,7 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
 
         <div className="px-5 py-6">
           <ol className="grid gap-0 lg:grid-cols-4" aria-label="ISO 9001 surveillance workflow">
-            {phases.map((phase, index) => (
+            {livePhases.map((phase, index) => (
               <li key={phase.title} className="relative flex gap-3 pb-5 last:pb-0 lg:block lg:pb-0 lg:pr-5">
                 {index < phases.length - 1 && <div className="absolute left-[9px] top-5 h-[calc(100%-16px)] w-px bg-[#cbd8e6] lg:left-5 lg:top-[19px] lg:h-px lg:w-[calc(100%-24px)] dark:bg-white/20" aria-hidden="true" />}
                 <div className={`relative z-10 mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 lg:mb-4 ${phase.tone === 'current' ? 'border-[#1f6caf] bg-[#1f6caf] text-white' : phase.tone === 'target' ? 'border-[#c27a12] bg-[#fff7e6] text-[#a86100] dark:bg-amber-500/15 dark:text-amber-300' : 'border-[#98abc0] bg-white text-[#52627a] dark:border-slate-500 dark:bg-slate-900 dark:text-slate-300'}`}>
