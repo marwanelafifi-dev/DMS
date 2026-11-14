@@ -4,6 +4,7 @@ export interface User {
   fullName: string;
   email: string;
   role: string | null;
+  department?: string | null;
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;

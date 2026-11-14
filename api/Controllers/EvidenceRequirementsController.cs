@@ -15,13 +15,18 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
     {
         var userId = GetCurrentUserId();
         var raw = await context.EvidenceRequirements.AsNoTracking().Where(requirement => requirement.AuditCycleId == auditCycleId)
-            .Join(context.Documents.AsNoTracking(), requirement => requirement.RelatedDocumentId, document => document.DocumentId, (requirement, document) => new { requirement, document })
-            .Join(context.Folders.AsNoTracking(), item => item.document.FolderId, folder => folder.FolderId, (item, folder) => new { item.requirement.EvidenceRequirementId, item.requirement.AuditCycleId, item.requirement.Standard, item.requirement.RelatedDocumentId, DocumentTitle = item.document.Title, item.document.FolderId, FolderName = folder.Name }).ToListAsync();
-        var linkedDocumentIds = await context.EvidenceLinks.AsNoTracking().Where(link => link.AuditCycleId == auditCycleId).Select(link => link.RelatedDocumentId).Distinct().ToListAsync();
+            .Join(context.Documents.AsNoTracking().Where(document => document.DeletedAt == null), requirement => requirement.RelatedDocumentId, document => document.DocumentId, (requirement, document) => new { requirement, document })
+            .Join(context.Folders.AsNoTracking(), item => item.document.FolderId, folder => folder.FolderId,
+                (item, folder) => new { item.requirement.EvidenceRequirementId, item.requirement.AuditCycleId, item.requirement.Standard, item.requirement.RelatedDocumentId, DocumentTitle = item.document.Title, item.document.FolderId, FolderName = folder.Name, DocumentOwnerId = item.document.OwnerId, DocumentDepartment = item.document.Department, FolderDepartment = folder.Department }).ToListAsync();
+        var linkedDocumentIds = await context.EvidenceLinks.AsNoTracking()
+            .Where(link => link.AuditCycleId == auditCycleId && context.Documents.Any(document => document.DocumentId == link.EvidenceDocumentId && document.DeletedAt == null) && context.EvidenceVersionCycleAssignments.Any(assignment =>
+                assignment.DocumentId == link.EvidenceDocumentId && assignment.AuditCycleId == auditCycleId &&
+                context.DocumentVersions.Any(version => version.VersionId == assignment.VersionId && version.DeletedAt == null)))
+            .Select(link => link.RelatedDocumentId).Distinct().ToListAsync();
         var visible = new List<object>();
         foreach (var item in raw)
             if (await accessOverrideService.HasDocumentReadAccessAsync(userId, item.RelatedDocumentId, item.FolderId))
-                visible.Add(new { item.EvidenceRequirementId, item.AuditCycleId, item.Standard, item.RelatedDocumentId, item.DocumentTitle, item.FolderId, item.FolderName, HasEvidence = linkedDocumentIds.Contains(item.RelatedDocumentId) });
+                visible.Add(new { item.EvidenceRequirementId, item.AuditCycleId, item.Standard, item.RelatedDocumentId, item.DocumentTitle, item.FolderId, item.FolderName, item.DocumentOwnerId, item.DocumentDepartment, item.FolderDepartment, HasEvidence = linkedDocumentIds.Contains(item.RelatedDocumentId) });
         return Ok(new { success = true, data = visible });
     }
 

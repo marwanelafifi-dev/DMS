@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, ClipboardCheck, FileCheck2, Printer, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { apiClient } from '../../utils/api';
-import type { Document, Task } from '../../types';
+import type { Task, User } from '../../types';
+import type { ReadinessEvidence, ReadinessRequirement } from '../../utils/isoDepartmentReadiness';
 import { Card, CardBody } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SkeletonCard } from '../ui/Skeleton';
+import { DepartmentReadinessPanel } from './DepartmentReadinessPanel';
 
 const isClosed = (task: Task) => task.status === 'done' || task.status === 'completed';
-const isIsoEvidenceCandidate = (document: Document) => document.category === 'Evidence' || document.tags?.some((tag) => tag.toLowerCase() === 'evidence');
 const isOverdue = (task: Task) => {
   if (!task.dueDate) return false;
   const due = new Date(task.dueDate);
@@ -29,29 +30,43 @@ async function loadVisibleTasks(): Promise<Task[]> {
 export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9001:2015' | 'ISO 27001:2022' }) {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [coverageItems, setCoverageItems] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [documents, setDocuments] = useState<ReadinessEvidence[]>([]);
+  const [coverageItems, setCoverageItems] = useState<ReadinessRequirement[]>([]);
   const [reviewEntries, setReviewEntries] = useState<any[]>([]);
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [cycleLoadError, setCycleLoadError] = useState(false);
   const [tasksLoadError, setTasksLoadError] = useState(false);
+  const [usersLoadError, setUsersLoadError] = useState(false);
+  const [evidenceLoadError, setEvidenceLoadError] = useState(false);
+  const [coverageLoadError, setCoverageLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([loadVisibleTasks(), apiClient.getIsoEvidence({ standard }), apiClient.getAuditCycles()])
-      .then(async ([taskResult, documentResult, cycleResult]) => {
+    setIsLoading(true);
+    Promise.allSettled([loadVisibleTasks(), apiClient.getAuditCycles(), apiClient.getUsers({ activeOnly: false })])
+      .then(async ([taskResult, cycleResult, userResult]) => {
         if (cancelled) return;
         setTasks(taskResult.status === 'fulfilled' ? taskResult.value : []);
         setTasksLoadError(taskResult.status === 'rejected');
-        setCycleLoadError(cycleResult.status === 'rejected');
-        setDocuments(documentResult.status === 'fulfilled' && Array.isArray(documentResult.value.data) ? documentResult.value.data as Document[] : []);
-        const activeCycle = cycleResult.status === 'fulfilled' ? (cycleResult.value.data ?? []).find((cycle: any) => cycle.standard === standard && cycle.status === 'active') : null;
+        const cycles = cycleResult.status === 'fulfilled' && Array.isArray(cycleResult.value.data) ? cycleResult.value.data : null;
+        setCycleLoadError(cycles === null);
+        setUsers(userResult.status === 'fulfilled' && Array.isArray(userResult.value.data) ? userResult.value.data as User[] : []);
+        setUsersLoadError(userResult.status === 'rejected' || !Array.isArray(userResult.value.data));
+        const activeCycle = cycles?.find((cycle: any) => cycle.standard === standard && cycle.status === 'active');
         setActiveCycleId(activeCycle?.auditCycleId ?? null);
-        if (activeCycle) {
-          const [coverageResult, reviewResult] = await Promise.all([apiClient.getEvidenceRequirements(activeCycle.auditCycleId).catch(() => ({ data: [] })), apiClient.getManagementReviewEntries({ auditCycleId: activeCycle.auditCycleId }).catch(() => ({ data: [] }))]);
-          if (!cancelled) { setCoverageItems(coverageResult.data ?? []); setReviewEntries(reviewResult.data ?? []); }
-        } else { setCoverageItems([]); setReviewEntries([]); }
+        const [documentResult, coverageResult, reviewResult] = await Promise.allSettled([
+          apiClient.getIsoEvidence({ standard, auditCycleId: activeCycle?.auditCycleId }),
+          activeCycle ? apiClient.getEvidenceRequirements(activeCycle.auditCycleId) : Promise.resolve({ data: [] }),
+          activeCycle ? apiClient.getManagementReviewEntries({ auditCycleId: activeCycle.auditCycleId }) : Promise.resolve({ data: [] }),
+        ]);
+        if (cancelled) return;
+        setDocuments(documentResult.status === 'fulfilled' && Array.isArray(documentResult.value.data) ? documentResult.value.data as ReadinessEvidence[] : []);
+        setEvidenceLoadError(documentResult.status === 'rejected' || !Array.isArray(documentResult.value.data));
+        setCoverageItems(coverageResult.status === 'fulfilled' && Array.isArray(coverageResult.value.data) ? coverageResult.value.data as ReadinessRequirement[] : []);
+        setCoverageLoadError(coverageResult.status === 'rejected' || !Array.isArray(coverageResult.value.data));
+        setReviewEntries(reviewResult.status === 'fulfilled' && Array.isArray(reviewResult.value.data) ? reviewResult.value.data : []);
       })
       .finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
@@ -62,8 +77,7 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
   const overduePcars = openPcars.filter(isOverdue);
   const openTasks = tasks.filter((task) => task.taskType !== 'pcar' && !isClosed(task));
   const overdueTasks = openTasks.filter(isOverdue);
-  const evidenceCandidates = documents.filter(isIsoEvidenceCandidate);
-  const activeEvidence = evidenceCandidates.filter((document) => (document as Document & { isAssignedToSelectedCycle?: boolean }).isAssignedToSelectedCycle === true);
+  const activeEvidence = documents.filter((document) => document.isAssignedToSelectedCycle === true);
   const missingCoverage = coverageItems.filter(item => !item.hasEvidence);
   const reviewCount = (category: string) => reviewEntries.filter(entry => entry.category === category).length;
 
@@ -84,8 +98,8 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
           <div className="grid divide-y divide-[#dbe2ec] sm:grid-cols-4 sm:divide-x sm:divide-y-0 dark:divide-white/10">
             <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Open cycle PCARs</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{tasksLoadError || !activeCycleId ? '—' : openPcars.length}</p><button onClick={() => navigate('/pcars')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open PCAR register</button></div>
             <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Unfinished DMS tasks</p><p className={`mt-1 text-2xl font-semibold ${overdueTasks.length ? 'text-[#c73c44]' : 'text-[#26334d] dark:text-white'}`}>{tasksLoadError ? '—' : openTasks.length}</p><button onClick={() => navigate('/tasks')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open task list</button></div>
-            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Active-cycle evidence</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{activeEvidence.length}</p><button onClick={() => navigate('/documents')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open controlled documents</button></div>
-            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Processes without evidence</p><p className={`mt-1 text-2xl font-semibold ${missingCoverage.length ? 'text-[#c27a12]' : 'text-[#319d68]'}`}>{missingCoverage.length}</p><button onClick={() => navigate('/evidence-coverage')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Review coverage rules</button></div>
+            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Active-cycle evidence</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{evidenceLoadError || !activeCycleId ? '—' : activeEvidence.length}</p><button onClick={() => navigate('/documents')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open controlled documents</button></div>
+            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Processes without evidence</p><p className={`mt-1 text-2xl font-semibold ${missingCoverage.length ? 'text-[#c27a12]' : 'text-[#26334d] dark:text-white'}`}>{coverageLoadError || !activeCycleId || coverageItems.length === 0 ? '—' : missingCoverage.length}</p><button onClick={() => navigate('/evidence-coverage')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">{coverageItems.length ? 'Review coverage rules' : 'Configure coverage rules'}</button></div>
           </div>
         </CardBody>
       </Card>
@@ -112,6 +126,16 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
           )}
         </CardBody>
       </Card>
+
+      <DepartmentReadinessPanel
+        users={users}
+        tasks={tasks}
+        evidence={documents}
+        requirements={coverageItems}
+        standard={standard}
+        activeCycleId={activeCycleId}
+        loadError={cycleLoadError || tasksLoadError || usersLoadError || evidenceLoadError || coverageLoadError}
+      />
 
       <Card className="print:break-before-page">
         <CardBody className="p-0">

@@ -50,7 +50,7 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
 
         if (accessibleFolderIds != null) evidenceFolderIds.IntersectWith(accessibleFolderIds);
         var documents = await context.Documents.AsNoTracking()
-            .Where(document => evidenceFolderIds.Contains(document.FolderId))
+            .Where(document => evidenceFolderIds.Contains(document.FolderId) && document.DeletedAt == null)
             .Join(context.Users.AsNoTracking(), document => document.OwnerId, user => user.UserId,
                 (document, owner) => new { document, owner.FullName })
             .ToListAsync();
@@ -63,22 +63,30 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
         // exactly what was presented for the selected cycle.
         var assignedVersions = activeCycleId.HasValue
             ? await context.EvidenceVersionCycleAssignments.AsNoTracking()
-                .Where(assignment => documentIds.Contains(assignment.DocumentId) && assignment.AuditCycleId == activeCycleId)
-                .Select(assignment => new { assignment.DocumentId, assignment.VersionId })
+                .Where(assignment => documentIds.Contains(assignment.DocumentId) && assignment.AuditCycleId == activeCycleId &&
+                    context.DocumentVersions.Any(version => version.VersionId == assignment.VersionId && version.DeletedAt == null))
+                .Select(assignment => new { assignment.DocumentId, assignment.VersionId, assignment.AssignedBy })
                 .ToListAsync()
             : [];
+        var assignmentByDocument = assignedVersions.ToDictionary(assignment => assignment.DocumentId);
         return Ok(new
         {
             success = true,
-            data = documents.Select(row => new
+            data = documents.Select(row =>
             {
-                row.document.DocumentId, row.document.Title, row.document.FolderId, row.document.Department,
-                row.document.Category, row.document.Status, row.document.Tags, row.document.CreatedAt, row.document.UpdatedAt,
-                OwnerName = row.FullName,
-                FolderPath = string.Join(" / ", Path(row.document.FolderId)),
-                AssignedVersionId = assignedVersions.FirstOrDefault(assignment => assignment.DocumentId == row.document.DocumentId)?.VersionId,
-                IsAssignedToSelectedCycle = assignedVersions.Any(assignment => assignment.DocumentId == row.document.DocumentId),
-                IsCurrentVersionForSelectedCycle = assignedVersions.Any(assignment => assignment.DocumentId == row.document.DocumentId && assignment.VersionId == row.document.CurrentVersionId),
+                var assigned = assignmentByDocument.GetValueOrDefault(row.document.DocumentId);
+                return new
+                {
+                    row.document.DocumentId, row.document.Title, row.document.FolderId, row.document.Department,
+                    row.document.OwnerId,
+                    row.document.Category, row.document.Status, row.document.Tags, row.document.CreatedAt, row.document.UpdatedAt,
+                    OwnerName = row.FullName,
+                    FolderPath = string.Join(" / ", Path(row.document.FolderId)),
+                    AssignedVersionId = assigned?.VersionId,
+                    AssignedById = assigned?.AssignedBy,
+                    IsAssignedToSelectedCycle = assigned != null,
+                    IsCurrentVersionForSelectedCycle = assigned != null && assigned.VersionId == row.document.CurrentVersionId,
+                };
             }),
             count = documents.Count,
             standard,
