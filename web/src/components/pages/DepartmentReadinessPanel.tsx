@@ -72,7 +72,6 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
                 <p className="font-semibold">Coverage outside the Procedures department folders</p>
                 <p className="mt-1">{rollup.unassignedRequirements.length} required process document{rollup.unassignedRequirements.length === 1 ? '' : 's'} could not be placed under a department folder. Review the folder location.</p>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
-                  <button type="button" onClick={() => navigate('/evidence-coverage')} className="font-medium text-[#1763a5] underline-offset-4 hover:underline">Review evidence coverage</button>
                 </div>
               </div>
             )}
@@ -128,7 +127,7 @@ function PersonRow({ person, expanded, onToggle, onNavigate }: { person: PersonR
       {expanded && <tr><td colSpan={5} className="bg-[#f8fafc] px-4 py-4 dark:bg-slate-950/30"><div className="grid gap-5 md:grid-cols-3">
         <WorkDetails title="Open tasks" tasks={person.tasks} route="/tasks" onNavigate={onNavigate} />
         <WorkDetails title="Open PCARs" tasks={person.pcars} route="/pcars" onNavigate={onNavigate} />
-        <div><h4 className="text-xs font-semibold uppercase tracking-wide text-[#52627a] dark:text-slate-300">Process documents awaiting evidence</h4>{person.missingRequirements.length ? <ul className="mt-2 space-y-2">{person.missingRequirements.map(item => <li key={item.evidenceRequirementId} className="text-sm text-[#34425b] dark:text-slate-200">{item.documentTitle}</li>)}</ul> : <p className="mt-2 text-sm text-[#52627a] dark:text-slate-300">None</p>}{person.missingRequirements.length > 0 && <button type="button" onClick={() => onNavigate('/evidence-coverage')} className="mt-3 text-xs font-semibold text-[#1763a5] underline-offset-4 hover:underline">Open evidence coverage</button>}</div>
+        <div><h4 className="text-xs font-semibold uppercase tracking-wide text-[#52627a] dark:text-slate-300">Process documents awaiting evidence</h4>{person.missingRequirements.length ? <ul className="mt-2 space-y-2">{person.missingRequirements.map(item => <li key={item.evidenceRequirementId} className="text-sm text-[#34425b] dark:text-slate-200">{item.documentTitle}</li>)}</ul> : <p className="mt-2 text-sm text-[#52627a] dark:text-slate-300">None</p>}{person.missingRequirements.length > 0 && <button type="button" onClick={() => onNavigate('/documents')} className="mt-3 text-xs font-semibold text-[#1763a5] underline-offset-4 hover:underline">Open evidence library</button>}</div>
       </div></td></tr>}
     </>
   );

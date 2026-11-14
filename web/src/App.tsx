@@ -11,7 +11,6 @@ const Dashboard = lazy(() => import('./components/pages/Dashboard').then((module
 const IsoReadiness = lazy(() => import('./components/pages/IsoReadiness').then((module) => ({ default: module.IsoReadiness })));
 const AuditRegister = lazy(() => import('./components/pages/AuditRegister').then((module) => ({ default: module.AuditRegister })));
 const ManagementReview = lazy(() => import('./components/pages/ManagementReview').then((module) => ({ default: module.ManagementReview })));
-const EvidenceCoverage = lazy(() => import('./components/pages/EvidenceCoverage').then((module) => ({ default: module.EvidenceCoverage })));
 const IsoWorkspace = lazy(() => import('./components/pages/IsoWorkspace').then((module) => ({ default: module.IsoWorkspace })));
 const Iso27001Workspace = lazy(() => import('./components/pages/Iso27001Workspace').then((module) => ({ default: module.Iso27001Workspace })));
 const Documents = lazy(() => import('./components/pages/Documents').then((module) => ({ default: module.Documents })));
@@ -116,7 +115,6 @@ function App() {
                 <Route path="/pcars" element={<Tasks mode="pcar" />} />
                 <Route path="/audits" element={<AuditRegister />} />
                 <Route path="/management-review" element={<ManagementReview />} />
-                <Route path="/evidence-coverage" element={<EvidenceCoverage />} />
                 <Route element={<RequirePageAccess flag="canViewHistoricalPcars" />}>
                   <Route path="/tasks/history" element={<HistoricalPcarPage />} />
                 </Route>
