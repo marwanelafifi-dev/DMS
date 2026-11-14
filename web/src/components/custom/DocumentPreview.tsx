@@ -195,6 +195,7 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
   const [showRelatedPcars, setShowRelatedPcars] = useState(false);
   const [showEvidenceLinks, setShowEvidenceLinks] = useState(false);
   const [evidenceLinks, setEvidenceLinks] = useState<Array<{ evidenceLinkId: string; title: string; auditCycleId?: string }>>([]);
+  const [evidenceCycles, setEvidenceCycles] = useState<Array<{ versionId: string; auditCycleId: string; cycleName: string; standard: string }>>([]);
   const [isLoadingEvidenceLinks, setIsLoadingEvidenceLinks] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
   const [pendingVersionFile, setPendingVersionFile] = useState<File | null>(null);
@@ -243,6 +244,22 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
   useEffect(() => {
     setShowEditModal(hasActiveDocumentEditDraft(document.documentId));
   }, [document.documentId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (String(document.category || '').toLowerCase() !== 'evidence') {
+      setEvidenceCycles([]);
+      return undefined;
+    }
+    void apiClient.getDocument(document.documentId)
+      .then((response) => {
+        if (!cancelled) setEvidenceCycles(response.data?.evidenceCycleAssignments || response.data?.EvidenceCycleAssignments || []);
+      })
+      .catch(() => { if (!cancelled) setEvidenceCycles([]); });
+    return () => { cancelled = true; };
+  }, [document.documentId, document.category]);
+
+  const currentEvidenceCycles = evidenceCycles.filter((cycle) => cycle.versionId === document.currentVersionId);
 
   useEffect(() => {
     let cancelled = false;
@@ -1087,6 +1104,20 @@ export function DocumentPreview({ document, folders, onNavigateToFolder, onClose
                 <div>
                   <p className="font-medium text-[#34425b] dark:text-slate-200">Version</p>
                   <p className="truncate">{document.versionLabel}</p>
+                </div>
+              )}
+              {document.category?.toLowerCase() === 'evidence' && (
+                <div>
+                  <p className="font-medium text-[#34425b] dark:text-slate-200">Cycle</p>
+                  {currentEvidenceCycles.length > 0 ? (
+                    <div className="mt-0.5 flex flex-wrap gap-1">
+                      {currentEvidenceCycles.map((cycle) => (
+                        <span key={cycle.auditCycleId} className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-[#1763a5] dark:bg-blue-500/15 dark:text-blue-200" title={cycle.standard}>{cycle.cycleName}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[#718198] dark:text-slate-400">Not assigned</p>
+                  )}
                 </div>
               )}
               {document.checkoutStatus === 'checked_out' && (

@@ -318,6 +318,8 @@ export function Documents() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [relatedEvidenceDocumentIds, setRelatedEvidenceDocumentIds] = useState<string[]>([]);
   const [requiredEvidenceDocumentIds, setRequiredEvidenceDocumentIds] = useState<string[]>([]);
+  const [evidenceCycles, setEvidenceCycles] = useState<any[]>([]);
+  const [uploadAuditCycleId, setUploadAuditCycleId] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadTags, setUploadTags] = useState<string[]>([]);
@@ -456,23 +458,44 @@ export function Documents() {
   useEffect(() => {
     let cancelled = false;
     if (!showUploadModal || !isEvidenceUploadFolder || !selectedFolder?.parentFolderId) {
+      setEvidenceCycles([]);
+      setUploadAuditCycleId('');
+      return undefined;
+    }
+    void apiClient.getAuditCycles().then((cycleResult) => {
+      if (cancelled) return;
+      const matchingCycles = (cycleResult.data ?? []).filter((cycle: any) => cycle.standard === evidenceStandard && cycle.status !== 'completed');
+      setEvidenceCycles(matchingCycles);
+      setUploadAuditCycleId((current) => {
+        if (matchingCycles.some((cycle: any) => cycle.auditCycleId === current)) return current;
+        return matchingCycles.find((cycle: any) => cycle.status === 'active')?.auditCycleId ?? matchingCycles[0]?.auditCycleId ?? '';
+      });
+    }).catch(() => {
+      if (!cancelled) {
+        setEvidenceCycles([]);
+        setUploadAuditCycleId('');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [showUploadModal, isEvidenceUploadFolder, selectedFolder?.parentFolderId, evidenceStandard]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!showUploadModal || !isEvidenceUploadFolder || !selectedFolder?.parentFolderId || !uploadAuditCycleId) {
       setRequiredEvidenceDocumentIds([]);
       return undefined;
     }
-    void apiClient.getAuditCycles().then(async (cycleResult) => {
-      const activeCycle = (cycleResult.data ?? []).find((cycle: any) => cycle.standard === evidenceStandard && cycle.status === 'active');
-      if (!activeCycle) return [];
-      const requirementResult = await apiClient.getEvidenceRequirements(activeCycle.auditCycleId);
-      return (requirementResult.data ?? []).filter((item: any) => item.folderId === selectedFolder.parentFolderId).map((item: any) => item.relatedDocumentId);
-    }).then((requiredIds: string[]) => {
+    void apiClient.getEvidenceRequirements(uploadAuditCycleId).then((requirementResult) => {
       if (cancelled) return;
+      const requiredIds = (requirementResult.data ?? [])
+        .filter((item: any) => item.folderId === selectedFolder.parentFolderId)
+        .map((item: any) => item.relatedDocumentId);
       setRequiredEvidenceDocumentIds(requiredIds);
       setRelatedEvidenceDocumentIds((current) => [...new Set([...current, ...requiredIds])]);
     }).catch(() => {
       if (!cancelled) setRequiredEvidenceDocumentIds([]);
     });
     return () => { cancelled = true; };
-  }, [showUploadModal, isEvidenceUploadFolder, selectedFolder?.parentFolderId, evidenceStandard]);
+  }, [showUploadModal, isEvidenceUploadFolder, selectedFolder?.parentFolderId, uploadAuditCycleId]);
   // Folders "in view" independent of the Tag/Department/Owner filters
   // themselves — used both to build the filter dropdowns' own option lists
   // (so picking a tag doesn't shrink the set of tags offered) and as the
@@ -1704,6 +1727,7 @@ export function Documents() {
     category: !isEvidenceUploadFolder && (!uploadCategory || (uploadIsOtherCategory && !uploadCustomCategory.trim())),
     owner: !uploadOwnerId,
     department: !uploadDepartment || (uploadIsOtherDepartment && !uploadCustomDepartment.trim()),
+    auditCycle: isEvidenceUploadFolder && !uploadAuditCycleId,
   };
   const uploadMissingFieldLabels: Record<keyof typeof uploadMissingFields, string> = {
     description: 'Description',
@@ -1711,6 +1735,7 @@ export function Documents() {
     category: 'Document Category',
     owner: 'Owner',
     department: 'Department',
+    auditCycle: 'Audit cycle',
   };
   const isUploadFormValid = !Object.values(uploadMissingFields).some(Boolean);
   const fieldError = (field: keyof typeof uploadMissingFields) =>
@@ -1767,19 +1792,20 @@ export function Documents() {
             tags: uploadTagList,
             department: effectiveUploadDepartment,
             category: effectiveUploadCategory,
+            auditCycleId: isEvidenceUploadFolder ? uploadAuditCycleId : undefined,
           });
           const createdDocument = docRes.data;
           if (!createdDocument?.documentId) throw new Error('The server did not return a document ID');
           createdDocumentId = createdDocument.documentId;
 
-          const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile, isEvidenceUploadFolder ? undefined : uploadVersionLabel);
+          const uploadRes = await apiClient.uploadDocument(createdDocument.documentId, uploadFile, isEvidenceUploadFolder ? undefined : uploadVersionLabel, undefined, isEvidenceUploadFolder ? uploadAuditCycleId : undefined);
           // An evidence link is created only after the actual file is safely
           // uploaded. The server detects ISO 9001 vs ISO 27001 from its path
           // and attaches the active cycle; the uploader never chooses a year.
           if (isEvidenceUploadFolder && relatedEvidenceDocumentIds.length > 0) {
             try {
               await Promise.all(relatedEvidenceDocumentIds.map((relatedDocumentId) =>
-                apiClient.createEvidenceLink({ evidenceDocumentId: createdDocument.documentId, relatedDocumentId })
+                apiClient.createEvidenceLink({ evidenceDocumentId: createdDocument.documentId, relatedDocumentId, auditCycleId: uploadAuditCycleId })
               ));
             } catch (error: any) {
               errors.push(`${uploadFile.name}: file saved but its evidence links could not be added (${error.response?.data?.error || 'review the active audit cycle'})`);
@@ -1928,6 +1954,7 @@ export function Documents() {
         setUploadDepartment('');
         setUploadCustomDepartment('');
         setUploadApprovalNotes('');
+        setUploadAuditCycleId('');
         setUploadValidationAttempted(false);
         void refreshServerDocuments(folders);
       }
@@ -1961,6 +1988,8 @@ export function Documents() {
     setUploadApprovalNotes('');
     setRelatedEvidenceDocumentIds([]);
     setRequiredEvidenceDocumentIds([]);
+    setEvidenceCycles([]);
+    setUploadAuditCycleId('');
     setUploadValidationAttempted(false);
     setShowUploadModal(true);
   };
@@ -1980,6 +2009,8 @@ export function Documents() {
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
     setRequiredEvidenceDocumentIds([]);
+    setEvidenceCycles([]);
+    setUploadAuditCycleId('');
     setUploadValidationAttempted(false);
   };
 
@@ -2194,6 +2225,7 @@ export function Documents() {
                 onRequestFolderPermissions={ensureFolderPermissionsLoaded}
                 selectedDocumentIds={selectedDocumentIds}
                 visibleColumns={visibleColumns}
+                showEvidenceCycle={isEvidenceUploadFolder}
                 onSelectedDocumentIdsChange={setSelectedDocumentIds}
                 onDocumentClick={openDocumentPreview}
                 onDownload={handleDownloadDocument}
@@ -2464,13 +2496,37 @@ export function Documents() {
                 </div>
               )}
               {isEvidenceUploadFolder && (
-                <div className="space-y-2 rounded-[4px] border border-[#dbe2ec] bg-[#f8fbff] p-3 dark:border-white/10 dark:bg-blue-950/20">
-                  <p className="text-sm font-semibold text-[#26334d] dark:text-white">Related policy / process documents</p>
-                  <p className="text-xs text-[#64748b] dark:text-slate-400">Documents required by Evidence Coverage are linked automatically. You may also select additional related documents.</p>
+                <div className="space-y-4 rounded-[4px] border border-[#dbe2ec] bg-[#f8fbff] p-3 dark:border-white/10 dark:bg-blue-950/20">
+                  <div className="space-y-2">
+                    <label htmlFor="upload-audit-cycle" className="block text-sm font-semibold text-[#26334d] dark:text-white">Audit cycle <span className="text-red-500">*</span></label>
+                    <select
+                      id="upload-audit-cycle"
+                      value={uploadAuditCycleId}
+                      onChange={(event) => setUploadAuditCycleId(event.target.value)}
+                      disabled={isUploading || evidenceCycles.length === 0}
+                      className={`field-control h-10 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-3 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:disabled:bg-slate-800 ${fieldError('auditCycle')}`}
+                    >
+                      <option value="">{evidenceCycles.length === 0 ? `No open ${evidenceStandard} cycles available` : 'Select an audit cycle...'}</option>
+                      {evidenceCycles.map((cycle) => (
+                        <option key={cycle.auditCycleId} value={cycle.auditCycleId}>
+                          {cycle.name} · {cycle.startDate} to {cycle.endDate}{cycle.status === 'active' ? ' — Active' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {uploadValidationAttempted && uploadMissingFields.auditCycle ? (
+                      <p className="text-xs text-red-500">Select the audit cycle this evidence supports.</p>
+                    ) : (
+                      <p className="text-xs text-[#64748b] dark:text-slate-400">The selected cycle is retained with this exact evidence version. The active cycle is selected by default.</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-[#26334d] dark:text-white">Related policy / process documents</p>
+                    <p className="text-xs text-[#64748b] dark:text-slate-400">Documents required by Evidence Coverage for this selected cycle are linked automatically. You may also select additional related documents.</p>
                   {relatedEvidenceCandidates.length ? relatedEvidenceCandidates.map((document) => {
                     const isRequired = requiredEvidenceDocumentIds.includes(document.documentId);
                     return <label key={document.documentId} className="flex items-center gap-2 py-1 text-sm text-[#34425b] dark:text-slate-200"><input type="checkbox" checked={relatedEvidenceDocumentIds.includes(document.documentId)} disabled={isRequired} onChange={() => setRelatedEvidenceDocumentIds((ids) => ids.includes(document.documentId) ? ids.filter((id) => id !== document.documentId) : [...ids, document.documentId])} /><span>{document.name ?? document.title}</span>{isRequired && <span className="ml-auto rounded-full bg-[#e8f6ee] px-2 py-0.5 text-[11px] font-medium text-[#24734a] dark:bg-emerald-500/15 dark:text-emerald-300">Required</span>}</label>;
                   }) : <p className="text-xs text-[#718198]">No documents are available in the parent process folder.</p>}
+                  </div>
                 </div>
               )}
               <div className="space-y-2">

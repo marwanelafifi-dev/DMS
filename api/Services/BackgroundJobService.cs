@@ -69,6 +69,16 @@ public static class BackgroundJobExtensions
             Cron.Daily(6),
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // Google Workspace Directory is one-way: only new accounts and
+        // Department values are synchronized; roles and permissions remain
+        // entirely controlled inside DMS. The Administrator selects cadence,
+        // time, and OUs in the Users page; this minute tick evaluates it.
+        recurringJobManager.AddOrUpdate<GoogleDirectoryUserSyncService>(
+            "google-directory-user-sync-schedule-check",
+            service => service.RunScheduledSyncAsync(),
+            Cron.Minutely(),
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // Scan every connected user's own Google Calendar for "ISO"-titled
         // meetings and fire the created/day-before/10-minutes-before reminder
         // stages. 5-minute cadence is what keeps the 10-minute stage accurate.

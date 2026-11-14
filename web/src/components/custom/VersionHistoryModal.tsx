@@ -44,6 +44,16 @@ interface VersionRow {
   createdAt: string;
 }
 
+interface EvidenceCycleAssignment {
+  versionId: string;
+  auditCycleId: string;
+  cycleName: string;
+  standard: string;
+  startDate: string;
+  endDate: string;
+  cycleStatus: string;
+}
+
 interface VersionHistoryModalProps {
   documentId: string;
   fileName: string;
@@ -56,6 +66,7 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
   const { showSuccess, showError } = useToast();
   const pageAccess = usePageAccess();
   const [versions, setVersions] = useState<VersionRow[]>([]);
+  const [evidenceCyclesByVersion, setEvidenceCyclesByVersion] = useState<Record<string, EvidenceCycleAssignment[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
@@ -72,6 +83,11 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
       .then((res) => {
         if (!res.success) throw new Error(res.error);
         setVersions(res.data?.versions || res.data?.Versions || []);
+        const assignments = (res.data?.evidenceCycleAssignments || res.data?.EvidenceCycleAssignments || []) as EvidenceCycleAssignment[];
+        setEvidenceCyclesByVersion(assignments.reduce<Record<string, EvidenceCycleAssignment[]>>((result, assignment) => {
+          (result[assignment.versionId] ??= []).push(assignment);
+          return result;
+        }, {}));
       })
       .catch((err: any) => setError(err?.response?.data?.error || err.message || 'Failed to load version history'))
       .finally(() => setIsLoading(false));
@@ -333,6 +349,7 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
               {versions.map((v) => {
                 const isCurrent = v.versionId === currentVersionId;
                 const isBusy = busyVersionId === v.versionId;
+                const linkedCycles = evidenceCyclesByVersion[v.versionId] ?? [];
                 return (
                   <div key={v.versionId} className="flex items-center justify-between gap-3 rounded border border-gray-200 px-4 py-3 dark:border-slate-700">
                     <div className="min-w-0">
@@ -341,6 +358,16 @@ export function VersionHistoryModal({ documentId, fileName, currentVersionId, on
                         {isCurrent && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Current</span>}
                       </div>
                       <p className="truncate text-xs text-gray-500 dark:text-slate-400">{v.fileName} · {formatFileSize(v.fileSizeBytes ?? 0)} · {formatDateTime(v.createdAt)}</p>
+                      {linkedCycles.length > 0 && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs font-medium text-gray-500 dark:text-slate-400">Cycle</span>
+                          {linkedCycles.map((cycle) => (
+                            <span key={cycle.auditCycleId} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-[#1763a5] dark:bg-blue-500/15 dark:text-blue-200" title={`${cycle.standard} · ${cycle.startDate} to ${cycle.endDate}`}>
+                              {cycle.cycleName}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-shrink-0 gap-2">
                       <button

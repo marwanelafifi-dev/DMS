@@ -65,6 +65,9 @@ export interface Document {
   approvalStatus?: 'pending' | 'correction_requested' | 'approved' | 'rejected' | null;
   department?: string;
   category?: string;
+  // Present for a currently displayed Evidence version only. Full historic
+  // version-to-cycle records are returned by the document detail endpoint.
+  evidenceCycleNames?: string[];
   tags?: string[];
   versions?: DocumentVersion[];
 }

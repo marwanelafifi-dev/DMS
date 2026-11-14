@@ -199,12 +199,24 @@ public class DocumentsController(
                 .GroupBy(a => a.VersionId)
                 .ToDictionary(g => g.Key, g => g.OrderByDescending(a => a.CreatedAt).First());
 
+            // The Library only needs cycles that belong to the currently
+            // displayed immutable version. Historic-cycle assignments remain
+            // available in Version History, not mixed into the current row.
+            var evidenceCycleNamesByDocument = (await context.EvidenceVersionCycleAssignments.AsNoTracking()
+                    .Where(assignment => currentVersionIds.Contains(assignment.VersionId))
+                    .Join(context.AuditCycles.AsNoTracking(), assignment => assignment.AuditCycleId, cycle => cycle.AuditCycleId,
+                        (assignment, cycle) => new { assignment.DocumentId, assignment.VersionId, cycle.Name })
+                    .ToListAsync())
+                .GroupBy(item => item.DocumentId)
+                .ToDictionary(group => group.Key, group => group.Select(item => item.Name).Distinct().Order().ToArray());
+
             var documentsWithStage = documents.Select(d => new
             {
                 d.DocumentId, d.Name, d.Title, d.Status, d.Description, d.Tags, d.Department, d.Category,
                 d.OriginalDocumentId, d.HasDocId, d.TrackingCode, d.OwnerId, d.UploadedBy, d.FolderId, d.CurrentVersionId,
                 d.FileName, d.FileSize, d.ContentType, d.VersionLabel, d.CheckoutStatus, d.CheckedOutBy, d.CheckedOutByName,
                 d.CheckedOutAt, d.UploadedAt, d.CreatedAt, d.UpdatedAt,
+                EvidenceCycleNames = evidenceCycleNamesByDocument.GetValueOrDefault(d.DocumentId, Array.Empty<string>()),
                 ApprovalStage = d.CurrentVersionId.HasValue && latestApprovalByVersionId.TryGetValue(d.CurrentVersionId.Value, out var approval) ? approval.CurrentStage : null,
                 ApprovalStatus = d.CurrentVersionId.HasValue && latestApprovalByVersionId.TryGetValue(d.CurrentVersionId.Value, out var approval2) ? approval2.Status : null,
             }).ToList();
@@ -274,6 +286,51 @@ public class DocumentsController(
                 approvalStatus = latestApproval?.Status;
             }
 
+            string? evidenceStandard = null;
+            if (string.Equals(document.Category, "Evidence", StringComparison.OrdinalIgnoreCase))
+            {
+                var folders = await context.Folders.AsNoTracking()
+                    .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name })
+                    .ToListAsync();
+                var byId = folders.ToDictionary(folder => folder.FolderId, folder => (folder.ParentFolderId, folder.Name));
+                var path = new List<string>(); var currentFolderId = document.FolderId; var guard = 0;
+                while (byId.TryGetValue(currentFolderId, out var folder) && guard++ < 64)
+                {
+                    path.Insert(0, folder.Name);
+                    if (!folder.ParentFolderId.HasValue) break;
+                    currentFolderId = folder.ParentFolderId.Value;
+                }
+                var isControlledEvidence = path.Count >= 5
+                    && path[0].Equals("Corporate", StringComparison.OrdinalIgnoreCase)
+                    && path[1].Equals("QMS", StringComparison.OrdinalIgnoreCase)
+                    && path[2].Equals("Procedures", StringComparison.OrdinalIgnoreCase)
+                    && path.Any(name => name.Equals("Evidences", StringComparison.OrdinalIgnoreCase))
+                    && !path.Any(name => name.Equals("OLD DMS", StringComparison.OrdinalIgnoreCase));
+                if (isControlledEvidence)
+                    evidenceStandard = path.Skip(3).Any(name => name.Equals("ISO 27001", StringComparison.OrdinalIgnoreCase)) ? "ISO 27001:2022" : "ISO 9001:2015";
+            }
+
+            var evidenceCycleAssignments = Array.Empty<object>();
+            if (evidenceStandard != null)
+            {
+                evidenceCycleAssignments = (await context.EvidenceVersionCycleAssignments.AsNoTracking()
+                    .Where(assignment => assignment.DocumentId == id)
+                    .Join(context.AuditCycles.AsNoTracking(), assignment => assignment.AuditCycleId, cycle => cycle.AuditCycleId,
+                        (assignment, cycle) => new
+                        {
+                            assignment.VersionId,
+                            assignment.AuditCycleId,
+                            CycleName = cycle.Name,
+                            cycle.Standard,
+                            cycle.StartDate,
+                            cycle.EndDate,
+                            CycleStatus = cycle.Status,
+                            assignment.AssignedAt,
+                        })
+                    .OrderByDescending(assignment => assignment.AssignedAt)
+                    .ToListAsync()).Cast<object>().ToArray();
+            }
+
             logger.LogInformation("Retrieved document {DocumentId}", id);
 
             return Ok(new
@@ -289,6 +346,8 @@ public class DocumentsController(
                     document.Tags,
                     document.Department,
                     document.Category,
+                    EvidenceStandard = evidenceStandard,
+                    EvidenceCycleAssignments = evidenceCycleAssignments,
                     document.OriginalDocumentId,
                     HasDocId = !string.IsNullOrWhiteSpace(document.OriginalDocumentId),
                     document.TrackingCode,
@@ -792,9 +851,13 @@ public class DocumentsController(
                 if (controlled)
                 {
                     var standard = path.Skip(3).Any(p => p.Equals("ISO 27001", StringComparison.OrdinalIgnoreCase)) ? "ISO 27001:2022" : "ISO 9001:2015";
-                    var activeCycle = await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(c => c.Standard == standard && c.Status == "active");
-                    if (activeCycle != null)
-                        context.EvidenceCycleAssignments.Add(new DmsEvidenceCycleAssignment { DocumentId = document.DocumentId, AuditCycleId = activeCycle.AuditCycleId, Standard = standard, AssignedBy = userId, AssignedAt = DateTime.UtcNow });
+                    var selectedCycle = req.AuditCycleId.HasValue
+                        ? await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(c => c.AuditCycleId == req.AuditCycleId.Value && c.Standard == standard && c.Status != "completed")
+                        : await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(c => c.Standard == standard && c.Status == "active");
+                    if (req.AuditCycleId.HasValue && selectedCycle == null)
+                        return BadRequest(new { success = false, error = $"Select an open {standard} audit cycle that matches this Evidence folder" });
+                    if (selectedCycle != null)
+                        context.EvidenceCycleAssignments.Add(new DmsEvidenceCycleAssignment { DocumentId = document.DocumentId, AuditCycleId = selectedCycle.AuditCycleId, Standard = standard, AssignedBy = userId, AssignedAt = DateTime.UtcNow });
                 }
             }
             await context.SaveChangesAsync();
@@ -1152,7 +1215,7 @@ public class DocumentsController(
 
     // POST /api/documents/{id}/upload — upload a file
     [HttpPost("{id}/upload")]
-    public async Task<ActionResult<object>> UploadVersion(Guid id, IFormFile file, [FromForm] string? versionLabel = null, [FromForm] Guid? ownerId = null)
+    public async Task<ActionResult<object>> UploadVersion(Guid id, IFormFile file, [FromForm] string? versionLabel = null, [FromForm] Guid? ownerId = null, [FromForm] Guid? auditCycleId = null)
     {
         try
         {
@@ -1178,6 +1241,8 @@ public class DocumentsController(
             var isEvidenceDocument = string.Equals(document.Category, "Evidence", StringComparison.OrdinalIgnoreCase);
             if (!isEvidenceDocument && string.IsNullOrWhiteSpace(versionLabel))
                 return BadRequest(new { success = false, error = "Version label is required" });
+            if (isEvidenceDocument && auditCycleId.HasValue && !await IsOpenMatchingEvidenceCycleAsync(document.FolderId, auditCycleId.Value))
+                return BadRequest(new { success = false, error = "Select an open audit cycle that matches this Evidence folder" });
 
             var previousOwnerId = document.OwnerId;
 
@@ -1312,6 +1377,12 @@ public class DocumentsController(
             if (activeApprovalDocument == null)
                 document.Status = isEvidenceDocument ? "released" : "draft";
 
+            // Evidence records stay outside the controlled-document approval
+            // workflow. The immutable version uploaded now is attached to the
+            // active ISO cycle, preserving any older cycle's evidence version.
+            if (isEvidenceDocument)
+                await AssignEvidenceVersionToCycleAsync(document, version, userId, auditCycleId);
+
             await context.SaveChangesAsync();
             backgroundJobs.Enqueue<OcrIndexService>(service => service.ReindexJobAsync(id));
 
@@ -1355,12 +1426,139 @@ public class DocumentsController(
         }
     }
 
-    // POST /api/documents/{id}/versions/{versionId}/revert — make an older
-    // version current again. This never rewrites or deletes history — it
-    // creates a brand-new version row that reuses the target version's
-    // already-uploaded file (same S3ObjectKey, so no re-upload/copy needed)
-    // and becomes the new current version, exactly like uploading that same
-    // file again would.
+    // Assign the uploaded immutable version to the selected ISO programme while
+    // keeping previous cycle assignments and evidence links intact.
+    private async Task AssignEvidenceVersionToCycleAsync(DmsDocument document, DmsDocumentVersion version, Guid userId, Guid? requestedAuditCycleId)
+    {
+        var folders = await context.Folders.AsNoTracking()
+            .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name })
+            .ToListAsync();
+        var byId = folders.ToDictionary(folder => folder.FolderId, folder => (folder.ParentFolderId, folder.Name));
+        var path = new List<string>();
+        var current = document.FolderId;
+        var guard = 0;
+        while (byId.TryGetValue(current, out var folder) && guard++ < 64)
+        {
+            path.Insert(0, folder.Name);
+            if (!folder.ParentFolderId.HasValue) break;
+            current = folder.ParentFolderId.Value;
+        }
+
+        var isControlledEvidence = path.Count >= 5
+            && path[0].Equals("Corporate", StringComparison.OrdinalIgnoreCase)
+            && path[1].Equals("QMS", StringComparison.OrdinalIgnoreCase)
+            && path[2].Equals("Procedures", StringComparison.OrdinalIgnoreCase)
+            && path.Any(name => name.Equals("Evidences", StringComparison.OrdinalIgnoreCase))
+            && !path.Any(name => name.Equals("OLD DMS", StringComparison.OrdinalIgnoreCase));
+        if (!isControlledEvidence) return;
+
+        var standard = path.Skip(3).Any(name => name.Equals("ISO 27001", StringComparison.OrdinalIgnoreCase))
+            ? "ISO 27001:2022"
+            : "ISO 9001:2015";
+        var selectedCycle = requestedAuditCycleId.HasValue
+            ? await context.AuditCycles.FirstOrDefaultAsync(cycle => cycle.AuditCycleId == requestedAuditCycleId.Value && cycle.Standard == standard && cycle.Status != "completed")
+            : await context.AuditCycles.FirstOrDefaultAsync(cycle => cycle.Standard == standard && cycle.Status == "active");
+        if (selectedCycle == null) return;
+
+        var now = DateTime.UtcNow;
+        var versionAssignment = await context.EvidenceVersionCycleAssignments
+            .FirstOrDefaultAsync(assignment => assignment.DocumentId == document.DocumentId && assignment.AuditCycleId == selectedCycle.AuditCycleId);
+        if (versionAssignment == null)
+        {
+            context.EvidenceVersionCycleAssignments.Add(new DmsEvidenceVersionCycleAssignment
+            {
+                DocumentId = document.DocumentId,
+                AuditCycleId = selectedCycle.AuditCycleId,
+                VersionId = version.VersionId,
+                Standard = standard,
+                AssignedBy = userId,
+                AssignedAt = now,
+            });
+        }
+        else
+        {
+            versionAssignment.VersionId = version.VersionId;
+            versionAssignment.Standard = standard;
+            versionAssignment.AssignedBy = userId;
+            versionAssignment.AssignedAt = now;
+        }
+
+        // Retain the earlier document-level assignment for existing report
+        // consumers. The version-level table above is the audit history.
+        var legacyAssignment = await context.EvidenceCycleAssignments
+            .FirstOrDefaultAsync(assignment => assignment.DocumentId == document.DocumentId);
+        if (legacyAssignment == null)
+        {
+            context.EvidenceCycleAssignments.Add(new DmsEvidenceCycleAssignment
+            {
+                DocumentId = document.DocumentId,
+                AuditCycleId = selectedCycle.AuditCycleId,
+                Standard = standard,
+                AssignedBy = userId,
+                AssignedAt = now,
+            });
+        }
+        else
+        {
+            legacyAssignment.AuditCycleId = selectedCycle.AuditCycleId;
+            legacyAssignment.Standard = standard;
+            legacyAssignment.AssignedBy = userId;
+            legacyAssignment.AssignedAt = now;
+        }
+
+        // Policy/process links state what the evidence supports. Carry them
+        // into the newly active cycle while retaining the original links.
+        var previousRelatedDocumentIds = await context.EvidenceLinks
+            .Where(link => link.EvidenceDocumentId == document.DocumentId
+                && link.AuditCycleId.HasValue
+                && link.AuditCycleId != selectedCycle.AuditCycleId)
+            .Select(link => link.RelatedDocumentId)
+            .Distinct()
+            .ToListAsync();
+        var linkedForActiveCycle = await context.EvidenceLinks
+            .Where(link => link.EvidenceDocumentId == document.DocumentId && link.AuditCycleId == selectedCycle.AuditCycleId)
+            .Select(link => link.RelatedDocumentId)
+            .ToListAsync();
+        foreach (var relatedDocumentId in previousRelatedDocumentIds.Except(linkedForActiveCycle))
+        {
+            context.EvidenceLinks.Add(new DmsEvidenceLink
+            {
+                EvidenceLinkId = Guid.NewGuid(),
+                EvidenceDocumentId = document.DocumentId,
+                RelatedDocumentId = relatedDocumentId,
+                ProgrammeYear = selectedCycle.StartDate.Year,
+                AuditCycleId = selectedCycle.AuditCycleId,
+                OwnerId = userId,
+                CreatedAt = now,
+            });
+        }
+    }
+
+    private async Task<bool> IsOpenMatchingEvidenceCycleAsync(Guid folderId, Guid auditCycleId)
+    {
+        var folders = await context.Folders.AsNoTracking()
+            .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name })
+            .ToListAsync();
+        var byId = folders.ToDictionary(folder => folder.FolderId, folder => (folder.ParentFolderId, folder.Name));
+        var path = new List<string>(); var current = folderId; var guard = 0;
+        while (byId.TryGetValue(current, out var folder) && guard++ < 64)
+        {
+            path.Insert(0, folder.Name);
+            if (!folder.ParentFolderId.HasValue) break;
+            current = folder.ParentFolderId.Value;
+        }
+        var controlled = path.Count >= 5
+            && path[0].Equals("Corporate", StringComparison.OrdinalIgnoreCase)
+            && path[1].Equals("QMS", StringComparison.OrdinalIgnoreCase)
+            && path[2].Equals("Procedures", StringComparison.OrdinalIgnoreCase)
+            && path.Any(name => name.Equals("Evidences", StringComparison.OrdinalIgnoreCase))
+            && !path.Any(name => name.Equals("OLD DMS", StringComparison.OrdinalIgnoreCase));
+        if (!controlled) return false;
+        var standard = path.Skip(3).Any(name => name.Equals("ISO 27001", StringComparison.OrdinalIgnoreCase)) ? "ISO 27001:2022" : "ISO 9001:2015";
+        return await context.AuditCycles.AnyAsync(cycle => cycle.AuditCycleId == auditCycleId && cycle.Standard == standard && cycle.Status != "completed");
+    }
+
+    // Revert creates a new immutable version; it never rewrites history.
     [HttpPost("{id}/versions/{versionId}/revert")]
     public async Task<ActionResult<object>> RevertToVersion(Guid id, Guid versionId)
     {
@@ -2549,7 +2747,7 @@ public class DocumentsController(
     }
 }
 
-public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, string? OriginalDocumentId = null);
+public record CreateDocumentRequest(string Title, Guid FolderId, Guid OwnerId, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, string? OriginalDocumentId = null, Guid? AuditCycleId = null);
 public record UpdateDocumentRequest(string? Title = null, string? Status = null, string? Description = null, string[]? Tags = null, string? Department = null, string? Category = null, Guid? OwnerId = null, string? VersionLabel = null, string? FileName = null);
 public record CopyDocumentRequest(Guid DestinationFolderId);
 public record MoveDocumentRequest(Guid DestinationFolderId);

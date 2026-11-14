@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Card, CardBody, Button } from '../ui';
 import { SkeletonTable } from '../ui/Skeleton';
-import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, ChevronLeft, ChevronRight, Circle, Users as UsersIcon, Upload } from 'lucide-react';
+import { Edit2, UserX, Plus, Search, CheckCircle, XCircle, X, KeyRound, Trash2, ChevronLeft, ChevronRight, Circle, Users as UsersIcon, Upload, RefreshCw, Cloud, Settings2 } from 'lucide-react';
 import { apiClient, DEV_USER_ID, type PageAccessRole } from '../../utils/api';
 import { useToast } from '../../hooks/useToast';
 import { roleLabel } from '../../utils/roleLabels';
@@ -29,6 +29,48 @@ interface Group {
   description: string | null;
   autoAddNewUsers: boolean;
 }
+
+interface GoogleDirectorySyncConfiguration {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  time: string;
+  dayOfWeek: number;
+  dayOfMonth: number;
+  timeZoneId: string;
+  organizationalUnitPaths: string[];
+}
+
+interface GoogleDirectoryOrganizationalUnit {
+  path: string;
+  name: string;
+}
+
+interface GoogleDirectorySyncStatus {
+  configured: boolean;
+  configuration: GoogleDirectorySyncConfiguration;
+  schedule: string;
+  lastRun?: {
+    seen: number;
+    created: number;
+    departmentsUpdated: number;
+    skipped: number;
+    completedAt: string;
+    error?: string | null;
+    initiatedBy?: 'Manual' | 'Automatic';
+  } | null;
+}
+
+const defaultDirectoryConfiguration: GoogleDirectorySyncConfiguration = {
+  enabled: false,
+  frequency: 'weekly',
+  time: '03:00',
+  dayOfWeek: 0,
+  dayOfMonth: 1,
+  timeZoneId: 'Africa/Cairo',
+  organizationalUnitPaths: [],
+};
+
+const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const accessBadgeStyles: Record<string, string> = {
   Admin: 'border-purple-300 text-purple-700 dark:border-purple-700 dark:text-purple-300',
@@ -84,16 +126,27 @@ export function UserManagement() {
     updated: Array<{ email: string; fullName: string; role: string | null; department?: string | null; warning: string | null }>;
     skipped: Array<{ email?: string; row?: string; reason: string }>;
   } | null>(null);
+  const [googleDirectoryStatus, setGoogleDirectoryStatus] = useState<GoogleDirectorySyncStatus | null>(null);
+  const [isGoogleDirectorySyncing, setIsGoogleDirectorySyncing] = useState(false);
+  const [showDirectorySettings, setShowDirectorySettings] = useState(false);
+  const [directoryConfiguration, setDirectoryConfiguration] = useState<GoogleDirectorySyncConfiguration>(defaultDirectoryConfiguration);
+  const [organizationalUnits, setOrganizationalUnits] = useState<GoogleDirectoryOrganizationalUnit[]>([]);
+  const [organizationalUnitQuery, setOrganizationalUnitQuery] = useState('');
+  const [isLoadingOrganizationalUnits, setIsLoadingOrganizationalUnits] = useState(false);
+  const [isSavingDirectorySettings, setIsSavingDirectorySettings] = useState(false);
 
   const loadUsers = async (targetPage = page) => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [pageRes, allRes, rolesRes, groupsRes] = await Promise.all([
+      const [pageRes, allRes, rolesRes, groupsRes, directorySyncRes] = await Promise.all([
         apiClient.getUsers({ activeOnly: false, page: targetPage, pageSize: PAGE_SIZE }),
         apiClient.getUsers({ activeOnly: false }),
         apiClient.getPageAccessRoles(),
         apiClient.getGroups(),
+        // The sync control is intentionally available only to Full Access.
+        // Other users can still use this normal Users page without a false error.
+        apiClient.getGoogleDirectorySyncStatus().catch(() => null),
       ]);
       setUsers(pageRes.data || []);
       setTotalCount(pageRes.totalCount ?? pageRes.data?.length ?? 0);
@@ -101,6 +154,9 @@ export function UserManagement() {
       setAllUsers(allRes.data || []);
       setRoles(rolesRes.data || []);
       setGroups(groupsRes.data || []);
+      const directoryStatus = directorySyncRes?.data as GoogleDirectorySyncStatus | undefined;
+      setGoogleDirectoryStatus(directoryStatus ?? null);
+      setDirectoryConfiguration(directoryStatus?.configuration ?? defaultDirectoryConfiguration);
     } catch (err: any) {
       setLoadError(err.response?.data?.error || 'Failed to reach the API. Is the backend running?');
     } finally {
@@ -221,6 +277,81 @@ export function UserManagement() {
       showError(err.response?.data?.error || 'Failed to import users');
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleGoogleDirectorySync = async () => {
+    if (!googleDirectoryStatus?.configured) {
+      showError('Google Directory sync is not configured on this server yet.');
+      return;
+    }
+    if (googleDirectoryStatus.configuration.organizationalUnitPaths.length === 0) {
+      showError('Select at least one Google Workspace organizational unit in Directory settings first.');
+      return;
+    }
+    setIsGoogleDirectorySyncing(true);
+    try {
+      const response = await apiClient.syncGoogleDirectoryUsers();
+      const result = response.data as GoogleDirectorySyncStatus['lastRun'];
+      showSuccess(`Google Workspace synced: ${result?.created ?? 0} new user(s), ${result?.departmentsUpdated ?? 0} department update(s).`);
+      await loadUsers(1);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Google Directory sync could not be completed.');
+    } finally {
+      setIsGoogleDirectorySyncing(false);
+    }
+  };
+
+  const openDirectorySettings = async () => {
+    if (!googleDirectoryStatus?.configured) {
+      showError('Add the service-account settings on Ubuntu before loading Google Workspace organizational units.');
+      return;
+    }
+    setShowDirectorySettings(true);
+    setOrganizationalUnitQuery('');
+    if (organizationalUnits.length > 0) return;
+    setIsLoadingOrganizationalUnits(true);
+    try {
+      const response = await apiClient.getGoogleDirectoryOrganizationalUnits();
+      setOrganizationalUnits((response.data || []) as GoogleDirectoryOrganizationalUnit[]);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Could not load Google Workspace organizational units.');
+    } finally {
+      setIsLoadingOrganizationalUnits(false);
+    }
+  };
+
+  const toggleOrganizationalUnit = (path: string) => {
+    setDirectoryConfiguration((current) => ({
+      ...current,
+      organizationalUnitPaths: current.organizationalUnitPaths.includes(path)
+        ? current.organizationalUnitPaths.filter((item) => item !== path)
+        : [...current.organizationalUnitPaths, path],
+    }));
+  };
+
+  const saveDirectorySettings = async () => {
+    if (directoryConfiguration.organizationalUnitPaths.length === 0) {
+      showError('Select at least one organizational unit to control which Google users enter DMS.');
+      return;
+    }
+    setIsSavingDirectorySettings(true);
+    try {
+      const response = await apiClient.updateGoogleDirectorySyncConfiguration(directoryConfiguration);
+      const saved = response.data as GoogleDirectorySyncConfiguration;
+      setDirectoryConfiguration(saved);
+      setGoogleDirectoryStatus((current) => current ? {
+        ...current,
+        configuration: saved,
+        schedule: saved.enabled ? 'Schedule saved' : 'Automatic sync is disabled',
+      } : current);
+      showSuccess('Google Directory settings saved');
+      setShowDirectorySettings(false);
+      await loadUsers(page);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Could not save Google Directory settings.');
+    } finally {
+      setIsSavingDirectorySettings(false);
     }
   };
 
@@ -384,6 +515,29 @@ export function UserManagement() {
               event.target.value = '';
             }}
           />
+          {googleDirectoryStatus && <>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="flex items-center gap-2"
+              disabled={isGoogleDirectorySyncing || !googleDirectoryStatus.configured || googleDirectoryStatus.configuration.organizationalUnitPaths.length === 0}
+              onClick={handleGoogleDirectorySync}
+              title={googleDirectoryStatus.configured ? 'Synchronize new Google Workspace users and department values now' : 'Google Directory service-account sync is not configured on this server'}
+            >
+              <RefreshCw className={`w-4 h-4 ${isGoogleDirectorySyncing ? 'animate-spin' : ''}`} />
+              {isGoogleDirectorySyncing ? 'Syncing Google…' : 'Sync Google users'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="flex items-center gap-2"
+              onClick={openDirectorySettings}
+              title="Choose organizational units and automatic Google Directory sync schedule"
+            >
+              <Settings2 className="w-4 h-4" />
+              Directory settings
+            </Button>
+          </>}
           <Button
             variant="secondary"
             size="sm"
@@ -406,6 +560,65 @@ export function UserManagement() {
           </Button>
         </div>
       </div>
+
+      {googleDirectoryStatus && (
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-navy-700 dark:bg-navy-800 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 rounded-md bg-blue-50 p-2 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"><Cloud className="h-4 w-4" /></span>
+            <div>
+              <p className="font-semibold text-navy-900 dark:text-white">Google Workspace directory sync</p>
+              <p className="text-xs text-gray-500 dark:text-navy-400">
+                {googleDirectoryStatus.configured
+                  ? `${googleDirectoryStatus.schedule}. ${googleDirectoryStatus.configuration.organizationalUnitPaths.length} selected OU${googleDirectoryStatus.configuration.organizationalUnitPaths.length === 1 ? '' : 's'}; new accounts receive User access and existing roles are never changed.`
+                  : 'Not configured on this server. Add the service-account settings before enabling synchronization.'}
+              </p>
+            </div>
+          </div>
+          {googleDirectoryStatus.lastRun && (
+            <p className={`text-xs ${googleDirectoryStatus.lastRun.error ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-navy-400'}`}>
+              {googleDirectoryStatus.lastRun.error
+                ? 'Last sync needs attention'
+                : `Last ${(googleDirectoryStatus.lastRun.initiatedBy ?? 'Manual').toLowerCase()} sync: ${new Date(googleDirectoryStatus.lastRun.completedAt).toLocaleString()} · ${googleDirectoryStatus.lastRun.created} added · ${googleDirectoryStatus.lastRun.departmentsUpdated} department updates`}
+            </p>
+          )}
+        </div>
+      )}
+
+      {showDirectorySettings && (
+        <ModalOverlay onClose={() => !isSavingDirectorySettings && setShowDirectorySettings(false)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-navy-700 dark:bg-navy-800">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-navy-700">
+              <div>
+                <h3 className="text-lg font-semibold text-navy-900 dark:text-white">Google Workspace directory settings</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-navy-400">Select exactly which organizational units can create or update DMS users. Service-account credentials stay on the Ubuntu server.</p>
+              </div>
+              <button type="button" onClick={() => setShowDirectorySettings(false)} disabled={isSavingDirectorySettings} className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:text-navy-400 dark:hover:bg-navy-700 dark:hover:text-white" aria-label="Close directory settings"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="overflow-y-auto px-6 py-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="flex items-start gap-3 rounded-lg border border-gray-200 p-4 dark:border-navy-700 sm:col-span-2">
+                  <input type="checkbox" checked={directoryConfiguration.enabled} onChange={(event) => setDirectoryConfiguration((current) => ({ ...current, enabled: event.target.checked }))} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  <span><span className="block font-medium text-navy-900 dark:text-white">Run automatic synchronization</span><span className="mt-0.5 block text-xs text-gray-500 dark:text-navy-400">Manual Sync now remains available even when the schedule is turned off.</span></span>
+                </label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Frequency<select value={directoryConfiguration.frequency} onChange={(event) => setDirectoryConfiguration((current) => ({ ...current, frequency: event.target.value as GoogleDirectorySyncConfiguration['frequency'] }))} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-navy-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-navy-600 dark:bg-navy-900 dark:text-white"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Time (Cairo)<input type="time" value={directoryConfiguration.time} onChange={(event) => setDirectoryConfiguration((current) => ({ ...current, time: event.target.value }))} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-navy-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-navy-600 dark:bg-navy-900 dark:text-white" /></label>
+                {directoryConfiguration.frequency === 'weekly' && <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 sm:col-span-2">Day of week<select value={directoryConfiguration.dayOfWeek} onChange={(event) => setDirectoryConfiguration((current) => ({ ...current, dayOfWeek: Number(event.target.value) }))} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-navy-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-navy-600 dark:bg-navy-900 dark:text-white">{weekDays.map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label>}
+                {directoryConfiguration.frequency === 'monthly' && <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 sm:col-span-2">Day of month<input type="number" min="1" max="28" value={directoryConfiguration.dayOfMonth} onChange={(event) => setDirectoryConfiguration((current) => ({ ...current, dayOfMonth: Number(event.target.value) }))} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-navy-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-navy-600 dark:bg-navy-900 dark:text-white" /></label>}
+              </div>
+
+              <div className="mt-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><h4 className="font-medium text-navy-900 dark:text-white">Included organizational units</h4><p className="mt-1 text-xs text-gray-500 dark:text-navy-400">Only users in selected OUs are included. A Google user outside these units is never added or changed.</p></div><span className="text-xs font-medium text-gray-500 dark:text-navy-400">{directoryConfiguration.organizationalUnitPaths.length} selected</span></div>
+                <div className="relative mt-3"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input type="search" value={organizationalUnitQuery} onChange={(event) => setOrganizationalUnitQuery(event.target.value)} placeholder="Search organizational unit name or path" className="block w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-navy-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-navy-600 dark:bg-navy-900 dark:text-white" /></div>
+                <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-navy-700">
+                  {isLoadingOrganizationalUnits ? <p className="p-4 text-sm text-gray-500 dark:text-navy-400">Loading organizational units…</p> : organizationalUnits.filter((unit) => `${unit.name} ${unit.path}`.toLowerCase().includes(organizationalUnitQuery.trim().toLowerCase())).map((unit) => <label key={unit.path} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 dark:border-navy-700 dark:hover:bg-navy-700/40"><input type="checkbox" checked={directoryConfiguration.organizationalUnitPaths.includes(unit.path)} onChange={() => toggleOrganizationalUnit(unit.path)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /><span className="min-w-0"><span className="block truncate text-sm font-medium text-navy-900 dark:text-white">{unit.name}</span><span className="block truncate text-xs text-gray-500 dark:text-navy-400">{unit.path}</span></span></label>)}
+                  {!isLoadingOrganizationalUnits && organizationalUnits.length === 0 && <p className="p-4 text-sm text-gray-500 dark:text-navy-400">No organizational units were returned by Google Workspace.</p>}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-navy-700"><Button variant="secondary" size="sm" onClick={() => setShowDirectorySettings(false)} disabled={isSavingDirectorySettings}>Cancel</Button><Button variant="primary" size="sm" onClick={saveDirectorySettings} disabled={isSavingDirectorySettings || organizationalUnits.length === 0}>{isSavingDirectorySettings ? 'Saving…' : 'Save directory settings'}</Button></div>
+          </div>
+        </ModalOverlay>
+      )}
 
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">

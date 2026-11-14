@@ -46,6 +46,7 @@ builder.Services.AddScoped<TaskNotificationPolicyService>();
 builder.Services.AddScoped<ReminderService>();
 builder.Services.AddScoped<AuditCalendarService>();
 builder.Services.AddScoped<UserGoogleCalendarService>();
+builder.Services.AddScoped<GoogleDirectoryUserSyncService>();
 builder.Services.AddScoped<AccessOverrideService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<AiChatSettingsService>();
@@ -60,6 +61,7 @@ builder.Services.AddHttpClient("OcrRag", client =>
     client.Timeout = TimeSpan.FromMinutes(5);
 });
 builder.Services.AddHttpClient("AiChat", client => client.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddHttpClient("GoogleDirectory", client => client.Timeout = TimeSpan.FromMinutes(2));
 // Falls back to a clear "not configured" error at runtime (IsConfigured
 // false) if Google:ClientSecret/CalendarRedirectUri aren't set — see
 // IGoogleOAuthCalendarClient.cs for what configuring it involves.

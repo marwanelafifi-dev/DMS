@@ -26,7 +26,7 @@ interface UploadNewVersionModalProps {
 // the document's metadata. This collects both before the upload happens.
 export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, workflowMode = 'choose' }: UploadNewVersionModalProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const [savingAction, setSavingAction] = useState<'draft' | 'submit' | null>(null);
+  const [savingAction, setSavingAction] = useState<'draft' | 'submit' | 'evidence' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [description, setDescription] = useState('');
@@ -37,6 +37,9 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
   const [fileNameBase, setFileNameBase] = useState(() => splitFileName(file.name).base);
   const [currentVersionDisplay, setCurrentVersionDisplay] = useState<string | null>(null);
   const [category, setCategory] = useState('');
+  const [isEvidence, setIsEvidence] = useState(false);
+  const [evidenceCycles, setEvidenceCycles] = useState<any[]>([]);
+  const [auditCycleId, setAuditCycleId] = useState('');
   const [department, setDepartment] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string; isActive?: boolean }>>([]);
@@ -58,18 +61,29 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
       setIsLoading(true);
       setError(null);
       try {
-        const [docRes, categoryRes, departmentRes, tagRes, usersRes] = await Promise.all([
+        const [docRes, categoryRes, departmentRes, tagRes, usersRes, cycleRes] = await Promise.all([
           apiClient.getDocument(documentId),
           apiClient.getDropdownList('category'),
           apiClient.getDropdownList('department'),
           apiClient.getDropdownList('tag'),
           apiClient.getUsers(),
+          apiClient.getAuditCycles(),
         ]);
         if (cancelled) return;
         if (!docRes.success) throw new Error(docRes.error);
         const doc = docRes.data;
         setDescription(doc.description || '');
         setCategory(doc.category || '');
+        const isEvidenceDocument = String(doc.category || '').toLowerCase() === 'evidence';
+        setIsEvidence(isEvidenceDocument);
+        if (isEvidenceDocument) {
+          const matchingCycles = (cycleRes.data || []).filter((cycle: any) => cycle.standard === doc.evidenceStandard && cycle.status !== 'completed');
+          setEvidenceCycles(matchingCycles);
+          setAuditCycleId(matchingCycles.find((cycle: any) => cycle.status === 'active')?.auditCycleId ?? matchingCycles[0]?.auditCycleId ?? '');
+        } else {
+          setEvidenceCycles([]);
+          setAuditCycleId('');
+        }
         setDepartment(doc.department || '');
         setOwnerId(doc.ownerId || '');
         setHasActiveWorkflow(doc.status === 'pending_approval');
@@ -119,15 +133,11 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
   ];
 
   const isFormValid = Boolean(
-    versionLabel.trim()
-    && description.trim()
-    && category
-    && department
-    && ownerId
-    && fileNameBase.trim(),
+    fileNameBase.trim()
+    && (isEvidence ? auditCycleId : (versionLabel.trim() && description.trim() && category && department && ownerId)),
   );
 
-  const handleUpload = async (action: 'draft' | 'submit') => {
+  const handleUpload = async (action: 'draft' | 'submit' | 'evidence') => {
     if (!isFormValid) {
       setError('Please fill in every field before uploading.');
       return;
@@ -140,42 +150,44 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
       if (!versionId) {
         const finalFileName = `${fileNameBase.trim()}${fileExtension}`;
         const fileToUpload = finalFileName === file.name ? file : new File([file], finalFileName, { type: file.type });
-        const uploadRes = await apiClient.uploadDocument(documentId, fileToUpload, versionLabel, ownerId);
+        const uploadRes = await apiClient.uploadDocument(documentId, fileToUpload, isEvidence ? undefined : versionLabel, isEvidence ? undefined : ownerId, isEvidence ? auditCycleId : undefined);
         if (!uploadRes.success) throw new Error(uploadRes.error);
         versionId = uploadRes.data?.versionId;
         if (!versionId) throw new Error('The server did not return the new version ID');
         setUploadedVersionId(versionId);
         versionPersistedRef.current = true;
 
-        // Updated files receive the same automatic Doc ID scan as brand-new
+        // Controlled-document updates receive the same automatic Doc ID scan as brand-new
         // documents. A parser outage is non-fatal, but once parsing succeeds
         // an API rejection is shown clearly instead of silently leaving the
         // user looking at the old ID with no explanation.
-        let parsedContent: string | null = null;
-        try {
-          activeStep = 'Reading the Document ID from the updated file';
-          const { extractOfficeDocumentText } = await import('../../utils/officeParser');
-          parsedContent = await extractOfficeDocumentText(fileToUpload, finalFileName);
+        if (!isEvidence) {
+          let parsedContent: string | null = null;
+          try {
+            activeStep = 'Reading the Document ID from the updated file';
+            const { extractOfficeDocumentText } = await import('../../utils/officeParser');
+            parsedContent = await extractOfficeDocumentText(fileToUpload, finalFileName);
 
-          // PDF, legacy Office, and malformed modern Office files still use
-          // Docling as the compatibility fallback. Normal DOCX/PPTX/XLSX files
-          // are read locally, avoiding a second multi-megabyte network upload
-          // and server-side LibreOffice conversion before submission.
-          if (!parsedContent) {
-            const parsedDocument = await doclingApi.convertDocument(fileToUpload);
-            parsedContent = parsedDocument.content;
+            // PDF, legacy Office, and malformed modern Office files still use
+            // Docling as the compatibility fallback. Normal DOCX/PPTX/XLSX files
+            // are read locally, avoiding a second multi-megabyte network upload
+            // and server-side LibreOffice conversion before submission.
+            if (!parsedContent) {
+              const parsedDocument = await doclingApi.convertDocument(fileToUpload);
+              parsedContent = parsedDocument.content;
+            }
+          } catch {
+            // QA can still manually correct the ID or generate a new one.
           }
-        } catch {
-          // QA can still manually correct the ID or generate a new one.
-        }
-        if (parsedContent) {
-          activeStep = 'Applying the Document ID from the updated file';
-          const extractionRes = await apiClient.extractDocId(documentId, parsedContent, true);
-          if (!extractionRes.success) throw new Error(extractionRes.error || 'Failed to apply the Document ID detected in the updated file');
+          if (parsedContent) {
+            activeStep = 'Applying the Document ID from the updated file';
+            const extractionRes = await apiClient.extractDocId(documentId, parsedContent, true);
+            if (!extractionRes.success) throw new Error(extractionRes.error || 'Failed to apply the Document ID detected in the updated file');
+          }
         }
       }
 
-      if (!metadataSaved) {
+      if (!isEvidence && !metadataSaved) {
         activeStep = 'Saving the document metadata';
         const updateRes = await apiClient.updateDocument(documentId, { description, tags: tagList, category, department });
         if (!updateRes.success) throw new Error(updateRes.error);
@@ -206,14 +218,14 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
         onUploaded();
       }
       setError(versionPersistedRef.current
-        ? `The new version was saved as Draft, but the next action failed. ${stepMessage}`
+        ? `The new ${isEvidence ? 'evidence version was saved' : 'version was saved as Draft'}, but the next action failed. ${stepMessage}`
         : stepMessage);
     } finally {
       setSavingAction(null);
     }
   };
 
-  const showWorkflowChoices = workflowMode === 'choose' && !hasActiveWorkflow;
+  const showWorkflowChoices = !isEvidence && workflowMode === 'choose' && !hasActiveWorkflow;
   const formLocked = Boolean(uploadedVersionId);
 
   return (
@@ -221,7 +233,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-navy-900 dark:text-white">Upload New Version</h2>
+            <h2 className="text-lg font-semibold text-navy-900 dark:text-white">{isEvidence ? 'Update Evidence' : 'Upload New Version'}</h2>
             <p className="flex items-center gap-1.5 truncate text-sm text-gray-500 dark:text-slate-400"><FileText className="h-3.5 w-3.5 flex-shrink-0" />{file.name}</p>
           </div>
           <button onClick={onClose} className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-slate-400" aria-label="Close">
@@ -240,7 +252,12 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
                 </div>
               )}
               {currentVersionDisplay && (
-                <p className="text-sm text-gray-500 dark:text-slate-400">Current version: <span className="font-medium text-navy-900 dark:text-white">{currentVersionDisplay}</span></p>
+                <p className="text-sm text-gray-500 dark:text-slate-400">{isEvidence ? 'Current evidence version:' : 'Current version:'} <span className="font-medium text-navy-900 dark:text-white">{currentVersionDisplay}</span></p>
+              )}
+              {isEvidence && (
+                <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-100">
+                  This update is saved directly as evidence for the selected ISO cycle. It does not enter document approval, and the previous cycle's evidence version remains retained.
+                </div>
               )}
               <Field label="File Name" required>
                 <div className="flex items-center overflow-hidden rounded border border-gray-300 bg-white dark:border-slate-600 dark:bg-slate-800">
@@ -255,13 +272,24 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
                   )}
                 </div>
               </Field>
-              <Field label="New Version" required>
+              {isEvidence && <Field label="Audit cycle" required>
+                <select value={auditCycleId} onChange={(event) => setAuditCycleId(event.target.value)} className={inputClass} disabled={formLocked || evidenceCycles.length === 0}>
+                  <option value="">{evidenceCycles.length === 0 ? 'No open matching audit cycle is available' : 'Select an audit cycle...'}</option>
+                  {evidenceCycles.map((cycle) => (
+                    <option key={cycle.auditCycleId} value={cycle.auditCycleId}>
+                      {cycle.name} · {cycle.startDate} to {cycle.endDate}{cycle.status === 'active' ? ' — Active' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">This exact evidence version is retained against the selected cycle.</p>
+              </Field>}
+              {!isEvidence && <Field label="New Version" required>
                 <input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. v2.0, Rev B" autoFocus className={inputClass} disabled={formLocked} />
-              </Field>
-              <Field label="Description" required>
+              </Field>}
+              {!isEvidence && <Field label="Description" required>
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={inputClass} disabled={formLocked} />
-              </Field>
-              <Field label="Tags">
+              </Field>}
+              {!isEvidence && <Field label="Tags">
                 <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded border border-gray-300 bg-white p-2 dark:border-slate-600 dark:bg-slate-800">
                   {tagOptions.length === 0 && (
                     <span className="px-1 py-0.5 text-xs text-gray-400 dark:text-slate-500">No tags configured yet</span>
@@ -311,8 +339,8 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
                   />
                 )}
                 <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Select any number of tags, or none.</p>
-              </Field>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              </Field>}
+              {!isEvidence && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Category" required>
                   <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass} disabled={formLocked}>
                     <option value="">Select…</option>
@@ -325,8 +353,8 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
                     {departmentOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </Field>
-              </div>
-              <Field label="Owner" required>
+              </div>}
+              {!isEvidence && <Field label="Owner" required>
                 <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass} disabled={!canChangeOwner || formLocked}>
                   <option value="">Select…</option>
                   {users.map((user) => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}
@@ -334,7 +362,7 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
                 {!canChangeOwner && (
                   <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Only the current file owner or a Full Access user can change the file owner.</p>
                 )}
-              </Field>
+              </Field>}
               {showWorkflowChoices && (
                 <Field label="Approval Notes">
                   <textarea
@@ -346,18 +374,22 @@ export function UploadNewVersionModal({ documentId, file, onClose, onUploaded, w
                   />
                 </Field>
               )}
-              <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-200">
+              {!isEvidence && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-200">
                 {showWorkflowChoices
                   ? 'This upload creates a new controlled revision. Save it as Draft, or submit the new revision to QA for approval.'
                   : 'This upload updates the revision already in the active correction/review workflow.'}
-              </div>
+              </div>}
             </>
           )}
         </div>
 
         <div className="flex flex-col-reverse gap-3 border-t border-gray-200 px-6 py-4 dark:border-slate-700 sm:flex-row">
           <Button onClick={onClose} disabled={savingAction !== null} variant="secondary" className="flex-1">Cancel</Button>
-          {showWorkflowChoices ? (
+          {isEvidence ? (
+            <Button onClick={() => handleUpload('evidence')} disabled={isLoading || savingAction !== null || !isFormValid} title={!isFormValid ? 'Select an audit cycle before saving this evidence update' : undefined} className="flex-1">
+              {savingAction ? 'Saving...' : 'Save Evidence Update'}
+            </Button>
+          ) : showWorkflowChoices ? (
             <>
               <Button onClick={() => handleUpload('draft')} disabled={isLoading || savingAction !== null || !isFormValid} variant="secondary" title={!isFormValid ? 'Please fill in every field' : undefined} className="flex-1">
                 {savingAction === 'draft' ? 'Saving...' : 'Save as Draft'}

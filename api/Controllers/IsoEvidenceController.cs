@@ -57,8 +57,15 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
 
         var activeCycleId = auditCycleId ?? await context.AuditCycles.Where(c => c.Standard == standard && c.Status == "active").Select(c => (Guid?)c.AuditCycleId).FirstOrDefaultAsync();
         var documentIds = documents.Select(row => row.document.DocumentId).ToList();
-        var assignedDocumentIds = activeCycleId.HasValue
-            ? await context.EvidenceCycleAssignments.AsNoTracking().Where(assignment => documentIds.Contains(assignment.DocumentId) && assignment.AuditCycleId == activeCycleId).Select(assignment => assignment.DocumentId).ToListAsync()
+        // Evidence is cycle-specific at version level. Keep historic-cycle
+        // evidence reportable even after the document receives a newer version
+        // for a later cycle; consumers can use AssignedVersionId to retrieve
+        // exactly what was presented for the selected cycle.
+        var assignedVersions = activeCycleId.HasValue
+            ? await context.EvidenceVersionCycleAssignments.AsNoTracking()
+                .Where(assignment => documentIds.Contains(assignment.DocumentId) && assignment.AuditCycleId == activeCycleId)
+                .Select(assignment => new { assignment.DocumentId, assignment.VersionId })
+                .ToListAsync()
             : [];
         return Ok(new
         {
@@ -69,7 +76,9 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
                 row.document.Category, row.document.Status, row.document.Tags, row.document.CreatedAt, row.document.UpdatedAt,
                 OwnerName = row.FullName,
                 FolderPath = string.Join(" / ", Path(row.document.FolderId)),
-                IsAssignedToSelectedCycle = assignedDocumentIds.Contains(row.document.DocumentId),
+                AssignedVersionId = assignedVersions.FirstOrDefault(assignment => assignment.DocumentId == row.document.DocumentId)?.VersionId,
+                IsAssignedToSelectedCycle = assignedVersions.Any(assignment => assignment.DocumentId == row.document.DocumentId),
+                IsCurrentVersionForSelectedCycle = assignedVersions.Any(assignment => assignment.DocumentId == row.document.DocumentId && assignment.VersionId == row.document.CurrentVersionId),
             }),
             count = documents.Count,
             standard,

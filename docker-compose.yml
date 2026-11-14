@@ -80,6 +80,10 @@ services:
       Google__ClientSecret: ${GOOGLE_CLIENT_SECRET}
       Google__CalendarRedirectUri: ${GOOGLE_CALENDAR_REDIRECT_URI:-http://localhost:5174/api/googlecalendar/callback}
       Google__FrontendRedirectUrl: ${GOOGLE_FRONTEND_REDIRECT_URL:-http://localhost:5174/}
+      GoogleDirectory__ServiceAccountFile: ${GOOGLE_DIRECTORY_SERVICE_ACCOUNT_FILE:-}
+      GoogleDirectory__ServiceAccountJson: ${GOOGLE_DIRECTORY_SERVICE_ACCOUNT_JSON:-}
+      GoogleDirectory__DelegatedAdminEmail: ${GOOGLE_DIRECTORY_DELEGATED_ADMIN_EMAIL:-}
+      GoogleDirectory__Customer: ${GOOGLE_DIRECTORY_CUSTOMER:-my_customer}
       Smtp__User: ${SMTP_USER}
       Smtp__Password: ${SMTP_PASSWORD}
     ports:

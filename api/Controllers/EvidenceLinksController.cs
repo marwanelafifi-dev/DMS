@@ -42,8 +42,10 @@ public class EvidenceLinksController(DmsContext context, AccessOverrideService a
             return BadRequest(new { success = false, error = "Related documents must be in the direct parent process folder of the Evidences folder" });
         var standard = ResolveStandard(evidence.FolderId, byId);
         if (standard == null) return BadRequest(new { success = false, error = "Evidence must be stored in an approved ISO Evidence folder" });
-        var cycle = await context.AuditCycles.FirstOrDefaultAsync(c => c.Standard == standard && c.Status == "active");
-        if (cycle == null) return BadRequest(new { success = false, error = $"No active {standard} audit cycle is configured" });
+        var cycle = request.AuditCycleId.HasValue
+            ? await context.AuditCycles.FirstOrDefaultAsync(c => c.AuditCycleId == request.AuditCycleId.Value && c.Standard == standard && c.Status != "completed")
+            : await context.AuditCycles.FirstOrDefaultAsync(c => c.Standard == standard && c.Status == "active");
+        if (cycle == null) return BadRequest(new { success = false, error = request.AuditCycleId.HasValue ? $"The selected {standard} audit cycle is not open" : $"No active {standard} audit cycle is configured" });
         var existing = await context.EvidenceLinks.AnyAsync(l => l.EvidenceDocumentId == request.EvidenceDocumentId && l.RelatedDocumentId == request.RelatedDocumentId && l.AuditCycleId == cycle.AuditCycleId);
         if (existing) return Ok(new { success = true, message = "Link already exists" });
         var link = new DmsEvidenceLink { EvidenceLinkId = Guid.NewGuid(), EvidenceDocumentId = request.EvidenceDocumentId, RelatedDocumentId = request.RelatedDocumentId, ProgrammeYear = cycle.StartDate.Year, AuditCycleId = cycle.AuditCycleId, OwnerId = ownerId, CreatedAt = DateTime.UtcNow };
@@ -80,4 +82,4 @@ public class EvidenceLinksController(DmsContext context, AccessOverrideService a
         return path.Skip(3).Any(p => p.Equals("ISO 27001", StringComparison.OrdinalIgnoreCase)) ? "ISO 27001:2022" : "ISO 9001:2015";
     }
 }
-public record CreateEvidenceLinkRequest(Guid EvidenceDocumentId, Guid RelatedDocumentId);
+public record CreateEvidenceLinkRequest(Guid EvidenceDocumentId, Guid RelatedDocumentId, Guid? AuditCycleId = null);

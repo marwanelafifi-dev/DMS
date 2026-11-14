@@ -50,6 +50,7 @@ public class DmsContext : DbContext
     public DbSet<DmsTaskAttachment> TaskAttachments => Set<DmsTaskAttachment>();
     public DbSet<DmsEvidenceLink> EvidenceLinks => Set<DmsEvidenceLink>();
     public DbSet<DmsEvidenceCycleAssignment> EvidenceCycleAssignments => Set<DmsEvidenceCycleAssignment>();
+    public DbSet<DmsEvidenceVersionCycleAssignment> EvidenceVersionCycleAssignments => Set<DmsEvidenceVersionCycleAssignment>();
     public DbSet<DmsAppSetting> AppSettings => Set<DmsAppSetting>();
     public DbSet<DmsGoogleMeetingReminder> GoogleMeetingReminders => Set<DmsGoogleMeetingReminder>();
     public DbSet<DmsAnnouncement> Announcements => Set<DmsAnnouncement>();
@@ -147,6 +148,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsTaskAttachment>().ToTable("dms_task_attachments").HasKey(a => a.AttachmentId);
         modelBuilder.Entity<DmsEvidenceLink>().ToTable("dms_evidence_links").HasKey(l => l.EvidenceLinkId);
         modelBuilder.Entity<DmsEvidenceCycleAssignment>().ToTable("dms_evidence_cycle_assignments").HasKey(a => a.DocumentId);
+        modelBuilder.Entity<DmsEvidenceVersionCycleAssignment>().ToTable("dms_evidence_version_cycle_assignments").HasKey(a => new { a.DocumentId, a.AuditCycleId });
         modelBuilder.Entity<DmsAppSetting>().ToTable("dms_app_settings").HasKey(s => s.Key);
         modelBuilder.Entity<DmsGoogleMeetingReminder>().ToTable("dms_google_meeting_reminders").HasKey(r => r.ReminderId);
         modelBuilder.Entity<DmsAnnouncement>().ToTable("dms_announcements").HasKey(a => a.AnnouncementId);

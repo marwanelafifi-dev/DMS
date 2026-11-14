@@ -1,0 +1,8 @@
+# Ubuntu-only optional override for the Google Workspace Directory sync.
+# Copy this file to /opt/dms/docker-compose.google-directory-sync.yml and keep
+# the service-account JSON in /opt/dms/secrets/ with chmod 600. This credential
+# is mounted read-only into the API container and is never stored in DMS.
+services:
+  api:
+    volumes:
+      - /opt/dms/secrets/google-directory-service-account.json:/run/secrets/google-directory-service-account.json:ro

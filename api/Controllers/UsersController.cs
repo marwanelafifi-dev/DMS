@@ -9,8 +9,69 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class UsersController(DmsContext context, AuditService auditService, EmailService emailService, IConfiguration configuration, ILogger<UsersController> logger) : BaseController
+public class UsersController(DmsContext context, AuditService auditService, EmailService emailService, GoogleDirectoryUserSyncService googleDirectoryUserSyncService, IConfiguration configuration, ILogger<UsersController> logger) : BaseController
 {
+    [HttpGet("google-directory-sync/status")]
+    public async Task<ActionResult<object>> GetGoogleDirectorySyncStatus()
+    {
+        if ((await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.BypassFolderPermissions != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only a Full Access role can view Google Directory sync status" });
+        return Ok(new { success = true, data = await googleDirectoryUserSyncService.GetStatusAsync() });
+    }
+
+    [HttpGet("google-directory-sync/organizational-units")]
+    public async Task<ActionResult<object>> GetGoogleDirectoryOrganizationalUnits(CancellationToken cancellationToken)
+    {
+        if ((await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.BypassFolderPermissions != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only a Full Access role can view Google Workspace organizational units" });
+        try
+        {
+            return Ok(new { success = true, data = await googleDirectoryUserSyncService.GetOrganizationalUnitsAsync(cancellationToken) });
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Could not load Google Workspace organizational units");
+            return StatusCode(StatusCodes.Status502BadGateway, new { success = false, error = exception.Message });
+        }
+    }
+
+    [HttpPut("google-directory-sync/configuration")]
+    public async Task<ActionResult<object>> SaveGoogleDirectorySyncConfiguration([FromBody] GoogleDirectorySyncConfiguration configuration, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if ((await GetPageAccessRoleAsync(context, userId))?.BypassFolderPermissions != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only a Full Access role can change Google Directory sync settings" });
+        try
+        {
+            var saved = await googleDirectoryUserSyncService.SaveConfigurationAsync(configuration, userId, cancellationToken);
+            await auditService.LogAsync(userId, "GOOGLE_DIRECTORY_SYNC_CONFIGURATION_UPDATED", new { saved.Enabled, saved.Frequency, saved.Time, saved.TimeZoneId, OrganizationalUnits = saved.OrganizationalUnitPaths });
+            return Ok(new { success = true, data = saved });
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { success = false, error = exception.Message });
+        }
+    }
+
+    [HttpPost("google-directory-sync")]
+    public async Task<ActionResult<object>> RunGoogleDirectorySync(CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if ((await GetPageAccessRoleAsync(context, userId))?.BypassFolderPermissions != true)
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Only a Full Access role can run Google Directory sync" });
+        try
+        {
+            var result = await googleDirectoryUserSyncService.SyncAsync(cancellationToken, "Manual");
+            await auditService.LogAsync(userId, "GOOGLE_DIRECTORY_USERS_SYNCED", result);
+            return Ok(new { success = true, data = result });
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Manual Google Directory user sync failed");
+            return StatusCode(StatusCodes.Status502BadGateway, new { success = false, error = exception.Message });
+        }
+    }
+
     // GET /api/users — list of users
     // Pass `page`/`pageSize` to paginate (used by the Users admin table); omit both to get
     // the full list unpaginated (used by lookup/dropdown callers like Audit Trail and Folder Permissions).

@@ -128,6 +128,8 @@ interface DocumentListProps {
   permissions?: RolePermissionFlags | null;
   canCreateShortcuts?: boolean;
   canShareDocumentLinks?: boolean;
+  // Audit metadata appears only when the user is browsing an Evidences folder.
+  showEvidenceCycle?: boolean;
 }
 
 type SortKey = 'fileName' | 'extension' | 'folderName' | 'department' | 'category' | 'owner' | 'modifiedAt' | 'tags' | 'status';
@@ -195,6 +197,7 @@ export function DocumentList({
   permissions,
   canCreateShortcuts = false,
   canShareDocumentLinks = false,
+  showEvidenceCycle = false,
 }: DocumentListProps) {
   const [sortBy, setSortBy] = useState<SortKey>('fileName');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -294,14 +297,15 @@ export function DocumentList({
   const columnWidthPercents = useMemo(() => {
     const weights: Record<string, number> = {
       checkbox: 3, documentId: 9, fileName: 17, folder: 8, actions: 9,
-      department: 10, category: 9, owner: 10, modifiedAt: 10, tags: 11, status: 10,
+      department: 10, category: 9, cycle: 12, owner: 10, modifiedAt: 10, tags: 11, status: 10,
     };
     const activeKeys = ['checkbox', 'documentId', 'fileName', 'folder',
       ...(['department', 'category', 'owner', 'modifiedAt', 'tags', 'status'] as const).filter((c) => visibleColumns.has(c)),
+      ...(showEvidenceCycle ? ['cycle'] : []),
       'actions'];
     const totalWeight = activeKeys.reduce((sum, key) => sum + weights[key], 0);
     return Object.fromEntries(activeKeys.map((key) => [key, (weights[key] / totalWeight) * 100]));
-  }, [visibleColumns]);
+  }, [visibleColumns, showEvidenceCycle]);
 
   if (isLoading) {
     return <div className="space-y-2 p-4">{[1, 2, 3, 4].map((item) => <div key={item} className="h-14 animate-pulse rounded bg-slate-100" />)}</div>;
@@ -317,6 +321,7 @@ export function DocumentList({
           <col style={{ width: `${columnWidthPercents.folder}%` }} />
           {visibleColumns.has('department') && <col style={{ width: `${columnWidthPercents.department}%` }} />}
           {visibleColumns.has('category') && <col style={{ width: `${columnWidthPercents.category}%` }} />}
+          {showEvidenceCycle && <col style={{ width: `${columnWidthPercents.cycle}%` }} />}
           {visibleColumns.has('owner') && <col style={{ width: `${columnWidthPercents.owner}%` }} />}
           {visibleColumns.has('modifiedAt') && <col style={{ width: `${columnWidthPercents.modifiedAt}%` }} />}
           {visibleColumns.has('tags') && <col style={{ width: `${columnWidthPercents.tags}%` }} />}
@@ -338,6 +343,7 @@ export function DocumentList({
             <th>{header('Folder', 'folderName')}</th>
             {visibleColumns.has('department') && <th>{header('Department', 'department')}</th>}
             {visibleColumns.has('category') && <th>{header('Category', 'category')}</th>}
+            {showEvidenceCycle && <th>Cycle</th>}
             {visibleColumns.has('owner') && <th>{header('Owner', 'owner')}</th>}
             {visibleColumns.has('modifiedAt') && <th>{header('Modified date', 'modifiedAt')}</th>}
             {visibleColumns.has('tags') && <th>{header('Tags', 'tags')}</th>}
@@ -370,6 +376,7 @@ export function DocumentList({
                 <td className="text-[#52627a] dark:text-slate-200">Original {isFolder ? 'folder' : 'file'}</td>
                 {visibleColumns.has('department') && <td className="text-[#93a4bd]">—</td>}
                 {visibleColumns.has('category') && <td className="text-[#93a4bd]">—</td>}
+                {showEvidenceCycle && <td className="text-[#93a4bd]">—</td>}
                 {visibleColumns.has('owner') && <td className="text-[#93a4bd]">—</td>}
                 {visibleColumns.has('modifiedAt') && <td className="text-[#93a4bd]">—</td>}
                 {visibleColumns.has('tags') && <td className="text-[#93a4bd]">—</td>}
@@ -430,6 +437,7 @@ export function DocumentList({
                 <td className="text-[#93a4bd]">—</td>
                 {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={folder.department} /></td>}
                 {visibleColumns.has('category') && <td className="text-[#93a4bd]">—</td>}
+                {showEvidenceCycle && <td className="text-[#93a4bd]">—</td>}
                 {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={folder.ownerName} /></td>}
                 {visibleColumns.has('modifiedAt') && <td className="text-[#93a4bd]">—</td>}
                 {visibleColumns.has('tags') && <td>{folder.tags && folder.tags.length > 0 ? <CompactTagList tags={folder.tags} /> : <span className="text-[#93a4bd]">—</span>}</td>}
@@ -577,6 +585,13 @@ export function DocumentList({
               <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.folderName} /></td>
               {visibleColumns.has('department') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.department} /></td>}
               {visibleColumns.has('category') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.category} /></td>}
+              {showEvidenceCycle && <td>
+                {document.evidenceCycleNames?.length ? (
+                  <div className="flex flex-wrap gap-1">
+                    {document.evidenceCycleNames.map((cycleName) => <span key={cycleName} className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-[#1763a5] dark:bg-blue-500/15 dark:text-blue-200">{cycleName}</span>)}
+                  </div>
+                ) : <span className="text-[#93a4bd]">Not assigned</span>}
+              </td>}
               {visibleColumns.has('owner') && <td className="text-[#52627a] dark:text-slate-200"><WrappingCellText value={document.owner.fullName} /></td>}
               {visibleColumns.has('modifiedAt') && <td className="text-[11px] text-[#52627a]"><ExpandableCellText value={formatDateTime(document.modifiedAt)} /></td>}
               {visibleColumns.has('tags') && (

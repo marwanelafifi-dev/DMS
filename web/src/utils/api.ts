@@ -405,6 +405,26 @@ class APIClient {
     return data;
   }
 
+  async getGoogleDirectorySyncStatus() {
+    const { data } = await this.client.get<ApiResponse>('/users/google-directory-sync/status');
+    return data;
+  }
+
+  async syncGoogleDirectoryUsers() {
+    const { data } = await this.client.post<ApiResponse>('/users/google-directory-sync');
+    return data;
+  }
+
+  async getGoogleDirectoryOrganizationalUnits() {
+    const { data } = await this.client.get<ApiResponse>('/users/google-directory-sync/organizational-units');
+    return data;
+  }
+
+  async updateGoogleDirectorySyncConfiguration(configuration: unknown) {
+    const { data } = await this.client.put<ApiResponse>('/users/google-directory-sync/configuration', configuration);
+    return data;
+  }
+
   async updateUser(userId: string, userData: any) {
     const { data } = await this.client.put<ApiResponse>(`/users/${userId}`, userData);
     return data;
@@ -542,7 +562,7 @@ class APIClient {
   async createManagementReviewEntry(payload: any) { const { data } = await this.client.post<ApiResponse>('/management-review', payload); return data; }
   async updateManagementReviewEntry(id: string, payload: any) { const { data } = await this.client.put<ApiResponse>(`/management-review/${id}`, payload); return data; }
   async getEvidenceLinks(documentId: string) { const { data } = await this.client.get<ApiResponse>(`/evidence-links/${documentId}`); return data; }
-  async createEvidenceLink(payload: { evidenceDocumentId: string; relatedDocumentId: string }) { const { data } = await this.client.post<ApiResponse>('/evidence-links', payload); return data; }
+  async createEvidenceLink(payload: { evidenceDocumentId: string; relatedDocumentId: string; auditCycleId?: string }) { const { data } = await this.client.post<ApiResponse>('/evidence-links', payload); return data; }
   async deleteEvidenceLink(evidenceLinkId: string) { const { data } = await this.client.delete<ApiResponse>(`/evidence-links/${evidenceLinkId}`); return data; }
 
   async getDocument(documentId: string) {
@@ -672,11 +692,12 @@ class APIClient {
   }
 
   // Document Upload/Download
-  async uploadDocument(documentId: string, file: File, versionLabel?: string, ownerId?: string) {
+  async uploadDocument(documentId: string, file: File, versionLabel?: string, ownerId?: string, auditCycleId?: string) {
     const formData = new FormData();
     formData.append('file', file);
     if (versionLabel?.trim()) formData.append('versionLabel', versionLabel.trim());
     if (ownerId?.trim()) formData.append('ownerId', ownerId.trim());
+    if (auditCycleId?.trim()) formData.append('auditCycleId', auditCycleId.trim());
 
     const { data } = await this.client.post<ApiResponse>(
       `/documents/${documentId}/upload`,
