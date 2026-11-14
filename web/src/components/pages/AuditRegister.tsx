@@ -23,7 +23,7 @@ function ControlledDocumentSelect({ label, value, documents, onChange }: { label
   return <label className="text-sm font-medium text-[#34425b] dark:text-slate-200">{label}<select value={value} onChange={event => onChange(event.target.value)} className="field-control mt-1 h-10 w-full px-3"><option value="">No controlled document selected</option>{documents.map(document => <option key={document.documentId} value={document.documentId}>{document.title ?? document.name}</option>)}</select><span className="mt-1 block text-xs font-normal text-[#718198]">Select a controlled DMS file; no free-text reference is used.</span></label>;
 }
 
-export function AuditRegister({ stageContext, onCloseStageRecord }: { stageContext?: JourneyStageContext; onCloseStageRecord?: () => void }) {
+export function AuditRegister({ stageContext, onCloseStageRecord, onSaved }: { stageContext?: JourneyStageContext; onCloseStageRecord?: () => void; onSaved?: () => void }) {
   const { showError, showSuccess } = useToast();
   const [standard, setStandard] = useState<Standard>(stageContext?.standard ?? 'ISO 9001:2015');
   const [form, setForm] = useState<AuditForm>(blank(stageContext?.standard ?? 'ISO 9001:2015', stageContext));
@@ -42,14 +42,14 @@ export function AuditRegister({ stageContext, onCloseStageRecord }: { stageConte
   const save = async () => {
     if (!form.title.trim() || !form.auditCycleId || !form.auditDate || !form.scope.trim()) return showError('Title, audit cycle, target date, and scope are required');
     setIsSaving(true); const { auditRecordId, auditPlanDocumentId, auditReportDocumentId, ...body } = form; const payload = { ...body, auditPlanDocumentId: auditPlanDocumentId || undefined, auditReportDocumentId: auditReportDocumentId || undefined };
-    try { if (auditRecordId) await apiClient.updateAuditRecord(auditRecordId, payload); else await apiClient.createAuditRecord(payload); showSuccess(auditRecordId ? 'Stage record updated' : 'Stage record created'); await load(); }
+    try { if (auditRecordId) await apiClient.updateAuditRecord(auditRecordId, payload); else await apiClient.createAuditRecord(payload); showSuccess(auditRecordId ? 'Stage record updated' : 'Stage record created'); await load(); onSaved?.(); }
     catch (error: any) { showError(error.response?.data?.error || 'Could not save the stage record'); }
     finally { setIsSaving(false); }
   };
   const remove = async () => {
     if (!form.auditRecordId || !window.confirm('Delete this stage record? This cannot be undone. The cycle plan remains, and the stage will return to Planned.')) return;
     setIsDeleting(true);
-    try { await apiClient.deleteAuditRecord(form.auditRecordId); showSuccess('Stage record deleted; the cycle plan remains available.'); setForm(blank(standard, stageContext)); await load(); }
+    try { await apiClient.deleteAuditRecord(form.auditRecordId); showSuccess('Stage record deleted; the cycle plan remains available.'); setForm(blank(standard, stageContext)); await load(); onSaved?.(); }
     catch (error: any) { showError(error.response?.data?.error || 'Could not delete the stage record'); }
     finally { setIsDeleting(false); }
   };

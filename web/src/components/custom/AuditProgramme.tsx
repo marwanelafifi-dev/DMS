@@ -25,6 +25,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
   const [cycleId, setCycleId] = useState('');
   const [users, setUsers] = useState<Array<{ userId: string; fullName: string }>>([]);
   const [values, setValues] = useState<Record<string, StageValue>>({});
+  const [stageRecords, setStageRecords] = useState<any[]>([]);
   const [removedKeys, setRemovedKeys] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [changingStageKey, setChangingStageKey] = useState('');
@@ -39,9 +40,9 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
   useEffect(() => { const active = standardCycles.find(cycle => cycle.status === 'active'); setCycleId(active?.auditCycleId ?? standardCycles[0]?.auditCycleId ?? ''); }, [standard, cycles]);
 
   useEffect(() => {
-    if (!cycleId) { setValues({}); setRemovedKeys([]); return; }
-    Promise.allSettled([apiClient.getAuditCalendarEvents(), apiClient.getRemovedAuditProgrammeStages(cycleId)])
-      .then(([calendarResult, excludedResult]) => {
+    if (!cycleId) { setValues({}); setStageRecords([]); setRemovedKeys([]); return; }
+    Promise.allSettled([apiClient.getAuditCalendarEvents(), apiClient.getRemovedAuditProgrammeStages(cycleId), apiClient.getAuditRecords({ auditCycleId: cycleId })])
+      .then(([calendarResult, excludedResult, recordsResult]) => {
         if (calendarResult.status !== 'fulfilled') throw calendarResult.reason;
         const calendarResponse = calendarResult.value;
         const excludedResponse = excludedResult.status === 'fulfilled' ? excludedResult.value : { data: [] };
@@ -50,9 +51,10 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
           next[event.stageKey] = { date: String(event.eventDate).slice(0, 10), dueDate: event.dueDate ? String(event.dueDate).slice(0, 10) : '', ownerId: event.ownerId ?? '', notes: event.notes ?? '' };
         });
         setValues(next);
+        setStageRecords(recordsResult.status === 'fulfilled' ? recordsResult.value.data ?? [] : []);
         setRemovedKeys((excludedResponse.data ?? []).map((stage: any) => stage.stageKey));
       })
-      .catch(() => { setValues({}); setRemovedKeys([]); showError('Could not load programme stages'); });
+      .catch(() => { setValues({}); setStageRecords([]); setRemovedKeys([]); showError('Could not load programme stages'); });
   }, [cycleId]);
   useEffect(() => { setManagedStage(null); setRecordExpanded(false); }, [cycleId]);
 
@@ -66,6 +68,11 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
     if (!cycle) return showError('Create and select an audit cycle first');
     const configured = stages.filter(([, , key]) => values[key]?.date);
     if (!configured.length) return showError('Enter at least one stage date');
+    const missingRecord = configured.find(([, , key]) => {
+      const auditType = recordStageTypes[key];
+      return auditType && !stageRecords.some(record => record.auditType === auditType);
+    });
+    if (missingRecord) return showError(`Save the ${missingRecord[0]} record, including its required title and scope, before saving this plan row.`);
     setSaving(true);
     try {
       await Promise.all(configured.map(([label, phase, key]) => {
@@ -124,7 +131,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
               <td className="px-5 py-3"><input value={item.notes} onChange={event => update(key, 'notes', event.target.value)} className="field-control h-9 min-w-44 px-2" placeholder="Optional planning notes" /></td>
               <td className="px-5 py-3 text-right">{recordType ? <Button size="sm" variant="secondary" disabled={!cycle || !item.date} onClick={() => { if (isManaged) setRecordExpanded(current => !current); else if (cycle) { setManagedStage({ auditCycleId: cycle.auditCycleId, standard, auditType: recordType, stageLabel: label, auditDate: item.date }); setRecordExpanded(true); } }} leftIcon={<ClipboardCheck className="h-3.5 w-3.5" />}>{isExpanded ? 'Collapse record' : isManaged ? 'Resume record' : 'Manage record'}</Button> : optional ? <Button size="sm" variant="ghost" disabled={changingStageKey === key} onClick={() => void removeStage(label, key)} leftIcon={<Trash2 className="h-3.5 w-3.5" />}>{changingStageKey === key ? 'Removing...' : 'Remove'}</Button> : <span className="text-xs text-[#718198]">Required</span>}</td>
             </tr>
-            {isManaged && managedStage && <tr className={`border-t border-[#dbe2ec] bg-[#f8fbfe] dark:border-white/10 dark:bg-slate-950/20 ${isExpanded ? '' : 'hidden'}`}><td colSpan={6} className="p-5"><AuditRegister stageContext={managedStage} onCloseStageRecord={() => setRecordExpanded(false)} /></td></tr>}
+            {isManaged && managedStage && <tr className={`border-t border-[#dbe2ec] bg-[#f8fbfe] dark:border-white/10 dark:bg-slate-950/20 ${isExpanded ? '' : 'hidden'}`}><td colSpan={6} className="p-5"><AuditRegister stageContext={managedStage} onCloseStageRecord={() => setRecordExpanded(false)} onSaved={() => cycleId && void apiClient.getAuditRecords({ auditCycleId: cycleId }).then(response => setStageRecords(response.data ?? []))} /></td></tr>}
           </Fragment>;
         })}</tbody>
       </table>

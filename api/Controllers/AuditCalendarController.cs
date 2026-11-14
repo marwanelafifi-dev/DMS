@@ -11,6 +11,13 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
 {
     private static readonly string[] OptionalStageKeys = ["evidence_deadline", "pcar_closure", "external_response", "cycle_closure"];
     private static readonly string[] ManagedStageKeys = ["preparation", "internal_audit", "management_review", "surveillance_audit"];
+    private static readonly Dictionary<string, string> ManagedStageRecordTypes = new()
+    {
+        ["preparation"] = "preparation",
+        ["internal_audit"] = "internal",
+        ["management_review"] = "management_review",
+        ["surveillance_audit"] = "external",
+    };
     // GET /api/auditcalendar — all audit calendar events, visible to all users
     [HttpGet]
     public async Task<ActionResult<object>> GetEvents()
@@ -83,6 +90,9 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
             if ((await GetPageAccessRoleAsync(context, userId))?.CanViewAdminPanel != true) return Forbid();
             if (!string.IsNullOrWhiteSpace(req.Status) && !string.IsNullOrWhiteSpace(req.StageKey) && ManagedStageKeys.Contains(req.StageKey))
                 return BadRequest(new { success = false, error = "Core stage status is controlled by its managed stage record, not the cycle plan." });
+            if (req.AuditCycleId.HasValue && !string.IsNullOrWhiteSpace(req.StageKey) && ManagedStageRecordTypes.TryGetValue(req.StageKey, out var auditType) &&
+                !await context.AuditRecords.AnyAsync(record => record.AuditCycleId == req.AuditCycleId.Value && record.AuditType == auditType))
+                return BadRequest(new { success = false, error = "Save the managed stage record, including its required title and scope, before saving this plan row." });
             var result = await auditCalendarService.CreateAsync(req.Title, req.Phase, req.Standard, req.EventDate, req.Notes, userId, req.ProgrammeYear, req.StageKey, req.Status, req.OwnerId, req.DueDate, req.AuditCycleId);
 
             if (!result.Success)
