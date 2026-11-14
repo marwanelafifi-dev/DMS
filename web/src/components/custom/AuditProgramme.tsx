@@ -1,6 +1,7 @@
 import { CalendarDays, ClipboardCheck, RotateCcw, Save, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../../utils/api';
+import { AuditRegister } from '../pages/AuditRegister';
 import { Button } from '../ui/Button';
 import { Card, CardBody } from '../ui/Card';
 import { useToast } from '../../hooks/useToast';
@@ -17,7 +18,7 @@ const optionalStageKeys = new Set(['evidence_deadline', 'pcar_closure', 'externa
 const recordStageTypes: Record<string, JourneyStageContext['auditType']> = { preparation: 'preparation', internal_audit: 'internal', management_review: 'management_review', surveillance_audit: 'external' };
 const emptyStage = (): StageValue => ({ date: '', dueDate: '', ownerId: '', notes: '' });
 
-export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, onManageRecord, lockStandard = false }: { defaultStandard?: Standard; onManageRecord?: (context: JourneyStageContext) => void; lockStandard?: boolean }) {
+export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, lockStandard = false }: { defaultStandard?: Standard; lockStandard?: boolean }) {
   const { showError, showSuccess } = useToast();
   const [cycles, setCycles] = useState<any[]>([]);
   const [standard, setStandard] = useState<Standard>(defaultStandard);
@@ -27,6 +28,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
   const [removedKeys, setRemovedKeys] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [changingStageKey, setChangingStageKey] = useState('');
+  const [managedStage, setManagedStage] = useState<JourneyStageContext | null>(null);
 
   const loadCycles = () => apiClient.getAuditCycles().then(response => setCycles(response.data ?? [])).catch(() => showError('Could not load audit cycles'));
   useEffect(() => { void loadCycles(); apiClient.getUsers().then(response => setUsers((response.data ?? []).filter((user: any) => user.isActive))).catch(() => {}); }, []);
@@ -51,6 +53,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
       })
       .catch(() => { setValues({}); setRemovedKeys([]); showError('Could not load programme stages'); });
   }, [cycleId]);
+  useEffect(() => { setManagedStage(null); }, [cycleId]);
 
   const cycle = cycles.find(item => item.auditCycleId === cycleId);
   const allStages = stagesByStandard[standard];
@@ -100,7 +103,30 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
       {cycle && <p className="mt-3 text-xs text-[#64748b]">{cycle.startDate} to {cycle.endDate} · {cycle.status}</p>}
       {removedStages.length > 0 && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#e2e8f0] pt-3 dark:border-white/10"><span className="text-xs font-medium text-[#718198]">Removed optional stages</span>{removedStages.map(([label, , key]) => <Button key={key} size="sm" variant="ghost" disabled={changingStageKey === key} leftIcon={<RotateCcw className="h-3.5 w-3.5" />} onClick={() => void restoreStage(label, key)}>Restore {label}</Button>)}</div>}
     </div>
-    <div className="overflow-x-auto"><table className="w-full min-w-[900px]"><thead className="bg-[#f8fafc] text-left text-xs uppercase tracking-wide text-[#718198] dark:bg-slate-950/40"><tr><th className="px-5 py-3">Stage</th><th className="px-5 py-3">Start date</th><th className="px-5 py-3">Due date</th><th className="px-5 py-3">Planning owner</th><th className="px-5 py-3">Planning notes</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody>{stages.map(([label, , key]) => { const item = values[key] ?? emptyStage(); const optional = optionalStageKeys.has(key); const recordType = recordStageTypes[key]; return <tr key={key} className="border-t border-[#e8eef5] dark:border-white/10"><td className="px-5 py-3 text-sm font-medium text-[#26334d] dark:text-white">{label}</td><td className="px-5 py-3"><input type="date" value={item.date} onChange={event => update(key, 'date', event.target.value)} className="field-control h-9 px-2" /></td><td className="px-5 py-3"><input type="date" value={item.dueDate} onChange={event => update(key, 'dueDate', event.target.value)} className="field-control h-9 px-2" /></td><td className="px-5 py-3"><select value={item.ownerId} onChange={event => update(key, 'ownerId', event.target.value)} className="field-control h-9 min-w-36 px-2"><option value="">Unassigned</option>{users.map(user => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}</select></td><td className="px-5 py-3"><input value={item.notes} onChange={event => update(key, 'notes', event.target.value)} className="field-control h-9 min-w-44 px-2" placeholder="Optional planning notes" /></td><td className="px-5 py-3 text-right">{recordType ? <Button size="sm" variant="secondary" disabled={!cycle || !item.date} onClick={() => cycle && onManageRecord?.({ auditCycleId: cycle.auditCycleId, standard, auditType: recordType, stageLabel: label, auditDate: item.date })} leftIcon={<ClipboardCheck className="h-3.5 w-3.5" />}>Manage record</Button> : optional ? <Button size="sm" variant="ghost" disabled={changingStageKey === key} onClick={() => void removeStage(label, key)} leftIcon={<Trash2 className="h-3.5 w-3.5" />}>{changingStageKey === key ? 'Removing...' : 'Remove'}</Button> : <span className="text-xs text-[#718198]">Required</span>}</td></tr>; })}</tbody></table></div>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[900px]">
+        <thead className="bg-[#f8fafc] text-left text-xs uppercase tracking-wide text-[#718198] dark:bg-slate-950/40">
+          <tr><th className="px-5 py-3">Stage</th><th className="px-5 py-3">Start date</th><th className="px-5 py-3">Due date</th><th className="px-5 py-3">Planning owner</th><th className="px-5 py-3">Planning notes</th><th className="px-5 py-3 text-right">Action</th></tr>
+        </thead>
+        <tbody>{stages.map(([label, , key]) => {
+          const item = values[key] ?? emptyStage();
+          const optional = optionalStageKeys.has(key);
+          const recordType = recordStageTypes[key];
+          const isManaged = managedStage?.auditCycleId === cycle?.auditCycleId && managedStage?.auditType === recordType;
+          return <Fragment key={key}>
+            <tr className="border-t border-[#e8eef5] dark:border-white/10">
+              <td className="px-5 py-3 text-sm font-medium text-[#26334d] dark:text-white">{label}</td>
+              <td className="px-5 py-3"><input type="date" value={item.date} onChange={event => update(key, 'date', event.target.value)} className="field-control h-9 px-2" /></td>
+              <td className="px-5 py-3"><input type="date" value={item.dueDate} onChange={event => update(key, 'dueDate', event.target.value)} className="field-control h-9 px-2" /></td>
+              <td className="px-5 py-3"><select value={item.ownerId} onChange={event => update(key, 'ownerId', event.target.value)} className="field-control h-9 min-w-36 px-2"><option value="">Unassigned</option>{users.map(user => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}</select></td>
+              <td className="px-5 py-3"><input value={item.notes} onChange={event => update(key, 'notes', event.target.value)} className="field-control h-9 min-w-44 px-2" placeholder="Optional planning notes" /></td>
+              <td className="px-5 py-3 text-right">{recordType ? <Button size="sm" variant="secondary" disabled={!cycle || !item.date} onClick={() => cycle && setManagedStage({ auditCycleId: cycle.auditCycleId, standard, auditType: recordType, stageLabel: label, auditDate: item.date })} leftIcon={<ClipboardCheck className="h-3.5 w-3.5" />}>{isManaged ? 'Record open' : 'Manage record'}</Button> : optional ? <Button size="sm" variant="ghost" disabled={changingStageKey === key} onClick={() => void removeStage(label, key)} leftIcon={<Trash2 className="h-3.5 w-3.5" />}>{changingStageKey === key ? 'Removing...' : 'Remove'}</Button> : <span className="text-xs text-[#718198]">Required</span>}</td>
+            </tr>
+            {isManaged && managedStage && <tr className="border-t border-[#dbe2ec] bg-[#f8fbfe] dark:border-white/10 dark:bg-slate-950/20"><td colSpan={6} className="p-5"><AuditRegister stageContext={managedStage} onCloseStageRecord={() => setManagedStage(null)} /></td></tr>}
+          </Fragment>;
+        })}</tbody>
+      </table>
+    </div>
     <div className="flex justify-end border-t border-[#dbe2ec] px-5 py-4 dark:border-white/10"><Button onClick={() => void save()} disabled={saving || !cycleId} leftIcon={<Save className="h-4 w-4" />}>{saving ? 'Saving...' : 'Save plan'}</Button></div>
   </CardBody></Card>;
 }

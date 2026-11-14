@@ -42,7 +42,6 @@ public class AuditCyclesController(DmsContext context) : BaseController
         var active = await context.AuditCycles.Where(c => c.Standard == cycle.Standard && c.Status == "active" && c.AuditCycleId != id).ToListAsync(); active.ForEach(c => c.Status = "historical"); cycle.Status = "active";
         var preparation = await context.AuditCalendarEvents.FirstOrDefaultAsync(e => e.AuditCycleId == id && e.StageKey == "preparation");
         if (preparation == null) { preparation = new DmsAuditCalendarEvent { EventId = Guid.NewGuid(), AuditCycleId = id, StageKey = "preparation", Title = $"{cycle.Name} — Preparation", Phase = "Preparation", Standard = cycle.Standard, EventDate = cycle.StartDate, ProgrammeYear = cycle.StartDate.Year, Status = "in_progress", PostedBy = userId, CreatedAt = DateTime.UtcNow }; context.AuditCalendarEvents.Add(preparation); }
-        else if (preparation.Status == "planned") preparation.Status = "in_progress";
         await context.SaveChangesAsync(); return Ok(new { success = true, data = new { cycle.AuditCycleId, CycleStatus = cycle.Status, PreparationStatus = preparation.Status } });
     }
 }

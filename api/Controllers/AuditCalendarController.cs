@@ -10,6 +10,7 @@ namespace DMS.Api.Controllers;
 public class AuditCalendarController(AuditCalendarService auditCalendarService, DMS.Api.Data.DmsContext context, ILogger<AuditCalendarController> logger) : BaseController
 {
     private static readonly string[] OptionalStageKeys = ["evidence_deadline", "pcar_closure", "external_response", "cycle_closure"];
+    private static readonly string[] ManagedStageKeys = ["preparation", "internal_audit", "management_review", "surveillance_audit"];
     // GET /api/auditcalendar — all audit calendar events, visible to all users
     [HttpGet]
     public async Task<ActionResult<object>> GetEvents()
@@ -80,6 +81,8 @@ public class AuditCalendarController(AuditCalendarService auditCalendarService, 
         {
             var userId = GetCurrentUserId();
             if ((await GetPageAccessRoleAsync(context, userId))?.CanViewAdminPanel != true) return Forbid();
+            if (!string.IsNullOrWhiteSpace(req.Status) && !string.IsNullOrWhiteSpace(req.StageKey) && ManagedStageKeys.Contains(req.StageKey))
+                return BadRequest(new { success = false, error = "Core stage status is controlled by its managed stage record, not the cycle plan." });
             var result = await auditCalendarService.CreateAsync(req.Title, req.Phase, req.Standard, req.EventDate, req.Notes, userId, req.ProgrammeYear, req.StageKey, req.Status, req.OwnerId, req.DueDate, req.AuditCycleId);
 
             if (!result.Success)
