@@ -242,7 +242,7 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         var title = $"{stageName} status changed to {status}";
         var body = $"{cycleName}: please open DMS and review your assigned tasks, PCAR findings, and actions. Update anything still outstanding.";
         foreach (var recipientId in recipientIds)
-            await notificationService.NotifyInAppAsync(recipientId, actorUserId, title, body);
+            await notificationService.NotifyAuditStageAsync(recipientId, actorUserId, title, body, cycleName, stageName, status);
     }
     private static string? CleanText(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -42,6 +42,43 @@ public class NotificationService(DmsContext context, EmailService emailService, 
         }
     }
 
+    // Audit-stage updates are deliberately a single controlled event: one
+    // in-app notice plus one email (when the global email service is enabled
+    // and configured). Ordinary edits never call this method.
+    public async Task NotifyAuditStageAsync(Guid recipientUserId, Guid actorUserId, string title, string body, string cycleName, string stageName, string status)
+    {
+        if (recipientUserId == actorUserId) return;
+        await NotifyInAppAsync(recipientUserId, actorUserId, title, body);
+
+        try
+        {
+            var recipient = await context.Users.AsNoTracking()
+                .Where(user => user.UserId == recipientUserId && user.IsActive)
+                .Select(user => new { user.FullName, user.Email })
+                .FirstOrDefaultAsync();
+            if (recipient == null || string.IsNullOrWhiteSpace(recipient.Email)) return;
+
+            var workspaceUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/') + "/iso-workspace";
+            var bodyHtml = $"""
+                <p style="margin:0 0 16px;font-size:14px;color:#26334d;">Hello <strong>{System.Net.WebUtility.HtmlEncode(recipient.FullName)}</strong>,</p>
+                <p style="margin:0 0 12px;font-size:14px;color:#26334d;">{System.Net.WebUtility.HtmlEncode(title)}</p>
+                <p style="margin:0 0 8px;font-size:13px;color:#52627a;">Cycle: <strong>{System.Net.WebUtility.HtmlEncode(cycleName)}</strong></p>
+                <p style="margin:0 0 8px;font-size:13px;color:#52627a;">Stage: <strong>{System.Net.WebUtility.HtmlEncode(stageName)}</strong> · Status: <strong>{System.Net.WebUtility.HtmlEncode(status)}</strong></p>
+                <p style="margin:0 0 20px;font-size:14px;color:#52627a;">{System.Net.WebUtility.HtmlEncode(body)}</p>
+                <a href="{System.Net.WebUtility.HtmlEncode(workspaceUrl)}" style="display:inline-block;background:#002E5C;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:4px;">Open ISO workspace</a>
+                """;
+            var emailSent = await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", EmailService.BuildBrandedHtml(title, "#1763a5", bodyHtml));
+            if (emailSent)
+                await auditService.LogAsync(actorUserId, NOTIFICATION_SENT, new { RecipientId = recipientUserId, RecipientName = recipient.FullName, Title = title, Channel = "email" });
+        }
+        catch (Exception ex)
+        {
+            // Email delivery is supplementary. The in-app notice above is
+            // already persisted and a mail problem must not block the stage.
+            logger.LogError(ex, "Error sending audit stage email to user {UserId}", recipientUserId);
+        }
+    }
+
     public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null, Guid? announcementId = null)
     {
         if (!await emailService.AreNotificationsEnabledAsync())
