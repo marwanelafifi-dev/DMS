@@ -7,14 +7,14 @@ import { Card, CardBody } from '../ui/Card';
 import { useToast } from '../../hooks/useToast';
 
 const stagesByStandard = {
-  'ISO 9001:2015': [['Preparation', 'Preparation', 'preparation'], ['Evidence deadline', 'Evidence Deadline', 'evidence_deadline'], ['Internal audit', 'Internal Audit', 'internal_audit'], ['PCAR closure', 'PCAR Closure Deadline', 'pcar_closure'], ['Management review', 'Management Review', 'management_review'], ['Surveillance audit', 'Surveillance Audit', 'surveillance_audit'], ['External response', 'External Finding Response', 'external_response'], ['Cycle closure', 'Cycle Closure', 'cycle_closure']],
-  'ISO 27001:2022': [['Preparation', 'Preparation', 'preparation'], ['Evidence deadline', 'Evidence Deadline', 'evidence_deadline'], ['Internal ISMS audit', 'Internal Audit', 'internal_audit'], ['ISMS management review', 'Management Review', 'management_review'], ['External audit', 'Surveillance Audit', 'surveillance_audit'], ['Findings closure', 'PCAR Closure Deadline', 'pcar_closure'], ['Year-end closure', 'Year End Closure', 'cycle_closure']],
+  'ISO 9001:2015': [['Preparation', 'Preparation', 'preparation'], ['Internal audit', 'Internal Audit', 'internal_audit'], ['Management review', 'Management Review', 'management_review'], ['Surveillance audit', 'Surveillance Audit', 'surveillance_audit']],
+  'ISO 27001:2022': [['Preparation', 'Preparation', 'preparation'], ['Internal ISMS audit', 'Internal Audit', 'internal_audit'], ['ISMS management review', 'Management Review', 'management_review'], ['External audit', 'Surveillance Audit', 'surveillance_audit']],
 } as const;
 
 type Standard = keyof typeof stagesByStandard;
 type StageValue = { date: string; dueDate: string; ownerId: string; notes: string };
 export type JourneyStageContext = { auditCycleId: string; standard: Standard; auditType: 'preparation' | 'internal' | 'management_review' | 'external'; stageLabel: string; auditDate: string };
-const optionalStageKeys = new Set(['evidence_deadline', 'pcar_closure', 'external_response', 'cycle_closure']);
+const optionalStageKeys = new Set<string>();
 const recordStageTypes: Record<string, JourneyStageContext['auditType']> = { preparation: 'preparation', internal_audit: 'internal', management_review: 'management_review', surveillance_audit: 'external' };
 const emptyStage = (): StageValue => ({ date: '', dueDate: '', ownerId: '', notes: '' });
 
