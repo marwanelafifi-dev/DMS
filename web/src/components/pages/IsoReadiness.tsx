@@ -1,19 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, ClipboardCheck, FileCheck2, Printer, ShieldCheck, TriangleAlert } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { apiClient } from '../../utils/api';
 import type { Document, Task } from '../../types';
 import { Card, CardBody } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SkeletonCard } from '../ui/Skeleton';
 
-const clauses = [
-  ['4', 'Context of the organization'], ['5', 'Leadership'], ['6', 'Planning'], ['7', 'Support'],
-  ['8', 'Operation'], ['9', 'Performance evaluation'], ['10', 'Improvement'],
-] as const;
-
 const isClosed = (task: Task) => task.status === 'done' || task.status === 'completed';
 const isIsoEvidenceCandidate = (document: Document) => document.category === 'Evidence' || document.tags?.some((tag) => tag.toLowerCase() === 'evidence');
+const isOverdue = (task: Task) => {
+  if (!task.dueDate) return false;
+  const due = new Date(task.dueDate);
+  const today = new Date();
+  due.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return due.getTime() < today.getTime();
+};
+const formatDueDate = (dueDate: string) => new Date(dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+async function loadVisibleTasks(): Promise<Task[]> {
+  const firstPage = await apiClient.getTasks({ page: 1, pageSize: 200 });
+  const pages = Math.max(1, Number(firstPage.totalPages) || 1);
+  const remaining = await Promise.all(Array.from({ length: pages - 1 }, (_, index) => apiClient.getTasks({ page: index + 2, pageSize: 200 })));
+  return [firstPage, ...remaining].flatMap((page) => Array.isArray(page.data) ? page.data as Task[] : []);
+}
 
 export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9001:2015' | 'ISO 27001:2022' }) {
   const navigate = useNavigate();
@@ -21,16 +32,22 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
   const [documents, setDocuments] = useState<Document[]>([]);
   const [coverageItems, setCoverageItems] = useState<any[]>([]);
   const [reviewEntries, setReviewEntries] = useState<any[]>([]);
+  const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
+  const [cycleLoadError, setCycleLoadError] = useState(false);
+  const [tasksLoadError, setTasksLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([apiClient.getTasks({ pageSize: 200 }), apiClient.getIsoEvidence({ standard }), apiClient.getAuditCycles()])
+    Promise.allSettled([loadVisibleTasks(), apiClient.getIsoEvidence({ standard }), apiClient.getAuditCycles()])
       .then(async ([taskResult, documentResult, cycleResult]) => {
         if (cancelled) return;
-        setTasks(taskResult.status === 'fulfilled' && Array.isArray(taskResult.value.data) ? taskResult.value.data as Task[] : []);
+        setTasks(taskResult.status === 'fulfilled' ? taskResult.value : []);
+        setTasksLoadError(taskResult.status === 'rejected');
+        setCycleLoadError(cycleResult.status === 'rejected');
         setDocuments(documentResult.status === 'fulfilled' && Array.isArray(documentResult.value.data) ? documentResult.value.data as Document[] : []);
         const activeCycle = cycleResult.status === 'fulfilled' ? (cycleResult.value.data ?? []).find((cycle: any) => cycle.standard === standard && cycle.status === 'active') : null;
+        setActiveCycleId(activeCycle?.auditCycleId ?? null);
         if (activeCycle) {
           const [coverageResult, reviewResult] = await Promise.all([apiClient.getEvidenceRequirements(activeCycle.auditCycleId).catch(() => ({ data: [] })), apiClient.getManagementReviewEntries({ auditCycleId: activeCycle.auditCycleId }).catch(() => ({ data: [] }))]);
           if (!cancelled) { setCoverageItems(coverageResult.data ?? []); setReviewEntries(reviewResult.data ?? []); }
@@ -40,9 +57,11 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
     return () => { cancelled = true; };
   }, [standard]);
 
-  const pcars = useMemo(() => tasks.filter((task) => task.taskType === 'pcar' && task.auditStandard === standard), [tasks, standard]);
+  const pcars = useMemo(() => tasks.filter((task) => task.taskType === 'pcar' && task.auditStandard === standard && task.auditCycleId === activeCycleId), [tasks, standard, activeCycleId]);
   const openPcars = pcars.filter((task) => !isClosed(task));
-  const overduePcars = openPcars.filter((task) => task.dueDate && new Date(task.dueDate).getTime() < Date.now());
+  const overduePcars = openPcars.filter(isOverdue);
+  const openTasks = tasks.filter((task) => task.taskType !== 'pcar' && !isClosed(task));
+  const overdueTasks = openTasks.filter(isOverdue);
   const evidenceCandidates = documents.filter(isIsoEvidenceCandidate);
   const activeEvidence = evidenceCandidates.filter((document) => (document as Document & { isAssignedToSelectedCycle?: boolean }).isAssignedToSelectedCycle === true);
   const missingCoverage = coverageItems.filter(item => !item.hasEvidence);
@@ -63,8 +82,8 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
       <Card>
         <CardBody className="p-0">
           <div className="grid divide-y divide-[#dbe2ec] sm:grid-cols-4 sm:divide-x sm:divide-y-0 dark:divide-white/10">
-            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Open PCARs</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{openPcars.length}</p><button onClick={() => navigate('/pcars')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open PCAR register</button></div>
-            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Overdue PCARs</p><p className={`mt-1 text-2xl font-semibold ${overduePcars.length ? 'text-[#c73c44]' : 'text-[#319d68]'}`}>{overduePcars.length}</p><p className="mt-2 text-xs text-[#64748b]">Requires closure evidence before audit.</p></div>
+            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Open cycle PCARs</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{tasksLoadError || !activeCycleId ? '—' : openPcars.length}</p><button onClick={() => navigate('/pcars')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open PCAR register</button></div>
+            <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Unfinished DMS tasks</p><p className={`mt-1 text-2xl font-semibold ${overdueTasks.length ? 'text-[#c73c44]' : 'text-[#26334d] dark:text-white'}`}>{tasksLoadError ? '—' : openTasks.length}</p><button onClick={() => navigate('/tasks')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open task list</button></div>
             <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Active-cycle evidence</p><p className="mt-1 text-2xl font-semibold text-[#26334d] dark:text-white">{activeEvidence.length}</p><button onClick={() => navigate('/documents')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Open controlled documents</button></div>
             <div className="px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-[#718198]">Processes without evidence</p><p className={`mt-1 text-2xl font-semibold ${missingCoverage.length ? 'text-[#c27a12]' : 'text-[#319d68]'}`}>{missingCoverage.length}</p><button onClick={() => navigate('/evidence-coverage')} className="mt-2 text-xs font-medium text-[#1763a5] hover:underline">Review coverage rules</button></div>
           </div>
@@ -75,8 +94,22 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
 
       <Card>
         <CardBody className="p-0">
-          <div className="border-b border-[#dbe2ec] px-5 py-4 dark:border-white/10"><h2 className="section-heading">Clause &amp; evidence matrix</h2><p className="mt-1 text-sm text-[#64748b] dark:text-slate-400">Evidence is collected only from {standard === 'ISO 9001:2015' ? 'Corporate/QMS/Procedures/**/Evidences (excluding IT/ISO 27001)' : 'Corporate/QMS/Procedures/IT/ISO 27001/Evidences'}. OLD DMS content is excluded. A blank evidence state is a recorded gap, not an assumed pass.</p></div>
-          <div className="overflow-x-auto"><table className="w-full min-w-[760px]"><thead className="bg-[#f8fafc] text-left dark:bg-slate-950/40"><tr className="text-xs font-semibold uppercase tracking-wide text-[#718198]"><th className="px-5 py-3">Clause</th><th className="px-5 py-3">Area</th><th className="px-5 py-3">Open findings</th><th className="px-5 py-3">Evidence status</th><th className="px-5 py-3">Action</th></tr></thead><tbody>{clauses.map(([clause, title]) => { const findings = openPcars.filter((task) => task.standardClause?.trim().startsWith(clause)); const hasCandidate = activeEvidence.length > 0; return <tr key={clause} className="border-t border-[#e8eef5] dark:border-white/10"><td className="px-5 py-4 font-semibold text-[#174f91] dark:text-blue-200">{clause}</td><td className="px-5 py-4 text-sm font-medium text-[#26334d] dark:text-white">{title}</td><td className={`px-5 py-4 text-sm ${findings.length ? 'font-semibold text-[#c73c44]' : 'text-[#52627a] dark:text-slate-300'}`}>{findings.length ? `${findings.length} open PCAR${findings.length > 1 ? 's' : ''}` : 'None recorded'}</td><td className="px-5 py-4 text-sm text-[#52627a] dark:text-slate-300">{hasCandidate ? 'Active-cycle evidence available — confirm applicability' : 'No active-cycle evidence mapped'}</td><td className="px-5 py-4"><button onClick={() => navigate(findings.length ? `/pcars?clause=${encodeURIComponent(clause)}` : '/documents')} className="inline-flex items-center gap-1 text-xs font-semibold text-[#1763a5] hover:underline">{findings.length ? 'Review PCARs' : 'Review evidence'} <ArrowRight className="h-3.5 w-3.5" /></button></td></tr>; })}</tbody></table></div>
+          <div className="border-b border-[#dbe2ec] px-5 py-4 dark:border-white/10">
+            <h2 className="section-heading">Outstanding work</h2>
+            <p className="mt-1 text-sm text-[#52627a] dark:text-slate-300">Visible unfinished DMS tasks and PCAR findings for the active {standard} cycle.</p>
+          </div>
+          {tasksLoadError ? (
+            <p role="alert" className="px-5 py-5 text-sm text-[#9f3038] dark:text-red-200">Tasks and PCARs could not be loaded. Refresh this page to try again.</p>
+          ) : (
+            <div className="grid divide-y divide-[#dbe2ec] lg:grid-cols-2 lg:divide-x lg:divide-y-0 dark:divide-white/10">
+              <WorkList title="Unfinished tasks" items={openTasks} overdueCount={overdueTasks.length} route="/tasks" emptyText="No unfinished tasks visible to you." onNavigate={navigate} />
+              {cycleLoadError ? (
+                <p role="alert" className="px-5 py-5 text-sm text-[#9f3038] dark:text-red-200">The active audit cycle could not be loaded. Refresh this page to see its PCARs.</p>
+              ) : (
+                <WorkList title="Open cycle PCARs" items={openPcars} overdueCount={overduePcars.length} route="/pcars" emptyText={activeCycleId ? 'No open PCARs linked to the active cycle.' : 'No active audit cycle is selected.'} onNavigate={navigate} />
+              )}
+            </div>
+          )}
         </CardBody>
       </Card>
 
@@ -96,6 +129,48 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
         </CardBody>
       </Card>
     </div>
+  );
+}
+
+function WorkList({ title, items, overdueCount, route, emptyText, onNavigate }: {
+  title: string;
+  items: Task[];
+  overdueCount: number;
+  route: '/tasks' | '/pcars';
+  emptyText: string;
+  onNavigate: NavigateFunction;
+}) {
+  const nextItems = [...items].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 5);
+
+  return (
+    <section className="min-w-0 px-5 py-5" aria-label={title}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-base font-semibold text-[#26334d] dark:text-white">{title} <span className="ml-1 text-sm font-medium text-[#52627a] dark:text-slate-300">{items.length}</span></h3>
+        {overdueCount > 0 && <span className="text-xs font-semibold text-[#a12e37] dark:text-red-200">{overdueCount} overdue</span>}
+      </div>
+      {items.length === 0 ? (
+        <p className="mt-4 text-sm text-[#52627a] dark:text-slate-300">{emptyText}</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-[#e8eef5] dark:divide-white/10">
+          {nextItems.map((item) => (
+            <li key={item.taskId}>
+              <button
+                type="button"
+                onClick={() => onNavigate(`${route}?highlight=${encodeURIComponent(item.taskId)}`)}
+                className="group flex w-full items-center justify-between gap-4 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-[#26334d] group-hover:text-[#1763a5] dark:text-white">{item.title}</span>
+                  <span className="mt-1 block text-xs text-[#52627a] dark:text-slate-300">{item.status.replace('_', ' ')} · Due {item.dueDate ? formatDueDate(item.dueDate) : 'date not set'}</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-[#1763a5]" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" onClick={() => onNavigate(route)} className="mt-4 text-sm font-semibold text-[#1763a5] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]">View all {route === '/pcars' ? 'PCARs' : 'tasks'}</button>
+    </section>
   );
 }
 
