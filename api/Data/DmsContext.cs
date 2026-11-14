@@ -128,6 +128,7 @@ public class DmsContext : DbContext
         modelBuilder.Entity<DmsEvidenceRequirement>().ToTable("dms_evidence_requirements").HasKey(e => e.EvidenceRequirementId);
         modelBuilder.Entity<DmsManagementReviewEntry>().ToTable("dms_management_review_entries").HasKey(e => e.ManagementReviewEntryId);
         modelBuilder.Entity<DmsManagementReviewEntry>().Property(e => e.DueDate).HasColumnType("date");
+        modelBuilder.Entity<DmsAuditChecklistItem>().ToTable("dms_audit_checklist_items").HasKey(e => e.AuditChecklistItemId);
         modelBuilder.Entity<DmsUserCalendarConnection>().ToTable("dms_user_calendar_connections").HasKey(c => c.ConnectionId);
         modelBuilder.Entity<DmsUserCalendarEventSync>().ToTable("dms_user_calendar_event_syncs").HasKey(s => s.SyncId);
         modelBuilder.Entity<DmsAuditTrail>().ToTable("dms_audit_trails").HasKey(a => a.LogId);
