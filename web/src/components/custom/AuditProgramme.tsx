@@ -29,6 +29,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
   const [saving, setSaving] = useState(false);
   const [changingStageKey, setChangingStageKey] = useState('');
   const [managedStage, setManagedStage] = useState<JourneyStageContext | null>(null);
+  const [recordExpanded, setRecordExpanded] = useState(false);
 
   const loadCycles = () => apiClient.getAuditCycles().then(response => setCycles(response.data ?? [])).catch(() => showError('Could not load audit cycles'));
   useEffect(() => { void loadCycles(); apiClient.getUsers().then(response => setUsers((response.data ?? []).filter((user: any) => user.isActive))).catch(() => {}); }, []);
@@ -53,7 +54,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
       })
       .catch(() => { setValues({}); setRemovedKeys([]); showError('Could not load programme stages'); });
   }, [cycleId]);
-  useEffect(() => { setManagedStage(null); }, [cycleId]);
+  useEffect(() => { setManagedStage(null); setRecordExpanded(false); }, [cycleId]);
 
   const cycle = cycles.find(item => item.auditCycleId === cycleId);
   const allStages = stagesByStandard[standard];
@@ -113,6 +114,7 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
           const optional = optionalStageKeys.has(key);
           const recordType = recordStageTypes[key];
           const isManaged = managedStage?.auditCycleId === cycle?.auditCycleId && managedStage?.auditType === recordType;
+          const isExpanded = isManaged && recordExpanded;
           return <Fragment key={key}>
             <tr className="border-t border-[#e8eef5] dark:border-white/10">
               <td className="px-5 py-3 text-sm font-medium text-[#26334d] dark:text-white">{label}</td>
@@ -120,9 +122,9 @@ export function AuditProgramme({ defaultStandard = 'ISO 9001:2015' as Standard, 
               <td className="px-5 py-3"><input type="date" value={item.dueDate} onChange={event => update(key, 'dueDate', event.target.value)} className="field-control h-9 px-2" /></td>
               <td className="px-5 py-3"><select value={item.ownerId} onChange={event => update(key, 'ownerId', event.target.value)} className="field-control h-9 min-w-36 px-2"><option value="">Unassigned</option>{users.map(user => <option key={user.userId} value={user.userId}>{user.fullName}</option>)}</select></td>
               <td className="px-5 py-3"><input value={item.notes} onChange={event => update(key, 'notes', event.target.value)} className="field-control h-9 min-w-44 px-2" placeholder="Optional planning notes" /></td>
-              <td className="px-5 py-3 text-right">{recordType ? <Button size="sm" variant="secondary" disabled={!cycle || !item.date} onClick={() => cycle && setManagedStage({ auditCycleId: cycle.auditCycleId, standard, auditType: recordType, stageLabel: label, auditDate: item.date })} leftIcon={<ClipboardCheck className="h-3.5 w-3.5" />}>{isManaged ? 'Record open' : 'Manage record'}</Button> : optional ? <Button size="sm" variant="ghost" disabled={changingStageKey === key} onClick={() => void removeStage(label, key)} leftIcon={<Trash2 className="h-3.5 w-3.5" />}>{changingStageKey === key ? 'Removing...' : 'Remove'}</Button> : <span className="text-xs text-[#718198]">Required</span>}</td>
+              <td className="px-5 py-3 text-right">{recordType ? <Button size="sm" variant="secondary" disabled={!cycle || !item.date} onClick={() => { if (isManaged) setRecordExpanded(current => !current); else if (cycle) { setManagedStage({ auditCycleId: cycle.auditCycleId, standard, auditType: recordType, stageLabel: label, auditDate: item.date }); setRecordExpanded(true); } }} leftIcon={<ClipboardCheck className="h-3.5 w-3.5" />}>{isExpanded ? 'Collapse record' : isManaged ? 'Resume record' : 'Manage record'}</Button> : optional ? <Button size="sm" variant="ghost" disabled={changingStageKey === key} onClick={() => void removeStage(label, key)} leftIcon={<Trash2 className="h-3.5 w-3.5" />}>{changingStageKey === key ? 'Removing...' : 'Remove'}</Button> : <span className="text-xs text-[#718198]">Required</span>}</td>
             </tr>
-            {isManaged && managedStage && <tr className="border-t border-[#dbe2ec] bg-[#f8fbfe] dark:border-white/10 dark:bg-slate-950/20"><td colSpan={6} className="p-5"><AuditRegister stageContext={managedStage} onCloseStageRecord={() => setManagedStage(null)} /></td></tr>}
+            {isManaged && managedStage && <tr className={`border-t border-[#dbe2ec] bg-[#f8fbfe] dark:border-white/10 dark:bg-slate-950/20 ${isExpanded ? '' : 'hidden'}`}><td colSpan={6} className="p-5"><AuditRegister stageContext={managedStage} onCloseStageRecord={() => setRecordExpanded(false)} /></td></tr>}
           </Fragment>;
         })}</tbody>
       </table>
