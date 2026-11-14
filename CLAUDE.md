@@ -62,6 +62,10 @@ docker compose ps
 
 - After deployment, activate ISO 9001 `2026–2027`, enter stages/owners, set Evidence Coverage rules, upload/link one test evidence file, create one Audit/PCAR, and confirm OLD DMS content does not appear in readiness reporting.
 
+### Hotfix: Audit Programme stage saving
+
+- Migration `129_audit_calendar_stage_phase_constraint.sql` replaces the original legacy phase constraint. Without it, PostgreSQL rejects valid stage-plan phases such as `Preparation`, `Evidence Deadline`, and `PCAR Closure Deadline`, which the UI previously surfaced as a generic entity-save error.
+
 After deployment, open the document in the reported issue: its PCAR must appear only in **Related PCARs**, and the same finding must show a PCAR No. throughout the register and detail dialog. Create or open a normal Task to confirm its independent Task No. begins at `TASK-000001`.
 
 ## Session 71 (2026-11-08/09) — Historical PCAR workflow and access-control corrections
