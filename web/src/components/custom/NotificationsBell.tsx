@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Settings } from 'lucide-react';
+import { Bell, CheckCheck, Settings } from 'lucide-react';
 import { apiClient } from '../../utils/api';
 
 interface NotificationItem {
@@ -34,6 +34,7 @@ export function NotificationsBell() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [showingAll, setShowingAll] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -97,6 +98,19 @@ export function NotificationsBell() {
     loadNotifications(100);
   };
 
+  const handleMarkAllRead = async () => {
+    if (unreadCount === 0 || isMarkingAllRead) return;
+
+    setIsMarkingAllRead(true);
+    try {
+      await apiClient.markAllNotificationsRead();
+      setNotifications((previous) => previous.map((notification) => ({ ...notification, isRead: true })));
+      setUnreadCount(0);
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  };
+
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
@@ -119,14 +133,27 @@ export function NotificationsBell() {
           sideOffset={8}
           className="z-[95] flex max-h-[520px] w-[calc(100vw-2rem)] max-w-96 flex-col overflow-hidden rounded-[6px] border border-[#dbe2ec] bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
         >
-          <div className="flex items-center justify-between border-b border-[#e2e8f0] px-4 py-3 dark:border-white/10">
+          <div className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] px-4 py-3 dark:border-white/10">
             <h3 className="text-sm font-semibold text-[#283a7a] dark:text-white">Notifications</h3>
-            <button
-              onClick={() => { setOpen(false); navigate('/admin/notifications'); }}
-              className="flex items-center gap-1.5 text-xs text-[#718198] hover:text-[#3f8bca] dark:text-slate-400 dark:hover:text-blue-300"
-            >
-              <Settings className="h-3.5 w-3.5" /> Settings
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleMarkAllRead}
+                disabled={unreadCount === 0 || isMarkingAllRead}
+                className="flex items-center gap-1.5 text-xs font-medium text-[#3f8bca] transition-colors hover:text-[#2f6f9f] disabled:cursor-not-allowed disabled:text-[#a8b5c5] dark:text-blue-300 dark:hover:text-blue-200 dark:disabled:text-slate-600"
+                title="Mark all notifications as read"
+              >
+                <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                {isMarkingAllRead ? 'Marking…' : 'Mark all read'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setOpen(false); navigate('/admin/notifications'); }}
+                className="flex items-center gap-1.5 text-xs text-[#718198] transition-colors hover:text-[#3f8bca] dark:text-slate-400 dark:hover:text-blue-300"
+              >
+                <Settings className="h-3.5 w-3.5" /> Settings
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">

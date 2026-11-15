@@ -15,7 +15,13 @@ public class TaskEscalationService(DmsContext context, NotificationService notif
             return;
         }
         var now = DateTime.UtcNow;
-        var tasks = await context.Tasks.Where(t => t.Status != "completed" && t.DueDate != null).ToListAsync();
+        // A released document and its action task are separate records, but a
+        // completed task must never enter this scan.  "done" is retained here
+        // for older/imported task rows that predate the canonical
+        // "completed" value.
+        var tasks = await context.Tasks
+            .Where(t => t.Status != "completed" && t.Status != "done" && t.DueDate != null)
+            .ToListAsync();
         foreach (var task in tasks)
         {
             var due = task.DueDate!.Value;

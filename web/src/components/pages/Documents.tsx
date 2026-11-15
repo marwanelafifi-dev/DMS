@@ -188,6 +188,10 @@ function splitFileName(fileName: string): { base: string; ext: string } {
   return { base: fileName.slice(0, dotIndex), ext: fileName.slice(dotIndex) };
 }
 
+function evidenceFileKey(file: File, index: number): string {
+  return `${index}:${file.name}:${file.size}:${file.lastModified}`;
+}
+
 async function createNativePreview(
   source: Blob,
   fileName: string,
@@ -316,7 +320,7 @@ export function Documents() {
   const [activeUploadFileName, setActiveUploadFileName] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
-  const [relatedEvidenceDocumentIds, setRelatedEvidenceDocumentIds] = useState<string[]>([]);
+  const [evidenceTargetDocumentIds, setEvidenceTargetDocumentIds] = useState<Record<string, string>>({});
   const [requiredEvidenceDocumentIds, setRequiredEvidenceDocumentIds] = useState<string[]>([]);
   const [evidenceCycles, setEvidenceCycles] = useState<any[]>([]);
   const [uploadAuditCycleId, setUploadAuditCycleId] = useState('');
@@ -490,7 +494,10 @@ export function Documents() {
         .filter((item: any) => item.folderId === selectedFolder.parentFolderId)
         .map((item: any) => item.relatedDocumentId);
       setRequiredEvidenceDocumentIds(requiredIds);
-      setRelatedEvidenceDocumentIds((current) => [...new Set([...current, ...requiredIds])]);
+      // Required documents describe the coverage target; they must not be
+      // silently attached to every evidence file.  Doing that made one upload
+      // satisfy every required document in the readiness dashboard.
+      setEvidenceTargetDocumentIds({});
     }).catch(() => {
       if (!cancelled) setRequiredEvidenceDocumentIds([]);
     });
@@ -1267,7 +1274,7 @@ export function Documents() {
     writeLibraryLocation(LAST_LIBRARY_PREVIEW_STORAGE_KEY, null);
     setSelectedDocumentIds(new Set());
     setSelectedFolderIds(new Set());
-    setRelatedEvidenceDocumentIds([]);
+    setEvidenceTargetDocumentIds({});
     setPreviewDocument(null);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -1750,6 +1757,10 @@ export function Documents() {
       showError('Please select at least one file');
       return;
     }
+    if (isEvidenceUploadFolder && requiredEvidenceDocumentIds.length > 0 && uploadFiles.some((file, index) => !evidenceTargetDocumentIds[evidenceFileKey(file, index)])) {
+      showError('Select the required policy or process document supported by each evidence file');
+      return;
+    }
     if (!isUploadFormValid) {
       setUploadValidationAttempted(true);
       const missingLabels = (Object.keys(uploadMissingFields) as Array<keyof typeof uploadMissingFields>)
@@ -1779,7 +1790,7 @@ export function Documents() {
         })()]
       : uploadFiles;
     try {
-      for (const uploadFile of filesToUpload) {
+      for (const [fileIndex, uploadFile] of filesToUpload.entries()) {
         let createdDocumentId: string | undefined;
         try {
           setActiveUploadStage('uploading');
@@ -1802,13 +1813,14 @@ export function Documents() {
           // An evidence link is created only after the actual file is safely
           // uploaded. The server detects ISO 9001 vs ISO 27001 from its path
           // and attaches the active cycle; the uploader never chooses a year.
-          if (isEvidenceUploadFolder && relatedEvidenceDocumentIds.length > 0) {
+          const relatedDocumentId = isEvidenceUploadFolder
+            ? evidenceTargetDocumentIds[evidenceFileKey(uploadFiles[fileIndex], fileIndex)]
+            : undefined;
+          if (relatedDocumentId) {
             try {
-              await Promise.all(relatedEvidenceDocumentIds.map((relatedDocumentId) =>
-                apiClient.createEvidenceLink({ evidenceDocumentId: createdDocument.documentId, relatedDocumentId, auditCycleId: uploadAuditCycleId })
-              ));
+              await apiClient.createEvidenceLink({ evidenceDocumentId: createdDocument.documentId, relatedDocumentId, auditCycleId: uploadAuditCycleId });
             } catch (error: any) {
-              errors.push(`${uploadFile.name}: file saved but its evidence links could not be added (${error.response?.data?.error || 'review the active audit cycle'})`);
+              errors.push(`${uploadFile.name}: file saved but its evidence link could not be added (${error.response?.data?.error || 'review the active audit cycle'})`);
             }
           }
           setActiveUploadStage('parsing');
@@ -1986,7 +1998,7 @@ export function Documents() {
     setUploadDepartment('');
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
-    setRelatedEvidenceDocumentIds([]);
+    setEvidenceTargetDocumentIds({});
     setRequiredEvidenceDocumentIds([]);
     setEvidenceCycles([]);
     setUploadAuditCycleId('');
@@ -2008,6 +2020,7 @@ export function Documents() {
     setUploadDepartment('');
     setUploadCustomDepartment('');
     setUploadApprovalNotes('');
+    setEvidenceTargetDocumentIds({});
     setRequiredEvidenceDocumentIds([]);
     setEvidenceCycles([]);
     setUploadAuditCycleId('');
@@ -2466,7 +2479,7 @@ export function Documents() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-[#26334d] dark:text-white">{uploadFiles.length} {uploadFiles.length === 1 ? 'file' : 'files'} ready</p>
-                    <p className="mt-1 text-xs text-[#718198]">PDF, Word, Excel, PowerPoint, text, or images</p>
+                    <p className="mt-1 text-xs text-[#718198]">PDF, Word, Excel, PowerPoint, text, or images. Select several files with Ctrl/⌘ or Shift.</p>
                   </div>
                   <Button type="button" size="sm" variant="secondary" onClick={() => fileInputRef.current?.click()}>Choose files</Button>
                 </div>
@@ -2520,12 +2533,31 @@ export function Documents() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <p className="text-sm font-semibold text-[#26334d] dark:text-white">Related policy / process documents</p>
-                    <p className="text-xs text-[#64748b] dark:text-slate-400">Documents required by Evidence Coverage for this selected cycle are linked automatically. You may also select additional related documents.</p>
-                  {relatedEvidenceCandidates.length ? relatedEvidenceCandidates.map((document) => {
-                    const isRequired = requiredEvidenceDocumentIds.includes(document.documentId);
-                    return <label key={document.documentId} className="flex items-center gap-2 py-1 text-sm text-[#34425b] dark:text-slate-200"><input type="checkbox" checked={relatedEvidenceDocumentIds.includes(document.documentId)} disabled={isRequired} onChange={() => setRelatedEvidenceDocumentIds((ids) => ids.includes(document.documentId) ? ids.filter((id) => id !== document.documentId) : [...ids, document.documentId])} /><span>{document.name ?? document.title}</span>{isRequired && <span className="ml-auto rounded-full bg-[#e8f6ee] px-2 py-0.5 text-[11px] font-medium text-[#24734a] dark:bg-emerald-500/15 dark:text-emerald-300">Required</span>}</label>;
-                  }) : <p className="text-xs text-[#718198]">No documents are available in the parent process folder.</p>}
+                    <p className="text-sm font-semibold text-[#26334d] dark:text-white">Evidence assignment</p>
+                    <p className="text-xs text-[#64748b] dark:text-slate-400">Assign each evidence file to one required policy or process document. You can assign several files to the same document, but one file cannot complete every requirement.</p>
+                    {requiredEvidenceDocumentIds.length > 0 ? (
+                      <div className="space-y-2">
+                        {uploadFiles.map((file, index) => (
+                          <label key={evidenceFileKey(file, index)} className="block rounded-[4px] border border-[#dbe2ec] bg-white p-2.5 dark:border-white/10 dark:bg-slate-900">
+                            <span className="block truncate text-xs font-medium text-[#34425b] dark:text-slate-200" title={file.name}>{file.name}</span>
+                            <select
+                              value={evidenceTargetDocumentIds[evidenceFileKey(file, index)] ?? ''}
+                              onChange={(event) => setEvidenceTargetDocumentIds((current) => ({ ...current, [evidenceFileKey(file, index)]: event.target.value }))}
+                              disabled={isUploading}
+                              className="field-control mt-2 h-9 w-full rounded-[4px] border border-[#dbe2ec] bg-white px-2 text-sm text-[#26334d] focus-visible:border-[#3f8bca] focus-visible:ring-2 focus-visible:ring-[#3f8bca]/20 disabled:cursor-not-allowed dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                              aria-label={`Required document supported by ${file.name}`}
+                            >
+                              <option value="">Select required document...</option>
+                              {relatedEvidenceCandidates.filter((document) => requiredEvidenceDocumentIds.includes(document.documentId)).map((document) => (
+                                <option key={document.documentId} value={document.documentId}>{document.name ?? document.title}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[#718198] dark:text-slate-400">No required documents are configured for this process in the selected cycle. This evidence can be saved without a coverage assignment.</p>
+                    )}
                   </div>
                 </div>
               )}

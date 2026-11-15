@@ -17,6 +17,13 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
 
     private static readonly string[] Recurrences = ["once", "weekly", "monthly", "quarterly", "semiannual", "yearly"];
 
+    private static bool IsCompleted(DmsTask? task)
+    {
+        var status = task?.Status;
+        return string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(status, "done", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static DateTime NextDueDate(DateTime dueDate, string recurrence)
     {
         var next = recurrence switch
@@ -99,6 +106,8 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
             var task = await context.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
             if (task == null)
                 return ReminderResult.NotFound("Task not found");
+            if (IsCompleted(task))
+                return ReminderResult.Invalid("A completed task cannot receive a reminder");
 
             var recipient = await context.Users.FirstOrDefaultAsync(u => u.UserId == recipientId && u.IsActive);
             if (recipient == null)
@@ -194,7 +203,10 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
             var now = DateTime.UtcNow;
 
             var pending = await context.Reminders
-                .Where(r => !r.IsSent && r.DueDate <= now)
+                // Existing reminders are retained as history, but they are not
+                // deliverable after the linked task has been completed.
+                .Where(r => !r.IsSent && r.DueDate <= now && r.Task != null &&
+                    r.Task.Status != "completed" && r.Task.Status != "done")
                 .OrderBy(r => r.DueDate)
                 .Take(limit)
                 .Select(r => new
@@ -245,6 +257,15 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
 
             foreach (var reminder in reminders)
             {
+                // The task can be completed after the pending query but before
+                // this job loads the reminder.  Re-check it at the send point
+                // so that race cannot produce a post-completion email.
+                if (IsCompleted(reminder.Task))
+                {
+                    logger.LogInformation("Skipped reminder {ReminderId}: task {TaskId} is completed", reminder.ReminderId, reminder.TaskId);
+                    continue;
+                }
+
                 reminder.SentAt = DateTime.UtcNow;
                 context.Reminders.Update(reminder);
 
@@ -322,6 +343,8 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
 
             if (reminder.IsSent)
                 return ReminderResult.Invalid("Reminder has already been sent");
+            if (IsCompleted(reminder.Task))
+                return ReminderResult.Invalid("A completed task cannot receive a reminder");
 
             reminder.SentAt = DateTime.UtcNow;
 
