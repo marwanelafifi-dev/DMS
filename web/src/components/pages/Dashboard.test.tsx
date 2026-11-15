@@ -5,6 +5,12 @@ import { apiClient } from '../../utils/api';
 import { Dashboard } from './Dashboard';
 import { AuthContext, type AuthContextValue } from '../../hooks/useAuth';
 
+const { mockUsePageAccess } = vi.hoisted(() => ({ mockUsePageAccess: vi.fn() }));
+
+vi.mock('../../hooks/usePageAccess', () => ({ usePageAccess: mockUsePageAccess }));
+vi.mock('../custom/AuditCalendarCard', () => ({ AuditCalendarCard: () => <div data-testid="audit-calendar" /> }));
+vi.mock('../custom/IsoSurveillanceJourney', () => ({ IsoSurveillanceJourney: () => <div data-testid="iso-journey" /> }));
+
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 const authContextValue: AuthContextValue = {
@@ -93,21 +99,14 @@ const documents = [
 const approvals = [
   {
     approvalId: 'approval-from-colleague',
-    documentId: 'doc-colleague',
-    document: { documentId: 'doc-colleague', name: 'Vendor Onboarding Form' },
-    submittedBy: 'colleague-1',
-    submittedByUser: { userId: 'colleague-1', fullName: 'Omar Hassan', email: 'omar@si-ware.com', role: 'Writer', isActive: true, createdAt: inDays(-30) },
-    submittedAt: inDays(-1),
-    approvalStatus: 'pending',
+    createdBy: 'colleague-1',
+    documents: [{ documentId: 'doc-colleague', fileName: 'Vendor Onboarding Form', ownerName: 'Omar Hassan' }],
   },
   {
     // Submitted by the signed-in user, so it belongs in "My Submissions in Review".
     approvalId: 'approval-from-me',
-    documentId: 'doc-mine-in-review',
-    document: { documentId: 'doc-mine-in-review', name: 'Training Records Q3' },
-    submittedBy: TEST_USER_ID,
-    submittedAt: inDays(-1),
-    approvalStatus: 'pending',
+    createdBy: TEST_USER_ID,
+    documents: [{ documentId: 'doc-mine-in-review', fileName: 'Training Records Q3', ownerName: 'System Admin' }],
   },
 ];
 
@@ -125,9 +124,14 @@ const metricValue = (label: string) => screen.getByTestId(`metric-${label}`).tex
 
 describe('dashboard', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockUsePageAccess.mockReturnValue({ canApprove: true });
     vi.spyOn(apiClient, 'getTasks').mockResolvedValue({ success: true, data: tasks } as never);
     vi.spyOn(apiClient, 'getDocuments').mockResolvedValue({ success: true, data: documents } as never);
-    vi.spyOn(apiClient, 'getPendingApprovals').mockResolvedValue({ success: true, data: approvals } as never);
+    vi.spyOn(apiClient, 'getQaReviewQueue').mockResolvedValue({ success: true, data: approvals } as never);
+    vi.spyOn(apiClient, 'getManagerReviewQueue').mockResolvedValue({ success: true, data: [] } as never);
+    vi.spyOn(apiClient, 'getFinalReleaseQueue').mockResolvedValue({ success: true, data: [] } as never);
+    vi.spyOn(apiClient, 'getAnnouncements').mockResolvedValue({ success: true, data: [] } as never);
   });
 
   it('derives personal metrics from the real API responses', async () => {
@@ -141,7 +145,7 @@ describe('dashboard', () => {
     expect(metricValue('My Overdue Tasks')).toBe('1');
     // The approval the user submitted themselves is excluded from their review queue.
     expect(metricValue('Awaiting My Approval')).toBe('1');
-    expect(metricValue('My Submissions in Review')).toBe('1');
+    expect(metricValue('My Submitted Documents')).toBe('1');
     expect(metricValue('My Checked-Out Docs')).toBe('1');
   });
 
@@ -157,12 +161,21 @@ describe('dashboard', () => {
     expect(screen.getByText('Training Records Q3')).toBeInTheDocument();
   });
 
-  it('still renders available panels when one endpoint fails', async () => {
-    vi.spyOn(apiClient, 'getPendingApprovals').mockRejectedValue(new Error('Network Error'));
+  it('keeps the dashboard usable when an approval queue cannot load', async () => {
+    vi.spyOn(apiClient, 'getQaReviewQueue').mockRejectedValue(new Error('Network Error'));
     renderDashboard();
 
-    expect(await screen.findByText(/Could not load approvals/)).toBeInTheDocument();
-    expect(screen.getByText('Review calibration evidence')).toBeInTheDocument();
+    expect(await screen.findByText('Review calibration evidence')).toBeInTheDocument();
     expect(screen.getByText('Nothing waiting on your review.')).toBeInTheDocument();
+  });
+
+  it('hides approval work and does not request approval queues without approve permission', async () => {
+    mockUsePageAccess.mockReturnValue({ canApprove: false });
+    renderDashboard();
+
+    expect(await screen.findByText('Review calibration evidence')).toBeInTheDocument();
+    expect(screen.queryByText('Awaiting My Approval')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('metric-Awaiting My Approval')).not.toBeInTheDocument();
+    expect(apiClient.getQaReviewQueue).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,11 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## 2026-11-15 — Permission-aware Dashboard prioritisation
+
+- The Dashboard now shows **Awaiting My Approval** only when the signed-in role has the explicit `CanApprove` capability. Users without it neither see the summary metric nor the approval-work panel, and the browser does not request any approval-stage queues for them. This avoids exposing a non-actionable zero state and removes unnecessary API calls.
+- The live ISO Surveillance Journey is now placed immediately below the personal greeting, ahead of secondary work counts. The calendar remains functionally and visually unchanged. The work summary responds to the available cards (four columns without approval authority; five with it) and keeps clear borders at mobile, tablet, and desktop widths.
+- Dashboard tests now mock the real approval-stage queues and cover both authorised approvers and non-approvers. `npm.cmd run type-check`, `npm.cmd test -- --run src/components/pages/Dashboard.test.tsx`, and `npm.cmd run build` passed.
+
 ## 2026-11-15 — ISO Readiness visibility follows DMS Groups
 
 - ISO Readiness no longer relies on imported user-profile Department text for departmental visibility. For ordinary readiness users, the system maps each direct department below `Corporate / QMS / Procedures` to a DMS Group with the same name, case-insensitively. A user sees only cycle coverage, evidence gaps, evidence, and responsible contacts for the department Groups they belong to. This is data-driven: renaming a Group to match the folder is the only setup needed; no folder or department names are hard-coded in application logic.

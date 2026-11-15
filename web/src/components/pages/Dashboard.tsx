@@ -5,6 +5,7 @@ import { SkeletonCard } from '../ui/Skeleton';
 import type { Task, Document } from '../../types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { usePageAccess } from '../../hooks/usePageAccess';
 import { apiClient } from '../../utils/api';
 import { AuditCalendarCard } from '../custom/AuditCalendarCard';
 import { IsoSurveillanceJourney } from '../custom/IsoSurveillanceJourney';
@@ -65,6 +66,8 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const pageAccess = usePageAccess();
+  const canApprove = pageAccess?.canApprove === true;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [recentDocs, setRecentDocs] = useState<Document[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
@@ -101,9 +104,9 @@ export function Dashboard() {
       const [taskResult, documentResult, qaResult, managerResult, releaseResult, announcementResult] = await Promise.allSettled([
         apiClient.getTasks(),
         apiClient.getDocuments(),
-        apiClient.getQaReviewQueue({ pageSize: 100 }),
-        apiClient.getManagerReviewQueue({ pageSize: 100 }),
-        apiClient.getFinalReleaseQueue({ pageSize: 100 }),
+        canApprove ? apiClient.getQaReviewQueue({ pageSize: 100 }) : Promise.resolve({ data: [] }),
+        canApprove ? apiClient.getManagerReviewQueue({ pageSize: 100 }) : Promise.resolve({ data: [] }),
+        canApprove ? apiClient.getFinalReleaseQueue({ pageSize: 100 }) : Promise.resolve({ data: [] }),
         apiClient.getAnnouncements(),
       ]);
 
@@ -133,7 +136,7 @@ export function Dashboard() {
 
     void loadDashboardData();
     return () => { cancelled = true; };
-  }, [currentUserId]);
+  }, [currentUserId, canApprove]);
 
   useEffect(() => {
     if (!highlightedAnnouncementId || announcements.length === 0) return;
@@ -221,10 +224,10 @@ export function Dashboard() {
   const metrics = [
     { label: 'My Open Tasks', value: taskStats.open + taskStats.inProgress, valueClass: 'text-[#2d3d80] dark:text-white', detail: `${myTasks.filter((task) => task.priority === 'critical').length} critical`, detailClass: 'text-[#e24c53]', action: () => { const openTask = myTasks.find((t) => t.status === 'open' || t.status === 'in_progress'); navigate(openTask ? `/tasks?highlight=${encodeURIComponent(openTask.taskId)}` : '/tasks'); } },
     { label: 'My Overdue Tasks', value: taskStats.overdue, valueClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#2d3d80] dark:text-white', detail: taskStats.overdue > 0 ? 'Needs attention' : 'All on track', detailClass: taskStats.overdue > 0 ? 'text-[#e24c53]' : 'text-[#319d68]', action: () => { const overdueTask = myTasks.find((t) => { const due = dueTime(t.dueDate); return t.status !== 'done' && due !== null && due < Date.now(); }); navigate(overdueTask ? `/tasks?highlight=${encodeURIComponent(overdueTask.taskId)}` : '/tasks'); } },
-    { label: 'Awaiting My Approval', value: approvalsForMe.length, valueClass: 'text-[#d27a08]', detail: approvalsForMe.length > 0 ? 'Review needed' : 'Nothing pending', detailClass: 'text-[#d27a08]', action: () => navigate(approvalsForMe[0] ? approvalDeepLink(approvalsForMe[0]) : '/approvals') },
     { label: 'My Submitted Documents', value: mySubmissionsInReview.length, valueClass: 'text-[#6c4fd1] dark:text-[#b9a3f5]', detail: mySubmissionsNeedingCorrection > 0 ? `${mySubmissionsNeedingCorrection} need correction` : mySubmissionsInReview.length > 0 ? 'In the approval pipeline' : 'Nothing submitted', detailClass: mySubmissionsNeedingCorrection > 0 ? 'text-[#c73c44]' : 'text-[#6c4fd1] dark:text-[#b9a3f5]', action: () => navigate('/documents?mine=1') },
     { label: 'My Checked-Out Docs', value: myCheckedOutDocs.length, valueClass: 'text-[#2d3d80] dark:text-white', detail: myCheckedOutDocs.length > 0 ? '60-min lock window' : 'None checked out', detailClass: 'text-[#64748b] dark:text-slate-400', action: () => navigate(myCheckedOutDocs[0] ? `/documents?preview=${encodeURIComponent(myCheckedOutDocs[0].documentId)}` : '/documents') },
   ];
+  if (canApprove) metrics.splice(2, 0, { label: 'Awaiting My Approval', value: approvalsForMe.length, valueClass: 'text-[#d27a08]', detail: approvalsForMe.length > 0 ? 'Review needed' : 'Nothing pending', detailClass: 'text-[#d27a08]', action: () => navigate(approvalsForMe[0] ? approvalDeepLink(approvalsForMe[0]) : '/approvals') });
 
   const taskIcons = [Clock3, CheckCircle2, TriangleAlert, ClipboardCheck];
   const taskColors = ['border-[#f2b51d] text-[#e4a400]', 'border-[#3f8bca] text-[#3f8bca]', 'border-[#ef6b70] text-[#ef5b61]', 'border-[#cbd5e3] text-[#8292aa]'];
@@ -247,17 +250,25 @@ export function Dashboard() {
         </div>
       )}
 
+      <IsoSurveillanceJourney
+        openPcars={openPcars}
+        overduePcars={overduePcars}
+        onOpenPcars={() => navigate('/pcars')}
+        onOpenDocuments={() => navigate('/documents')}
+        onOpenAudits={() => navigate('/audits')}
+      />
+
       <Card>
         <CardBody className="p-0">
-          <div className="border-b border-[#e2e8f0] px-5 py-3 dark:border-white/10">
+          <div className="border-b border-[#e2e8f0] px-5 py-3.5 dark:border-white/10">
             <h2 className="text-sm font-semibold text-[#26334d] dark:text-white">My work</h2>
           </div>
-          <div className="grid sm:grid-cols-2 xl:grid-cols-5">
+          <div className={`grid sm:grid-cols-2 ${canApprove ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
             {metrics.map((metric, index) => (
               <button
                 key={metric.label}
                 onClick={metric.action}
-                className={`min-w-0 px-5 py-4 text-left transition-colors hover:bg-[#f8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3f8bca] dark:hover:bg-white/5 ${index > 0 ? 'border-t border-[#e2e8f0] sm:border-t-0 sm:border-l dark:border-white/10' : ''} ${index === 2 ? 'xl:border-l' : ''}`}
+                className={`min-w-0 px-5 py-4 text-left transition-colors hover:bg-[#f8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#3f8bca] dark:hover:bg-white/5 ${index > 0 ? 'border-t border-[#e2e8f0] dark:border-white/10' : ''} ${index % 2 === 1 ? 'sm:border-l' : ''} ${index >= 2 ? 'sm:border-t' : ''} ${index > 0 ? 'xl:border-l xl:border-t-0' : ''}`}
                 aria-label={`Navigate to ${metric.label}`}
               >
                 <p className="truncate text-xs font-medium uppercase tracking-wide text-[#687a95] dark:text-slate-400">{metric.label}</p>
@@ -268,14 +279,6 @@ export function Dashboard() {
           </div>
         </CardBody>
       </Card>
-
-      <IsoSurveillanceJourney
-        openPcars={openPcars}
-        overduePcars={overduePcars}
-        onOpenPcars={() => navigate('/pcars')}
-        onOpenDocuments={() => navigate('/documents')}
-        onOpenAudits={() => navigate('/audits')}
-      />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(330px,0.85fr)]">
         <AuditCalendarCard isFullAccess={user?.role === 'Full Access'} />
@@ -345,7 +348,7 @@ export function Dashboard() {
             </CardBody>
           </Card>
 
-          <Card>
+          {canApprove && <Card>
             <CardBody className="p-5">
               <div className="flex items-center justify-between">
                 <h2 className="section-heading">Awaiting My Approval</h2>
@@ -366,7 +369,7 @@ export function Dashboard() {
                 ))}
               </div>
             </CardBody>
-          </Card>
+          </Card>}
 
           <Card>
             <CardBody className="p-5">
