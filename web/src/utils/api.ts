@@ -65,6 +65,7 @@ export interface PageAccessRoleFlags {
   canViewApprovals: boolean;
   canViewPcar: boolean;
   canViewIso9001Workspace: boolean;
+  canViewIso9001AuditPlan: boolean;
   canViewIso27001Workspace: boolean;
   canViewTasks: boolean;
   // View the complete task/PCAR register without granting management actions.

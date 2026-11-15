@@ -12,6 +12,7 @@ const NO_ACCESS_FLAGS: PageAccessRoleFlags = {
   canViewApprovals: false,
   canViewPcar: false,
   canViewIso9001Workspace: false,
+  canViewIso9001AuditPlan: false,
   canViewIso27001Workspace: false,
   canViewTasks: false,
   canViewAllTasks: false,

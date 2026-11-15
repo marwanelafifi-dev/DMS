@@ -13,8 +13,16 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
     [HttpGet]
     public async Task<ActionResult<object>> List([FromQuery] string? standard = null, [FromQuery] Guid? auditCycleId = null)
     {
+        var role = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+        var canViewIso9001 = role?.CanViewIso9001AuditPlan == true;
+        var canViewIso27001 = role?.CanViewIso27001Workspace == true;
+        if (!canViewIso9001 && !canViewIso27001) return Forbid();
+        if (!string.IsNullOrWhiteSpace(standard) && !CanViewAuditPlan(role, standard)) return Forbid();
+
         var query = context.AuditRecords.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(standard)) query = query.Where(a => a.Standard == standard);
+        else if (!canViewIso9001) query = query.Where(a => a.Standard == "ISO 27001:2022");
+        else if (!canViewIso27001) query = query.Where(a => a.Standard == "ISO 9001:2015");
         if (auditCycleId.HasValue) query = query.Where(a => a.AuditCycleId == auditCycleId.Value);
         var records = await query.OrderByDescending(a => a.AuditDate).Select(a => new
         {
@@ -29,7 +37,8 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
     public async Task<ActionResult<object>> Create([FromBody] AuditRecordRequest request)
     {
         var userId = GetCurrentUserId();
-        if ((await GetPageAccessRoleAsync(context, userId))?.CanCreatePcars != true) return Forbid();
+        var role = await GetPageAccessRoleAsync(context, userId);
+        if (role?.CanCreatePcars != true || !CanViewAuditPlan(role, request.Standard)) return Forbid();
         var error = await Validate(request, userId); if (error != null) return BadRequest(new { success = false, error });
         var sequenceError = await ValidateJourneySequenceAsync(request); if (sequenceError != null) return BadRequest(new { success = false, error = sequenceError });
         if (await context.AuditRecords.AnyAsync(a => a.AuditCycleId == request.AuditCycleId && a.AuditType == request.AuditType))
@@ -50,8 +59,9 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
     public async Task<ActionResult<object>> Update(Guid id, [FromBody] AuditRecordRequest request)
     {
         var userId = GetCurrentUserId();
-        if ((await GetPageAccessRoleAsync(context, userId))?.CanCreatePcars != true) return Forbid();
         var record = await context.AuditRecords.FindAsync(id); if (record == null) return NotFound();
+        var role = await GetPageAccessRoleAsync(context, userId);
+        if (role?.CanCreatePcars != true || !CanViewAuditPlan(role, record.Standard) || !CanViewAuditPlan(role, request.Standard)) return Forbid();
         var previousStatus = record.Status;
         var error = await Validate(request, userId); if (error != null) return BadRequest(new { success = false, error });
         var sequenceError = await ValidateJourneySequenceAsync(request, id, previousStatus); if (sequenceError != null) return BadRequest(new { success = false, error = sequenceError });
@@ -70,10 +80,10 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
     public async Task<ActionResult<object>> Delete(Guid id)
     {
         var userId = GetCurrentUserId();
-        if ((await GetPageAccessRoleAsync(context, userId))?.CanDeleteTasks != true) return Forbid();
-
         var record = await context.AuditRecords.FindAsync(id);
         if (record == null) return NotFound();
+        var role = await GetPageAccessRoleAsync(context, userId);
+        if (role?.CanDeleteTasks != true || !CanViewAuditPlan(role, record.Standard)) return Forbid();
 
         var cycle = await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(c => c.AuditCycleId == record.AuditCycleId);
         if (cycle == null) return BadRequest(new { success = false, error = "The audit cycle for this record is unavailable." });
@@ -114,6 +124,13 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
     }
 
     private static readonly string[] JourneyAuditTypes = ["preparation", "internal", "management_review", "external"];
+
+    private static bool CanViewAuditPlan(DmsPageAccessRole? role, string standard) => standard switch
+    {
+        "ISO 9001:2015" => role?.CanViewIso9001AuditPlan == true,
+        "ISO 27001:2022" => role?.CanViewIso27001Workspace == true,
+        _ => false,
+    };
 
     private async Task<string?> ValidateJourneySequenceAsync(AuditRecordRequest request, Guid? recordId = null, string? previousStatus = null)
     {

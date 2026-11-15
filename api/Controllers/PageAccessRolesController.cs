@@ -58,6 +58,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewApprovals = req.CanViewApprovals,
                 CanViewPcar = req.CanViewPcar,
                 CanViewIso9001Workspace = req.CanViewIso9001Workspace,
+                CanViewIso9001AuditPlan = req.CanViewIso9001AuditPlan,
                 CanViewIso27001Workspace = req.CanViewIso27001Workspace,
                 CanViewTasks = req.CanViewTasks,
                 CanViewAllTasks = req.CanViewAllTasks,
@@ -127,6 +128,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
             entity.CanViewApprovals = req.CanViewApprovals;
             entity.CanViewPcar = req.CanViewPcar;
             entity.CanViewIso9001Workspace = req.CanViewIso9001Workspace;
+            entity.CanViewIso9001AuditPlan = req.CanViewIso9001AuditPlan;
             entity.CanViewIso27001Workspace = req.CanViewIso27001Workspace;
             entity.CanViewTasks = req.CanViewTasks;
             entity.CanViewAllTasks = req.CanViewAllTasks;
@@ -216,6 +218,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
                 CanViewApprovals = entity.CanViewApprovals,
                 CanViewPcar = entity.CanViewPcar,
                 CanViewIso9001Workspace = entity.CanViewIso9001Workspace,
+                CanViewIso9001AuditPlan = entity.CanViewIso9001AuditPlan,
                 CanViewIso27001Workspace = entity.CanViewIso27001Workspace,
                 CanViewTasks = entity.CanViewTasks,
                 CanViewAllTasks = entity.CanViewAllTasks,
@@ -314,7 +317,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
 public record UpdatePageAccessRoleRequest(
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
-    bool CanViewIso9001Workspace = false, bool CanViewIso27001Workspace = false,
+    bool CanViewIso9001Workspace = false, bool CanViewIso9001AuditPlan = false, bool CanViewIso27001Workspace = false,
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanDeleteTasks = false, bool CanManageTaskReminderPolicy = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,
@@ -331,7 +334,7 @@ public record CreatePageAccessRoleRequest(
     string Role,
     bool CanViewDashboard, bool CanViewDocumentLibrary, bool CanViewReminders,
     bool CanViewApprovals, bool CanViewPcar, bool CanViewAdminPanel, bool BypassFolderPermissions,
-    bool CanViewIso9001Workspace = false, bool CanViewIso27001Workspace = false,
+    bool CanViewIso9001Workspace = false, bool CanViewIso9001AuditPlan = false, bool CanViewIso27001Workspace = false,
     bool CanReadAllFolders = false, bool CanReadWriteAllFolders = false,
     bool CanEditFiles = false, bool CanManageFolderPermissions = false, bool CanManageFilePermissions = false,
     bool CanManageAllTasks = false, bool CanDeleteTasks = false, bool CanManageTaskReminderPolicy = false, bool CanCreateTasks = false, bool CanReassignTasks = false, bool CanReassignMyTasks = false,

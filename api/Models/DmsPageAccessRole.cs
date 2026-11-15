@@ -20,6 +20,9 @@ public class DmsPageAccessRole
     // from Dashboard/PCAR access lets an administrator grant a Quality role
     // the ISO 9001 or ISO 27001 journey without exposing unrelated registers.
     public bool CanViewIso9001Workspace { get; set; }
+    // Readiness can be shared broadly with process owners. Audit planning and
+    // journey records are a narrower Quality capability.
+    public bool CanViewIso9001AuditPlan { get; set; }
     public bool CanViewIso27001Workspace { get; set; }
     // Internal operational tasks are intentionally separate from auditor PCAR
     // findings, so roles can be granted either register independently.
