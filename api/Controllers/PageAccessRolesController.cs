@@ -18,11 +18,25 @@ namespace DMS.Api.Controllers;
 [Route("api/page-access-roles")]
 public class PageAccessRolesController(DmsContext context, AuditService auditService, ILogger<PageAccessRolesController> logger) : BaseController
 {
+    // The global role matrix can be used to escalate access, so it is visible
+    // and editable only to a role that already has full administrative bypass.
+    // Ordinary users fetch only their own resolved flags through /current.
+    private async Task<bool> IsRoleAdministratorAsync() =>
+        (await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.BypassFolderPermissions == true;
+
+    [HttpGet("current")]
+    public async Task<ActionResult<object>> GetCurrentPageAccessRole()
+    {
+        var role = await GetPageAccessRoleAsync(context, GetCurrentUserId());
+        return Ok(new { success = true, data = role });
+    }
+
     [HttpGet]
     public async Task<ActionResult<object>> GetPageAccessRoles()
     {
         try
         {
+            if (!await IsRoleAdministratorAsync()) return Forbid();
             var roles = await context.PageAccessRoles
                 .OrderBy(r => r.Role)
                 .ToListAsync();
@@ -42,6 +56,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
     {
         try
         {
+            if (!await IsRoleAdministratorAsync()) return Forbid();
             var role = req.Role?.Trim() ?? string.Empty;
             if (role.Length < 2 || role.Length > 50)
                 return BadRequest(new { success = false, error = "Role name must be between 2 and 50 characters" });
@@ -118,6 +133,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
     {
         try
         {
+            if (!await IsRoleAdministratorAsync()) return Forbid();
             var entity = await context.PageAccessRoles.FirstOrDefaultAsync(r => r.Role == role);
             if (entity == null)
                 return NotFound(new { success = false, error = "Role not found" });
@@ -188,6 +204,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
     [HttpPut("{role}/rename")]
     public async Task<ActionResult<object>> RenamePageAccessRole(string role, [FromBody] RenamePageAccessRoleRequest req)
     {
+        if (!await IsRoleAdministratorAsync()) return Forbid();
         var newRole = req.NewRole?.Trim() ?? string.Empty;
         if (newRole.Length < 2 || newRole.Length > 50)
             return BadRequest(new { success = false, error = "Role name must be between 2 and 50 characters" });
@@ -288,6 +305,7 @@ public class PageAccessRolesController(DmsContext context, AuditService auditSer
     {
         try
         {
+            if (!await IsRoleAdministratorAsync()) return Forbid();
             var entity = await context.PageAccessRoles.FirstOrDefaultAsync(r => r.Role == role);
             if (entity == null)
                 return NotFound(new { success = false, error = "Role not found" });

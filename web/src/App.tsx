@@ -99,7 +99,9 @@ function App() {
                 remounts on every navigation the way it did when each route
                 below wrapped its own separate <MainLayout> instance. */}
             <Route element={<MainLayout />}>
-              <Route path="/" element={<Dashboard />} />
+              <Route element={<RequirePageAccess flag="canViewDashboard" />}>
+                <Route path="/" element={<Dashboard />} />
+              </Route>
               <Route element={<RequirePageAccess flag="canViewIso9001Workspace" />}>
                 <Route path="/iso-readiness" element={<IsoReadiness />} />
               </Route>
@@ -165,8 +167,10 @@ function App() {
                 <Route path="/admin/api-keys" element={<Settings defaultTab="api-keys" />} />
               </Route>
 
-              {/* Legacy settings routes */}
-              <Route path="/settings/*" element={<Settings />} />
+              {/* Legacy settings URLs must retain the same Admin Panel guard. */}
+              <Route element={<RequirePageAccess flag="canViewAdminPanel" />}>
+                <Route path="/settings/*" element={<Settings />} />
+              </Route>
 
               {/* 404 */}
               <Route path="*" element={<Navigate to="/" replace />} />

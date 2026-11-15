@@ -46,7 +46,7 @@ describe('PCAR true modal behavior', () => {
     vi.spyOn(apiClient, 'updateTask').mockResolvedValue({ success: true, data: {} } as any);
     vi.spyOn(apiClient, 'verifyPcar').mockResolvedValue({ success: true, data: {} } as any);
     vi.spyOn(apiClient, 'getDropdownList').mockResolvedValue({ success: true, data: [{ label: 'Quality' }, { label: 'Review' }] } as any);
-    vi.spyOn(apiClient, 'getPageAccessRoles').mockResolvedValue({ success: true, data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true }] } as any);
+    vi.spyOn(apiClient, 'getCurrentPageAccessRole').mockResolvedValue({ success: true, data: { role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true } } as any);
   });
 
   const renderHighlightedPcar = () => render(
@@ -149,7 +149,7 @@ describe('PCAR true modal behavior', () => {
     vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [pcar], totalCount: 1, totalPages: 1 } as any);
     vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...pcar, linkedDocuments: [], linkedFolders: [] } } as any);
     vi.mocked(apiClient.getTaskAttachments).mockResolvedValue({ success: true, data: [{ attachmentId: 'evidence', fileName: 'evidence.pdf', createdAt: '2026-01-01' }] } as any);
-    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({ success: true, data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canVerifyPcars: true }] } as any);
+    vi.mocked(apiClient.getCurrentPageAccessRole).mockResolvedValue({ success: true, data: { role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canVerifyPcars: true } } as any);
     render(
       <MemoryRouter initialEntries={[`/pcars?highlight=${pcar.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthContext.Provider value={auth}><Tasks mode="pcar" /></AuthContext.Provider>
@@ -170,9 +170,9 @@ describe('PCAR true modal behavior', () => {
       success: true,
       data: [{ folderId: 'folder-1', name: 'Quality Management System' }],
     } as any);
-    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({
+    vi.mocked(apiClient.getCurrentPageAccessRole).mockResolvedValue({
       success: true,
-      data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true }],
+      data: { role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true },
     } as any);
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -212,9 +212,9 @@ describe('PCAR true modal behavior', () => {
         { documentId: 'released-engineering', folderId: 'engineering-folder', name: 'released-design.pdf', title: 'Released design', fileName: 'released-design.pdf', status: 'released' },
       ],
     } as any);
-    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({
+    vi.mocked(apiClient.getCurrentPageAccessRole).mockResolvedValue({
       success: true,
-      data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true }],
+      data: { role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true },
     } as any);
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -241,9 +241,9 @@ describe('PCAR true modal behavior', () => {
         { documentId: 'draft-file', folderId: 'folder', name: 'draft.pdf', title: 'Draft file', fileName: 'draft.pdf', originalDocumentId: 'SWS-25120008', status: 'draft' },
       ],
     } as any);
-    vi.mocked(apiClient.getPageAccessRoles).mockResolvedValue({
+    vi.mocked(apiClient.getCurrentPageAccessRole).mockResolvedValue({
       success: true,
-      data: [{ role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true }],
+      data: { role: 'Full Access', canViewPcar: true, canManageAllTasks: true, canCreateTasks: true, canCreatePcars: true },
     } as any);
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

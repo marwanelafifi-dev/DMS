@@ -6,6 +6,8 @@
 
 - ISO 9001 access is further separated into **ISO 9001 Readiness Dashboard** and **ISO 9001 Audit Plan & Register**. A role with Readiness only can review gaps, evidence, tasks, and PCAR blockers but cannot see the Audit Plan tab, use the direct audit-register route, or read/write ISO 9001 audit/checklist records. Migration `137_iso9001_audit_plan_page_access.sql` initially retains existing ISO 9001 workspace access, then Admin → Roles can remove only the Audit Plan permission.
 
+- Page-access enforcement is consistent across UI and API: Sidebar routes are guarded by the matching flag, including Dashboard and legacy Settings URLs. Normal users now fetch only their own resolved page-access role from `GET /api/page-access-roles/current`; the full role matrix and every role create/update/rename/delete action require `BypassFolderPermissions` (Full Access). This prevents a non-administrator from reading or altering the role matrix directly.
+
 - Audit-stage status changes notify every selected audit-team member and department participant, including the person who saves the stage. Each recipient receives one in-app notification and, when Admin Notifications has a working enabled email configuration, one email for Planned, In Progress, Completed, or Cancelled. Editing notes or other record fields does not notify recipients.
 
 - Admin → Audit Programme now creates a cycle with its covered process folders and a multiuser responsibility map for each selected department. Searchable choices contain only active DMS users who are Owners or Managers of a selected process folder or its Procedures department parent. Existing planned/active cycles can be edited there; historical cycles remain read-only. Folder access and user roles do not change.

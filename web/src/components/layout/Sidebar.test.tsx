@@ -24,7 +24,7 @@ const authContextValue: AuthContextValue = {
 describe('Sidebar', () => {
   beforeEach(() => {
     vi.spyOn(apiClient, 'getPlatformSettings').mockResolvedValue({ success: true, data: {} } as any);
-    vi.spyOn(apiClient, 'getPageAccessRoles').mockResolvedValue({ success: true, data: [{ role: 'Full Access', canViewDashboard: true, canViewDocumentLibrary: true, canViewApprovals: true, canViewPcar: true, canViewReminders: true, canSendAnnouncements: true, canViewAdminPanel: true }] } as any);
+    vi.spyOn(apiClient, 'getCurrentPageAccessRole').mockResolvedValue({ success: true, data: { role: 'Full Access', canViewDashboard: true, canViewDocumentLibrary: true, canViewApprovals: true, canViewPcar: true, canViewReminders: true, canSendAnnouncements: true, canViewAdminPanel: true } } as any);
   });
 
   it('keeps application navigation while removing compliance and vault decoration', async () => {
@@ -48,7 +48,7 @@ describe('Sidebar', () => {
   });
 
   it('does not disclose navigation labels while page access is still loading', async () => {
-    vi.mocked(apiClient.getPageAccessRoles).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(apiClient.getCurrentPageAccessRole).mockImplementation(() => new Promise(() => {}));
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthContext.Provider value={authContextValue}>
@@ -57,7 +57,7 @@ describe('Sidebar', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(apiClient.getPageAccessRoles).toHaveBeenCalled());
+    await waitFor(() => expect(apiClient.getCurrentPageAccessRole).toHaveBeenCalled());
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
     expect(screen.queryByText('Document Library')).not.toBeInTheDocument();
     expect(screen.queryByText('Admin Panel')).not.toBeInTheDocument();

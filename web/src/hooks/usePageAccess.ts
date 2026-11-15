@@ -66,11 +66,10 @@ export function usePageAccess(): PageAccessRoleFlags | null {
       return;
     }
     let cancelled = false;
-    apiClient.getPageAccessRoles()
+    apiClient.getCurrentPageAccessRole()
       .then((res) => {
         if (cancelled) return;
-        const match = (res.data || []).find((r: { role: string }) => r.role === user.role);
-        setAccess(match ?? NO_ACCESS_FLAGS);
+        setAccess(res.data ?? NO_ACCESS_FLAGS);
       })
       .catch(() => {
         if (!cancelled) setAccess(NO_ACCESS_FLAGS);

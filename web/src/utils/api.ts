@@ -1524,6 +1524,11 @@ class APIClient {
     return data;
   }
 
+  async getCurrentPageAccessRole() {
+    const { data } = await this.client.get<ApiResponse>('/page-access-roles/current');
+    return data;
+  }
+
   async updatePageAccessRole(role: string, flags: PageAccessRoleFlags) {
     const { data } = await this.client.put<ApiResponse>(`/page-access-roles/${role}`, flags);
     return data;
