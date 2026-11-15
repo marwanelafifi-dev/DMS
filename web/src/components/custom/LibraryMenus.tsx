@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { preventModalOutsideDismiss } from '../ui/ModalOverlay';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, ChevronDown, Columns3, Copy, FolderInput, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, Columns3, Copy, FolderInput, MoreVertical, Pencil, Search, Trash2, X } from 'lucide-react';
 import type { Folder } from '../../types';
 import { Button } from '../ui';
 import type { OptionalDocumentColumn } from './DocumentList';
@@ -186,6 +186,7 @@ export function LibraryBulkActions({
   const [extensionConfirmed, setExtensionConfirmed] = useState(false);
   const [isRequestedAction, setIsRequestedAction] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [destinationSearch, setDestinationSearch] = useState('');
   const { showError } = useToast();
 
   // A requested action can arrive from outside this menu (e.g. the folder
@@ -217,12 +218,28 @@ export function LibraryBulkActions({
     else setValue('');
     setError('');
     setExtensionConfirmed(false);
+    setDestinationSearch('');
   }, [action, renameCurrentName]);
 
   const availableDestinations = useMemo(
     () => folders.filter((folder) => !disabledDestinationIds.has(folder.folderId)),
     [disabledDestinationIds, folders],
   );
+  const destinationOptions = useMemo(
+    () => availableDestinations
+      .map((folder) => ({
+        folder,
+        path: folderPathLabel(folder.folderId, folders) || folder.name,
+      }))
+      .sort((left, right) => left.path.localeCompare(right.path)),
+    [availableDestinations, folders],
+  );
+  const matchingDestinations = useMemo(() => {
+    const term = destinationSearch.trim().toLocaleLowerCase();
+    if (!term) return destinationOptions.slice(0, 12);
+    return destinationOptions.filter(({ folder, path }) => `${folder.name} ${path}`.toLocaleLowerCase().includes(term)).slice(0, 80);
+  }, [destinationOptions, destinationSearch]);
+  const selectedDestination = destinationOptions.find(({ folder }) => folder.folderId === value);
 
   if (selectedCount === 0) return null;
 
@@ -319,18 +336,52 @@ export function LibraryBulkActions({
               {(action === 'copy' || action === 'move') && (
                 <label className="block text-sm font-medium text-[#34425b] dark:text-slate-100">
                   Destination folder
-                  <select className="field-control mt-2 w-full" value={value} aria-invalid={Boolean(error)} aria-describedby={error ? 'bulk-action-error' : undefined} onChange={(event) => { setValue(event.target.value); setError(''); }}>
-                    <option value="">Choose a folder</option>
-                    {/* Full path, not just the bare name — several folders in a real
-                        tree can share the same name (e.g. "Verification" nested under
-                        different parents), and a flat name-only list makes it
-                        impossible to tell which one is actually being selected. */}
-                    {availableDestinations.map((folder) => (
-                      <option key={folder.folderId} value={folder.folderId}>
-                        {folderPathLabel(folder.folderId, folders) || folder.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mt-2 overflow-hidden rounded-[5px] border border-[#cbd5e3] bg-white dark:border-slate-700 dark:bg-slate-950">
+                    <div className="flex items-center gap-2 border-b border-[#e2e8f0] px-3 dark:border-white/10">
+                      <Search className="h-4 w-4 shrink-0 text-[#718198]" aria-hidden="true" />
+                      <input
+                        autoFocus
+                        type="search"
+                        role="combobox"
+                        aria-label="Search destination folders"
+                        aria-controls="destination-folder-results"
+                        aria-expanded="true"
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? 'bulk-action-error' : undefined}
+                        value={destinationSearch}
+                        onChange={(event) => { setDestinationSearch(event.target.value); setError(''); }}
+                        placeholder="Search by folder name or full path"
+                        className="h-10 w-full bg-transparent text-sm text-[#26334d] outline-none placeholder:text-[#718198] dark:text-white"
+                      />
+                    </div>
+                    {selectedDestination && (
+                      <div className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] bg-[#f7f9fc] px-3 py-2 text-xs dark:border-white/10 dark:bg-slate-900">
+                        <span className="min-w-0 truncate text-[#52627a] dark:text-slate-200">Selected: <span className="font-medium text-[#26334d] dark:text-white">{selectedDestination.path}</span></span>
+                        <button type="button" onClick={() => setValue('')} className="shrink-0 font-medium text-[#1763a5] hover:underline">Clear</button>
+                      </div>
+                    )}
+                    <div id="destination-folder-results" role="listbox" aria-label="Destination folders" className="max-h-52 overflow-y-auto py-1">
+                      {matchingDestinations.length > 0 ? matchingDestinations.map(({ folder, path }) => (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={folder.folderId === value}
+                          key={folder.folderId}
+                          onClick={() => { setValue(folder.folderId); setDestinationSearch(''); setError(''); }}
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm outline-none hover:bg-[#edf2f8] focus-visible:bg-[#edf2f8] dark:hover:bg-slate-800 dark:focus-visible:bg-slate-800 ${folder.folderId === value ? 'bg-[#edf4fb] font-medium text-[#1763a5] dark:bg-slate-800' : 'text-[#52627a] dark:text-slate-200'}`}
+                        >
+                          <FolderInput className="h-4 w-4 shrink-0 text-[#718198]" aria-hidden="true" />
+                          <span className="truncate">{path}</span>
+                          {folder.folderId === value && <Check className="ml-auto h-4 w-4 shrink-0" aria-label="Selected" />}
+                        </button>
+                      )) : (
+                        <p className="px-3 py-3 text-sm text-[#718198]">No folders match that name or path.</p>
+                      )}
+                    </div>
+                    {!destinationSearch && destinationOptions.length > matchingDestinations.length && (
+                      <p className="border-t border-[#e2e8f0] px-3 py-2 text-xs text-[#718198] dark:border-white/10">Showing the first {matchingDestinations.length} folders. Search to find another destination.</p>
+                    )}
+                  </div>
                 </label>
               )}
               {action === 'delete' && (

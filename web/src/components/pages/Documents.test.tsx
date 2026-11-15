@@ -814,7 +814,8 @@ describe('Document Library', () => {
     await user.click(await screen.findByRole('checkbox', { name: 'Select Production Shift Handover.txt' }));
     await user.click(screen.getByRole('button', { name: 'Actions for selected items' }));
     await user.click(screen.getByRole('menuitem', { name: 'Copy' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Destination folder' }), 'folder-2');
+    await user.type(screen.getByRole('combobox', { name: 'Search destination folders' }), 'Folder 2');
+    await user.click(screen.getByRole('option', { name: /Folder 2/i }));
     await user.click(screen.getByRole('button', { name: 'Copy items' }));
     await user.click(screen.getByRole('button', { name: 'Folder 2' }));
 
@@ -827,7 +828,8 @@ describe('Document Library', () => {
     await user.click(await screen.findByRole('checkbox', { name: 'Select Production Shift Handover.txt' }));
     await user.click(screen.getByRole('button', { name: 'Actions for selected items' }));
     await user.click(screen.getByRole('menuitem', { name: 'Move' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Destination folder' }), 'folder-2');
+    await user.type(screen.getByRole('combobox', { name: 'Search destination folders' }), 'Folder 2');
+    await user.click(screen.getByRole('option', { name: /Folder 2/i }));
     await user.click(screen.getByRole('button', { name: 'Move items' }));
 
     expect(screen.queryByText('Production Shift Handover.txt')).not.toBeInTheDocument();
@@ -842,7 +844,8 @@ describe('Document Library', () => {
     const folder1Menu = await screen.findByRole('button', { name: /Actions for Folder 1/i });
     await user.click(folder1Menu);
     await user.click(screen.getByRole('menuitem', { name: 'Copy' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Destination folder' }), 'folder-2');
+    await user.type(screen.getByRole('combobox', { name: 'Search destination folders' }), 'Folder 2');
+    await user.click(screen.getByRole('option', { name: /Folder 2/i }));
     await user.click(screen.getByRole('button', { name: 'Copy items' }));
 
     expect(await screen.findByRole('button', { name: 'Folder 1 Copy' })).toBeInTheDocument();
