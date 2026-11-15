@@ -12,7 +12,10 @@ public record AuditCycleFolderOption(Guid FolderId, string Path, Guid Department
 
 public class AuditCycleSetupService(DmsContext context, AccessOverrideService accessOverrideService)
 {
-    public async Task<List<AuditCycleFolderOption>> GetOptionsAsync(string standard, Guid actorId)
+    // `includeUnreadableFolders` is used only by the readiness summary for a
+    // role explicitly allowed to oversee all departments. It never changes
+    // Document Library permissions or grants access to the underlying files.
+    public async Task<List<AuditCycleFolderOption>> GetOptionsAsync(string standard, Guid actorId, bool includeUnreadableFolders = false)
     {
         var folders = await context.Folders.AsNoTracking()
             .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name, folder.OwnerId }).ToListAsync();
@@ -52,7 +55,7 @@ public class AuditCycleSetupService(DmsContext context, AccessOverrideService ac
             var is27001 = names[3].Equals("IT", StringComparison.OrdinalIgnoreCase)
                 && names.Skip(4).Any(name => name.Equals("ISO 27001", StringComparison.OrdinalIgnoreCase));
             if (standard == "ISO 27001:2022" ? !is27001 : is27001) continue;
-            if (!await accessOverrideService.HasFolderReadAccessAsync(actorId, folder.FolderId)) continue;
+            if (!includeUnreadableFolders && !await accessOverrideService.HasFolderReadAccessAsync(actorId, folder.FolderId)) continue;
             var eligibleIds = path.Skip(3).Select(id => byId[id].OwnerId)
                 .Concat(path.Skip(3).SelectMany(id => managersByFolder.GetValueOrDefault(id) ?? Array.Empty<Guid>()))
                 .Distinct();

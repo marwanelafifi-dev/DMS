@@ -8,20 +8,22 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/iso-readiness-contacts")]
-public class IsoReadinessContactsController(DmsContext context, AccessOverrideService accessOverrideService, AuditCycleSetupService setupService) : BaseController
+public class IsoReadinessContactsController(DmsContext context, AccessOverrideService accessOverrideService, AuditCycleSetupService setupService, IsoReadinessVisibilityService visibilityService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> List([FromQuery] Guid auditCycleId)
     {
         if (!await context.AuditCycles.AnyAsync(cycle => cycle.AuditCycleId == auditCycleId)) return NotFound();
         var userId = GetCurrentUserId();
+        var scope = await visibilityService.GetScopeAsync(userId);
         var assignments = await context.IsoReadinessContacts.AsNoTracking()
             .Where(contact => contact.AuditCycleId == auditCycleId)
             .Select(contact => new { contact.AuditCycleId, contact.DepartmentFolderId, contact.UserId })
             .ToListAsync();
         var visible = new List<object>();
         foreach (var assignment in assignments)
-            if (await accessOverrideService.HasFolderReadAccessAsync(userId, assignment.DepartmentFolderId)) visible.Add(assignment);
+            if ((scope.CanViewAll || scope.DepartmentFolderIds.Contains(assignment.DepartmentFolderId))
+                && (scope.CanViewAll || await accessOverrideService.HasFolderReadAccessAsync(userId, assignment.DepartmentFolderId))) visible.Add(assignment);
         return Ok(new { success = true, data = visible });
     }
 

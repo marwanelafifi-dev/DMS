@@ -8,12 +8,13 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/evidence-requirements")]
-public class EvidenceRequirementsController(DmsContext context, AccessOverrideService accessOverrideService) : BaseController
+public class EvidenceRequirementsController(DmsContext context, AccessOverrideService accessOverrideService, IsoReadinessVisibilityService visibilityService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> List([FromQuery] Guid auditCycleId)
     {
         var userId = GetCurrentUserId();
+        var scope = await visibilityService.GetScopeAsync(userId);
         var cycle = await context.AuditCycles.AsNoTracking().FirstOrDefaultAsync(item => item.AuditCycleId == auditCycleId);
         if (cycle == null) return NotFound();
         var selectedFolderIds = await context.AuditCycleCoverageFolders.AsNoTracking()
@@ -57,23 +58,23 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
         var visible = new List<object>();
         foreach (var item in raw)
         {
-            if (await accessOverrideService.HasDocumentReadAccessAsync(userId, item.RelatedDocumentId, item.FolderId))
+            var path = new List<Guid>();
+            var current = item.FolderId;
+            var guard = 0;
+            while (foldersById.TryGetValue(current, out var folder) && guard++ < 64)
             {
-                var path = new List<Guid>();
-                var current = item.FolderId;
-                var guard = 0;
-                while (foldersById.TryGetValue(current, out var folder) && guard++ < 64)
-                {
-                    path.Insert(0, current);
-                    if (!folder.ParentFolderId.HasValue) break;
-                    current = folder.ParentFolderId.Value;
-                }
+                path.Insert(0, current);
+                if (!folder.ParentFolderId.HasValue) break;
+                current = folder.ParentFolderId.Value;
+            }
                 var hasProcedureRoot = path.Count >= 4
                     && foldersById[path[0]].Name.Equals("Corporate", StringComparison.OrdinalIgnoreCase)
                     && foldersById[path[1]].Name.Equals("QMS", StringComparison.OrdinalIgnoreCase)
                     && foldersById[path[2]].Name.Equals("Procedures", StringComparison.OrdinalIgnoreCase);
                 var departmentFolderId = hasProcedureRoot ? (Guid?)path[3] : null;
                 var departmentFolderName = departmentFolderId.HasValue ? foldersById[departmentFolderId.Value].Name : null;
+                if (!scope.CanViewAll && (!departmentFolderId.HasValue || !scope.DepartmentFolderIds.Contains(departmentFolderId.Value))) continue;
+                if (!scope.CanViewAll && !await accessOverrideService.HasDocumentReadAccessAsync(userId, item.RelatedDocumentId, item.FolderId)) continue;
                 var folderOwnerUserIds = hasProcedureRoot
                     ? path.Skip(3).Select(folderId => foldersById[folderId].OwnerId).Distinct().ToArray()
                     : Array.Empty<Guid>();
@@ -81,7 +82,6 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
                     ? path.Skip(3).SelectMany(folderId => managersByFolder.GetValueOrDefault(folderId) ?? Array.Empty<Guid>()).Distinct().ToArray()
                     : Array.Empty<Guid>();
                 visible.Add(new { item.EvidenceRequirementId, item.AuditCycleId, item.Standard, item.RelatedDocumentId, item.DocumentTitle, item.FolderId, item.FolderName, item.DocumentOwnerId, item.DocumentDepartment, item.FolderDepartment, DepartmentFolderId = departmentFolderId, DepartmentFolderName = departmentFolderName, FolderOwnerUserIds = folderOwnerUserIds, FolderManagerUserIds = folderManagerUserIds, HasEvidence = linkedDocumentIds.Contains(item.RelatedDocumentId) });
-            }
         }
         return Ok(new { success = true, data = visible });
     }

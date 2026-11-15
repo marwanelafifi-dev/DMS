@@ -11,13 +11,14 @@ namespace DMS.Api.Controllers;
 // into operational readiness or Management Review reporting.
 [ApiController]
 [Route("api/iso-evidence")]
-public class IsoEvidenceController(DmsContext context, AccessOverrideService accessOverrideService) : BaseController
+public class IsoEvidenceController(DmsContext context, AccessOverrideService accessOverrideService, IsoReadinessVisibilityService visibilityService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> GetActiveEvidence([FromQuery] string standard = "ISO 9001:2015", [FromQuery] Guid? auditCycleId = null)
     {
         if (standard is not ("ISO 9001:2015" or "ISO 27001:2022")) return BadRequest(new { success = false, error = "Unsupported ISO standard" });
         var userId = GetCurrentUserId();
+        var visibility = await visibilityService.GetScopeAsync(userId);
         var accessibleFolderIds = await GetAccessibleFolderIdsAsync(context, userId, accessOverrideService);
         var folders = await context.Folders.AsNoTracking()
             .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name, folder.Department })
@@ -33,6 +34,22 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
                 current = folder.ParentFolderId.Value;
             }
             return result.ToArray();
+        }
+        Guid? DepartmentFolderId(Guid id)
+        {
+            var path = new List<Guid>(); var current = id; var guard = 0;
+            while (byId.TryGetValue(current, out var folder) && guard++ < 64)
+            {
+                path.Insert(0, current);
+                if (!folder.ParentFolderId.HasValue) break;
+                current = folder.ParentFolderId.Value;
+            }
+            return path.Count >= 4
+                && byId[path[0]].Name.Equals("Corporate", StringComparison.OrdinalIgnoreCase)
+                && byId[path[1]].Name.Equals("QMS", StringComparison.OrdinalIgnoreCase)
+                && byId[path[2]].Name.Equals("Procedures", StringComparison.OrdinalIgnoreCase)
+                ? path[3]
+                : null;
         }
         Guid? ProcessFolderId(Guid id)
         {
@@ -57,10 +74,12 @@ public class IsoEvidenceController(DmsContext context, AccessOverrideService acc
                 && !path.Any(name => string.Equals(name, "OLD DMS", StringComparison.OrdinalIgnoreCase));
             if (!inControlledSource) return false;
             var iso27001 = path.Skip(3).Any(name => string.Equals(name, "ISO 27001", StringComparison.OrdinalIgnoreCase));
-            return standard == "ISO 27001:2022" ? iso27001 : !iso27001;
+            var correctStandard = standard == "ISO 27001:2022" ? iso27001 : !iso27001;
+            var departmentFolderId = DepartmentFolderId(folder.FolderId);
+            return correctStandard && (visibility.CanViewAll || (departmentFolderId.HasValue && visibility.DepartmentFolderIds.Contains(departmentFolderId.Value)));
         }).Select(folder => folder.FolderId).ToHashSet();
 
-        if (accessibleFolderIds != null) evidenceFolderIds.IntersectWith(accessibleFolderIds);
+        if (!visibility.CanViewAll && accessibleFolderIds != null) evidenceFolderIds.IntersectWith(accessibleFolderIds);
         var documents = await context.Documents.AsNoTracking()
             .Where(document => evidenceFolderIds.Contains(document.FolderId) && document.DeletedAt == null)
             .Join(context.Users.AsNoTracking(), document => document.OwnerId, user => user.UserId,

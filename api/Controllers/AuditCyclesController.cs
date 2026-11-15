@@ -8,7 +8,7 @@ namespace DMS.Api.Controllers;
 
 [ApiController]
 [Route("api/audit-cycles")]
-public class AuditCyclesController(DmsContext context, AuditCycleSetupService setupService, AccessOverrideService accessOverrideService) : BaseController
+public class AuditCyclesController(DmsContext context, AuditCycleSetupService setupService, AccessOverrideService accessOverrideService, IsoReadinessVisibilityService visibilityService) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<object>> List()
@@ -48,12 +48,17 @@ public class AuditCyclesController(DmsContext context, AuditCycleSetupService se
     {
         if (!await context.AuditCycles.AnyAsync(cycle => cycle.AuditCycleId == id)) return NotFound();
         var userId = GetCurrentUserId();
+        var scope = await visibilityService.GetScopeAsync(userId);
         var folders = await context.AuditCycleCoverageFolders.AsNoTracking()
             .Where(item => item.AuditCycleId == id).Select(item => item.FolderId).ToListAsync();
         var visibleFolderIds = new List<Guid>();
+        var cycle = await context.AuditCycles.AsNoTracking().FirstAsync(item => item.AuditCycleId == id);
+        var options = await setupService.GetOptionsAsync(cycle.Standard, userId, scope.CanViewAll);
+        var optionsByFolderId = options.ToDictionary(option => option.FolderId);
         foreach (var folderId in folders)
-            if (await accessOverrideService.HasFolderReadAccessAsync(userId, folderId)) visibleFolderIds.Add(folderId);
-        var options = await setupService.GetOptionsAsync((await context.AuditCycles.AsNoTracking().FirstAsync(cycle => cycle.AuditCycleId == id)).Standard, userId);
+            if (optionsByFolderId.TryGetValue(folderId, out var option)
+                && (scope.CanViewAll || scope.DepartmentFolderIds.Contains(option.DepartmentFolderId))
+                && (scope.CanViewAll || await accessOverrideService.HasFolderReadAccessAsync(userId, folderId))) visibleFolderIds.Add(folderId);
         var visibleOptions = options.Where(option => visibleFolderIds.Contains(option.FolderId)).ToArray();
         var departmentIds = visibleOptions
             .Select(option => option.DepartmentFolderId).ToHashSet();

@@ -28,7 +28,9 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
   loadError: boolean;
 }) {
   const navigate = useNavigate();
-  const canManage = usePageAccess()?.canViewAdminPanel === true;
+  const pageAccess = usePageAccess();
+  const canManage = pageAccess?.canViewAdminPanel === true;
+  const canViewAllDepartments = pageAccess?.canViewAllIsoReadiness === true || pageAccess?.bypassFolderPermissions === true;
   const [query, setQuery] = useState('');
   const rollup = useMemo(() => buildDepartmentReadiness(users, tasks, evidence, requirements, standard, activeCycleId, contacts, coveredFolders), [users, tasks, evidence, requirements, standard, activeCycleId, contacts, coveredFolders]);
   const term = query.trim().toLocaleLowerCase();
@@ -42,7 +44,9 @@ export function DepartmentReadinessPanel({ users, tasks, evidence, requirements,
         <div className="flex flex-col gap-4 border-b border-[#dbe2ec] px-5 py-5 lg:flex-row lg:items-end lg:justify-between dark:border-white/10">
           <div className="max-w-3xl">
             <h2 className="section-heading">Department readiness</h2>
-            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">Departments and responsible users come from the selected audit cycle. Admin maps each covered department to one or more folder owners or managers.</p>
+            <p className="mt-1 text-sm leading-6 text-[#52627a] dark:text-slate-300">{canViewAllDepartments
+              ? 'All selected-cycle departments are visible. Responsible users come from the audit-cycle folder map.'
+              : 'Showing only Procedure departments that match your DMS Group membership. Responsible users come from the audit-cycle folder map.'}</p>
             {canManage && <button type="button" onClick={() => navigate('/admin/audit-programme')} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[#1763a5] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]">Manage cycle setup <ArrowRight className="h-4 w-4" aria-hidden="true" /></button>}
           </div>
           <label className="relative block w-full shrink-0 lg:w-72">

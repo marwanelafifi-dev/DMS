@@ -24,6 +24,10 @@ public class DmsPageAccessRole
     // journey records are a narrower Quality capability.
     public bool CanViewIso9001AuditPlan { get; set; }
     public bool CanViewIso27001Workspace { get; set; }
+    // Lets Quality/Auditor-style roles oversee every department in ISO
+    // readiness. Without it, readiness is limited to Procedure department
+    // folders whose names match one of the user's DMS Groups.
+    public bool CanViewAllIsoReadiness { get; set; }
     // Internal operational tasks are intentionally separate from auditor PCAR
     // findings, so roles can be granted either register independently.
     public bool CanViewTasks { get; set; }

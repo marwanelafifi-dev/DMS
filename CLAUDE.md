@@ -1,5 +1,11 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## 2026-11-15 — ISO Readiness visibility follows DMS Groups
+
+- ISO Readiness no longer relies on imported user-profile Department text for departmental visibility. For ordinary readiness users, the system maps each direct department below `Corporate / QMS / Procedures` to a DMS Group with the same name, case-insensitively. A user sees only cycle coverage, evidence gaps, evidence, and responsible contacts for the department Groups they belong to. This is data-driven: renaming a Group to match the folder is the only setup needed; no folder or department names are hard-coded in application logic.
+- A new **View All ISO Department Readiness** Role permission is available in Admin → Roles. The migration enables it for the existing Quality, Auditor, and Full Access roles. It is independent from general Document Library access; Quality and Auditors can oversee readiness across all selected departments without receiving unrestricted file browsing rights. Full Access retains the same company-wide readiness view automatically.
+- Migration `138_iso_readiness_group_scope.sql` must be applied on existing databases before the API rebuild. It adds the role capability and safely preserves existing custom-role behavior as scoped-by-Group unless an administrator explicitly enables the capability.
+
 ## 2026-11-15 — Single Admin setup for ISO cycle coverage and responsibility
 
 - Roles now expose **ISO 9001 Workspace** and **ISO 27001 Workspace** as separate page permissions. They control both the Sidebar entries and direct routes, including ISO 9001 Readiness and the merged Audit Plan & Register. Migration `136_iso_workspace_page_access.sql` preserves current user access by initially copying the legacy ISO 9001 PCAR permission and ISO 27001 Dashboard permission; an administrator can then change each role independently in Admin → Roles.

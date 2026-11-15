@@ -89,7 +89,7 @@ export function IsoReadiness({ standard = 'ISO 9001:2015' }: { standard?: 'ISO 9
   return <div className="space-y-6">
     <div className="max-w-3xl">
       <div className="flex items-center gap-2 text-[#174f91] dark:text-blue-200"><ShieldCheck className="h-5 w-5" /><h1 className="page-heading">{standard} Readiness</h1></div>
-      <p className="page-subtitle mt-2">{standard === 'ISO 9001:2015' ? 'Company-wide surveillance-cycle evidence, audit findings, and readiness work. Certificate No. 00.12.1041 is valid through 05 February 2029.' : 'IT-only ISMS evidence, audit findings, and readiness work for the active calendar-year programme.'}</p>
+      <p className="page-subtitle mt-2">{standard === 'ISO 9001:2015' ? 'Surveillance-cycle evidence, audit findings, and readiness work for the departments you are authorised to oversee. Certificate No. 00.12.1041 is valid through 05 February 2029.' : 'IT-only ISMS evidence, audit findings, and readiness work for the active calendar-year programme.'}</p>
     </div>
 
     <Card><CardBody className="p-0"><div className="grid divide-y divide-[#dbe2ec] sm:grid-cols-4 sm:divide-x sm:divide-y-0 dark:divide-white/10">
