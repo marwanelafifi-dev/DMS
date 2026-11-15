@@ -117,8 +117,10 @@ function App() {
                   <Route path="/tasks/history" element={<HistoricalPcarPage />} />
                 </Route>
               </Route>
-              <Route element={<RequirePageAccess flag="canViewIso9001AuditPlan" />}>
+              <Route element={<RequirePageAccess flag="canViewIso9001Workspace" />}>
                 <Route path="/iso-workspace" element={<IsoWorkspace />} />
+              </Route>
+              <Route element={<RequirePageAccess flag="canViewIso9001AuditPlan" />}>
                 <Route path="/audits" element={<AuditRegister />} />
               </Route>
 
