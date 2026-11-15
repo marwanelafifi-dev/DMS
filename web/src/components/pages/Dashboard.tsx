@@ -179,11 +179,16 @@ export function Dashboard() {
   const myTasks = tasks.filter((t) => t.assignedTo === currentUserId);
   const myNormalTasks = myTasks.filter((task) => task.taskType !== 'pcar');
   const myPcars = myTasks.filter((task) => task.taskType === 'pcar');
-  const isClosedPcar = (task: Task) => task.status === 'done' || task.status === 'completed';
-  const openPcars = myPcars.filter((task) => !isClosedPcar(task)).length;
+  const isClosedWorkItem = (task: Task) => task.status === 'done' || task.status === 'completed';
+  const openPcars = myPcars.filter((task) => !isClosedWorkItem(task)).length;
   const overduePcars = myPcars.filter((task) => {
     const due = dueTime(task.dueDate);
-    return !isClosedPcar(task) && due !== null && due < Date.now();
+    return !isClosedWorkItem(task) && due !== null && due < Date.now();
+  }).length;
+  const openReadinessTasks = myNormalTasks.filter((task) => !isClosedWorkItem(task)).length;
+  const overdueReadinessTasks = myNormalTasks.filter((task) => {
+    const due = dueTime(task.dueDate);
+    return !isClosedWorkItem(task) && due !== null && due < Date.now();
   }).length;
   const taskStats = {
     open: myTasks.filter((t) => t.status === 'open').length,
@@ -253,8 +258,10 @@ export function Dashboard() {
       <IsoSurveillanceJourney
         openPcars={openPcars}
         overduePcars={overduePcars}
+        openTasks={openReadinessTasks}
+        overdueTasks={overdueReadinessTasks}
         onOpenPcars={() => navigate('/pcars')}
-        onOpenDocuments={() => navigate('/documents')}
+        onOpenTasks={() => navigate('/tasks')}
         onOpenAudits={() => navigate('/audits')}
       />
 

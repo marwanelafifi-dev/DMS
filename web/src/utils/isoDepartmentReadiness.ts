@@ -16,10 +16,12 @@ export type ReadinessRequirement = {
   relatedDocumentId: string;
   documentTitle: string;
   documentOwnerId?: string | null;
+  folderName?: string | null;
   departmentFolderId?: string | null;
   departmentFolderName?: string | null;
   folderOwnerUserIds?: string[];
   folderManagerUserIds?: string[];
+  evidenceFolderId?: string | null;
   hasEvidence: boolean;
 };
 

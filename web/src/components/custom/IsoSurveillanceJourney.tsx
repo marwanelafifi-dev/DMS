@@ -1,4 +1,4 @@
-import { ArrowRight, BadgeCheck, CalendarDays, Check, ClipboardCheck, FileCheck2, ShieldCheck, TriangleAlert, UserRound } from 'lucide-react';
+import { ArrowRight, CalendarDays, Check, ClipboardCheck, FileCheck2, ListTodo, ShieldCheck, TriangleAlert, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../../utils/api';
 import { Card, CardBody } from '../ui/Card';
@@ -7,8 +7,10 @@ import { Button } from '../ui/Button';
 interface IsoSurveillanceJourneyProps {
   openPcars: number;
   overduePcars: number;
+  openTasks: number;
+  overdueTasks: number;
   onOpenPcars: () => void;
-  onOpenDocuments: () => void;
+  onOpenTasks: () => void;
   onOpenAudits: () => void;
 }
 
@@ -28,7 +30,7 @@ const displayDate = (value?: string) => {
 const statusLabel = (status?: string) => ({ completed: 'Completed', in_progress: 'In progress', planned: 'Planned' }[status ?? ''] ?? 'Not scheduled');
 const auditTypeForStage: Record<string, string> = { preparation: 'preparation', internal_audit: 'internal', management_review: 'management_review', surveillance_audit: 'external' };
 
-export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, onOpenDocuments, onOpenAudits }: IsoSurveillanceJourneyProps) {
+export function IsoSurveillanceJourney({ openPcars, overduePcars, openTasks, overdueTasks, onOpenPcars, onOpenTasks, onOpenAudits }: IsoSurveillanceJourneyProps) {
   const [cycle, setCycle] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [records, setRecords] = useState<any[]>([]);
@@ -80,8 +82,6 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
 
   const current = journey.find(stage => stage.current) ?? journey[0];
   const actionIsAudit = current?.key === 'internal_audit' || current?.key === 'surveillance_audit';
-  const currentAction = actionIsAudit ? onOpenAudits : onOpenDocuments;
-  const currentActionLabel = actionIsAudit ? `Open ${current.title}` : 'Open evidence library';
   const completedCount = journey.filter(stage => stage.complete).length;
 
   return <Card className="overflow-hidden">
@@ -107,7 +107,7 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
               <h3 className="text-2xl font-semibold tracking-[-0.025em] text-[#26334d] dark:text-white">{current.title}</h3>
               <p className="mt-2 max-w-xl text-sm leading-6 text-[#52627a] dark:text-slate-300">{current.summary}</p>
             </div>
-            <Button onClick={currentAction} rightIcon={<ArrowRight className="h-4 w-4" />}>{currentActionLabel}</Button>
+            {actionIsAudit && <Button onClick={onOpenAudits} rightIcon={<ArrowRight className="h-4 w-4" />}>Open {current.title}</Button>}
           </div>
           <div className="mt-6 grid gap-3 border-t border-[#e2e8f0] pt-4 sm:grid-cols-3 dark:border-white/10">
             <div className="flex items-start gap-2.5"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-[#3f8bca]" /><div><p className="text-xs text-[#718198]">Target date</p><p className="mt-0.5 text-sm font-medium text-[#26334d] dark:text-white">{displayDate(current.event?.eventDate)}</p></div></div>
@@ -124,9 +124,9 @@ export function IsoSurveillanceJourney({ openPcars, overduePcars, onOpenPcars, o
               <span className="flex items-center gap-2 text-sm font-medium text-[#26334d] dark:text-white"><ClipboardCheck className="h-4 w-4 text-[#3f8bca]" />Open PCARs</span>
               <span className={overduePcars > 0 ? 'text-sm font-semibold text-[#c73c44]' : 'text-sm font-semibold text-[#26334d] dark:text-white'}>{openPcars}{overduePcars > 0 ? ` · ${overduePcars} overdue` : ''}</span>
             </button>
-            <button onClick={onOpenDocuments} className="flex w-full items-center justify-between gap-4 py-3 text-left hover:text-[#1763a5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]">
-              <span className="flex items-center gap-2 text-sm font-medium text-[#26334d] dark:text-white"><BadgeCheck className="h-4 w-4 text-[#3f8bca]" />Evidence library</span>
-              <span className="text-xs font-semibold text-[#1763a5]">Review</span>
+            <button onClick={onOpenTasks} className="flex w-full items-center justify-between gap-4 py-3 text-left hover:text-[#1763a5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3f8bca]">
+              <span className="flex items-center gap-2 text-sm font-medium text-[#26334d] dark:text-white"><ListTodo className="h-4 w-4 text-[#3f8bca]" />Open tasks</span>
+              <span className={overdueTasks > 0 ? 'text-sm font-semibold text-[#c73c44]' : 'text-sm font-semibold text-[#26334d] dark:text-white'}>{openTasks}{overdueTasks > 0 ? ` آ· ${overdueTasks} overdue` : ''}</span>
             </button>
           </div>
         </aside>

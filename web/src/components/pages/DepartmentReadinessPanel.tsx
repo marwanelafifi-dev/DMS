@@ -119,6 +119,11 @@ function DepartmentGroup({ department, defaultOpen, onNavigate }: { department: 
 
 function PersonRow({ person, expanded, onToggle, onNavigate }: { person: PersonReadiness; expanded: boolean; onToggle: () => void; onNavigate: ReturnType<typeof useNavigate> }) {
   const hasDetails = person.tasks.length > 0 || person.pcars.length > 0 || person.missingRequirements.length > 0;
+  const evidenceFolders = [...new Map(
+    person.missingRequirements
+      .filter((item): item is typeof item & { evidenceFolderId: string } => Boolean(item.evidenceFolderId))
+      .map((item) => [item.evidenceFolderId, { folderId: item.evidenceFolderId, processName: item.folderName || 'process' }]),
+  ).values()];
   return (
     <>
       <tr className="border-b border-[#edf1f6] text-[#34425b] dark:border-white/10 dark:text-slate-200">
@@ -131,7 +136,23 @@ function PersonRow({ person, expanded, onToggle, onNavigate }: { person: PersonR
       {expanded && <tr><td colSpan={5} className="bg-[#f8fafc] px-4 py-4 dark:bg-slate-950/30"><div className="grid gap-5 md:grid-cols-3">
         <WorkDetails title="Open tasks" tasks={person.tasks} route="/tasks" onNavigate={onNavigate} />
         <WorkDetails title="Open PCARs" tasks={person.pcars} route="/pcars" onNavigate={onNavigate} />
-        <div><h4 className="text-xs font-semibold uppercase tracking-wide text-[#52627a] dark:text-slate-300">Process documents awaiting evidence</h4>{person.missingRequirements.length ? <ul className="mt-2 space-y-2">{person.missingRequirements.map(item => <li key={item.evidenceRequirementId} className="text-sm text-[#34425b] dark:text-slate-200">{item.documentTitle}</li>)}</ul> : <p className="mt-2 text-sm text-[#52627a] dark:text-slate-300">None</p>}{person.missingRequirements.length > 0 && <button type="button" onClick={() => onNavigate('/documents')} className="mt-3 text-xs font-semibold text-[#1763a5] underline-offset-4 hover:underline">Open evidence library</button>}</div>
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-[#52627a] dark:text-slate-300">Process documents awaiting evidence</h4>
+          {person.missingRequirements.length ? <ul className="mt-2 space-y-2">{person.missingRequirements.map(item => <li key={item.evidenceRequirementId} className="text-sm text-[#34425b] dark:text-slate-200">{item.documentTitle}</li>)}</ul> : <p className="mt-2 text-sm text-[#52627a] dark:text-slate-300">None</p>}
+          {evidenceFolders.length === 1 && (
+            <button type="button" onClick={() => onNavigate(`/documents?folder=${encodeURIComponent(evidenceFolders[0].folderId)}`)} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#1763a5] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]">
+              Open evidence folder <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
+          {evidenceFolders.length > 1 && (
+            <div className="mt-3 flex flex-col items-start gap-2">
+              {evidenceFolders.map(({ folderId, processName }) => <button key={folderId} type="button" onClick={() => onNavigate(`/documents?folder=${encodeURIComponent(folderId)}`)} className="inline-flex items-center gap-1 text-left text-xs font-semibold text-[#1763a5] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1763a5]">
+                Open {processName} evidence folder <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              </button>)}
+            </div>
+          )}
+          {person.missingRequirements.length > 0 && evidenceFolders.length === 0 && <p className="mt-3 text-xs text-[#8a5411] dark:text-amber-300">No accessible Evidence folder is linked to these process documents.</p>}
+        </div>
       </div></td></tr>}
     </>
   );

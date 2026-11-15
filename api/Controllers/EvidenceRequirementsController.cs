@@ -46,6 +46,10 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
             .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name, folder.OwnerId })
             .ToListAsync();
         var foldersById = folders.ToDictionary(folder => folder.FolderId);
+        var evidenceFolderByProcessFolder = folders
+            .Where(folder => folder.ParentFolderId.HasValue && folder.Name.Equals("Evidences", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(folder => folder.ParentFolderId!.Value)
+            .ToDictionary(group => group.Key, group => group.OrderBy(folder => folder.FolderId).First());
         var managers = await context.FolderManagers.AsNoTracking()
             .Select(manager => new { manager.FolderId, manager.UserId })
             .ToListAsync();
@@ -81,7 +85,11 @@ public class EvidenceRequirementsController(DmsContext context, AccessOverrideSe
                 var folderManagerUserIds = hasProcedureRoot
                     ? path.Skip(3).SelectMany(folderId => managersByFolder.GetValueOrDefault(folderId) ?? Array.Empty<Guid>()).Distinct().ToArray()
                     : Array.Empty<Guid>();
-                visible.Add(new { item.EvidenceRequirementId, item.AuditCycleId, item.Standard, item.RelatedDocumentId, item.DocumentTitle, item.FolderId, item.FolderName, item.DocumentOwnerId, item.DocumentDepartment, item.FolderDepartment, DepartmentFolderId = departmentFolderId, DepartmentFolderName = departmentFolderName, FolderOwnerUserIds = folderOwnerUserIds, FolderManagerUserIds = folderManagerUserIds, HasEvidence = linkedDocumentIds.Contains(item.RelatedDocumentId) });
+                Guid? evidenceFolderId = null;
+                if (evidenceFolderByProcessFolder.TryGetValue(item.FolderId, out var evidenceFolder)
+                    && await accessOverrideService.HasFolderReadAccessAsync(userId, evidenceFolder.FolderId))
+                    evidenceFolderId = evidenceFolder.FolderId;
+                visible.Add(new { item.EvidenceRequirementId, item.AuditCycleId, item.Standard, item.RelatedDocumentId, item.DocumentTitle, item.FolderId, item.FolderName, item.DocumentOwnerId, item.DocumentDepartment, item.FolderDepartment, DepartmentFolderId = departmentFolderId, DepartmentFolderName = departmentFolderName, FolderOwnerUserIds = folderOwnerUserIds, FolderManagerUserIds = folderManagerUserIds, EvidenceFolderId = evidenceFolderId, HasEvidence = linkedDocumentIds.Contains(item.RelatedDocumentId) });
         }
         return Ok(new { success = true, data = visible });
     }
