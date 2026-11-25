@@ -69,11 +69,16 @@ const TASK_ACTION_LABELS: Record<string, string> = {
 
 /**
  * Older tasks often contain a numbered procedure pasted as one sentence
- * ("1-... 2-..."). Keep the original data intact, but recover the steps for
- * a readable presentation in the register and task view.
+ * ("1-... 2-...") and can include HTML-encoded spaces from copied content.
+ * Keep the original data intact, but recover the steps for a readable
+ * presentation in the register and task view.
  */
+function normalizeTaskDescription(description?: string): string {
+  return description?.replace(/&(?:#x0*20|#0*32|nbsp);/gi, ' ').replace(/\r\n?/g, '\n').trim() ?? '';
+}
+
 function getDescriptionSteps(description?: string): string[] {
-  const text = description?.replace(/\r\n?/g, '\n').trim() ?? '';
+  const text = normalizeTaskDescription(description);
   if (!text) return [];
 
   const matches = [...text.matchAll(/(?:^|\s)(\d+)[.)-]\s*/g)];
@@ -85,7 +90,7 @@ function getDescriptionSteps(description?: string): string[] {
 }
 
 function TaskDescription({ description, variant = 'detail' }: { description?: string; variant?: 'detail' | 'preview' }) {
-  const text = description?.trim() ?? '';
+  const text = normalizeTaskDescription(description);
   const steps = getDescriptionSteps(text);
 
   if (!text) return null;

@@ -150,7 +150,7 @@ describe('PCAR true modal behavior', () => {
       taskType: 'task',
       approvalId: undefined,
       title: 'Update controlled documents',
-      description: '1-Download the current documents. 2-Update the process documents. 3-Upload the approved versions.',
+      description: '1-Download the current documents.&#x20; 2-Update the process documents.&#x20; 3-Add the review-table entry.&#x20; 4-Upload the approved versions.',
     };
     vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [normalTask], totalCount: 1, totalPages: 1 } as any);
     vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...normalTask, linkedDocuments: [], linkedFolders: [] } } as any);
@@ -164,8 +164,10 @@ describe('PCAR true modal behavior', () => {
     const steps = screen.getByRole('list', { name: 'Task steps' });
     expect(steps).toHaveTextContent('Download the current documents.');
     expect(steps).toHaveTextContent('Update the process documents.');
+    expect(steps).toHaveTextContent('Add the review-table entry.');
     expect(steps).toHaveTextContent('Upload the approved versions.');
-    expect(screen.getByText('3 steps')).toBeInTheDocument();
+    expect(steps).not.toHaveTextContent('4-Upload the approved versions.');
+    expect(screen.getByText('4 steps')).toBeInTheDocument();
   });
 
   it('shows Quality/Auditor verification controls only when the dedicated permission is granted', async () => {
