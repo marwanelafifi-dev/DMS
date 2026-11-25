@@ -47,6 +47,24 @@ const RESPONSE_COLORS: Record<string, string> = {
 
 const URL_PATTERN = /(https?:\/\/[^\s<]+)/g;
 
+// Google Calendar event descriptions may arrive as HTML. Keep the useful
+// structure but never render remote markup in the application.
+function formatCalendarDescription(description: string) {
+  const text = description
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\s*\/\s*p\s*>/gi, '\n\n')
+    .replace(/<\s*li\b[^>]*>/gi, '\n• ')
+    .replace(/<\s*\/\s*li\s*>/gi, '')
+    .replace(/<[^>]+>/g, '');
+
+  const decoder = document.createElement('textarea');
+  decoder.innerHTML = text;
+  return decoder.value
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // Google's own event popup renders description URLs (Zoom links, agenda docs,
 // dial-in numbers, etc.) as clickable text — plain text here would leave a
 // pasted Zoom invite completely unusable.
@@ -108,6 +126,7 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [openEvent, setOpenEvent] = useState<GoogleEventSummary | null>(null);
+  const [isDescriptionVisible, setIsDescriptionVisible] = useState(false);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth(); // 0-indexed
@@ -159,6 +178,7 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
 
   const goToMonth = (offset: number) => setCursor((prev) => { const d = new Date(prev); d.setMonth(d.getMonth() + offset); return d; });
   const goToToday = () => { const d = new Date(); d.setDate(1); setCursor(d); setSelectedDayKey(null); };
+  const openEventDetails = (event: GoogleEventSummary) => { setOpenEvent(event); setIsDescriptionVisible(false); };
 
   const selectedEvents = selectedDayKey ? eventsByDay.get(selectedDayKey) ?? [] : [];
 
@@ -222,7 +242,7 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
                 {visible.map((event) => (
                   <button
                     key={event.id}
-                    onClick={(e) => { e.stopPropagation(); setOpenEvent(event); }}
+                    onClick={(e) => { e.stopPropagation(); openEventDetails(event); }}
                     className={`block w-full truncate rounded-sm px-1 py-0.5 text-left text-[10px] font-medium text-white hover:brightness-110 ${chipColorFor(event.id)}`}
                     title={event.title}
                   >
@@ -247,7 +267,7 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
             <ul className="mt-1.5 space-y-1">
               {selectedEvents.map((event) => (
                 <li key={event.id}>
-                  <button onClick={() => setOpenEvent(event)} className="flex w-full items-start gap-2 rounded p-1 text-left text-xs hover:bg-[#f1f3f4] dark:hover:bg-white/5">
+                  <button onClick={() => openEventDetails(event)} className="flex w-full items-start gap-2 rounded p-1 text-left text-xs hover:bg-[#f1f3f4] dark:hover:bg-white/5">
                     <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${chipColorFor(event.id)}`} />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-x-2">
@@ -260,7 +280,7 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
                         {event.conferenceLink && <Video className="h-3 w-3 flex-shrink-0 text-[#188038]" />}
                         {event.attachments && event.attachments.length > 0 && <Paperclip className="h-3 w-3 flex-shrink-0 text-[#5f6368] dark:text-slate-400" />}
                       </div>
-                      {event.description && <p className="mt-0.5 truncate text-[#70757a] dark:text-slate-400">{event.description}</p>}
+                      {event.description && <p className="mt-0.5 truncate text-[#70757a] dark:text-slate-400">{formatCalendarDescription(event.description)}</p>}
                     </div>
                   </button>
                 </li>
@@ -289,7 +309,7 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
                   </p>
                 </div>
               </div>
-              <button onClick={() => setOpenEvent(null)} className="flex-shrink-0 rounded p-1 text-[#5f6368] hover:bg-[#f1f3f4] dark:text-slate-400 dark:hover:bg-white/10" aria-label="Close">
+              <button onClick={() => { setOpenEvent(null); setIsDescriptionVisible(false); }} className="flex-shrink-0 rounded p-1 text-[#5f6368] hover:bg-[#f1f3f4] dark:text-slate-400 dark:hover:bg-white/10" aria-label="Close">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -331,9 +351,21 @@ export function GoogleCalendarMonthView({ refreshToken = 0 }: GoogleCalendarMont
                   </div>
                 )}
                 {openEvent.description && (
-                  <p className="whitespace-pre-wrap break-words text-sm text-[#3c4043] dark:text-slate-200">
-                    {linkifyText(openEvent.description)}
-                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setIsDescriptionVisible((visible) => !visible)}
+                      aria-expanded={isDescriptionVisible}
+                      className="text-sm font-medium text-[#1a73e8] hover:underline"
+                    >
+                      {isDescriptionVisible ? 'Hide description' : 'View description'}
+                    </button>
+                    {isDescriptionVisible && (
+                      <div className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-[4px] bg-[#f8f9fa] p-3 text-sm leading-6 text-[#3c4043] dark:bg-white/5 dark:text-slate-200">
+                        {linkifyText(formatCalendarDescription(openEvent.description))}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {openEvent.attachments && openEvent.attachments.length > 0 && (
                   <div className="space-y-1.5">
