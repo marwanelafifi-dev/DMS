@@ -193,6 +193,9 @@ export interface Task {
   assignedToUser?: User;
   assignedToGroupId?: string;
   assignedToGroupName?: string;
+  // Sent for group-assigned work so readiness views can show the work to
+  // each responsible group member without expanding it into duplicate tasks.
+  assignedToGroupMemberIds?: string[];
   assignedBy: string;
   assignedByUser?: User;
   status: 'open' | 'in_progress' | 'submitted' | 'done' | 'completed';

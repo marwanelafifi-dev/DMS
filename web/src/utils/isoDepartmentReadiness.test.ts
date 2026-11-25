@@ -71,6 +71,22 @@ describe('department audit readiness', () => {
     expect(result.unassignedPcars).toEqual([]);
   });
 
+  it('shows one group task to every responsible group member without duplicating the department total', () => {
+    const result = buildDepartmentReadiness(
+      [user('sebastian', 'Sebastian', 'MOEMS Design'), user('yasseen', 'Yasseen', 'MOEMS Design')],
+      [task('moems-group-task', { assignedToGroupId: 'moems-group', assignedToGroupMemberIds: ['sebastian', 'yasseen'] })], [], [],
+      'ISO 9001:2015', 'current', [
+        { departmentFolderId: 'moems-root', userId: 'sebastian' },
+        { departmentFolderId: 'moems-root', userId: 'yasseen' },
+      ],
+      [{ folderId: 'moems-process', departmentFolderId: 'moems-root', departmentFolderName: 'MOEMS Design' }],
+    );
+
+    const department = result.departments[0];
+    expect(department.taskCount).toBe(1);
+    expect(department.people.every(person => person.tasks.map(item => item.taskId).includes('moems-group-task'))).toBe(true);
+  });
+
   it('keeps coverage without a valid Procedures department visible as an unmapped gap', () => {
     const result = buildDepartmentReadiness(
       [user('tamer', 'Tamer', null)], [], [],

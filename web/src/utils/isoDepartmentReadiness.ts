@@ -159,22 +159,23 @@ export function buildDepartmentReadiness(
   for (const task of tasks.filter(isOpen)) {
     const isPcar = task.taskType === 'pcar';
     if (isPcar && (!activeCycleId || task.auditStandard !== standard || task.auditCycleId !== activeCycleId)) continue;
+    const assigneeIds = task.assignedTo ? [task.assignedTo] : task.assignedToGroupMemberIds ?? [];
     let department = task.documentId ? departmentByDocument.get(key(task.documentId)) : undefined;
     if (!department && task.folderId) department = departmentByProcessFolder.get(key(task.folderId));
-    if (!department && task.assignedTo) {
-      const candidates = [...departmentsById.values()].filter(item => item.peopleById.has(key(task.assignedTo!)));
+    if (!department && assigneeIds.length > 0) {
+      const candidates = [...departmentsById.values()].filter(item => assigneeIds.some(userId => item.peopleById.has(key(userId))));
       if (candidates.length === 1) department = candidates[0];
     }
-    const person = department ? personFor(department, task.assignedTo) : undefined;
-    if (person) (isPcar ? person.pcars : person.tasks).push(task);
+    const people = department ? assigneeIds.map(userId => personFor(department!, userId)).filter((person): person is PersonReadiness => Boolean(person)) : [];
+    if (people.length > 0) for (const person of people) (isPcar ? person.pcars : person.tasks).push(task);
     else (isPcar ? unassignedPcars : unassignedTasks).push(task);
   }
 
   const departments = [...departmentsById.values()];
   for (const department of departments) {
     department.people.sort((left, right) => left.user.fullName.localeCompare(right.user.fullName));
-    department.taskCount = department.people.reduce((sum, person) => sum + person.tasks.length, 0);
-    department.pcarCount = department.people.reduce((sum, person) => sum + person.pcars.length, 0);
+    department.taskCount = new Set(department.people.flatMap(person => person.tasks.map(task => task.taskId))).size;
+    department.pcarCount = new Set(department.people.flatMap(person => person.pcars.map(task => task.taskId))).size;
   }
   departments.sort((left, right) => {
     const leftBlockers = left.taskCount + left.pcarCount + left.missingEvidenceCount;

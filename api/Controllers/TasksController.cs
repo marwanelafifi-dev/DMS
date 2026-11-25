@@ -152,6 +152,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.RiskSeverity,
                     AssignedTo = task.AssignedTo == null ? null : new { task.AssignedTo.UserId, task.AssignedTo.FullName, task.AssignedTo.Email },
                     AssignedToGroup = task.AssignedToGroup == null ? null : new { task.AssignedToGroup.GroupId, task.AssignedToGroup.Name },
+                    AssignedToGroupMemberIds = task.AssignedToGroupId.HasValue
+                        ? await context.GroupMembers.AsNoTracking().Where(member => member.GroupId == task.AssignedToGroupId.Value).Select(member => member.UserId).ToArrayAsync()
+                        : Array.Empty<Guid>(),
                     task.DueDate,
                     task.Status,
                     task.RcaText,

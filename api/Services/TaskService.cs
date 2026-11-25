@@ -293,6 +293,9 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.AssignedToId,
                     t.AssignedToGroupId,
                     AssignedToGroupName = t.AssignedToGroup == null ? null : t.AssignedToGroup.Name,
+                    AssignedToGroupMemberIds = context.GroupMembers
+                        .Where(member => t.AssignedToGroupId.HasValue && member.GroupId == t.AssignedToGroupId.Value)
+                        .Select(member => member.UserId).ToArray(),
                     t.ManagerId,
                     t.DueDate,
                     t.Status,
