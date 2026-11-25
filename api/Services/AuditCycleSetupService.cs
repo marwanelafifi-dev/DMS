@@ -22,10 +22,30 @@ public class AuditCycleSetupService(DmsContext context, AccessOverrideService ac
         var byId = folders.ToDictionary(folder => folder.FolderId);
         var managers = await context.FolderManagers.AsNoTracking().Select(item => new { item.FolderId, item.UserId }).ToListAsync();
         // A responsible person needs access to the work, not necessarily an
-        // owner or Manager role. Direct folder members are eligible too.
+        // owner or Manager role. Direct folder members and members of a group
+        // granted folder-read access are eligible too.
         var permissionMembers = await context.FolderPermissions.AsNoTracking()
             .Select(item => new { item.FolderId, item.UserId }).ToListAsync();
-        var membersByFolder = managers.Concat(permissionMembers).GroupBy(item => item.FolderId)
+        var membersByGroup = (await context.GroupMembers.AsNoTracking()
+                .Select(item => new { item.GroupId, item.UserId }).ToListAsync())
+            .GroupBy(item => item.GroupId)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.UserId).Distinct().ToArray());
+        var overrideMembers = new List<(Guid FolderId, Guid UserId)>();
+        var accessOverrides = await context.AccessOverrides.AsNoTracking()
+            .Where(item => item.FolderId.HasValue && item.Read == true)
+            .Select(item => new { FolderId = item.FolderId!.Value, item.TargetType, item.TargetId })
+            .ToListAsync();
+        foreach (var accessOverride in accessOverrides)
+        {
+            if (accessOverride.TargetType.Equals("User", StringComparison.OrdinalIgnoreCase))
+                overrideMembers.Add((accessOverride.FolderId, accessOverride.TargetId));
+            else if (accessOverride.TargetType.Equals("Group", StringComparison.OrdinalIgnoreCase)
+                && membersByGroup.TryGetValue(accessOverride.TargetId, out var groupMembers))
+                overrideMembers.AddRange(groupMembers.Select(userId => (accessOverride.FolderId, userId)));
+        }
+        var membersByFolder = managers.Concat(permissionMembers)
+            .Concat(overrideMembers.Select(item => new { item.FolderId, item.UserId }))
+            .GroupBy(item => item.FolderId)
             .ToDictionary(group => group.Key, group => group.Select(item => item.UserId).Distinct().ToArray());
         var users = await context.Users.AsNoTracking().Where(user => user.IsActive)
             .Select(user => new AuditCycleUserOption(user.UserId, user.FullName, user.Email)).ToListAsync();
@@ -91,7 +111,7 @@ public class AuditCycleSetupService(DmsContext context, AccessOverrideService ac
             var eligible = selected.Where(option => option.DepartmentFolderId == department.DepartmentFolderId)
                 .SelectMany(option => option.EligibleUsers).Select(user => user.UserId).ToHashSet();
             if (department.UserIds.Any(id => !eligible.Contains(id)))
-                return "Responsible users must be active owners, managers, or members of a selected folder or its department parent";
+                return "Responsible users must be active owners, managers, or people with direct or group folder access to a selected folder or its department parent";
         }
 
         var previousFolders = await context.AuditCycleCoverageFolders
