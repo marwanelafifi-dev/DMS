@@ -34,6 +34,16 @@ const auth: AuthContextValue = {
 
 describe('PCAR true modal behavior', () => {
   beforeEach(() => {
+    const storage = new Map<string, string>();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+        clear: () => storage.clear(),
+      } as unknown as Storage,
+    });
     setCurrentUserId(userId);
     vi.spyOn(apiClient, 'getTasks').mockResolvedValue({ success: true, data: [task], totalCount: 1, totalPages: 1 } as any);
     vi.spyOn(apiClient, 'getUsers').mockResolvedValue({ success: true, data: [{ userId, fullName: 'System Admin' }] } as any);
@@ -142,6 +152,26 @@ describe('PCAR true modal behavior', () => {
 
     expect(await screen.findByRole('heading', { name: normalTask.title })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Complete task' })).toBeEnabled();
+  });
+
+  it('keeps an unfinished completion comment after the task dialog is closed', async () => {
+    const user = userEvent.setup();
+    const normalTask = { ...task, taskType: 'task', approvalId: undefined, title: 'Draft completion notes' };
+    vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [normalTask], totalCount: 1, totalPages: 1 } as any);
+    vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...normalTask, linkedDocuments: [], linkedFolders: [] } } as any);
+    render(
+      <MemoryRouter initialEntries={[`/tasks?highlight=${normalTask.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    const comment = await screen.findByLabelText(/Completion comment/i);
+    await user.type(comment, 'Waiting for final evidence upload.');
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await user.click(await screen.findByText(normalTask.title));
+
+    expect(await screen.findByLabelText(/Completion comment/i)).toHaveValue('Waiting for final evidence upload.');
+    expect(screen.getByText('Saved automatically for this task on this device.')).toBeInTheDocument();
   });
 
   it('turns a pasted numbered task description into readable steps', async () => {

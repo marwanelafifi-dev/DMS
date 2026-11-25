@@ -67,6 +67,24 @@ const TASK_ACTION_LABELS: Record<string, string> = {
   pcar: 'Audit PCAR finding',
 };
 
+const COMPLETION_COMMENT_DRAFT_PREFIX = 'dms:task-completion-comment:';
+
+function getCompletionCommentDraft(taskId: string): string {
+  try { return window.localStorage.getItem(`${COMPLETION_COMMENT_DRAFT_PREFIX}${taskId}`) ?? ''; }
+  catch { return ''; }
+}
+
+function saveCompletionCommentDraft(taskId: string, value: string) {
+  try {
+    const key = `${COMPLETION_COMMENT_DRAFT_PREFIX}${taskId}`;
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // Draft storage is a convenience; unavailable browser storage must not
+    // block task work.
+  }
+}
+
 /**
  * Older tasks often contain a numbered procedure pasted as one sentence
  * ("1-... 2-...") and can include HTML-encoded spaces from copied content.
@@ -732,7 +750,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     });
     setVerificationNotes('');
     setEffectivenessResult((focusedPcar.effectivenessResult as '' | 'effective' | 'ineffective' | undefined) ?? '');
-    setCompletionComment('');
+    setCompletionComment(focusedIsPcar ? '' : getCompletionCommentDraft(focusedPcar.taskId));
   }, [focusedPcar?.taskId]);
 
   // A task spawned by a real QA/Manager rejection (approvalId set) is
@@ -820,11 +838,17 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
       }
       showSuccess('Task completed');
       updateFocusedPcar('completed');
+      saveCompletionCommentDraft(focusedPcar.taskId, '');
       setCompletionComment('');
       loadTasks();
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to complete task');
     }
+  };
+
+  const handleCompletionCommentChange = (value: string) => {
+    setCompletionComment(value);
+    if (focusedPcar && !focusedIsPcar) saveCompletionCommentDraft(focusedPcar.taskId, value);
   };
 
   const handleVerifyPcar = async (approve: boolean) => {
@@ -1559,7 +1583,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                   </CardBody>
                 </Card>
                 {isWorkflowCorrection && !workflowCorrectionCompleted && <p className="text-center text-xs text-[#3f8bca] dark:text-sky-300">Upload the updated linked file to return it to Quality for review.</p>}
-                {!isWorkflowCorrection && focusedPcar.status !== 'completed' && focusedPcar.status !== 'done' && <Card><CardBody className="p-5"><label className="block text-sm text-[#52627a] dark:text-slate-300">Completion comment <span className="text-xs text-[#718198] dark:text-slate-400">(optional)</span><textarea className="field-control mt-2 min-h-[92px] w-full py-2" value={completionComment} onChange={(event) => setCompletionComment(event.target.value)} placeholder="Summarize what was completed or any follow-up…" disabled={!focusedTaskCanManage} /></label><Button className="mt-4 w-full" onClick={handleCompleteFocusedTask} disabled={!focusedTaskCanManage || (focusedTaskRequiresEvidence && !hasPcarEvidence)} title={!focusedTaskCanManage ? 'Only the assignee, linked-folder owner, or linked-folder manager can complete this task' : focusedTaskRequiresEvidence && !hasPcarEvidence ? 'Add at least one attachment before completing this task' : undefined}>Complete task</Button>{focusedTaskRequiresEvidence && !hasPcarEvidence && focusedTaskCanManage && <p className="mt-3 text-center text-xs text-[#b96a08] dark:text-amber-300">Add at least one attachment before completing this task.</p>}</CardBody></Card>}
+                {!isWorkflowCorrection && focusedPcar.status !== 'completed' && focusedPcar.status !== 'done' && <Card><CardBody className="p-5"><label className="block text-sm text-[#52627a] dark:text-slate-300">Completion comment <span className="text-xs text-[#718198] dark:text-slate-400">(optional)</span><textarea className="field-control mt-2 min-h-[92px] w-full py-2" value={completionComment} onChange={(event) => handleCompletionCommentChange(event.target.value)} placeholder="Summarize what was completed or any follow-up…" disabled={!focusedTaskCanManage} /><span className="mt-1.5 block text-xs leading-5 text-[#718198] dark:text-slate-400">Saved automatically for this task on this device.</span></label><Button className="mt-4 w-full" onClick={handleCompleteFocusedTask} disabled={!focusedTaskCanManage || (focusedTaskRequiresEvidence && !hasPcarEvidence)} title={!focusedTaskCanManage ? 'Only the assignee, linked-folder owner, or linked-folder manager can complete this task' : focusedTaskRequiresEvidence && !hasPcarEvidence ? 'Add at least one attachment before completing this task' : undefined}>Complete task</Button>{focusedTaskRequiresEvidence && !hasPcarEvidence && focusedTaskCanManage && <p className="mt-3 text-center text-xs text-[#b96a08] dark:text-amber-300">Add at least one attachment before completing this task.</p>}</CardBody></Card>}
               </>
             )}
           </div>
