@@ -99,11 +99,18 @@ function getDescriptionSteps(description?: string): string[] {
   const text = normalizeTaskDescription(description);
   if (!text) return [];
 
-  const matches = [...text.matchAll(/(?:^|\s)(\d+)[.)-]\s*/g)];
+  // Pasted procedures sometimes lose the space between a sentence and the
+  // next marker ("...2026.4-Upload..."). Keep the sentence punctuation in
+  // the prior step while still recognizing that next numbered instruction.
+  const matches = [...text.matchAll(/(^|[\s.!?])(\d+)[.)-]\s*/g)];
   if (matches.length < 2) return [];
 
   return matches
-    .map((match, index) => text.slice((match.index ?? 0) + match[0].length, matches[index + 1]?.index).trim())
+    .map((match, index) => {
+      const next = matches[index + 1];
+      const nextMarkerStart = next ? (next.index ?? 0) + next[1].length : undefined;
+      return text.slice((match.index ?? 0) + match[0].length, nextMarkerStart).trim();
+    })
     .filter(Boolean);
 }
 

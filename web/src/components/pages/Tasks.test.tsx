@@ -180,7 +180,7 @@ describe('PCAR true modal behavior', () => {
       taskType: 'task',
       approvalId: undefined,
       title: 'Update controlled documents',
-      description: '1-Download the current documents.&#x20; 2-Update the process documents.&#x20; 3-Add the review-table entry.&#x20; 4-Upload the approved versions.',
+      description: '1-Download the current documents.&#x20; 2-Update the process documents.&#x20; 3-Add the review-table entry.4-Upload the approved versions.',
     };
     vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [normalTask], totalCount: 1, totalPages: 1 } as any);
     vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...normalTask, linkedDocuments: [], linkedFolders: [] } } as any);
