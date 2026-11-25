@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.RegularExpressions;
 using DMS.Api.Data;
 using DMS.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -191,7 +192,7 @@ public class GoogleMeetingReminderService(
         }
 
         if (!string.IsNullOrWhiteSpace(meeting.Description))
-            rows.Add($"""<p style="margin:12px 0 0;font-size:13px;color:#3c4043;white-space:pre-wrap;">{Enc(meeting.Description)}</p>""");
+            rows.Add($"""<div style="margin:12px 0 0;font-size:13px;line-height:1.5;color:#3c4043;">{FormatDescriptionHtml(meeting.Description)}</div>""");
 
         if (meeting.Attachments is { Count: > 0 })
         {
@@ -212,6 +213,23 @@ public class GoogleMeetingReminderService(
         }
 
         return string.Join("\n", rows);
+    }
+
+    // Google Calendar descriptions can be either plain text or HTML. They are
+    // external input, so do not place their markup directly into an email.
+    // Instead, retain useful paragraph/list structure, discard markup, then
+    // encode the resulting text before converting line breaks for email.
+    private static string FormatDescriptionHtml(string description)
+    {
+        var text = Regex.Replace(description, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"</\s*p\s*>", "\n\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<\s*li\b[^>]*>", "\n• ", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"</\s*li\s*>", "", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<[^>]+>", "");
+        text = WebUtility.HtmlDecode(text);
+        text = Regex.Replace(text, @"[ \t]+\n", "\n");
+        text = Regex.Replace(text, @"\n{3,}", "\n\n").Trim();
+        return WebUtility.HtmlEncode(text).Replace("\r\n", "<br />").Replace("\n", "<br />");
     }
 
     private static string FormatWhen(DateTime utc) => utc.ToLocalTime().ToString("dddd, MMM d 'at' h:mm tt");
