@@ -26,7 +26,7 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                 recipientId,
                 actorUserId,
                 task.AssignedToId.HasValue ? userTitle : groupTitle,
-                task.Title,
+                task.Description,
                 taskId: task.TaskId,
                 includeActor: true);
     }

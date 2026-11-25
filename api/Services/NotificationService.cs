@@ -197,18 +197,28 @@ public class NotificationService(DmsContext context, EmailService emailService, 
 
             var task = await context.Tasks.AsNoTracking()
                 .Where(t => t.TaskId == taskId)
-                .Select(t => new { t.Title, t.DueDate, t.TaskType })
+                .Select(t => new { t.Title, t.Description, t.DueDate, t.TaskType })
                 .FirstOrDefaultAsync();
             if (task == null) return;
 
             var portalUrl = (configuration["Google:FrontendRedirectUrl"] ?? "http://localhost:5174/").TrimEnd('/');
             var taskUrl = $"{portalUrl}/{(task.TaskType == "pcar" ? "pcars" : "tasks")}?highlight={taskId}";
+            var descriptionHtml = string.IsNullOrWhiteSpace(task.Description) ? "" : System.Net.WebUtility.HtmlEncode(task.Description)
+                .Replace("\r\n", "<br />").Replace("\n", "<br />");
+            // Older assignment events used the task title as their notification
+            // body. Do not repeat it below the labelled Task field.
+            var detailHtml = string.IsNullOrWhiteSpace(body)
+                || string.Equals(body, task.Title, StringComparison.Ordinal)
+                || string.Equals(body, task.Description, StringComparison.Ordinal)
+                ? ""
+                : $"""<p style=\"margin:0 0 20px;font-size:14px;color:#52627a;\">{System.Net.WebUtility.HtmlEncode(body)}</p>""";
             var bodyHtml = $"""
                 <p style="margin:0 0 16px;font-size:14px;color:#26334d;">Hello <strong>{System.Net.WebUtility.HtmlEncode(recipient.FullName)}</strong>,</p>
                 <p style="margin:0 0 8px;font-size:14px;color:#26334d;">{System.Net.WebUtility.HtmlEncode(title)}</p>
                 <p style="margin:0 0 8px;font-size:13px;color:#718198;">Task: <strong>{System.Net.WebUtility.HtmlEncode(task.Title)}</strong></p>
                 {(task.DueDate.HasValue ? $"""<p style="margin:0 0 8px;font-size:13px;color:#718198;">Due: <strong>{task.DueDate.Value:yyyy-MM-dd}</strong></p>""" : "")}
-                {(string.IsNullOrWhiteSpace(body) ? "" : $"""<p style="margin:0 0 20px;font-size:14px;color:#52627a;">{System.Net.WebUtility.HtmlEncode(body)}</p>""")}
+                {(string.IsNullOrWhiteSpace(descriptionHtml) ? "" : $"""<p style="margin:12px 0 20px;font-size:14px;line-height:1.5;color:#52627a;"><strong style="color:#26334d;">Description</strong><br />{descriptionHtml}</p>""")}
+                {detailHtml}
                 <a href="{taskUrl}" style="display:inline-block;background:#002E5C;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:4px;">
                   View Task
                 </a>
