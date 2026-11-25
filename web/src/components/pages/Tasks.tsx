@@ -227,6 +227,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const [effectivenessResult, setEffectivenessResult] = useState<'' | 'effective' | 'ineffective'>('');
   const [isVerifyingPcar, setIsVerifyingPcar] = useState(false);
   const [completionComment, setCompletionComment] = useState('');
+  const [isEditingFocusedDescription, setIsEditingFocusedDescription] = useState(false);
+  const [focusedDescriptionDraft, setFocusedDescriptionDraft] = useState('');
 
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -751,6 +753,8 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
     setVerificationNotes('');
     setEffectivenessResult((focusedPcar.effectivenessResult as '' | 'effective' | 'ineffective' | undefined) ?? '');
     setCompletionComment(focusedIsPcar ? '' : getCompletionCommentDraft(focusedPcar.taskId));
+    setIsEditingFocusedDescription(false);
+    setFocusedDescriptionDraft(focusedPcar.description ?? '');
   }, [focusedPcar?.taskId]);
 
   // A task spawned by a real QA/Manager rejection (approvalId set) is
@@ -849,6 +853,22 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const handleCompletionCommentChange = (value: string) => {
     setCompletionComment(value);
     if (focusedPcar && !focusedIsPcar) saveCompletionCommentDraft(focusedPcar.taskId, value);
+  };
+
+  const handleSaveFocusedDescription = async () => {
+    if (!focusedPcar) return;
+    try {
+      const res = await apiClient.updateTask(focusedPcar.taskId, { description: focusedDescriptionDraft });
+      if (!res.success) {
+        showError(res.error || 'Failed to update the task description');
+        return;
+      }
+      setTasks(current => current.map(task => task.taskId === focusedPcar.taskId ? { ...task, description: focusedDescriptionDraft } : task));
+      setIsEditingFocusedDescription(false);
+      showSuccess('Task description updated');
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to update the task description');
+    }
   };
 
   const handleVerifyPcar = async (approve: boolean) => {
@@ -1269,13 +1289,16 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 <h1 className="text-lg font-semibold text-[#26334d] dark:text-white">{focusedPcar.title}</h1>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="section-heading">{focusedIsPcar ? 'Issue Description' : 'Task description'}</h2>
+                  {focusedPcar.canEditDescription && !focusedIsPcar && !isEditingFocusedDescription && (
+                    <Button variant="secondary" size="sm" onClick={() => { setFocusedDescriptionDraft(focusedPcar.description ?? ''); setIsEditingFocusedDescription(true); }} leftIcon={<Edit2 className="h-3.5 w-3.5" />}>Edit description</Button>
+                  )}
                   {getAssignedToName(focusedPcar) && (
                     <span className={`rounded-[4px] px-2 py-1 text-xs font-medium ${focusedPcarIsMine ? 'bg-[#eef4fb] text-[#3f8bca] dark:bg-blue-500/15 dark:text-blue-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>
                       Assigned to: {getAssignedToName(focusedPcar)}{focusedPcarIsMine ? ' (you)' : ''}
                     </span>
                   )}
                 </div>
-                <TaskDescription description={focusedPcar.description || focusedPcar.title} />
+                {isEditingFocusedDescription ? <div className="mt-3"><label htmlFor="focused-task-description" className="sr-only">Task description</label><textarea id="focused-task-description" value={focusedDescriptionDraft} onChange={event => setFocusedDescriptionDraft(event.target.value)} className="field-control min-h-40 w-full resize-y py-2.5 leading-6" /><div className="mt-3 flex justify-end gap-2"><Button variant="ghost" size="sm" onClick={() => { setFocusedDescriptionDraft(focusedPcar.description ?? ''); setIsEditingFocusedDescription(false); }}>Cancel</Button><Button size="sm" onClick={() => void handleSaveFocusedDescription()}>Save description</Button></div></div> : <TaskDescription description={focusedPcar.description || focusedPcar.title} />}
                 {isWorkflowCorrection && (
                   <div className="mt-4 rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
                     <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">Additional notes <span className="font-normal normal-case">(optional)</span></h2>

@@ -45,7 +45,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
             page = Math.Max(1, page);
             pageSize = Math.Clamp(limit ?? pageSize, 1, 200);
             var role = await GetPageAccessRoleAsync(context, userId);
-            var result = await taskService.GetMyTasksAsync(userId, CanViewAllTasks(role), role?.CanManageAllTasks == true, status, page, pageSize);
+            var canEditAllOpenDescriptions = role?.BypassFolderPermissions == true
+                || string.Equals(role?.Role, "Quality", StringComparison.OrdinalIgnoreCase);
+            var result = await taskService.GetMyTasksAsync(userId, CanViewAllTasks(role), role?.CanManageAllTasks == true, canEditAllOpenDescriptions, status, page, pageSize);
 
             logger.LogInformation("Retrieved {Count} tasks for user {UserId}", result.Items.Count, userId);
 
@@ -159,6 +161,9 @@ public class TasksController(DmsContext context, TaskService taskService, MinioS
                     task.EffectivenessResult,
                     task.QaReviewedAt,
                     CanManage = canManageTask,
+                    CanEditDescription = task.Status == "open" && (role?.BypassFolderPermissions == true
+                        || string.Equals(role?.Role, "Quality", StringComparison.OrdinalIgnoreCase)
+                        || task.ManagerId == userId),
                     task.CreatedAt,
                     task.CompletedAt
                 }
@@ -767,6 +772,9 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
 
             var pageAccessRole = await GetPageAccessRoleAsync(context, userId);
             var canManageTask = await taskService.CanManageTaskAsync(task, userId, pageAccessRole?.CanManageAllTasks == true);
+            var canEditDescription = task.Status == "open" && (pageAccessRole?.BypassFolderPermissions == true
+                || string.Equals(pageAccessRole?.Role, "Quality", StringComparison.OrdinalIgnoreCase)
+                || task.ManagerId == userId);
             var isReassigning = req.AssignedToId.HasValue || req.AssignedToGroupId.HasValue;
             // CanReassignTasks: any task, own or not. CanReassignMyTasks: only
             // a task this caller is already the assignee/manager of — two
@@ -774,16 +782,19 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
             var canReassignAny = pageAccessRole?.CanManageAllTasks == true || pageAccessRole?.CanReassignTasks == true;
             var canReassignMyTasksOnly = pageAccessRole?.CanReassignMyTasks == true;
 
+            if (req.Description != null && !canEditDescription)
+                return StatusCode(403, new { success = false, error = "Only the task creator, Quality, or Full Access can edit the description while the task is open" });
+
             if (!canManageTask)
             {
-                if (!isReassigning || !canReassignAny)
-                    return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
-
-                var touchesOtherFields = req.Title != null || req.Description != null || req.DueDate.HasValue
+                var touchesFieldsOtherThanDescription = req.Title != null || req.DueDate.HasValue
                     || req.RiskSeverity != null || req.Status != null || req.RcaText != null
                     || req.CorrectionText != null || req.PreventiveActions != null || req.TaskType != null
                     || req.Tags != null;
-                if (touchesOtherFields)
+                if (touchesFieldsOtherThanDescription || (!isReassigning && req.Description == null))
+                    return StatusCode(403, new { success = false, error = "You do not have permission to manage this task" });
+
+                if (isReassigning && !canReassignAny)
                     return StatusCode(403, new { success = false, error = "Your reassign-only permission only allows changing who this task is assigned to" });
             }
 

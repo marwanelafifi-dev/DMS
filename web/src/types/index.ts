@@ -199,6 +199,9 @@ export interface Task {
   // Resource-scoped task authority supplied by the API for the signed-in
   // user. True for the assignee or a linked-folder owner/manager.
   canManage?: boolean;
+  // An open task's description is editable only by its creator, Quality, or
+  // Full Access. This is deliberately narrower than task-management rights.
+  canEditDescription?: boolean;
   rcaText?: string;
   correctionText?: string;
   preventiveActions?: string;

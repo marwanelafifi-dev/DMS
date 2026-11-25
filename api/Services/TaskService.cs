@@ -243,7 +243,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
         return memberIds.Count > 0 && memberIds.All(eligibleUserIds.Contains);
     }
 
-    public async Task<(List<object> Items, int TotalCount)> GetMyTasksAsync(Guid userId, bool canViewAllTasks, bool canManageAllTasks, string? status = null, int page = 1, int pageSize = 100)
+    public async Task<(List<object> Items, int TotalCount)> GetMyTasksAsync(Guid userId, bool canViewAllTasks, bool canManageAllTasks, bool canEditAllOpenDescriptions, string? status = null, int page = 1, int pageSize = 100)
     {
         try
         {
@@ -303,6 +303,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                     t.EffectivenessResult,
                     t.QaReviewedAt,
                     CanManage = manageableTaskIds.Contains(t.TaskId),
+                    CanEditDescription = t.Status == "open" && (canEditAllOpenDescriptions || t.ManagerId == userId),
                     IsOverdue = t.DueDate.HasValue && t.DueDate < today && t.Status != "completed",
                     t.CreatedAt,
                     t.UpdatedAt
