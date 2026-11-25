@@ -82,12 +82,23 @@ public class NotificationService(DmsContext context, EmailService emailService, 
         }
     }
 
-    public async Task NotifyAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, Guid? documentId = null, Guid? taskId = null, Guid? announcementId = null)
+    public async Task NotifyAsync(
+        Guid recipientUserId,
+        Guid actorUserId,
+        string title,
+        string? body = null,
+        Guid? documentId = null,
+        Guid? taskId = null,
+        Guid? announcementId = null,
+        bool includeActor = false)
     {
         if (!await emailService.AreNotificationsEnabledAsync())
             return;
 
-        if (recipientUserId == actorUserId)
+        // Most activity should remain quiet for the person who performed it.
+        // Task assignment is an exception: a self-assigned task is a useful
+        // durable confirmation, and its email provides the direct task link.
+        if (!includeActor && recipientUserId == actorUserId)
             return;
 
         // Nobody — regardless of role, and regardless of whether they're the

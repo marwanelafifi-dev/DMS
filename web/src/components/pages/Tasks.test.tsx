@@ -144,6 +144,30 @@ describe('PCAR true modal behavior', () => {
     expect(screen.getByRole('button', { name: 'Complete task' })).toBeEnabled();
   });
 
+  it('turns a pasted numbered task description into readable steps', async () => {
+    const normalTask = {
+      ...task,
+      taskType: 'task',
+      approvalId: undefined,
+      title: 'Update controlled documents',
+      description: '1-Download the current documents. 2-Update the process documents. 3-Upload the approved versions.',
+    };
+    vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [normalTask], totalCount: 1, totalPages: 1 } as any);
+    vi.mocked(apiClient.getTask).mockResolvedValue({ success: true, data: { ...normalTask, linkedDocuments: [], linkedFolders: [] } } as any);
+    render(
+      <MemoryRouter initialEntries={[`/tasks?highlight=${normalTask.taskId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AuthContext.Provider value={auth}><Tasks /></AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: normalTask.title });
+    const steps = screen.getByRole('list', { name: 'Task steps' });
+    expect(steps).toHaveTextContent('Download the current documents.');
+    expect(steps).toHaveTextContent('Update the process documents.');
+    expect(steps).toHaveTextContent('Upload the approved versions.');
+    expect(screen.getByText('3 steps')).toBeInTheDocument();
+  });
+
   it('shows Quality/Auditor verification controls only when the dedicated permission is granted', async () => {
     const pcar = { ...task, taskType: 'pcar', approvalId: undefined, status: 'submitted' };
     vi.mocked(apiClient.getTasks).mockResolvedValue({ success: true, data: [pcar], totalCount: 1, totalPages: 1 } as any);

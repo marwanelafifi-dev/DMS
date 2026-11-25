@@ -1,5 +1,55 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## 2026-11-25 — Self-assigned task delivery and task-description readability
+
+### Task notifications
+
+- Creating, importing, raising, or reassigning a Task/PCAR to the same active user now creates the normal in-app notification and sends the normal task email. This is intentionally scoped to task assignment as a durable confirmation with a direct task link; other self-triggered document and workflow notifications remain suppressed.
+- The global notification-delivery switch and a valid saved SMTP configuration are both required for the assignment email. An existing task is not notified retroactively; create or reassign the task after the API is deployed.
+- No migration is required. Rebuild/restart only `api` after pulling this change.
+
+### Task descriptions
+
+- The task register now shows a compact step count and first-step preview for numbered procedures instead of placing the whole procedure in a dense table cell. Task details render both legacy inline numbering (`1-… 2-…`) and newly entered numbered instructions as an ordered, readable sequence.
+- The task creation form provides a larger resizable Description field and guides authors to place one instruction per line. Existing description data is preserved unchanged.
+
+### Verification
+
+- `dotnet test api.Tests/DMS.Api.Tests.csproj --no-restore` passed (9 tests); `dotnet build api/DMS.Api.csproj --no-restore` passed; `npm.cmd run type-check` and `vitest run src/components/pages/Tasks.test.tsx --maxWorkers=1 --minWorkers=1` passed (13 tests).
+
+## 2026-11-16 — Completed-task notifications and auditable evidence coverage
+
+### Task and reminder delivery
+
+- The hourly `task-due-escalations` Hangfire job and the five-minute `send-due-reminders` sweep now exclude tasks whose status is `completed` or legacy `done`. The individual **Send now** action and reminder creation apply the same rule. A final status check immediately before scheduled delivery prevents a completion/send race from generating a post-completion email or in-app notice.
+- A linked document being **Released** is not the same as a Task being completed. Due-date notices stop only when the Task record itself is `completed` (or legacy `done`); releasing a document does not close its separate action task.
+- Existing unsent reminder rows are retained as operational history but are not deliverable once their linked task is complete. No migration is needed; rebuild only `api` after updating source.
+
+### Notification centre
+
+- The Notifications bell has a **Mark all read** action beside Settings. It calls `PUT /api/notifications/read-all`, updates all loaded rows locally, and clears the unread badge only after the API call succeeds. The control is disabled when the user has no unread notices.
+- `PUT /api/notifications/read-all` is user-scoped in `NotificationsController`: it can update only the authenticated user's unread records.
+
+### Evidence uploads and ISO Readiness coverage
+
+- The Document Library file picker accepts multiple files. In a desktop file chooser, use `Ctrl`/`Cmd`-click or `Shift`-click to select more than one file.
+- Evidence Coverage is explicitly **per evidence file**. When the selected audit cycle has required policy/process documents, the evidence dialog renders one required-document selector for every selected file. Each file must be assigned to exactly one required document before it can be saved.
+- Multiple evidence files may be assigned to the same required document (for example, four records supporting one process). A single evidence file cannot be assigned automatically to every required document, so it cannot falsely clear all gaps on the ISO Readiness dashboard.
+- The old global checkbox behavior linked every required process document to every evidence upload. Evidence already saved under that behavior keeps its existing links; correct it by removing/re-uploading the mistaken evidence and assigning it to its actual required document. New uploads use the per-file assignment model.
+
+### Deployment and verification
+
+- The reminder change is API-only; the notification-centre and evidence-assignment changes are web-only. For the complete change set on Ubuntu, update source and rebuild both without restarting dependent services or deleting volumes:
+
+```bash
+cd /opt/dms
+git pull --ff-only
+docker compose up -d --no-deps --build api web
+docker compose ps api web
+```
+
+- Verification performed locally: `dotnet test api.Tests/DMS.Api.Tests.csproj --no-restore` (9 passed), `npm.cmd run type-check`, and `npm.cmd run build`.
+
 ## 2026-11-15 — Permission-aware Dashboard prioritisation
 
 - The Dashboard now shows **Awaiting My Approval** only when the signed-in role has the explicit `CanApprove` capability. Users without it neither see the summary metric nor the approval-work panel, and the browser does not request any approval-stage queues for them. This avoids exposing a non-actionable zero state and removes unnecessary API calls.

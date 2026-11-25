@@ -67,6 +67,55 @@ const TASK_ACTION_LABELS: Record<string, string> = {
   pcar: 'Audit PCAR finding',
 };
 
+/**
+ * Older tasks often contain a numbered procedure pasted as one sentence
+ * ("1-... 2-..."). Keep the original data intact, but recover the steps for
+ * a readable presentation in the register and task view.
+ */
+function getDescriptionSteps(description?: string): string[] {
+  const text = description?.replace(/\r\n?/g, '\n').trim() ?? '';
+  if (!text) return [];
+
+  const matches = [...text.matchAll(/(?:^|\s)(\d+)[.)-]\s*/g)];
+  if (matches.length < 2) return [];
+
+  return matches
+    .map((match, index) => text.slice((match.index ?? 0) + match[0].length, matches[index + 1]?.index).trim())
+    .filter(Boolean);
+}
+
+function TaskDescription({ description, variant = 'detail' }: { description?: string; variant?: 'detail' | 'preview' }) {
+  const text = description?.trim() ?? '';
+  const steps = getDescriptionSteps(text);
+
+  if (!text) return null;
+
+  if (variant === 'preview') {
+    const preview = steps.length > 0 ? steps[0] : text.replace(/\s+/g, ' ');
+    return (
+      <p className="mt-1.5 flex items-start gap-2 text-sm leading-5 text-[#52627a] dark:text-slate-300" title={text}>
+        {steps.length > 0 && <span className="mt-0.5 shrink-0 rounded bg-[#eef4fb] px-1.5 py-0.5 text-[11px] font-semibold leading-4 text-[#2f6f9f] dark:bg-blue-500/15 dark:text-blue-200">{steps.length} steps</span>}
+        <span className="line-clamp-2">{preview}</span>
+      </p>
+    );
+  }
+
+  if (steps.length > 0) {
+    return (
+      <ol className="mt-3 space-y-2.5" aria-label="Task steps">
+        {steps.map((step, index) => (
+          <li key={`${index}-${step}`} className="flex gap-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#eaf3fb] text-[11px] font-semibold text-[#2f6f9f] dark:bg-blue-500/15 dark:text-blue-200">{index + 1}</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+    );
+  }
+
+  return <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#52627a] dark:text-slate-300">{text}</p>;
+}
+
 
 export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
   const { showSuccess, showError } = useToast();
@@ -1190,14 +1239,14 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                 <p className="mb-2 text-sm font-semibold text-[#174f91] dark:text-blue-200">{focusedIsPcar ? `PCAR No. ${focusedPcar.findingNumber ?? 'Not assigned'}` : `Task No. ${focusedPcar.taskNumber ?? 'Not assigned'}`}</p>
                 <h1 className="text-lg font-semibold text-[#26334d] dark:text-white">{focusedPcar.title}</h1>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="section-heading">Issue Description</h2>
+                  <h2 className="section-heading">{focusedIsPcar ? 'Issue Description' : 'Task description'}</h2>
                   {getAssignedToName(focusedPcar) && (
                     <span className={`rounded-[4px] px-2 py-1 text-xs font-medium ${focusedPcarIsMine ? 'bg-[#eef4fb] text-[#3f8bca] dark:bg-blue-500/15 dark:text-blue-300' : 'bg-[#fff1c9] text-[#b96a08] dark:bg-amber-500/15 dark:text-amber-300'}`}>
                       Assigned to: {getAssignedToName(focusedPcar)}{focusedPcarIsMine ? ' (you)' : ''}
                     </span>
                   )}
                 </div>
-                <p className="mt-3 text-sm leading-6 text-[#52627a] dark:text-slate-300">{focusedPcar.description || focusedPcar.title}</p>
+                <TaskDescription description={focusedPcar.description || focusedPcar.title} />
                 {isWorkflowCorrection && (
                   <div className="mt-4 rounded-[4px] border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
                     <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">Additional notes <span className="font-normal normal-case">(optional)</span></h2>
@@ -1635,9 +1684,7 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
                           <div>
                             <p className="mb-1 text-xs font-semibold text-[#174f91] dark:text-blue-200">{mode === 'pcar' ? `PCAR No. ${task.findingNumber ?? 'Not assigned'}` : `Task No. ${task.taskNumber ?? 'Not assigned'}`}</p>
                             <p className="font-medium text-navy-900 dark:text-white">{task.title}</p>
-                            {task.description && (
-                              <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
-                            )}
+                            <TaskDescription description={task.description} variant="preview" />
                             {(task.tags?.length ?? 0) > 0 && (
                               <div className="mt-1 flex flex-wrap gap-1">{(task.tags || []).map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-[#52627a] dark:bg-slate-800 dark:text-slate-300">{tag}</span>)}</div>
                             )}
@@ -1885,13 +1932,18 @@ export function Tasks({ mode = 'tasks' }: { mode?: 'tasks' | 'pcar' }) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-navy-900 dark:text-white mb-2">Description</label>
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <label htmlFor="task-description" className="block text-sm font-medium text-navy-900 dark:text-white">Description</label>
+                  <span className="text-xs text-[#718198] dark:text-slate-400">One instruction per line</span>
+                </div>
                 <textarea
-                  placeholder="Task details..."
+                  id="task-description"
+                  placeholder={'Describe the outcome and any steps needed...\n1. Review the current document\n2. Upload the approved version'}
                   value={newTask.description}
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-navy-700 rounded-lg bg-white dark:bg-navy-900 text-navy-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24"
+                  className="field-control min-h-36 w-full resize-y py-2.5 leading-6"
                 />
+                <p className="mt-1.5 text-xs leading-5 text-[#718198] dark:text-slate-400">Numbered instructions are displayed as clear steps when the task is opened.</p>
               </div>
 
               <div>
