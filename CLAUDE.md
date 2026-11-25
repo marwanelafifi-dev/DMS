@@ -13,6 +13,10 @@
 - The task register now shows a compact step count and first-step preview for numbered procedures instead of placing the whole procedure in a dense table cell. Task details render both legacy inline numbering (`1-… 2-…`) and newly entered numbered instructions as an ordered, readable sequence.
 - The task creation form provides a larger resizable Description field and guides authors to place one instruction per line. Existing description data is preserved unchanged.
 
+### Audit-cycle responsibility
+
+- In **Admin → Audit Programme → Manage folders & owners**, responsible people may be selected from active folder owners, managers, and direct folder members with a permission on a selected process folder or its department parent. API validation uses the same eligibility rule. No permission is granted by the selection itself.
+
 ### Verification
 
 - `dotnet test api.Tests/DMS.Api.Tests.csproj --no-restore` passed (9 tests); `dotnet build api/DMS.Api.csproj --no-restore` passed; `npm.cmd run type-check` and `vitest run src/components/pages/Tasks.test.tsx --maxWorkers=1 --minWorkers=1` passed (13 tests).

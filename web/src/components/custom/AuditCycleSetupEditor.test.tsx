@@ -10,6 +10,7 @@ describe('AuditCycleSetupEditor', () => {
       { folderId: 'hiring', path: 'Corporate / QMS / Procedures / Human Resources / Hiring', departmentFolderId: 'hr', departmentFolderName: 'Human Resources', controlledDocumentCount: 2, eligibleUsers: [
         { userId: 'alice', fullName: 'Alice Owner', email: 'alice@example.com' },
         { userId: 'bob', fullName: 'Bob Manager', email: 'bob@example.com' },
+        { userId: 'carol', fullName: 'Carol Member', email: 'carol@example.com' },
       ] },
       { folderId: 'training', path: 'Corporate / QMS / Procedures / Human Resources / Training', departmentFolderId: 'hr', departmentFolderName: 'Human Resources', controlledDocumentCount: 1, eligibleUsers: [
         { userId: 'bob', fullName: 'Bob Manager', email: 'bob@example.com' },
@@ -26,11 +27,12 @@ describe('AuditCycleSetupEditor', () => {
     await user.click(screen.getByRole('checkbox', { name: /Human Resources \/ Training/ }));
     await user.click(screen.getByRole('checkbox', { name: /Alice Owner/ }));
     await user.click(screen.getByRole('checkbox', { name: /Bob Manager/ }));
+    await user.click(screen.getByRole('checkbox', { name: /Carol Member/ }));
     await user.click(screen.getByRole('button', { name: 'Create cycle with setup' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({
       folderIds: ['hiring', 'training'],
-      departments: [{ departmentFolderId: 'hr', userIds: ['alice', 'bob'] }],
+      departments: [{ departmentFolderId: 'hr', userIds: ['alice', 'bob', 'carol'] }],
     }));
   });
 });

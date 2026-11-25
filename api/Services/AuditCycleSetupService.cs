@@ -21,10 +21,11 @@ public class AuditCycleSetupService(DmsContext context, AccessOverrideService ac
             .Select(folder => new { folder.FolderId, folder.ParentFolderId, folder.Name, folder.OwnerId }).ToListAsync();
         var byId = folders.ToDictionary(folder => folder.FolderId);
         var managers = await context.FolderManagers.AsNoTracking().Select(item => new { item.FolderId, item.UserId }).ToListAsync();
-        var permissionManagers = await context.FolderPermissions.AsNoTracking()
-            .Where(item => item.Role == FolderRoles.Manager)
+        // A responsible person needs access to the work, not necessarily an
+        // owner or Manager role. Direct folder members are eligible too.
+        var permissionMembers = await context.FolderPermissions.AsNoTracking()
             .Select(item => new { item.FolderId, item.UserId }).ToListAsync();
-        var managersByFolder = managers.Concat(permissionManagers).GroupBy(item => item.FolderId)
+        var membersByFolder = managers.Concat(permissionMembers).GroupBy(item => item.FolderId)
             .ToDictionary(group => group.Key, group => group.Select(item => item.UserId).Distinct().ToArray());
         var users = await context.Users.AsNoTracking().Where(user => user.IsActive)
             .Select(user => new AuditCycleUserOption(user.UserId, user.FullName, user.Email)).ToListAsync();
@@ -57,7 +58,7 @@ public class AuditCycleSetupService(DmsContext context, AccessOverrideService ac
             if (standard == "ISO 27001:2022" ? !is27001 : is27001) continue;
             if (!includeUnreadableFolders && !await accessOverrideService.HasFolderReadAccessAsync(actorId, folder.FolderId)) continue;
             var eligibleIds = path.Skip(3).Select(id => byId[id].OwnerId)
-                .Concat(path.Skip(3).SelectMany(id => managersByFolder.GetValueOrDefault(id) ?? Array.Empty<Guid>()))
+                .Concat(path.Skip(3).SelectMany(id => membersByFolder.GetValueOrDefault(id) ?? Array.Empty<Guid>()))
                 .Distinct();
             var eligibleUsers = eligibleIds.Where(usersById.ContainsKey).Select(id => usersById[id])
                 .OrderBy(user => user.FullName).ToArray();
@@ -86,11 +87,11 @@ public class AuditCycleSetupService(DmsContext context, AccessOverrideService ac
         foreach (var department in setup.Departments)
         {
             if (department.UserIds == null || department.UserIds.Length == 0 || department.UserIds.Length > 100)
-                return "Select at least one responsible owner or manager for every department";
+                return "Select at least one responsible person with folder access for every department";
             var eligible = selected.Where(option => option.DepartmentFolderId == department.DepartmentFolderId)
                 .SelectMany(option => option.EligibleUsers).Select(user => user.UserId).ToHashSet();
             if (department.UserIds.Any(id => !eligible.Contains(id)))
-                return "Responsible users must be active owners or managers of a selected folder or its department parent";
+                return "Responsible users must be active owners, managers, or members of a selected folder or its department parent";
         }
 
         var previousFolders = await context.AuditCycleCoverageFolders
