@@ -17,6 +17,7 @@
 
 - Folder Permission overrides can target a DMS group. Active members of a group with an **Allow Read** folder override on a selected process folder or its department parent are eligible responsible people, alongside owners, managers, and directly granted members. This eligibility does not grant any new access.
 - A task assigned to a DMS group is shown in Department Readiness for every mapped responsible member of that group. The department total remains one task, so shared work is never inflated by the number of group members.
+- Department-named assignment groups map to the matching Procedure department before member-based inference. This prevents a shared Quality, HR, IT, or other department-group task from being lost when its members are also responsible in multiple departments.
 
 - In **Admin → Audit Programme → Manage folders & owners**, responsible people may be selected from active folder owners, managers, and direct folder members with a permission on a selected process folder or its department parent. API validation uses the same eligibility rule. No permission is granted by the selection itself.
 

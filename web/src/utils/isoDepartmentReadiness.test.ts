@@ -71,20 +71,25 @@ describe('department audit readiness', () => {
     expect(result.unassignedPcars).toEqual([]);
   });
 
-  it('shows one group task to every responsible group member without duplicating the department total', () => {
+  it('maps a department-named group task before using its members, without duplicating the department total', () => {
     const result = buildDepartmentReadiness(
-      [user('sebastian', 'Sebastian', 'MOEMS Design'), user('yasseen', 'Yasseen', 'MOEMS Design')],
-      [task('moems-group-task', { assignedToGroupId: 'moems-group', assignedToGroupMemberIds: ['sebastian', 'yasseen'] })], [], [],
+      [user('tamer', 'Tamer', 'Quality Management'), user('marwan', 'Marwan', 'IT')],
+      [task('quality-group-task', { assignedToGroupId: 'quality-group', assignedToGroupName: 'Quality Management', assignedToGroupMemberIds: ['tamer', 'marwan'] })], [], [],
       'ISO 9001:2015', 'current', [
-        { departmentFolderId: 'moems-root', userId: 'sebastian' },
-        { departmentFolderId: 'moems-root', userId: 'yasseen' },
+        { departmentFolderId: 'quality-root', userId: 'tamer' },
+        { departmentFolderId: 'it-root', userId: 'tamer' },
+        { departmentFolderId: 'it-root', userId: 'marwan' },
       ],
-      [{ folderId: 'moems-process', departmentFolderId: 'moems-root', departmentFolderName: 'MOEMS Design' }],
+      [
+        { folderId: 'quality-process', departmentFolderId: 'quality-root', departmentFolderName: 'Quality Management' },
+        { folderId: 'it-process', departmentFolderId: 'it-root', departmentFolderName: 'IT' },
+      ],
     );
 
-    const department = result.departments[0];
-    expect(department.taskCount).toBe(1);
-    expect(department.people.every(person => person.tasks.map(item => item.taskId).includes('moems-group-task'))).toBe(true);
+    const quality = result.departments.find(department => department.name === 'Quality Management')!;
+    expect(quality.taskCount).toBe(1);
+    expect(quality.people.find(person => person.user.userId === 'tamer')?.tasks.map(item => item.taskId)).toEqual(['quality-group-task']);
+    expect(result.departments.find(department => department.name === 'IT')?.taskCount).toBe(0);
   });
 
   it('keeps coverage without a valid Procedures department visible as an unmapped gap', () => {

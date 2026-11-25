@@ -162,6 +162,12 @@ export function buildDepartmentReadiness(
     const assigneeIds = task.assignedTo ? [task.assignedTo] : task.assignedToGroupMemberIds ?? [];
     let department = task.documentId ? departmentByDocument.get(key(task.documentId)) : undefined;
     if (!department && task.folderId) department = departmentByProcessFolder.get(key(task.folderId));
+    // Department groups are deliberately named after their Procedure
+    // department. Prefer that explicit mapping over guessing from members:
+    // Quality, for example, often has members responsible in other areas.
+    const assignedGroupName = task.assignedToGroupName;
+    if (!department && assignedGroupName)
+      department = [...departmentsById.values()].find(item => key(item.name) === key(assignedGroupName));
     if (!department && assigneeIds.length > 0) {
       const candidates = [...departmentsById.values()].filter(item => assigneeIds.some(userId => item.peopleById.has(key(userId))));
       if (candidates.length === 1) department = candidates[0];
