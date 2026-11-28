@@ -76,24 +76,26 @@ export function AiChatbot() {
     <>
       {/* Reserve the launcher's space below the page scroll area. Only the
           button and chat panel sit above document previews. */}
-      <div className="flex shrink-0 justify-end border-t border-[#dbe2ec] px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] dark:border-white/10">
+      <div className="flex h-[calc(5rem+env(safe-area-inset-bottom))] shrink-0 items-center justify-end border-t border-[#dbe2ec] px-5 pb-[env(safe-area-inset-bottom)] dark:border-white/10">
         <button
           ref={launcherRef}
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="relative z-[75] inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] px-4 text-sm font-semibold text-white shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3c89c9]"
-          aria-label={open ? 'Close AI Assistant' : 'Open AI Assistant'}
+          className="group relative z-[75] inline-flex max-w-full items-center gap-3 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3c89c9]"
           aria-expanded={open}
           aria-controls={open ? 'dms-ai-assistant-panel' : undefined}
-          title="DMS AI Assistant"
         >
-          {open ? <X className="h-5 w-5 shrink-0" aria-hidden="true" /> : <MessageCircle className="h-5 w-5 shrink-0" aria-hidden="true" />}
-          <span>AI Assistant</span>
+          <span className="min-w-0 rounded-full bg-white px-3.5 py-2 text-xs font-medium leading-tight text-[#27366f] shadow-md ring-1 ring-black/5 transition-colors group-hover:bg-slate-50 dark:bg-slate-800 dark:text-blue-200 dark:group-hover:bg-slate-700">
+            {open ? 'Close AI Assistant' : 'Need help? Ask the AI Assistant'}
+          </span>
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-lg shadow-[#232f6b]/30 ring-8 ring-[#3a5aa0]/30 transition-shadow group-hover:shadow-xl" aria-hidden="true">
+            {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+          </span>
         </button>
       </div>
 
       {open && (
-        <section id="dms-ai-assistant-panel" className="chat-panel-in fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-[75] flex h-[min(720px,calc(100vh-5.5rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)] ring-1 ring-black/[0.03] supports-[height:100dvh]:h-[min(720px,calc(100dvh-5.5rem-env(safe-area-inset-bottom)))] dark:border-white/10 dark:bg-slate-900" aria-label="DMS AI Assistant">
+        <section id="dms-ai-assistant-panel" className="chat-panel-in fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-4 z-[75] flex h-[min(720px,calc(100vh-7rem-env(safe-area-inset-bottom)))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)] ring-1 ring-black/[0.03] supports-[height:100dvh]:h-[min(720px,calc(100dvh-7rem-env(safe-area-inset-bottom)))] dark:border-white/10 dark:bg-slate-900" aria-label="DMS AI Assistant">
           <header className="flex shrink-0 items-center gap-3 bg-gradient-to-br from-[#1f2c5c] via-[#27366f] to-[#3a5aa0] px-5 py-4 text-white">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
               <Sparkles className="h-5 w-5" />

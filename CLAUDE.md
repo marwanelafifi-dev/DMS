@@ -2,9 +2,10 @@
 
 ## 2026-11-28 — Keep the AI Assistant clear of pagination
 
-- The floating launcher and its first-use hint occupied the same viewport space as the Users table pagination. `MainLayout` now gives the launcher its own row below the scrollable workspace. The compact button keeps its keyboard focus indicator and remains above the document preview layer.
-- The chat panel opens above the dock and fits within the available viewport, including on short mobile screens. Closing the panel from its header returns focus to the launcher.
-- Verified in Chrome at 1024×660, 360×640, and 360×480. **Next page** was clickable at each size, and the assistant opened and closed within the viewport. `npm.cmd run type-check` and `npm run build` passed.
+- The floating launcher and its first-use hint occupied the same viewport space as the Users table pagination. `MainLayout` now gives the launcher its own row below the scrollable workspace. The launcher keeps its keyboard focus indicator and remains above the document preview layer.
+- `AiChatbot` restores the original white **Need help? Ask the AI Assistant** caption beside the round blue chat button and soft blue ring. The caption stays visible when the panel is closed. The caption and icon form one clickable control, which reads **Close AI Assistant** when expanded.
+- The dock reserves space for the ring and the bottom safe area. The chat panel opens above the dock and fits within the available viewport. Closing the panel from its header returns focus to the launcher.
+- Verified the restored appearance in Chrome at 1024×660 and 320×480. **Next page** remained clickable, the caption opened the panel, and closing it returned focus to the launcher. `npm.cmd run type-check` and `npm run build` passed.
 - This change requires rebuilding the `web` container only. The database schema is unaffected.
 
 ## 2026-11-28 — One email per reminder event and accurate delivery audit
