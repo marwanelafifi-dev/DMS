@@ -132,7 +132,7 @@ export function ProtectedLinkDialog({
     }
   };
   const send = async () => {
-    const recipientList = recipients.split(/[;,\n]/).map((value) => value.trim()).filter(Boolean);
+    const recipientList = [...new Set(recipients.split(/[;,\n]/).map((value) => value.trim().toLowerCase()).filter(Boolean))];
     if (recipientList.length === 0) {
       setError('Enter at least one active DMS user email address.');
       return;
@@ -146,6 +146,12 @@ export function ProtectedLinkDialog({
       });
       const sent = response.data?.sent ?? 0;
       if (response.success === false || sent !== recipientList.length) {
+        const failedRecipients = response.data?.failedRecipients;
+        if (sent > 0 && failedRecipients?.length) {
+          setRecipients(failedRecipients.join('\n'));
+          setError(`Sent to ${sent}. Retry to send to the remaining addresses.`);
+          return;
+        }
         setError(response.error || 'Some messages could not be sent.');
         return;
       }

@@ -72,7 +72,7 @@ public class GoogleMeetingReminderService(
 
     private async Task ProcessMeetingAsync(GoogleCalendarEventSummary meeting, DmsUser discoveredByUser, DateTime now)
     {
-        var tracking = await context.GoogleMeetingReminders
+        var tracking = await context.GoogleMeetingReminders.AsNoTracking()
             .FirstOrDefaultAsync(r => r.GoogleEventId == meeting.Id);
 
         if (tracking == null)
@@ -83,12 +83,12 @@ public class GoogleMeetingReminderService(
             var attendeeEmails = meeting.Attendees?
                 .Select(a => a.Email)
                 .Where(e => !string.IsNullOrWhiteSpace(e))
-                .Select(e => e!.ToLowerInvariant())
-                .Distinct()
+                .Select(e => e!.Trim().ToLowerInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList() ?? [];
 
             if (attendeeEmails.Count == 0 && !string.IsNullOrWhiteSpace(discoveredByUser.Email))
-                attendeeEmails.Add(discoveredByUser.Email.ToLowerInvariant());
+                attendeeEmails.Add(discoveredByUser.Email.Trim().ToLowerInvariant());
 
             tracking = new DmsGoogleMeetingReminder
             {
@@ -99,46 +99,56 @@ public class GoogleMeetingReminderService(
                 AttendeeEmails = attendeeEmails,
                 CreatedAt = now,
             };
-            context.GoogleMeetingReminders.Add(tracking);
-            await context.SaveChangesAsync();
-
-            await SendToAllRecipientsAsync(tracking, meeting, "New ISO meeting scheduled",
-                "A new ISO meeting has just been added to the calendar.", AccentNavy);
-            tracking.CreatedReminderSent = true;
-            await context.SaveChangesAsync();
+            var created = await context.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO dms_google_meeting_reminders
+                    (reminder_id, google_event_id, title, meeting_start, attendee_emails, created_at, created_reminder_sent)
+                VALUES ({tracking.ReminderId}, {tracking.GoogleEventId}, {tracking.Title}, {tracking.MeetingStart},
+                    {attendeeEmails.ToArray()}, {tracking.CreatedAt}, true)
+                ON CONFLICT (google_event_id) DO NOTHING
+                """);
+            if (created == 1)
+                await SendToAllRecipientsAsync(tracking, meeting, "created", "New ISO meeting scheduled",
+                    "A new ISO meeting has just been added to the calendar.", AccentNavy);
             return;
         }
 
         // Keep the tracked title/time current in case the meeting was renamed
         // or rescheduled — doesn't reset which stages already fired, and
         // doesn't touch the attendee snapshot captured at creation.
-        tracking.Title = meeting.Title;
-        tracking.MeetingStart = meeting.Start;
+        var trackedMeeting = context.GoogleMeetingReminders.Where(r => r.ReminderId == tracking.ReminderId);
+        if (tracking.Title != meeting.Title || tracking.MeetingStart != meeting.Start)
+            await trackedMeeting.ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.Title, meeting.Title)
+                .SetProperty(r => r.MeetingStart, meeting.Start));
 
         var timeUntil = meeting.Start - now;
 
         if (!tracking.DayBeforeReminderSent && timeUntil <= TimeSpan.FromDays(1) && timeUntil > TimeSpan.Zero)
         {
-            await SendToAllRecipientsAsync(tracking, meeting, "ISO meeting tomorrow",
-                "This ISO meeting is coming up in about a day.", AccentNavy);
-            tracking.DayBeforeReminderSent = true;
+            // Claim the stage before SMTP so an overlapping or retried scan
+            // cannot send it a second time.
+            var claimed = await trackedMeeting.Where(r => !r.DayBeforeReminderSent)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.DayBeforeReminderSent, true));
+            if (claimed == 1)
+                await SendToAllRecipientsAsync(tracking, meeting, "day_before", "ISO meeting tomorrow",
+                    "This ISO meeting is coming up in about a day.", AccentNavy);
         }
 
         if (!tracking.TenMinReminderSent && timeUntil <= TimeSpan.FromMinutes(10) && timeUntil > TimeSpan.FromMinutes(-2))
         {
-            await SendToAllRecipientsAsync(tracking, meeting, "ISO meeting starting soon",
-                "This ISO meeting starts in about 10 minutes.", AccentNavy);
-            tracking.TenMinReminderSent = true;
+            var claimed = await trackedMeeting.Where(r => !r.TenMinReminderSent)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.TenMinReminderSent, true));
+            if (claimed == 1)
+                await SendToAllRecipientsAsync(tracking, meeting, "ten_minutes_before", "ISO meeting starting soon",
+                    "This ISO meeting starts in about 10 minutes.", AccentNavy);
         }
-
-        await context.SaveChangesAsync();
     }
 
     // One consistent brand accent (matches the template's own navy header)
     // across every reminder stage, instead of varying by urgency.
     private const string AccentNavy = "#002E5C";
 
-    private async Task SendToAllRecipientsAsync(DmsGoogleMeetingReminder tracking, GoogleCalendarEventSummary meeting, string subject, string leadLine, string accentColor)
+    private async Task SendToAllRecipientsAsync(DmsGoogleMeetingReminder tracking, GoogleCalendarEventSummary meeting, string stage, string subject, string leadLine, string accentColor)
     {
         if (tracking.AttendeeEmails.Count == 0)
             return;
@@ -152,21 +162,22 @@ public class GoogleMeetingReminderService(
             .ToListAsync();
 
         foreach (var user in matchedUsers)
-            await notificationService.NotifyAsync(user.UserId, Guid.Empty, subject, plainBody);
-
-        if (!await emailService.IsConfiguredAsync())
-        {
-            logger.LogWarning("Skipped emailing {Count} attendee(s) for meeting {MeetingId} — SMTP not configured", tracking.AttendeeEmails.Count, meeting.Id);
-            return;
-        }
+            await notificationService.NotifyAsync(user.UserId, Guid.Empty, subject, plainBody,
+                deliveryAudit: new EmailDeliveryAudit(Guid.Empty, "google_meeting_reminder", user.UserId, tracking.ReminderId, stage));
 
         var html = EmailService.BuildBrandedHtml(meeting.Title, accentColor, BuildMeetingDetailsHtml(meeting, leadLine));
-        foreach (var email in tracking.AttendeeEmails)
-            await emailService.SendAsync(email, subject, html);
+        var usersByEmail = matchedUsers.ToLookup(user => user.Email, StringComparer.OrdinalIgnoreCase);
+        var emailCount = 0;
+        foreach (var email in tracking.AttendeeEmails.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var recipientId = usersByEmail[email].FirstOrDefault()?.UserId;
+            var audit = new EmailDeliveryAudit(Guid.Empty, "google_meeting_reminder", recipientId, tracking.ReminderId, stage);
+            if (await emailService.SendAsync(email, subject, html, audit)) emailCount++;
+        }
 
         logger.LogInformation(
-            "Sent ISO meeting reminder '{Subject}' for meeting {MeetingId} to {EmailCount} attendee(s) ({InAppCount} in-app)",
-            subject, meeting.Id, tracking.AttendeeEmails.Count, matchedUsers.Count);
+            "SMTP accepted ISO meeting reminder '{Subject}' for meeting {MeetingId} for {EmailCount} attendee(s)",
+            subject, meeting.Id, emailCount);
     }
 
     // Full meeting detail block reused by all 3 reminder stages — subject

@@ -1995,25 +1995,27 @@ public class DocumentsController(
                 newOwnerName = ownerNames.GetValueOrDefault(document.OwnerId, document.OwnerId.ToString());
             }
 
+            var changes = AuditService.BuildChanges(
+                ("Title", previousTitle, document.Title),
+                ("Status", previousStatus, document.Status),
+                ("Description", previousDescription, document.Description),
+                ("Tags", previousTags, document.Tags),
+                ("Department", previousDepartment, document.Department),
+                ("Category", previousCategory, document.Category),
+                ("Owner", previousOwnerName, newOwnerName),
+                ("Version", previousVersionLabel, newVersionLabel),
+                ("FileName", previousFileName, newFileNameValue));
             await auditService.LogAsync(userId, DOCUMENT_UPDATED, new
             {
                 document.DocumentId,
                 FilePath = await auditService.ResolveDocumentPathAsync(document.DocumentId),
-                Changes = AuditService.BuildChanges(
-                    ("Title", previousTitle, document.Title),
-                    ("Status", previousStatus, document.Status),
-                    ("Description", previousDescription, document.Description),
-                    ("Tags", previousTags, document.Tags),
-                    ("Department", previousDepartment, document.Department),
-                    ("Category", previousCategory, document.Category),
-                    ("Owner", previousOwnerName, newOwnerName),
-                    ("Version", previousVersionLabel, newVersionLabel),
-                    ("FileName", previousFileName, newFileNameValue)),
+                Changes = changes,
             });
 
             logger.LogInformation("Updated document {DocumentId}", id);
 
-            await notificationService.NotifyAsync(document.OwnerId, userId, "Your document was edited", $"\"{document.Title}\" was updated.", document.DocumentId);
+            if (changes.Count > 0)
+                await notificationService.NotifyAsync(document.OwnerId, userId, "Your document was edited", $"\"{document.Title}\" was updated.", document.DocumentId);
 
             return Ok(new
             {
@@ -2259,7 +2261,8 @@ public class DocumentsController(
                 };
             }
 
-            await notificationService.NotifyDocumentOwnerAsync(id, userId, "Your document was locked for editing", "Someone checked it out for editing.");
+            if (result.NewCheckout)
+                await notificationService.NotifyDocumentOwnerAsync(id, userId, "Your document was locked for editing", "Someone checked it out for editing.");
 
             return Ok(new { success = true, data = result.Data });
         }

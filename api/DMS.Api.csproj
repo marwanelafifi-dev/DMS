@@ -29,6 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DMS.Api.Tests" />
     <!-- Embedded inline (Content-ID) in outgoing notification emails — see EmailService.cs -->
     <Content Include="Assets\si-ware-logo-dark.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

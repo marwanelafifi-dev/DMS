@@ -25,6 +25,7 @@ public class CheckoutService(DmsContext context, AuditService auditService, ILog
             if (version.Status == "released" || version.Status == "archived")
                 return CheckoutResult.Invalid($"Cannot checkout {version.Status} documents");
 
+            var newCheckout = !version.IsCheckedOut;
             version.IsCheckedOut = true;
             version.CheckedOutById = userId;
             version.CheckedOutAt = DateTime.UtcNow;
@@ -55,7 +56,7 @@ public class CheckoutService(DmsContext context, AuditService auditService, ILog
                 version.CheckedOutAt,
                 CheckoutTimeoutMinutes,
                 UnlockAt = version.CheckedOutAt?.AddMinutes(CheckoutTimeoutMinutes)
-            });
+            }, newCheckout: newCheckout);
         }
         catch (Exception ex)
         {
@@ -267,8 +268,10 @@ public class CheckoutResult
     public string? Message { get; set; }
     public object? Data { get; set; }
     public string? Error { get; set; }
+    public bool NewCheckout { get; set; }
 
-    public static CheckoutResult Ok(object data) => new() { Success = true, Data = data };
+    public static CheckoutResult Ok(object data, bool newCheckout = false) =>
+        new() { Success = true, Data = data, NewCheckout = newCheckout };
     public static CheckoutResult NotFound(string message) => new() { Success = false, Message = message, Error = "NotFound" };
     public static CheckoutResult AlreadyCheckedOut(string message) => new() { Success = false, Message = message, Error = "AlreadyCheckedOut" };
     public static CheckoutResult Invalid(string message) => new() { Success = false, Message = message, Error = "Invalid" };

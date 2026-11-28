@@ -117,9 +117,8 @@ public class EmailConfigController(DmsContext context, EmailService emailService
                 "#3f8bca",
                 """<p style="margin:0;font-size:14px;color:#3c4043;">This is a test email from the Si-Ware DMS Notification Configuration page. If you received this, your settings are working.</p>""");
 
-            var (success, error) = await emailService.SendWithConfigAsync(req, recipient.Email, "Si-Ware DMS — Test email", html);
-
-            await auditService.LogAsync(userId, EMAIL_NOTIFICATION_TEST_SENT, new { req.Method, req.Email, success });
+            var (success, error) = await emailService.SendWithConfigAsync(req, recipient.Email, "Si-Ware DMS — Test email", html,
+                new EmailDeliveryAudit(userId, "smtp_test", userId));
 
             if (!success)
                 return BadRequest(new { success = false, error = error ?? "Failed to send test email" });

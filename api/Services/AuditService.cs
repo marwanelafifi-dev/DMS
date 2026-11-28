@@ -91,26 +91,34 @@ public class AuditService(DmsContext context, ILogger<AuditService> logger)
         return changes;
     }
 
+    internal DmsAuditTrail StageEntry(Guid userId, string action, object? metadata = null)
+    {
+        var entry = new DmsAuditTrail
+        {
+            LogId = Guid.NewGuid(),
+            UserId = userId,
+            Action = action,
+            Metadata = metadata == null ? null : JsonSerializer.SerializeToDocument(metadata),
+            CreatedAt = DateTime.UtcNow,
+        };
+        context.AuditTrails.Add(entry);
+        return entry;
+    }
+
     public async Task LogAsync(Guid userId, string action, object? metadata = null)
     {
+        DmsAuditTrail? entry = null;
         try
         {
-            var auditTrail = new DmsAuditTrail
-            {
-                LogId = Guid.NewGuid(),
-                UserId = userId,
-                Action = action,
-                Metadata = metadata != null ? JsonDocument.Parse(JsonSerializer.Serialize(metadata)) : null,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            context.AuditTrails.Add(auditTrail);
+            entry = StageEntry(userId, action, metadata);
             await context.SaveChangesAsync();
 
             logger.LogInformation("Audit logged: {Action} by user {UserId}", action, userId);
         }
         catch (Exception ex)
         {
+            if (entry != null)
+                context.Entry(entry).State = EntityState.Detached;
             logger.LogError(ex, "Error logging audit trail for action {Action}", action);
             throw;
         }
@@ -142,6 +150,7 @@ public class AuditService(DmsContext context, ILogger<AuditService> logger)
 
             var trails = await query
                 .OrderByDescending(a => a.CreatedAt)
+                .ThenByDescending(a => a.LogId)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(a => new
@@ -213,6 +222,7 @@ public static class AuditActions
     public const string PERMISSION_REVOKED = "PERMISSION_REVOKED";
 
     public const string REMINDER_SENT = "REMINDER_SENT";
+    public const string REMINDER_NOT_DELIVERED = "REMINDER_NOT_DELIVERED";
     public const string REMINDER_CREATED = "REMINDER_CREATED";
     public const string REMINDER_DELETED = "REMINDER_DELETED";
     public const string AUDIT_EVENT_CREATED = "AUDIT_EVENT_CREATED";
@@ -241,6 +251,7 @@ public static class AuditActions
     public const string GROUP_SUBGROUP_REMOVED = "GROUP_SUBGROUP_REMOVED";
     public const string GROUPS_IMPORTED = "GROUPS_IMPORTED";
     public const string NOTIFICATION_SENT = "NOTIFICATION_SENT";
+    public const string NOTIFICATION_NOT_SENT = "NOTIFICATION_NOT_SENT";
 
     public const string ROLE_PERMISSIONS_UPDATED = "ROLE_PERMISSIONS_UPDATED";
     public const string ROLE_CREATED = "ROLE_CREATED";

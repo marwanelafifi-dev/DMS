@@ -56,28 +56,34 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
     // IsSent. Never throws — a missing task/recipient or an unconfigured
     // mailer degrades to a skipped send, not a failed one, since the
     // is_sent/audit bookkeeping around this call must still happen either way.
-    private async Task SendReminderNotificationAsync(DmsReminder reminder)
+    private async Task<(bool InAppSent, bool EmailSent)> SendReminderNotificationAsync(DmsReminder reminder, Guid actorUserId)
     {
         if (reminder.Task == null || reminder.Recipient == null)
         {
             logger.LogWarning("Reminder {ReminderId} is missing its Task/Recipient — skipping notification", reminder.ReminderId);
-            return;
+            return (false, false);
         }
 
         var taskTitle = reminder.Task.Title;
         var taskLink = BuildTaskLink(reminder.TaskId);
         var dueDateText = reminder.DueDate.ToString("dddd, MMMM d 'at' h:mm tt 'UTC'");
+        var audit = new EmailDeliveryAudit(actorUserId, "task_reminder", reminder.RecipientId, reminder.ReminderId, reminder.DueDate.ToString("O"));
+        var inAppSent = false;
+        var emailSent = false;
 
         try
         {
             if (reminder.ReminderType is "APP" or "BOTH")
             {
-                await notificationService.NotifyAsync(
+                inAppSent = await notificationService.NotifyAsync(
                     reminder.RecipientId,
-                    SystemActorId,
+                    actorUserId,
                     $"Reminder: {taskTitle}",
                     $"Due {dueDateText}",
-                    taskId: reminder.TaskId);
+                    taskId: reminder.TaskId,
+                    includeActor: true,
+                    sendEmail: false,
+                    deliveryAudit: audit);
             }
 
             if (reminder.ReminderType is "EMAIL" or "BOTH")
@@ -90,13 +96,55 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
                     </a>
                     """;
                 var html = EmailService.BuildBrandedHtml("Task Reminder", "#002E5C", bodyHtml);
-                await emailService.SendAsync(reminder.Recipient.Email, $"Reminder: {taskTitle}", html);
+                emailSent = await emailService.SendAsync(reminder.Recipient.Email, $"Reminder: {taskTitle}", html, audit);
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send reminder notification for {ReminderId}", reminder.ReminderId);
         }
+        return (inAppSent, emailSent);
+    }
+
+    private async Task<bool> TrySendOccurrenceAsync(DmsReminder reminder, Guid actorUserId, string trigger)
+    {
+        var dueDate = reminder.DueDate;
+        var sentAt = DateTime.UtcNow;
+        var isSent = reminder.Recurrence == "once";
+        var nextDueDate = isSent ? dueDate : NextDueDate(dueDate, reminder.Recurrence);
+
+        // Claim this occurrence before dispatch. The sweep, immediate create,
+        // and manual send all use the same update against the original date.
+        var updated = await context.Reminders
+            .Where(r => r.ReminderId == reminder.ReminderId && !r.IsSent && r.DueDate == dueDate &&
+                context.Tasks.Any(t => t.TaskId == r.TaskId && t.Status.ToLower() != "completed" && t.Status.ToLower() != "done"))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.IsSent, isSent)
+                .SetProperty(r => r.SentAt, sentAt)
+                .SetProperty(r => r.DueDate, nextDueDate));
+        if (updated == 0) return false;
+
+        var (inAppSent, emailSent) = await SendReminderNotificationAsync(reminder, actorUserId);
+        var delivered = inAppSent || emailSent;
+        await auditService.LogAsync(actorUserId, delivered ? AuditActions.REMINDER_SENT : AuditActions.REMINDER_NOT_DELIVERED, new
+        {
+            reminder.ReminderId,
+            reminder.TaskId,
+            reminder.ReminderType,
+            reminder.RecipientId,
+            DueDate = dueDate,
+            AttemptedAt = sentAt,
+            SentAt = delivered ? (DateTime?)sentAt : null,
+            InAppSent = inAppSent,
+            EmailSent = emailSent,
+            RecipientEmail = reminder.Recipient?.Email,
+            Trigger = trigger,
+        });
+
+        reminder.DueDate = nextDueDate;
+        reminder.IsSent = isSent;
+        reminder.SentAt = sentAt;
+        return true;
     }
 
     public async Task<ReminderResult> CreateReminderAsync(Guid taskId, Guid recipientId, string reminderType, DateTime dueDate, string recurrence = "once", Guid? actorUserId = null)
@@ -157,23 +205,18 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
             // steps the caller has to know about.
             if (dueDate <= DateTime.UtcNow)
             {
-                reminder.SentAt = DateTime.UtcNow;
-                reminder.Task = task;
-                reminder.Recipient = recipient;
-                await SendReminderNotificationAsync(reminder);
-                if (reminder.Recurrence == "once") reminder.IsSent = true;
-                else { reminder.DueDate = NextDueDate(reminder.DueDate, reminder.Recurrence); reminder.IsSent = false; }
-                await context.SaveChangesAsync();
-
-                await auditService.LogAsync(actorUserId ?? recipientId, AuditActions.REMINDER_SENT, new
+                // Read the persisted date and any update from a concurrent sweep.
+                reminder = await context.Reminders.AsNoTracking()
+                    .Include(r => r.Task)
+                    .Include(r => r.Recipient)
+                    .FirstOrDefaultAsync(r => r.ReminderId == reminder.ReminderId) ?? reminder;
+                if (!reminder.IsSent && reminder.DueDate <= DateTime.UtcNow &&
+                    !await TrySendOccurrenceAsync(reminder, actorUserId ?? recipientId, "create"))
                 {
-                    reminder.ReminderId,
-                    reminder.TaskId,
-                    reminder.ReminderType,
-                    reminder.DueDate,
-                    reminder.SentAt,
-                    RecipientEmail = recipient.Email
-                });
+                    // A sweep may have claimed it after the reload.
+                    reminder = await context.Reminders.AsNoTracking()
+                        .FirstOrDefaultAsync(r => r.ReminderId == reminder.ReminderId) ?? reminder;
+                }
             }
 
             return ReminderResult.Ok(new
@@ -237,57 +280,24 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
     {
         try
         {
-            var pending = await GetPendingRemindersAsync(int.MaxValue);
-            if (pending.Count == 0)
-                return 0;
-
-            var reminderIds = pending
-                .Select(r => ((dynamic)r).ReminderId)
-                .Cast<Guid>()
-                .ToList();
-
-            // Recipient/Task must be eagerly loaded — without them the navigations are
-            // always null here, so neither a real notification/email nor the
-            // REMINDER_SENT audit entry's detail could ever be built.
-            var reminders = await context.Reminders
+            var now = DateTime.UtcNow;
+            var reminders = await context.Reminders.AsNoTracking()
                 .Include(r => r.Recipient)
                 .Include(r => r.Task)
-                .Where(r => reminderIds.Contains(r.ReminderId))
+                .Where(r => !r.IsSent && r.DueDate <= now && r.Task != null &&
+                    r.Task.Status.ToLower() != "completed" && r.Task.Status.ToLower() != "done")
+                .OrderBy(r => r.DueDate)
                 .ToListAsync();
 
+            var sent = 0;
             foreach (var reminder in reminders)
             {
-                // The task can be completed after the pending query but before
-                // this job loads the reminder.  Re-check it at the send point
-                // so that race cannot produce a post-completion email.
-                if (IsCompleted(reminder.Task))
-                {
-                    logger.LogInformation("Skipped reminder {ReminderId}: task {TaskId} is completed", reminder.ReminderId, reminder.TaskId);
-                    continue;
-                }
-
-                reminder.SentAt = DateTime.UtcNow;
-                context.Reminders.Update(reminder);
-
-                await SendReminderNotificationAsync(reminder);
-                if (reminder.Recurrence == "once") reminder.IsSent = true;
-                else { reminder.DueDate = NextDueDate(reminder.DueDate, reminder.Recurrence); reminder.IsSent = false; }
-
-                await auditService.LogAsync(reminder.RecipientId, AuditActions.REMINDER_SENT, new
-                {
-                    reminder.ReminderId,
-                    reminder.TaskId,
-                    reminder.ReminderType,
-                    reminder.DueDate,
-                    reminder.SentAt,
-                    RecipientEmail = reminder.Recipient?.Email
-                });
+                if (await TrySendOccurrenceAsync(reminder, SystemActorId, "scheduled"))
+                    sent++;
             }
 
-            await context.SaveChangesAsync();
-
-            logger.LogInformation("Sent {Count} pending reminders", reminders.Count);
-            return reminders.Count;
+            logger.LogInformation("Processed {Count} pending reminders", sent);
+            return sent;
         }
         catch (Exception ex)
         {
@@ -333,7 +343,7 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
     {
         try
         {
-            var reminder = await context.Reminders
+            var reminder = await context.Reminders.AsNoTracking()
                 .Include(r => r.Recipient)
                 .Include(r => r.Task)
                 .FirstOrDefaultAsync(r => r.ReminderId == reminderId);
@@ -346,25 +356,8 @@ public class ReminderService(DmsContext context, AuditService auditService, Noti
             if (IsCompleted(reminder.Task))
                 return ReminderResult.Invalid("A completed task cannot receive a reminder");
 
-            reminder.SentAt = DateTime.UtcNow;
-
-            await SendReminderNotificationAsync(reminder);
-            if (reminder.Recurrence == "once") reminder.IsSent = true;
-            else { reminder.DueDate = NextDueDate(reminder.DueDate, reminder.Recurrence); reminder.IsSent = false; }
-
-            await context.SaveChangesAsync();
-
-            await auditService.LogAsync(actorUserId, AuditActions.REMINDER_SENT, new
-            {
-                reminder.ReminderId,
-                reminder.TaskId,
-                reminder.ReminderType,
-                reminder.DueDate,
-                reminder.SentAt,
-                RecipientId = reminder.RecipientId,
-                RecipientEmail = reminder.Recipient?.Email,
-                Trigger = "manual"
-            });
+            if (!await TrySendOccurrenceAsync(reminder, actorUserId, "manual"))
+                return ReminderResult.Invalid("This reminder occurrence is no longer pending");
 
             logger.LogInformation("Marked reminder {ReminderId} as sent", reminderId);
 

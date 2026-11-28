@@ -721,7 +721,11 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
             return BadRequest(new { success = false, error = req.Approve ? "Only an effective corrective action can be approved and closed" : "A returned PCAR must be marked ineffective" });
         task.QaReviewNotes = req.Notes?.Trim(); task.EffectivenessResult = effectiveness; task.QaReviewedById = userId; task.QaReviewedAt = DateTime.UtcNow; task.UpdatedAt = DateTime.UtcNow;
         if (req.Approve) { task.Status = "completed"; task.CompletedById = userId; task.CompletedAt = DateTime.UtcNow; } else task.Status = "open";
-        await context.SaveChangesAsync();
+        try { await context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { success = false, error = "This PCAR changed. Reload it before verifying it." });
+        }
         await auditService.LogAsync(userId, req.Approve ? PCAR_APPROVED : PCAR_REJECTED, new
         {
             task.TaskId, task.FindingNumber, task.Title, Decision = req.Approve ? "approved" : "returned",
@@ -845,12 +849,12 @@ Review QMS procedures,Review all applicable QMS procedures,Review,Medium,2026-12
                 };
             }
 
-            if (isReassigning)
+            if (result.AssignmentChanged)
             {
-                var title = req.Title ?? task.Title;
+                // Use the task saved by this request, even if a later request
+                // has already reassigned it again.
+                var reassignedTask = context.Tasks.Local.Single(t => t.TaskId == id);
                 await auditService.LogAsync(userId, TASK_REASSIGNED, new { TaskId = id, req.AssignedToId, req.AssignedToGroupId });
-                var reassignedTask = await context.Tasks.AsNoTracking().FirstAsync(t => t.TaskId == id);
-                reassignedTask.Title = title;
                 await NotifyTaskAssignmentAsync(reassignedTask, userId, "A task was reassigned to you", "A task was reassigned to your group");
             }
 

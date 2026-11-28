@@ -22,6 +22,8 @@ public record EmailNotificationConfig(string Method, string? Email, string? AppP
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Email) && !string.IsNullOrWhiteSpace(AppPassword);
 }
 
+public record EmailDeliveryAudit(Guid ActorUserId, string Source, Guid? RecipientId = null, Guid? RelatedId = null, string? Stage = null);
+
 // Thin SMTP wrapper — the only place in the API that actually sends an email.
 // Configuration is loaded fresh from dms_app_settings on every send (not
 // cached at startup) so a change saved on the admin Notification
@@ -116,36 +118,71 @@ public class EmailService(IServiceScopeFactory scopeFactory, IConfiguration conf
             """;
     }
 
-    public async Task<bool> SendAsync(string toEmail, string subject, string htmlBody)
+    public async Task<bool> SendAsync(string toEmail, string subject, string htmlBody, EmailDeliveryAudit audit)
     {
-        if (!await AreNotificationsEnabledAsync())
-        {
-            logger.LogInformation("Email not sent to {ToEmail} ({Subject}) — notifications are globally disabled", toEmail, subject);
-            return false;
-        }
-
-        var config = await LoadConfigAsync();
-        if (!config.IsConfigured)
-        {
-            logger.LogWarning("Email not sent to {ToEmail} ({Subject}) — notification email is not configured", toEmail, subject);
-            return false;
-        }
-
-        var (success, _) = await SendWithConfigAsync(config, toEmail, subject, htmlBody);
+        var (success, _) = await SendAuditedAsync(null, toEmail, subject, htmlBody, audit);
         return success;
     }
 
-    // Sends against an explicit config rather than the persisted one — used by
-    // the "Send Test Email" action so an admin can verify credentials before
-    // saving them.
-    public async Task<(bool Success, string? Error)> SendWithConfigAsync(EmailNotificationConfig config, string toEmail, string subject, string htmlBody)
+    // The admin test uses the submitted credentials. Other sends use saved settings.
+    public Task<(bool Success, string? Error)> SendWithConfigAsync(
+        EmailNotificationConfig config, string toEmail, string subject, string htmlBody, EmailDeliveryAudit audit) =>
+        SendAuditedAsync(config, toEmail, subject, htmlBody, audit, AuditActions.EMAIL_NOTIFICATION_TEST_SENT);
+
+    private async Task<(bool Success, string? Error)> SendAuditedAsync(
+        EmailNotificationConfig? config, string toEmail, string subject, string htmlBody, EmailDeliveryAudit audit,
+        string successAction = AuditActions.NOTIFICATION_SENT)
     {
+        (bool Success, string? Error) result;
+        string? reason;
         if (!await AreNotificationsEnabledAsync())
-            return (false, "Email and in-app notifications are globally disabled");
+        {
+            result = (false, "Email and in-app notifications are globally disabled");
+            reason = "notifications_disabled";
+        }
+        else
+        {
+            config ??= await LoadConfigAsync();
+            if (!config.IsConfigured)
+            {
+                result = (false, "Email and App Password are required");
+                reason = "smtp_not_configured";
+            }
+            else
+            {
+                result = await SendViaSmtpAsync(config, toEmail, subject, htmlBody);
+                reason = result.Success ? null : "smtp_send_failed";
+            }
+        }
 
-        if (!config.IsConfigured)
-            return (false, "Email and App Password are required");
+        // Record the SMTP outcome with a separate context. A ledger write
+        // failure must never turn an accepted email into a retryable send.
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var auditService = scope.ServiceProvider.GetRequiredService<AuditService>();
+            await auditService.LogAsync(audit.ActorUserId, result.Success ? successAction : AuditActions.NOTIFICATION_NOT_SENT, new
+            {
+                Channel = "email",
+                Outcome = result.Success ? "smtp_accepted" : reason == "smtp_send_failed" ? "failed" : "skipped",
+                Reason = reason,
+                Title = subject,
+                RecipientEmail = toEmail,
+                audit.RecipientId,
+                audit.Source,
+                audit.RelatedId,
+                audit.Stage,
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to audit email outcome for {Source} {RelatedId}", audit.Source, audit.RelatedId);
+        }
+        return result;
+    }
 
+    private async Task<(bool Success, string? Error)> SendViaSmtpAsync(EmailNotificationConfig config, string toEmail, string subject, string htmlBody)
+    {
         try
         {
             using var message = new MailMessage

@@ -391,6 +391,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
 
             // Both null means "no reassignment requested", not "unassign" — a
             // task always has exactly one of the two set (DB CHECK constraint).
+            var originalAssignment = (task.AssignedToId, task.AssignedToGroupId);
             if (assignedToId.HasValue || assignedToGroupId.HasValue)
             {
                 if (assignedToId.HasValue == assignedToGroupId.HasValue)
@@ -478,7 +479,7 @@ public class TaskService(DmsContext context, AuditService auditService, Notifica
                 task.AssignedToId,
                 task.AssignedToGroupId,
                 task.UpdatedAt
-            });
+            }, assignmentChanged: originalAssignment != (task.AssignedToId, task.AssignedToGroupId));
         }
         catch (Exception ex)
         {
@@ -758,8 +759,10 @@ public class TaskResult
     public object? Data { get; set; }
     public string? Error { get; set; }
     public Guid? ResourceId { get; set; }
+    public bool AssignmentChanged { get; set; }
 
-    public static TaskResult Ok(object data, Guid? resourceId = null) => new() { Success = true, Data = data, ResourceId = resourceId };
+    public static TaskResult Ok(object data, Guid? resourceId = null, bool assignmentChanged = false) =>
+        new() { Success = true, Data = data, ResourceId = resourceId, AssignmentChanged = assignmentChanged };
     public static TaskResult NotFound(string message) => new() { Success = false, Message = message, Error = "NotFound" };
     public static TaskResult Invalid(string message) => new() { Success = false, Message = message, Error = "Invalid" };
     public static TaskResult Forbidden(string message) => new() { Success = false, Message = message, Error = "Forbidden" };

@@ -101,6 +101,15 @@ public class DmsContext : DbContext
             .Property(t => t.AuditDate)
             .HasColumnType("date");
 
+        // Email-producing changes use the persisted version of the record.
+        // An overlapping write based on the same original state must fail
+        // before it can announce the same transition a second time.
+        modelBuilder.Entity<DmsTask>().Property(t => t.UpdatedAt).IsConcurrencyToken();
+        modelBuilder.Entity<DmsDocument>().Property(d => d.UpdatedAt).IsConcurrencyToken();
+        modelBuilder.Entity<DmsDocumentVersion>().Property(v => v.UpdatedAt).IsConcurrencyToken();
+        modelBuilder.Entity<DmsApprovalDocument>().Property(d => d.UpdatedAt).IsConcurrencyToken();
+        modelBuilder.Entity<DmsAuditRecord>().Property(r => r.UpdatedAt).IsConcurrencyToken();
+
         // === PRIMARY KEYS & TABLE NAMES (explicit configuration) ===
         modelBuilder.Entity<DmsUser>().ToTable("dms_users").HasKey(u => u.UserId);
         modelBuilder.Entity<DmsFolder>().ToTable("dms_folders").HasKey(f => f.FolderId);

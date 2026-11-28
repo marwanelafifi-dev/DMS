@@ -291,7 +291,8 @@ public class UsersController(DmsContext context, AuditService auditService, Emai
                         <p style="margin:16px 0 0;font-size:13px;color:#b96a08;">⚠ Please change your password after your first login. Keep your credentials confidential and do not share them with anyone.</p>
                         """;
                     var html = EmailService.BuildBrandedHtml("Your Account Credentials", "#002E5C", bodyHtml);
-                    await emailService.SendAsync(user.Email, "DMS - Si-Ware Systems - Your Account Credentials", html);
+                    await emailService.SendAsync(user.Email, "DMS - Si-Ware Systems - Your Account Credentials", html,
+                        new EmailDeliveryAudit(currentUserId, "account_welcome", user.UserId, user.UserId));
                 }
                 catch (Exception ex)
                 {

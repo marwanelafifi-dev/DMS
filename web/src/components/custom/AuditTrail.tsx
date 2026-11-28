@@ -33,7 +33,8 @@ const ACTION_TYPES = [
   'TASK_COMPLETED', 'CORRECTION_TASK_COMPLETED', 'TASK_ATTACHMENT_UPLOADED', 'TASK_ATTACHMENT_DELETED',
   'TASK_CORRECTION_RESUBMITTED',
   'PERMISSION_GRANTED', 'PERMISSION_REVOKED',
-  'REMINDER_SENT', 'REMINDER_CREATED', 'REMINDER_DELETED',
+  'REMINDER_SENT', 'REMINDER_NOT_DELIVERED', 'REMINDER_CREATED', 'REMINDER_DELETED',
+  'NOTIFICATION_SENT', 'NOTIFICATION_NOT_SENT', 'EMAIL_NOTIFICATION_TEST_SENT',
   'AUDIT_EVENT_CREATED', 'AUDIT_EVENT_DELETED',
   'GOOGLE_CALENDAR_CONNECTED', 'GOOGLE_CALENDAR_DISCONNECTED', 'GOOGLE_CALENDAR_SYNCED',
   'USER_CREATED', 'USER_UPDATED', 'USER_DEACTIVATED', 'USER_DELETED', 'USER_PASSWORD_RESET', 'USER_LOGIN',
@@ -163,7 +164,7 @@ export function AuditTrail() {
     setLoadError(null);
     try {
       const [logsRes, usersRes] = await Promise.all([
-        apiClient.getAuditTrail({ page: targetPage, pageSize: PAGE_SIZE }),
+        apiClient.getAuditTrail({ page: targetPage, pageSize: PAGE_SIZE, action: selectedAction || undefined }),
         apiClient.getUsers({ activeOnly: false }),
       ]);
       setLogs(logsRes.data || []);
@@ -180,7 +181,7 @@ export function AuditTrail() {
   useEffect(() => {
     loadData(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, selectedAction]);
 
   const userNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -188,7 +189,9 @@ export function AuditTrail() {
     return map;
   }, [users]);
 
-  const getUserName = (userId: string) => userNameById.get(userId) || 'Unknown user';
+  const getUserName = (userId: string) => userId === '00000000-0000-0000-0000-000000000000'
+    ? 'System'
+    : userNameById.get(userId) || 'Unknown user';
 
   const filteredLogs = logs.filter(log => {
     const userName = getUserName(log.userId);
@@ -199,13 +202,11 @@ export function AuditTrail() {
       log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
       details.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesAction = !selectedAction || log.action === selectedAction;
-
     const logDate = log.createdAt.slice(0, 10);
     const matchesFrom = !dateRange.from || logDate >= dateRange.from;
     const matchesTo = !dateRange.to || logDate <= dateRange.to;
 
-    return matchesSearch && matchesAction && matchesFrom && matchesTo;
+    return matchesSearch && matchesFrom && matchesTo;
   });
 
   const formatTimestamp = (timestamp: string) => {
@@ -337,7 +338,7 @@ export function AuditTrail() {
           <Filter className="w-5 h-5 text-gray-400 flex-shrink-0" />
           <select
             value={selectedAction}
-            onChange={(e) => setSelectedAction(e.target.value)}
+            onChange={(e) => { setSelectedAction(e.target.value); setPage(1); }}
             className="w-full px-4 py-2 border border-gray-300 dark:border-navy-600 rounded-lg bg-white dark:bg-navy-800 text-navy-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Actions</option>

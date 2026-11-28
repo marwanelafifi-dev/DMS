@@ -86,8 +86,12 @@ public class LibraryLinksController(
             """);
 
         var failedRecipients = new List<string>();
+        var recipientIds = knownRecipients.ToLookup(user => user.Email, StringComparer.OrdinalIgnoreCase);
         foreach (var recipient in recipients)
-            if (!await emailService.SendAsync(recipient, subject, body)) failedRecipients.Add(recipient);
+        {
+            var audit = new EmailDeliveryAudit(sender.UserId, "library_link_share", recipientIds[recipient].First().UserId, result.TargetId);
+            if (!await emailService.SendAsync(recipient, subject, body, audit)) failedRecipients.Add(recipient);
+        }
 
         await auditService.LogAsync(sender.UserId, AuditActions.LIBRARY_LINK_SHARED, new
         {

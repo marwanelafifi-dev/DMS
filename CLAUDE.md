@@ -1,5 +1,26 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## 2026-11-28 — One email per reminder event and accurate delivery audit
+
+### Delivery
+
+- The automatic Task/PCAR reminder job previously sent email before recording the stage. PostgreSQL rejected `before_due_3` and `before_due_1` under the legacy `day_3`/`day_1` constraint, so Hangfire retries resent the same reminder. The job now claims `(task_id, stage)` atomically before dispatch. Before-due and due-day stages follow the configured DMS calendar date, and the overdue stage can fire once after the due date.
+- Manual create, **Send now**, and the scheduled sweep share one atomic claim per reminder occurrence. `APP` delivers in-app only, `EMAIL` delivers email only, and `BOTH` attempts each channel once. Google Calendar reminders atomically claim each stage for a tracked meeting and deduplicate attendee addresses.
+- Repeated saves with the same assignee, unchanged document metadata, and renewals of an existing checkout do not send another notice. Workflow updates use concurrency checks before sending. Announcement recipients are deduplicated, and a protected-link retry after a partial send targets only the failed addresses.
+- A reminder claim prevents automatic replay even if an SMTP failure or worker interruption leaves a recipient undelivered. SMTP acceptance records the mail server's response. Inbox delivery is outside DMS confirmation.
+
+### Audit Trail
+
+- In-app notifications and their `NOTIFICATION_SENT` rows commit together. Outbound email is recorded as sent only after SMTP accepts it. Failed and skipped email attempts use `NOTIFICATION_NOT_SENT` with a reason. Audit metadata identifies the channel, recipient, source, and related event where available. Email bodies and credentials are excluded.
+- Reminder occurrence records show the original scheduled time and the outcome of each channel. When neither channel delivered, the occurrence is recorded as `REMINDER_NOT_DELIVERED`. Background jobs appear under **System**. The Audit Trail action filter queries matching records across all pages, and all read endpoints require the same Admin Panel access as the page.
+- Existing Audit Trail entries are append-only. Earlier channel-less `NOTIFICATION_SENT` rows are historical notification records and cannot establish SMTP acceptance.
+
+### Deployment and verification
+
+- Apply [`139_fix_task_escalation_stage_constraint.sql`](infra/db/init/139_fix_task_escalation_stage_constraint.sql) to an existing PostgreSQL volume before starting the updated API. It accepts the configurable stage names and carries forward recorded legacy stages so they are not replayed. The Audit Trail changes use the existing ledger schema.
+- From the updated deployment directory, use the same Compose files and project settings as the running stack. Stop the old API worker, apply migration `139` with `psql -v ON_ERROR_STOP=1`, then rebuild and recreate `api` and `web`. Fresh database volumes apply `139` through the normal initialization sequence.
+- Local verification passed for all 16 API tests, the focused Audit Trail UI regression test, TypeScript type checking, and the web production build. The production migration and live mail flow have not been verified.
+
 ## 2026-11-25 — Self-assigned task delivery and task-description readability
 
 ### Task notifications

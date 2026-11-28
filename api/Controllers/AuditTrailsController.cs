@@ -9,6 +9,9 @@ namespace DMS.Api.Controllers;
 [Route("api/[controller]")]
 public class AuditTrailsController(DmsContext context, AuditService auditService, ILogger<AuditTrailsController> logger) : BaseController
 {
+    private async Task<bool> CanViewAuditTrailAsync() =>
+        (await GetPageAccessRoleAsync(context, GetCurrentUserId()))?.CanViewAdminPanel == true;
+
     // GET /api/audittrails — list all logs (paginated)
     [HttpGet]
     public async Task<ActionResult<object>> GetAuditTrails(
@@ -20,6 +23,7 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
     {
         try
         {
+            if (!await CanViewAuditTrailAsync()) return StatusCode(403, new { success = false, error = "Admin Panel access is required" });
             // `limit` kept for backward compatibility with existing callers — maps to a single-page request.
             if (limit.HasValue)
                 pageSize = limit.Value;
@@ -52,6 +56,7 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
     {
         try
         {
+            if (!await CanViewAuditTrailAsync()) return StatusCode(403, new { success = false, error = "Admin Panel access is required" });
             var trail = await context.AuditTrails
                 .FirstOrDefaultAsync(a => a.LogId == logId);
 
@@ -86,6 +91,7 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
     {
         try
         {
+            if (!await CanViewAuditTrailAsync()) return StatusCode(403, new { success = false, error = "Admin Panel access is required" });
             // Verify user exists
             var userExists = await context.Users.AnyAsync(u => u.UserId == userId);
             if (!userExists)
@@ -110,6 +116,7 @@ public class AuditTrailsController(DmsContext context, AuditService auditService
     {
         try
         {
+            if (!await CanViewAuditTrailAsync()) return StatusCode(403, new { success = false, error = "Admin Panel access is required" });
             if (string.IsNullOrEmpty(action))
                 return BadRequest(new { success = false, error = "Action name is required" });
 

@@ -11,47 +11,62 @@ namespace DMS.Api.Services;
 // their own action.
 public class NotificationService(DmsContext context, EmailService emailService, AccessOverrideService accessOverrideService, AuditService auditService, IConfiguration configuration, ILogger<NotificationService> logger)
 {
-    // In-app operational notices are deliberately independent from the email
-    // notification switch. Audit participants must still see a controlled DMS
-    // update in their notification bell even when outbound email is disabled.
-    public async Task NotifyInAppAsync(Guid recipientUserId, Guid actorUserId, string title, string? body = null, bool includeActor = false)
+    private async Task<bool> TryCreateInAppAsync(DmsNotification notification, EmailDeliveryAudit audit)
     {
-        if (!includeActor && recipientUserId == actorUserId) return;
+        DmsAuditTrail? entry = null;
         try
         {
-            context.Notifications.Add(new DmsNotification
-            {
-                NotificationId = Guid.NewGuid(),
-                UserId = recipientUserId,
-                Title = title,
-                Body = body,
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow,
-            });
-            await context.SaveChangesAsync();
-
             var recipientName = await context.Users.AsNoTracking()
-                .Where(user => user.UserId == recipientUserId)
+                .Where(user => user.UserId == notification.UserId)
                 .Select(user => user.FullName)
                 .FirstOrDefaultAsync();
-            await auditService.LogAsync(actorUserId, NOTIFICATION_SENT, new { RecipientId = recipientUserId, RecipientName = recipientName, Title = title, Channel = "in_app" });
+            context.Notifications.Add(notification);
+            entry = auditService.StageEntry(audit.ActorUserId, NOTIFICATION_SENT, new
+            {
+                RecipientId = notification.UserId,
+                RecipientName = recipientName,
+                notification.Title,
+                notification.NotificationId,
+                notification.DocumentId,
+                notification.TaskId,
+                notification.AnnouncementId,
+                Channel = "in_app",
+                Outcome = "persisted",
+                audit.Source,
+                audit.RelatedId,
+                audit.Stage,
+            });
+            // Commit the bell notification and its success audit as one unit.
+            await context.SaveChangesAsync();
+            return true;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error creating in-app notification for user {UserId}", recipientUserId);
+            context.Entry(notification).State = EntityState.Detached;
+            if (entry != null) context.Entry(entry).State = EntityState.Detached;
+            logger.LogError(ex, "Error creating in-app notification for user {UserId}", notification.UserId);
+            return false;
         }
     }
 
     // Audit-stage updates are deliberately a single controlled event: one
     // in-app notice plus one email (when the global email service is enabled
     // and configured). Ordinary edits never call this method.
-    public async Task NotifyAuditStageAsync(Guid recipientUserId, Guid actorUserId, string title, string body, string cycleName, string stageName, string status)
+    public async Task NotifyAuditStageAsync(Guid recipientUserId, Guid actorUserId, Guid auditRecordId, string title, string body, string cycleName, string stageName, string status)
     {
         // A person deliberately selected for an audit stage needs a durable
         // confirmation of that status even when they are also the person who
         // saved it. This exception applies only to audit-stage notices; normal
         // document/task notifications still suppress self-notification.
-        await NotifyInAppAsync(recipientUserId, actorUserId, title, body, includeActor: true);
+        var audit = new EmailDeliveryAudit(actorUserId, "audit_stage", recipientUserId, auditRecordId, status);
+        await TryCreateInAppAsync(new DmsNotification
+        {
+            NotificationId = Guid.NewGuid(),
+            UserId = recipientUserId,
+            Title = title,
+            Body = body,
+            CreatedAt = DateTime.UtcNow,
+        }, audit);
 
         try
         {
@@ -70,9 +85,7 @@ public class NotificationService(DmsContext context, EmailService emailService, 
                 <p style="margin:0 0 20px;font-size:14px;color:#52627a;">{System.Net.WebUtility.HtmlEncode(body)}</p>
                 <a href="{System.Net.WebUtility.HtmlEncode(workspaceUrl)}" style="display:inline-block;background:#002E5C;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:4px;">Open ISO workspace</a>
                 """;
-            var emailSent = await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", EmailService.BuildBrandedHtml(title, "#1763a5", bodyHtml));
-            if (emailSent)
-                await auditService.LogAsync(actorUserId, NOTIFICATION_SENT, new { RecipientId = recipientUserId, RecipientName = recipient.FullName, Title = title, Channel = "email" });
+            await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", EmailService.BuildBrandedHtml(title, "#1763a5", bodyHtml), audit);
         }
         catch (Exception ex)
         {
@@ -82,7 +95,7 @@ public class NotificationService(DmsContext context, EmailService emailService, 
         }
     }
 
-    public async Task NotifyAsync(
+    public async Task<bool> NotifyAsync(
         Guid recipientUserId,
         Guid actorUserId,
         string title,
@@ -90,16 +103,18 @@ public class NotificationService(DmsContext context, EmailService emailService, 
         Guid? documentId = null,
         Guid? taskId = null,
         Guid? announcementId = null,
-        bool includeActor = false)
+        bool includeActor = false,
+        bool sendEmail = true,
+        EmailDeliveryAudit? deliveryAudit = null)
     {
         if (!await emailService.AreNotificationsEnabledAsync())
-            return;
+            return false;
 
         // Most activity should remain quiet for the person who performed it.
         // Task assignment is an exception: a self-assigned task is a useful
         // durable confirmation, and its email provides the direct task link.
         if (!includeActor && recipientUserId == actorUserId)
-            return;
+            return false;
 
         // Nobody — regardless of role, and regardless of whether they're the
         // document's own owner or the person who submitted it — should ever
@@ -115,60 +130,24 @@ public class NotificationService(DmsContext context, EmailService emailService, 
                 .Select(d => (Guid?)d.FolderId)
                 .FirstOrDefaultAsync();
             if (!folderId.HasValue)
-                return; // the document no longer exists
+                return false; // the document no longer exists
             if (!await accessOverrideService.HasDocumentReadAccessAsync(recipientUserId, documentId.Value, folderId.Value))
-                return;
+                return false;
         }
 
-        try
+        var source = documentId.HasValue ? "document" : taskId.HasValue ? "task" : announcementId.HasValue ? "announcement" : "notification";
+        var audit = deliveryAudit ?? new EmailDeliveryAudit(actorUserId, source, recipientUserId, documentId ?? taskId ?? announcementId);
+        var inAppSent = await TryCreateInAppAsync(new DmsNotification
         {
-            context.Notifications.Add(new DmsNotification
-            {
-                NotificationId = Guid.NewGuid(),
-                UserId = recipientUserId,
-                Title = title,
-                Body = body,
-                DocumentId = documentId,
-                TaskId = taskId,
-                AnnouncementId = announcementId,
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow,
-            });
-            await context.SaveChangesAsync();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error creating notification for user {UserId}", recipientUserId);
-        }
-
-        // Real gap found live: there was no way to answer "who actually got
-        // notified about this?" after the fact — dms_notifications only
-        // shows up filtered to the *recipient's own* bell, so an admin (or
-        // the actor themselves) had no way to see the full recipient list for
-        // a given event. Every notification now leaves a real, searchable
-        // record in the Audit Trail (actor = who triggered the event,
-        // metadata = who received it) instead of only existing from the
-        // recipient's own point of view.
-        try
-        {
-            var recipientName = await context.Users.AsNoTracking()
-                .Where(u => u.UserId == recipientUserId)
-                .Select(u => u.FullName)
-                .FirstOrDefaultAsync();
-            await auditService.LogAsync(actorUserId, NOTIFICATION_SENT, new
-            {
-                RecipientId = recipientUserId,
-                RecipientName = recipientName,
-                Title = title,
-                DocumentId = documentId,
-                TaskId = taskId,
-                AnnouncementId = announcementId,
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error logging notification audit entry for recipient {UserId}", recipientUserId);
-        }
+            NotificationId = Guid.NewGuid(),
+            UserId = recipientUserId,
+            Title = title,
+            Body = body,
+            DocumentId = documentId,
+            TaskId = taskId,
+            AnnouncementId = announcementId,
+            CreatedAt = DateTime.UtcNow,
+        }, audit);
 
         // Per explicit request: every document-related in-app notification
         // (QA/Manager/Final Release stage transitions, correction requests,
@@ -179,13 +158,17 @@ public class NotificationService(DmsContext context, EmailService emailService, 
         // unconfigured mailer just means this specific email is skipped
         // (EmailService.SendAsync's own no-op-on-unconfigured behavior),
         // exactly like every other outbound email in this app.
+        if (!sendEmail)
+            return inAppSent;
+
         if (documentId.HasValue)
-            await SendDocumentEmailAsync(recipientUserId, documentId.Value, title, body);
+            await SendDocumentEmailAsync(recipientUserId, documentId.Value, title, body, audit);
         else if (taskId.HasValue)
-            await SendTaskEmailAsync(recipientUserId, taskId.Value, title, body);
+            await SendTaskEmailAsync(recipientUserId, taskId.Value, title, body, audit);
+        return inAppSent;
     }
 
-    private async Task SendTaskEmailAsync(Guid recipientUserId, Guid taskId, string title, string? body)
+    private async Task SendTaskEmailAsync(Guid recipientUserId, Guid taskId, string title, string? body, EmailDeliveryAudit audit)
     {
         try
         {
@@ -224,7 +207,7 @@ public class NotificationService(DmsContext context, EmailService emailService, 
                 </a>
                 """;
             var html = EmailService.BuildBrandedHtml(title, "#002E5C", bodyHtml);
-            await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", html);
+            await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", html, audit);
         }
         catch (Exception ex)
         {
@@ -272,7 +255,7 @@ public class NotificationService(DmsContext context, EmailService emailService, 
             await NotifyAsync(recipientId, actorUserId, title, body, taskId: taskId);
     }
 
-    private async Task SendDocumentEmailAsync(Guid recipientUserId, Guid documentId, string title, string? body)
+    private async Task SendDocumentEmailAsync(Guid recipientUserId, Guid documentId, string title, string? body, EmailDeliveryAudit audit)
     {
         try
         {
@@ -301,7 +284,7 @@ public class NotificationService(DmsContext context, EmailService emailService, 
                 </a>
                 """;
             var html = EmailService.BuildBrandedHtml(title, "#002E5C", bodyHtml);
-            await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", html);
+            await emailService.SendAsync(recipient.Email, $"DMS - Si-Ware Systems - {title}", html, audit);
         }
         catch (Exception ex)
         {

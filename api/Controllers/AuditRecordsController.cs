@@ -70,7 +70,11 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         var teamResult = await ResolveTeam(request.AuditTeamUserIds); var participantResult = await ResolveTeam(request.ParticipantUserIds); if (teamResult.Error != null || participantResult.Error != null) return BadRequest(new { success = false, error = teamResult.Error ?? participantResult.Error }); var team = teamResult.Team; var participants = participantResult.Team;
         record.AuditCycleId = request.AuditCycleId; record.Standard = request.Standard; record.Title = request.Title.Trim(); record.AuditType = request.AuditType; record.Status = request.Status; record.AuditDate = request.AuditDate; record.Scope = request.Scope.Trim(); record.Departments = Clean(request.Departments); record.AuditTeam = team.Names; record.AuditTeamUserIds = team.Ids; record.ParticipantUserIds = participants.Ids; record.AuditPlanReference = CleanText(request.AuditPlanReference); record.AuditReportReference = CleanText(request.AuditReportReference); record.AuditPlanDocumentId = request.AuditPlanDocumentId; record.AuditReportDocumentId = request.AuditReportDocumentId; record.Notes = CleanText(request.Notes); record.UpdatedAt = DateTime.UtcNow;
         await SyncJourneyStageAsync(record, userId);
-        await context.SaveChangesAsync();
+        try { await context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { success = false, error = "This audit record changed. Reload it and try again." });
+        }
         if (!string.Equals(previousStatus, record.Status, StringComparison.OrdinalIgnoreCase))
             await NotifyStatusChangeAsync(record, userId);
         return Ok(new { success = true, data = record });
@@ -259,7 +263,7 @@ public class AuditRecordsController(DmsContext context, AccessOverrideService ac
         var title = $"{stageName} status changed to {status}";
         var body = $"{cycleName}: please open DMS and review your assigned tasks, PCAR findings, and actions. Update anything still outstanding.";
         foreach (var recipientId in recipientIds)
-            await notificationService.NotifyAuditStageAsync(recipientId, actorUserId, title, body, cycleName, stageName, status);
+            await notificationService.NotifyAuditStageAsync(recipientId, actorUserId, record.AuditRecordId, title, body, cycleName, stageName, status);
     }
     private static string? CleanText(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

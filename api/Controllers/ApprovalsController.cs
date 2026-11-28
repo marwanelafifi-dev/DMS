@@ -624,6 +624,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewQaStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the QA Review stage" });
 
+            if (approvalDocument.CurrentStage != "qa_review" || approvalDocument.Status != "pending")
+                return Conflict(new { success = false, error = "This document is no longer awaiting a QA decision." });
+
             if (request.AssignToUserId.HasValue == request.AssignToGroupId.HasValue)
                 return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });
 
@@ -794,6 +797,9 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewManagerStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Manager Review stage" });
+
+            if (approvalDocument.CurrentStage != "manager_review" || approvalDocument.Status != "pending")
+                return Conflict(new { success = false, error = "This document is no longer awaiting a manager decision." });
 
             if (request.AssignToUserId.HasValue == request.AssignToGroupId.HasValue)
                 return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });
@@ -1102,8 +1108,8 @@ public class ApprovalsController(DmsContext context, AuditService auditService, 
             if (!await CurrentUserHasStageAccessAsync(userId, r => r.CanViewFinalReleaseStage))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Your role does not have access to the Final Release stage" });
 
-            if (approvalDocument.CurrentStage != "final_release")
-                return BadRequest(new { success = false, error = "This document is not in final release stage" });
+            if (approvalDocument.CurrentStage != "final_release" || approvalDocument.Status != "pending")
+                return Conflict(new { success = false, error = "This document is no longer awaiting a final-release decision." });
 
             if (request.AssignToUserId.HasValue == request.AssignToGroupId.HasValue)
                 return BadRequest(new { success = false, error = "Exactly one of assignToUserId or assignToGroupId is required" });

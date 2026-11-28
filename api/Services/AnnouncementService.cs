@@ -75,15 +75,15 @@ public class AnnouncementService(
                     await notificationService.NotifyAsync(user.UserId, postedById, announcement.Title, announcement.Message, announcementId: announcement.AnnouncementId);
             }
 
-            if (notifyEmail && await emailService.IsConfiguredAsync())
+            if (notifyEmail)
             {
                 var bodyHtml = $"""<p style="margin:0;font-size:14px;color:#3c4043;white-space:pre-wrap;">{System.Net.WebUtility.HtmlEncode(announcement.Message)}</p>""";
                 var html = EmailService.BuildBrandedHtml(announcement.Title, AccentColor, bodyHtml);
-                foreach (var user in recipients)
-                {
-                    if (user.UserId != postedById && !string.IsNullOrWhiteSpace(user.Email))
-                        await emailService.SendAsync(user.Email, announcement.Title, html);
-                }
+                var emailRecipients = recipients.Where(user => user.UserId != postedById && !string.IsNullOrWhiteSpace(user.Email))
+                    .DistinctBy(user => user.Email.Trim(), StringComparer.OrdinalIgnoreCase);
+                foreach (var user in emailRecipients)
+                    await emailService.SendAsync(user.Email.Trim(), announcement.Title, html,
+                        new EmailDeliveryAudit(postedById, "announcement", user.UserId, announcement.AnnouncementId));
             }
 
             await auditService.LogAsync(postedById, AuditActions.ANNOUNCEMENT_CREATED, new
