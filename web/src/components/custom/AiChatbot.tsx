@@ -81,13 +81,14 @@ export function AiChatbot() {
           ref={launcherRef}
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="relative z-[75] flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3c89c9]"
-          aria-label={open ? 'Close AI assistant' : 'Open AI assistant'}
+          className="relative z-[75] inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] px-4 text-sm font-semibold text-white shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3c89c9]"
+          aria-label={open ? 'Close AI Assistant' : 'Open AI Assistant'}
           aria-expanded={open}
           aria-controls={open ? 'dms-ai-assistant-panel' : undefined}
           title="DMS AI Assistant"
         >
-          {open ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
+          {open ? <X className="h-5 w-5 shrink-0" aria-hidden="true" /> : <MessageCircle className="h-5 w-5 shrink-0" aria-hidden="true" />}
+          <span>AI Assistant</span>
         </button>
       </div>
 
