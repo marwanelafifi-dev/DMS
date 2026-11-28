@@ -14,14 +14,16 @@ const welcome: ChatMessage = {
 
 export function AiChatbot() {
   const [open, setOpen] = useState(false);
-  // Draws attention to the assistant (pulsing ring + label) until the user
-  // has actually opened it once in this session — no point still trying to
-  // grab attention once they've already found it.
-  const [hasOpened, setHasOpened] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+
+  const closeAssistant = () => {
+    setOpen(false);
+    launcherRef.current?.focus();
+  };
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -72,9 +74,26 @@ export function AiChatbot() {
 
   return (
     <>
+      {/* Reserve the launcher's space below the page scroll area. Only the
+          button and chat panel sit above document previews. */}
+      <div className="flex shrink-0 justify-end border-t border-[#dbe2ec] px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] dark:border-white/10">
+        <button
+          ref={launcherRef}
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="relative z-[75] flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3c89c9]"
+          aria-label={open ? 'Close AI assistant' : 'Open AI assistant'}
+          aria-expanded={open}
+          aria-controls={open ? 'dms-ai-assistant-panel' : undefined}
+          title="DMS AI Assistant"
+        >
+          {open ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
+        </button>
+      </div>
+
       {open && (
-        <section className="chat-panel-in fixed bottom-24 right-4 z-[75] flex h-[min(720px,calc(100vh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)] ring-1 ring-black/[0.03] dark:border-white/10 dark:bg-slate-900" aria-label="DMS AI Assistant">
-          <header className="flex items-center gap-3 bg-gradient-to-br from-[#1f2c5c] via-[#27366f] to-[#3a5aa0] px-5 py-4 text-white">
+        <section id="dms-ai-assistant-panel" className="chat-panel-in fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-[75] flex h-[min(720px,calc(100vh-5.5rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-slate-200/80 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)] ring-1 ring-black/[0.03] supports-[height:100dvh]:h-[min(720px,calc(100dvh-5.5rem-env(safe-area-inset-bottom)))] dark:border-white/10 dark:bg-slate-900" aria-label="DMS AI Assistant">
+          <header className="flex shrink-0 items-center gap-3 bg-gradient-to-br from-[#1f2c5c] via-[#27366f] to-[#3a5aa0] px-5 py-4 text-white">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
               <Sparkles className="h-5 w-5" />
             </span>
@@ -98,10 +117,10 @@ export function AiChatbot() {
                 Secure workspace assistant
               </p>
             </div>
-            <button onClick={() => setOpen(false)} className="relative rounded-lg p-2 transition hover:bg-white/10 active:scale-95" aria-label="Close AI assistant"><X className="h-5 w-5" /></button>
+            <button type="button" onClick={closeAssistant} className="relative rounded-lg p-2 transition hover:bg-white/10 active:scale-95" aria-label="Close AI assistant"><X className="h-5 w-5" /></button>
           </header>
 
-          <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-[#f7f9fc] to-[#eef2f8] p-4 dark:from-slate-950 dark:to-slate-950">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-[#f7f9fc] to-[#eef2f8] p-4 dark:from-slate-950 dark:to-slate-950">
             {messages.map((message, index) => (
               <div key={index} className={`chat-message-in flex items-end gap-2.5 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && <span className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#e6edf7] to-[#d7e3f5] text-[#2f4d83] ring-1 ring-[#2f4d83]/10 dark:from-slate-800 dark:to-slate-800 dark:text-blue-300 dark:ring-white/10"><Bot className="h-4 w-4" /></span>}
@@ -145,7 +164,7 @@ export function AiChatbot() {
             <div ref={bottomRef} />
           </div>
 
-          <form onSubmit={submit} className="border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <form onSubmit={submit} className="shrink-0 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-1.5 shadow-sm transition focus-within:border-[#3c89c9] focus-within:shadow-[0_0_0_3px_rgba(60,137,201,0.15)] dark:border-slate-700 dark:bg-slate-950">
               <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={2} maxLength={2000} placeholder="Ask about a task, file, calendar item, or announcement…" aria-label="Ask the DMS AI Assistant" className="max-h-28 min-h-[44px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 dark:text-white" />
               <button type="submit" disabled={!input.trim() || loading} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#3a5aa0] to-[#274f7b] text-white shadow-sm transition hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100" aria-label="Send question">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button>
@@ -155,27 +174,6 @@ export function AiChatbot() {
         </section>
       )}
 
-      <div className="group fixed bottom-5 right-5 z-[75] flex items-center gap-3">
-        {!open && (
-          <span
-            className={`chat-message-in hidden select-none items-center rounded-full bg-white px-3.5 py-2 text-xs font-medium text-[#27366f] shadow-lg ring-1 ring-black/5 sm:flex dark:bg-slate-800 dark:text-blue-200 ${
-              hasOpened ? 'opacity-0 transition-opacity duration-150 group-hover:opacity-100' : ''
-            }`}
-          >
-            {hasOpened ? 'DMS AI Assistant' : 'Need help? Ask the AI Assistant'}
-          </span>
-        )}
-        <button
-          onClick={() => setOpen((value) => { const next = !value; if (next) setHasOpened(true); return next; })}
-          className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3a5aa0] to-[#232f6b] text-white shadow-lg shadow-[#232f6b]/30 transition hover:scale-105 hover:shadow-xl active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#3c89c9]/30"
-          aria-label={open ? 'Close AI assistant' : 'Open AI assistant'}
-          aria-expanded={open}
-          title="DMS AI Assistant — click to chat"
-        >
-          {!open && !hasOpened && <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-[#3a5aa0]/50" aria-hidden />}
-          {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
-        </button>
-      </div>
     </>
   );
 }

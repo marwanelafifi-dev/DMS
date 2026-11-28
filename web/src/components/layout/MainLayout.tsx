@@ -55,7 +55,7 @@ export function MainLayout() {
 
   return (
     <PageGuideProvider>
-      <div className="flex h-screen overflow-hidden bg-[#f3f6fa] text-[#17213a] dark:bg-slate-950 dark:text-white">
+      <div className="flex h-screen overflow-hidden bg-[#f3f6fa] text-[#17213a] supports-[height:100dvh]:h-[100dvh] dark:bg-slate-950 dark:text-white">
         <Sidebar
           isExpanded={sidebarOpen}
           onToggleExpand={() => setSidebarOpen((open) => !open)}
@@ -67,7 +67,7 @@ export function MainLayout() {
           <ScheduledNoticeBanner />
           <Navbar onMenuClick={() => setSidebarOpen((open) => !open)} />
 
-          <main className="flex-1 overflow-y-auto bg-[#f3f6fa] dark:bg-slate-950">
+          <main className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] dark:bg-slate-950">
             <div
               key={location.pathname}
               className={
@@ -79,8 +79,8 @@ export function MainLayout() {
               <Outlet />
             </div>
           </main>
+          <AiChatbot />
         </div>
-        <AiChatbot />
       </div>
     </PageGuideProvider>
   );

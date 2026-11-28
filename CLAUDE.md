@@ -1,5 +1,12 @@
 # Enterprise DMS v7.4 — Development Notes
 
+## 2026-11-28 — Keep the AI Assistant clear of pagination
+
+- The floating launcher and its first-use hint occupied the same viewport space as the Users table pagination. `MainLayout` now gives the launcher its own row below the scrollable workspace. The compact button keeps its keyboard focus indicator and remains above the document preview layer.
+- The chat panel opens above the dock and fits within the available viewport, including on short mobile screens. Closing the panel from its header returns focus to the launcher.
+- Verified in Chrome at 1024×660, 360×640, and 360×480. **Next page** was clickable at each size, and the assistant opened and closed within the viewport. `npm.cmd run type-check` and `npm run build` passed.
+- This change requires rebuilding the `web` container only. The database schema is unaffected.
+
 ## 2026-11-28 — One email per reminder event and accurate delivery audit
 
 ### Delivery
@@ -19,7 +26,7 @@
 
 - Apply [`139_fix_task_escalation_stage_constraint.sql`](infra/db/init/139_fix_task_escalation_stage_constraint.sql) to an existing PostgreSQL volume before starting the updated API. It accepts the configurable stage names and carries forward recorded legacy stages so they are not replayed. The Audit Trail changes use the existing ledger schema.
 - From the updated deployment directory, use the same Compose files and project settings as the running stack. Stop the old API worker, apply migration `139` with `psql -v ON_ERROR_STOP=1`, then rebuild and recreate `api` and `web`. Fresh database volumes apply `139` through the normal initialization sequence.
-- Local verification passed for all 16 API tests, the focused Audit Trail UI regression test, TypeScript type checking, and the web production build. The production migration and live mail flow have not been verified.
+- Local verification passed for all 16 API tests, the focused Audit Trail UI regression test, TypeScript type checking, and the web production build. Migration `139` committed on Ubuntu and both containers reported healthy. Live email delivery remains to be verified.
 
 ## 2026-11-25 — Self-assigned task delivery and task-description readability
 
